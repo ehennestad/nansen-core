@@ -155,3 +155,34 @@ def test_a_claimed_task_is_not_taken_twice(project):
     queue.release(task["id"])
     assert queue.run_next()["status"] == "completed"
     assert not queue.claim_path(task["id"]).exists()
+
+
+def test_pipeline_runs_steps_in_order_per_entity(project):
+    queue = TaskQueue(project)
+    tasks = queue.submit_pipeline("core.inspect", project.entities("session"))
+    assert len(tasks) == 4
+    first, second = tasks[0], tasks[1]
+    assert second["after"] == [first["id"]]
+    assert second["pipeline"]["step"] == 1 and second["pipeline"]["run"] == first["pipeline"]["run"]
+    assert second["options"]["values"]["message"] == "pausing"
+    done = queue.run_all()
+    assert [t["status"] for t in done] == ["completed"] * 4
+    order = {t["id"]: i for i, t in enumerate(done)}
+    assert order[first["id"]] < order[second["id"]]
+
+
+def test_pipeline_step_after_a_failure_is_cancelled(project):
+    queue = TaskQueue(project)
+    tasks = queue.submit_pipeline("core.inspect", project.entities("session")[:1])
+    queue.cancel(tasks[0]["id"])
+    assert queue.run_next() is None
+    second = queue.get(tasks[1]["id"])
+    assert second["status"] == "cancelled" and "earlier step" in second["error"]["message"]
+
+
+def test_waiting_task_is_not_run_before_its_dependency(project):
+    queue = TaskQueue(project)
+    tasks = queue.submit_pipeline("core.inspect", project.entities("session")[:1])
+    assert queue.claim(tasks[0]["id"])  # another worker holds the first step
+    assert queue.run_next() is None     # the second step waits
+    queue.release(tasks[0]["id"])

@@ -160,15 +160,75 @@ classdef TaskQueue < handle
                     nansen.internal.throwError("wrong-entity-type", "%s runs on %s", method.Id, method.EntityType)
                 end
             end
-            values = struct();
-            if options.Preset ~= ""
-                values = obj.Project.preset(methodId, options.Preset);
+            task = obj.makeTask(method, entities, options.Options, options.Preset, options.Language);
+            obj.save(task)
+        end
+
+        function tasks = submitPipeline(obj, pipelineId, entities, options)
+            %submitPipeline Queue a pipeline: per entity, one task per step, each waiting for the step before
+            arguments
+                obj
+                pipelineId (1,1) string
+                entities (1,:) cell
+                options.Language (1,1) string = ""
             end
-            values = method.resolveOptions(nansen.internal.mergeStructs(values, options.Options));
+            pipeline = obj.Project.pipeline(pipelineId);
+            if isempty(entities)
+                nansen.internal.throwError("no-entities", "a pipeline needs at least one entity")
+            end
+            steps = nansen.internal.asCellOfStructs(pipeline.steps);
+            methods = cell(1, numel(steps));
+            for s = 1:numel(steps)
+                methods{s} = obj.Project.method(string(steps{s}.method));
+                for i = 1:numel(entities)
+                    if ~methods{s}.appliesTo(entities{i}.EntityType)
+                        nansen.internal.throwError("wrong-entity-type", "%s runs on %s", methods{s}.Id, methods{s}.EntityType)
+                    end
+                end
+            end
+            tasks = {};
+            for i = 1:numel(entities)
+                run = nansen.internal.uuid4();
+                previous = "";
+                for s = 1:numel(steps)
+                    step = steps{s};
+                    info = struct("id", char(string(pipeline.id)), "run", char(run), "step", s - 1, ...
+                        "steps", numel(steps), "title", char(nansen.internal.getField(step, "title", methods{s}.Title)));
+                    task = obj.makeTask(methods{s}, entities(i), nansen.internal.getField(step, "options", struct()), ...
+                        string(nansen.internal.getField(step, "preset", "")), options.Language, previous, info);
+                    tasks{end + 1} = task; %#ok<AGROW>
+                    previous = string(task.id);
+                end
+            end
+            for i = 1:numel(tasks)
+                obj.save(tasks{i})
+            end
+        end
+
+        function task = makeTask(obj, method, entities, values, preset, language, after, pipeline)
+            %makeTask A queued task document; options are resolved and validated now
+            arguments
+                obj
+                method
+                entities (1,:) cell
+                values = struct()
+                preset (1,1) string = ""
+                language (1,1) string = ""
+                after (1,1) string = ""
+                pipeline = []
+            end
+            base = struct();
+            if preset ~= ""
+                base = obj.Project.preset(method.Id, preset);
+            end
+            if isempty(values)
+                values = struct();
+            end
+            resolved = method.resolveOptions(nansen.internal.mergeStructs(base, values));
             references = cellfun(@(e) struct("entityType", char(e.EntityType), "key", e.Key), entities, UniformOutput=false);
-            optionsEntry = struct("values", values);
-            if options.Preset ~= ""
-                optionsEntry.preset = char(options.Preset);
+            optionsEntry = struct("values", resolved);
+            if preset ~= ""
+                optionsEntry.preset = char(preset);
             end
             entry = nansen.internal.schemaEntry("nansen.task");
             task = struct("schemaType", 'nansen.task', "schemaVersion", char(entry.version), ...
@@ -176,10 +236,15 @@ classdef TaskQueue < handle
                 "method", struct("id", char(method.Id), "version", char(method.Version)), ...
                 "entities", {references}, "options", optionsEntry, "status", 'queued', ...
                 "createdAt", char(nansen.internal.timestamp()), "progress", 0);
-            if options.Language ~= ""
-                task.language = char(options.Language);
+            if language ~= ""
+                task.language = char(language);
             end
-            obj.save(task)
+            if after ~= ""
+                task.after = {char(after)};
+            end
+            if ~isempty(pipeline)
+                task.pipeline = pipeline;
+            end
         end
 
         function task = cancel(obj, taskId)
@@ -206,6 +271,9 @@ classdef TaskQueue < handle
                 "status", 'queued', "createdAt", char(nansen.internal.timestamp()), "progress", 0);
             if isfield(old, "language")
                 task.language = old.language;
+            end
+            if isfield(old, "pipeline")
+                task.pipeline = old.pipeline;
             end
             obj.save(task)
         end
@@ -252,11 +320,41 @@ classdef TaskQueue < handle
         % -- running ----------------------------------------------------------------------
 
         function task = nextTask(obj)
+            %nextTask The oldest queued task this worker can run now: its language, not claimed, every
+            %   task it waits for completed. A task waiting for one that failed or was cancelled is cancelled.
             task = [];
-            for candidate = obj.list("queued")
-                if string(nansen.internal.getField(candidate{1}, "language", "matlab")) == "matlab" ...
-                        && ~isfolder(obj.claimPath(string(candidate{1}.id)))
-                    task = candidate{1};
+            tasks = obj.list();
+            statuses = containers.Map("KeyType", "char", "ValueType", "char");
+            for i = 1:numel(tasks)
+                statuses(char(tasks{i}.id)) = char(tasks{i}.status);
+            end
+            for i = 1:numel(tasks)
+                candidate = tasks{i};
+                if string(candidate.status) ~= "queued"
+                    continue
+                end
+                waiting = strings(1, 0);
+                for other = nansen.internal.asCellstr(nansen.internal.getField(candidate, "after", {}))
+                    if isKey(statuses, other{1})
+                        waiting(end + 1) = string(statuses(other{1})); %#ok<AGROW>
+                    else
+                        waiting(end + 1) = "missing"; %#ok<AGROW>
+                    end
+                end
+                if any(ismember(waiting, ["failed", "cancelled", "missing"]))
+                    candidate.status = 'cancelled';
+                    candidate.finishedAt = char(nansen.internal.timestamp());
+                    candidate.error = struct("message", 'an earlier step did not complete');
+                    obj.save(candidate)
+                    statuses(char(candidate.id)) = 'cancelled';
+                    continue
+                end
+                if any(waiting ~= "completed")
+                    continue
+                end
+                if string(nansen.internal.getField(candidate, "language", "matlab")) == "matlab" ...
+                        && ~isfolder(obj.claimPath(string(candidate.id)))
+                    task = candidate;
                     return
                 end
             end

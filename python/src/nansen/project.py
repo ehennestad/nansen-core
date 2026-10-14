@@ -280,6 +280,24 @@ class Project:
                 return method
         raise NansenError("unknown-method", f"no method {method_id!r}")
 
+    def pipelines(self, entity_type: Optional[str] = None) -> List[dict]:
+        """Pipelines from the project's pipelines/ folder, then its modules'. The first of an id wins."""
+        found: Dict[str, dict] = {}
+        folder = self.folder / "pipelines"
+        for path in sorted(folder.glob("*.pipeline.nansen.json")) if folder.is_dir() else []:
+            document = read_document(path, "nansen.pipeline")
+            found.setdefault(document["id"], document)
+        for module in self.modules:
+            for document in module.pipeline_documents():
+                found.setdefault(document["id"], document)
+        return [p for p in found.values() if entity_type is None or p["entityType"] in ("*", entity_type)]
+
+    def pipeline(self, pipeline_id: str) -> dict:
+        for document in self.pipelines():
+            if document["id"] == pipeline_id:
+                return document
+        raise NansenError("unknown-pipeline", f"no pipeline {pipeline_id!r}")
+
     def preset_path(self, method_id: str, name: str) -> Path:
         return self.folder / "options" / method_id / f"{name}.options.nansen.json"
 

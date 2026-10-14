@@ -16,7 +16,8 @@
     "description": { "type": "string" },
     "fragments": { "$ref": "#/definitions/paths" },
     "methods": { "$ref": "#/definitions/paths" },
-    "fileAdapters": { "$ref": "#/definitions/paths" }
+    "fileAdapters": { "$ref": "#/definitions/paths" },
+    "pipelines": { "$ref": "#/definitions/paths" }
   },
   "definitions": {
     "paths": {

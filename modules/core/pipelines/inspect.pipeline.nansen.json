@@ -1,0 +1,13 @@
+{
+  "schemaType": "nansen.pipeline",
+  "schemaVersion": "0.1.0",
+  "id": "core.inspect",
+  "version": "1.0.0",
+  "title": "Inspect",
+  "description": "Count each entity's files, then wait a moment: an example of a pipeline.",
+  "entityType": "*",
+  "steps": [
+    { "method": "core.file_stats", "title": "Count files" },
+    { "method": "core.wait", "title": "Pause", "options": { "seconds": 0.5, "steps": 5, "message": "pausing" } }
+  ]
+}

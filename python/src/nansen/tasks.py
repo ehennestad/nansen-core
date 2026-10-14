@@ -140,7 +140,13 @@ class TaskQueue:
         for entity in entities:
             if not method.applies_to(entity.entity_type):
                 raise NansenError("wrong-entity-type", f"{method.id} runs on {method.entity_type}")
-        values = self.project.preset(method_id, preset) if preset else {}
+        task = self._make(method, entities, options, preset, language)
+        self._save(task)
+        self._wake.set()
+        return task
+
+    def _make(self, method, entities, options, preset, language, after=None, pipeline=None) -> dict:
+        values = self.project.preset(method.id, preset) if preset else {}
         values = method.resolve_options(dict(values, **(options or {})))
         task = {
             "schemaType": "nansen.task",
@@ -157,9 +163,38 @@ class TaskQueue:
             task["options"]["preset"] = preset
         if language:
             task["language"] = language
-        self._save(task)
-        self._wake.set()
+        if after:
+            task["after"] = list(after)
+        if pipeline:
+            task["pipeline"] = pipeline
         return task
+
+    def submit_pipeline(self, pipeline_id: str, entities: List[Any], language: Optional[str] = None) -> List[dict]:
+        """Queue a pipeline: per entity, one task per step, each waiting for the step before."""
+        pipeline = self.project.pipeline(pipeline_id)
+        if not entities:
+            raise NansenError("no-entities", "a pipeline needs at least one entity")
+        steps = []
+        for step in pipeline["steps"]:
+            method = self.project.method(step["method"])
+            for entity in entities:
+                if not method.applies_to(entity.entity_type):
+                    raise NansenError("wrong-entity-type", f"{method.id} runs on {method.entity_type}")
+            steps.append((method, step))
+        tasks = []
+        for entity in entities:
+            run, previous = str(uuid.uuid4()), None
+            for number, (method, step) in enumerate(steps):
+                info = {"id": pipeline["id"], "run": run, "step": number, "steps": len(steps),
+                        "title": step.get("title", method.title)}
+                task = self._make(method, [entity], step.get("options"), step.get("preset"), language,
+                                  after=[previous["id"]] if previous else None, pipeline=info)
+                tasks.append(task)
+                previous = task
+        for task in tasks:  # validated every step before writing any
+            self._save(task)
+        self._wake.set()
+        return tasks
 
     def cancel(self, task_id: str) -> dict:
         """Cancel a queued task now; ask a running task to stop at its next check."""
@@ -178,7 +213,7 @@ class TaskQueue:
         if old["status"] not in TERMINAL:
             raise NansenError("task-active", f"task {task_id} is {old['status']}")
         task = {k: v for k, v in old.items() if k in ("schemaType", "schemaVersion", "method", "entities", "options",
-                                                       "language")}
+                                                       "language", "pipeline")}
         task.update(id=str(uuid.uuid4()), status="queued", createdAt=now(), progress=0)
         self._save(task)
         self._wake.set()
@@ -220,7 +255,22 @@ class TaskQueue:
     # -- running ------------------------------------------------------------------------------
 
     def next_task(self) -> Optional[dict]:
-        for task in self.list("queued"):
+        """The oldest queued task this worker can run now: its own language, not claimed, and every
+        task it waits for completed. A task waiting for one that failed or was cancelled is cancelled."""
+        tasks = self.list()
+        status = {t["id"]: t["status"] for t in tasks}
+        for task in tasks:
+            if task["status"] != "queued":
+                continue
+            waiting = [status.get(other, "missing") for other in task.get("after", [])]
+            if any(s in ("failed", "cancelled", "missing") for s in waiting):
+                task.update(status="cancelled", finishedAt=now(),
+                            error={"message": "an earlier step did not complete"})
+                self._save(task)
+                status[task["id"]] = "cancelled"
+                continue
+            if any(s != "completed" for s in waiting):
+                continue
             if task.get("language", "python") == "python" and not self.claim_path(task["id"]).exists():
                 return task
         return None

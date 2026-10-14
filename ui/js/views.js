@@ -239,10 +239,14 @@
       }
     }
 
+    let selection = 0;
     async function select(method, presetName) {
+      const token = ++selection;
       current = method;
       items.forEach((el, id) => el.classList.toggle("on", id === method.id));
-      presets = await app.client.request("presets.list", { methodId: method.id }).catch(() => []);
+      const loaded = await app.client.request("presets.list", { methodId: method.id }).catch(() => []);
+      if (token !== selection) return; // a later choice won while the presets loaded
+      presets = loaded;
       const preset = presets.find((p) => p.name === (presetName || "default")) || presets[0];
       form = N.schemaForm(method.options || {}, preset ? preset.values : {});
       const presetSelect = h("select.input", { style: { width: "200px" }, on: { change: (e) => select(method, e.target.value) } },

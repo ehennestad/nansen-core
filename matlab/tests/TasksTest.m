@@ -107,6 +107,27 @@ classdef TasksTest < matlab.unittest.TestCase
             testCase.verifyEmpty(testCase.Queue.runNext());
         end
 
+        function pipelineRunsStepsInOrderPerEntity(testCase)
+            tasks = testCase.Queue.submitPipeline("core.inspect", testCase.sessions());
+            testCase.verifyEqual(numel(tasks), 4);
+            testCase.verifyEqual(string(tasks{2}.after), string(tasks{1}.id));
+            testCase.verifyEqual(tasks{2}.pipeline.step, 1);
+            testCase.verifyEqual(string(tasks{2}.options.values.message), "pausing");
+            done = testCase.Queue.runAll();
+            testCase.verifyEqual(cellfun(@(t) string(t.status), done), repmat("completed", 1, 4));
+            ids = cellfun(@(t) string(t.id), done);
+            testCase.verifyLessThan(find(ids == string(tasks{1}.id)), find(ids == string(tasks{2}.id)));
+        end
+
+        function pipelineStepAfterAFailureIsCancelled(testCase)
+            sessions = testCase.sessions();
+            tasks = testCase.Queue.submitPipeline("core.inspect", sessions(1));
+            testCase.Queue.cancel(string(tasks{1}.id));
+            testCase.verifyEmpty(testCase.Queue.runNext());
+            second = testCase.Queue.get(string(tasks{2}.id));
+            testCase.verifyEqual(string(second.status), "cancelled");
+        end
+
         function taskWrittenByEitherLanguageReadsBack(testCase)
             task = testCase.Queue.submit("core.export_keys", testCase.sessions());
             done = nansen.runTask(testCase.Project.Folder, string(task.id));

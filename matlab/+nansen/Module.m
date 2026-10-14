@@ -44,6 +44,10 @@ classdef Module
             documents = obj.documents("fileAdapters", "nansen.fileAdapter");
         end
 
+        function documents = pipelineDocuments(obj)
+            documents = obj.documents("pipelines", "nansen.pipeline");
+        end
+
         function found = entityMethods(obj)
             %entityMethods The module's methods: a row of nansen.Method
             found = nansen.Method.empty(1, 0);

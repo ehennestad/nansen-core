@@ -62,6 +62,9 @@ class Module:
     def file_adapter_documents(self) -> List[dict]:
         return self._documents("fileAdapters", "nansen.fileAdapter")
 
+    def pipeline_documents(self) -> List[dict]:
+        return self._documents("pipelines", "nansen.pipeline")
+
     def summary(self) -> dict:
         return {"id": self.id, "version": self.version, "title": self.document.get("title", self.id),
                 "description": self.document.get("description", ""), "folder": str(self.folder)}

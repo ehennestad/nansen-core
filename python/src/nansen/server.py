@@ -43,6 +43,13 @@ class AppServer(ThreadingHTTPServer):
         self.closing.set()
         super().shutdown()
 
+    def handle_error(self, request, client_address) -> None:
+        import sys
+
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+            return  # a browser tab closed mid-request
+        super().handle_error(request, client_address)
+
 
 class _Handler(BaseHTTPRequestHandler):
     server: AppServer
@@ -52,12 +59,15 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def _send(self, status: int, body: bytes, content_type: str) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the page went away before the answer; nothing to do
 
     def do_POST(self):
         if self.path != "/api":

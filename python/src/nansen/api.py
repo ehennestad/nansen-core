@@ -350,6 +350,14 @@ class Api:
         return self._queue().submit(params["methodId"], self._entities(params), params.get("options"),
                                     params.get("preset"), params.get("language"))
 
+    def pipelines__list(self, params: dict) -> list:
+        project = self._require_project()
+        return [dict(p, steps=[dict(s, title=s.get("title") or project.method(s["method"]).title) for s in p["steps"]])
+                for p in project.pipelines(params.get("entityType"))]
+
+    def pipelines__submit(self, params: dict) -> list:
+        return self._queue().submit_pipeline(params["pipelineId"], self._entities(params), params.get("language"))
+
     def tasks__list(self, params: dict) -> list:
         return self._queue().list(params.get("status"))
 

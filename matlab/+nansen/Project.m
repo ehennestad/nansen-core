@@ -398,6 +398,47 @@ classdef Project < handle
             nansen.internal.throwError("unknown-method", "no method '%s'", methodId)
         end
 
+        function found = pipelines(obj, entityType)
+            %pipelines Pipelines from pipelines/, then the modules'; the first of an id wins (a cell row of structs)
+            arguments
+                obj
+                entityType (1,1) string = ""
+            end
+            found = {};
+            ids = strings(1, 0);
+            folder = fullfile(obj.Folder, "pipelines");
+            documents = {};
+            if isfolder(folder)
+                listing = dir(fullfile(folder, "*.pipeline.nansen.json"));
+                for name = sort(string({listing.name}))
+                    documents{end + 1} = nansen.readDocument(fullfile(folder, name), ExpectedType="nansen.pipeline"); %#ok<AGROW>
+                end
+            end
+            for module = obj.modules()
+                documents = [documents, module.pipelineDocuments()]; %#ok<AGROW>
+            end
+            for i = 1:numel(documents)
+                document = documents{i};
+                if ismember(string(document.id), ids)
+                    continue
+                end
+                if entityType == "" || ismember(string(document.entityType), ["*", entityType])
+                    found{end + 1} = document; %#ok<AGROW>
+                end
+                ids(end + 1) = string(document.id); %#ok<AGROW>
+            end
+        end
+
+        function document = pipeline(obj, pipelineId)
+            for candidate = obj.pipelines()
+                if string(candidate{1}.id) == string(pipelineId)
+                    document = candidate{1};
+                    return
+                end
+            end
+            nansen.internal.throwError("unknown-pipeline", "no pipeline '%s'", pipelineId)
+        end
+
         function path = presetPath(obj, methodId, name)
             path = string(fullfile(obj.Folder, "options", methodId, name + ".options.nansen.json"));
         end

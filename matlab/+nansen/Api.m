@@ -34,7 +34,7 @@ classdef Api < handle
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "fragments.list", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
-                "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
+                "pipelines.list", "pipelines.submit", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
             for name = names
                 % "entities.list" -> apiEntitiesList
@@ -369,6 +369,25 @@ classdef Api < handle
             methodId = string(nansen.Api.param(params, "methodId"));
             project.deletePreset(methodId, string(nansen.Api.param(params, "name")));
             result = project.presets(methodId);
+        end
+
+        function result = apiPipelinesList(obj, params)
+            project = obj.requireProject();
+            result = project.pipelines(string(nansen.internal.getField(params, "entityType", "")));
+            for i = 1:numel(result)
+                steps = nansen.internal.asCellOfStructs(result{i}.steps);
+                for s = 1:numel(steps)
+                    if ~isfield(steps{s}, "title")
+                        steps{s}.title = char(project.method(string(steps{s}.method)).Title);
+                    end
+                end
+                result{i}.steps = steps;
+            end
+        end
+
+        function result = apiPipelinesSubmit(obj, params)
+            result = obj.queue().submitPipeline(string(nansen.Api.param(params, "pipelineId")), obj.entities(params), ...
+                Language=string(nansen.internal.getField(params, "language", "")));
         end
 
         function result = apiTasksSubmit(obj, params)

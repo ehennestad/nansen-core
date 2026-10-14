@@ -13,5 +13,8 @@
     "methods/file_stats.method.nansen.json",
     "methods/export_keys.method.nansen.json",
     "methods/wait.method.nansen.json"
+  ],
+  "pipelines": [
+    "pipelines/inspect.pipeline.nansen.json"
   ]
 }
