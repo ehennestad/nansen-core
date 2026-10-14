@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Run by hand too, e.g. after a change on the DSM branch the MATLAB job checks out
+  workflow_dispatch:
 
 jobs:
   python:
