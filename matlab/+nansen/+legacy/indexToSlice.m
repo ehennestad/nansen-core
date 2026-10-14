@@ -8,17 +8,13 @@ function sliced = indexToSlice(expression)
         expression (1,1) string
     end
     sliced = string(missing);
-    value = replace(expression, " ", "");
-    bound = '(\d+|end(?:-\d+)?)';
-    tokens = regexp(char(value), ['^', bound, '(?::', bound, ')?$'], "tokens", "once");
-    if isempty(tokens)
+    bounds = split(replace(expression, " ", ""), ":");
+    isBound = @(b) ~isempty(regexp(char(b), '^(\d+|end(-\d+)?)$', "once"));
+    if numel(bounds) > 2 || ~all(arrayfun(isBound, bounds))
         return
     end
-    first = string(tokens{1});
-    last = first;
-    if numel(tokens) > 1 && strlength(tokens{2}) > 0
-        last = string(tokens{2});
-    end
+    first = bounds(1);
+    last = bounds(end);
     if ~isnan(str2double(first)) && str2double(first) < 1
         return
     end

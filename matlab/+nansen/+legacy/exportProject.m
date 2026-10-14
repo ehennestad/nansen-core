@@ -217,7 +217,9 @@ function [dataType, column] = columnValues(value)
             column = cellfun(@numberOrNull, value, UniformOutput=false);
         end
     end
-    column = reshape(column, n, 1);
+    if dataType ~= ""
+        column = reshape(column, n, 1);
+    end
 end
 
 function value = numberOrNull(v)

@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "0.1.0",
+  "entityTypes": [
+    {
+      "name": "subject",
+      "description": "An experimental animal",
+      "isPrimary": true,
+      "identifierRef": "subject_id"
+    },
+    {
+      "name": "session",
+      "description": "One two-photon imaging session",
+      "identifierRef": "session_id"
+    }
+  ],
+  "metadataDefinitions": {
+    "subject_id": {
+      "name": "subject_id",
+      "title": "Subject",
+      "dataType": "string",
+      "ofEntity": "subject",
+      "validation": {
+        "pattern": "^m\\d{3}$"
+      }
+    },
+    "session_id": {
+      "name": "session_id",
+      "title": "Session",
+      "dataType": "string",
+      "ofEntity": "session",
+      "validation": {
+        "pattern": "^m\\d{3}-\\d{8}-\\d{3}$"
+      }
+    },
+    "session_date": {
+      "name": "session_date",
+      "title": "Date",
+      "dataType": "date",
+      "ofEntity": "session"
+    },
+    "session_time": {
+      "name": "session_time",
+      "title": "Start time",
+      "dataType": "time",
+      "ofEntity": "session"
+    }
+  },
+  "dataLocations": [
+    {
+      "identifier": "raw",
+      "displayName": "Raw two-photon data",
+      "dataCategory": "raw",
+      "access": "read",
+      "sourceType": "filesystem",
+      "filesystemSource": {
+        "rootStoragePaths": [
+          {
+            "identifier": "local",
+            "path": "data/raw"
+          }
+        ],
+        "entityLayout": [
+          {
+            "name": "dates",
+            "matchPattern": "^\\d{4}_\\d{2}_\\d{2}$"
+          },
+          {
+            "name": "sessions",
+            "entityType": "session",
+            "matchPattern": "^\\d{4}_\\d{2}_\\d{2}_\\d{2}_\\d{2}_\\d{2}_m\\d{3}-\\d{8}-\\d{3}$",
+            "filePatterns": [
+              {
+                "name": "two_photon_movie",
+                "pattern": "\\.raw$",
+                "isRequired": true,
+                "cardinality": "one"
+              },
+              {
+                "name": "acquisition_config",
+                "pattern": "\\.ini$",
+                "cardinality": "one"
+              }
+            ]
+          }
+        ],
+        "metadataMapping": [
+          {
+            "metadataRef": "session_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "_(m\\d{3}-\\d{8}-\\d{3})$",
+              "entityLayoutLevel": "sessions"
+            }
+          },
+          {
+            "metadataRef": "subject_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "_(m\\d{3})-\\d{8}-\\d{3}$",
+              "entityLayoutLevel": "sessions"
+            }
+          },
+          {
+            "metadataRef": "session_date",
+            "extraction": {
+              "method": "substring",
+              "pattern": ":",
+              "valueFormat": "yyyy_MM_dd",
+              "entityLayoutLevel": "dates"
+            }
+          },
+          {
+            "metadataRef": "session_time",
+            "extraction": {
+              "method": "regex",
+              "pattern": "^\\d{4}_\\d{2}_\\d{2}_(\\d{2}_\\d{2}_\\d{2})_",
+              "valueFormat": "HH_mm_ss",
+              "entityLayoutLevel": "sessions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "processed",
+      "displayName": "Processed",
+      "dataCategory": "processed",
+      "access": "readwrite",
+      "sourceType": "filesystem",
+      "derivedFrom": [
+        "raw"
+      ],
+      "filesystemSource": {
+        "rootStoragePaths": [
+          {
+            "identifier": "local",
+            "path": "data/processed"
+          }
+        ],
+        "entityLayout": [
+          {
+            "name": "subjects",
+            "entityType": "subject",
+            "pathComponentTemplate": "subject-{subject_id}"
+          },
+          {
+            "name": "sessions",
+            "entityType": "session",
+            "pathComponentTemplate": "session-{session_id}",
+            "filePatterns": [
+              {
+                "name": "motion_corrected",
+                "pattern": "^{session_id}_motion_corrected\\.json$",
+                "cardinality": "one"
+              },
+              {
+                "name": "roi_signals",
+                "pattern": "^{session_id}_roi_signals\\.json$",
+                "cardinality": "one"
+              }
+            ]
+          }
+        ],
+        "metadataMapping": [
+          {
+            "metadataRef": "subject_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "^subject-(.+)$",
+              "entityLayoutLevel": "subjects"
+            }
+          },
+          {
+            "metadataRef": "session_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "^session-(.+)$",
+              "entityLayoutLevel": "sessions"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

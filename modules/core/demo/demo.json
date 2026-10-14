@@ -1,0 +1,101 @@
+{
+  "description": "What nansen demo (Python) and nansen.demo.create (MATLAB) build: a two-photon dataset on disk and a project over it. Recording sizes, start minutes, which sessions lack a config file, and the notes are drawn at random from a seed.",
+  "project": {
+    "name": "TwoPhotonDemo",
+    "title": "Two-photon demo",
+    "description": "A small two-photon dataset: raw recordings, some processed, for trying NANSEN."
+  },
+  "subjects": {
+    "m110": [
+      "20250523-001",
+      "20250523-002",
+      "20250526-001",
+      "20250602-001"
+    ],
+    "m111": [
+      "20250524-001",
+      "20250527-001",
+      "20250603-001"
+    ],
+    "m112": [
+      "20250525-001",
+      "20250528-001",
+      "20250528-002",
+      "20250604-001",
+      "20250611-001"
+    ],
+    "m113": [
+      "20250601-001",
+      "20250608-001"
+    ]
+  },
+  "entityTypes": [
+    {
+      "name": "subject",
+      "title": "Subjects",
+      "fragments": [
+        "core.notes"
+      ]
+    },
+    {
+      "name": "session",
+      "title": "Sessions",
+      "fragments": [
+        "core.notes",
+        "core.file_stats"
+      ]
+    }
+  ],
+  "dataVariables": [
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "name": "movie",
+      "entityType": "session",
+      "dataLocation": "raw",
+      "filePattern": "two_photon_movie",
+      "fileAdapter": "text"
+    },
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "name": "motion_corrected",
+      "entityType": "session",
+      "dataLocation": "processed",
+      "filePattern": "motion_corrected",
+      "fileName": "{session_id}_motion_corrected.json",
+      "fileAdapter": "json"
+    },
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "name": "roi_signals",
+      "entityType": "session",
+      "dataLocation": "processed",
+      "filePattern": "roi_signals",
+      "fileName": "{session_id}_roi_signals.json",
+      "fileAdapter": "json"
+    }
+  ],
+  "notes": [
+    "Good imaging",
+    "Some motion",
+    "",
+    "Bleaching after 20 min",
+    "",
+    "Check focus"
+  ],
+  "ignoreChance": 0.12,
+  "configChance": 0.8,
+  "presets": [
+    {
+      "methodId": "core.wait",
+      "name": "quick",
+      "values": {
+        "seconds": 1,
+        "steps": 5
+      },
+      "description": "One second per entity"
+    }
+  ]
+}
