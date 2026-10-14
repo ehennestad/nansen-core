@@ -10,6 +10,8 @@ classdef Project < handle
         Document struct
         % The environment (machine) whose root paths to use; "" means the dataset's preference
         Environment (1,1) string = ""
+        % Data read by load, kept until its file changes; dev's DataCache, but this project's own
+        DataCache
     end
 
     properties (Access = private)
@@ -38,6 +40,7 @@ classdef Project < handle
             end
             obj.Folder = folder;
             obj.Environment = environment;
+            obj.DataCache = nansen.DataCache();   % here, not as a default: a handle default would be shared
             document.entityTypes = nansen.internal.asCellOfStructs(document.entityTypes);
             obj.Document = document;
         end
@@ -869,15 +872,32 @@ classdef Project < handle
             path = obj.requireDataset().absolute(dataLocation, relative);
         end
 
-        function data = load(obj, entity, name)
+        function data = load(obj, entity, name, options)
             %load Read the variable for the entity with its file adapter (the first file when several match)
+            %
+            %   What was read is kept in obj.DataCache and given again until the
+            %   file changes; load(..., Cached=false) reads the file and keeps nothing.
+            arguments
+                obj
+                entity
+                name (1,1) string
+                options.Cached (1,1) logical = true
+            end
             variable = obj.dataVariable(name);
             paths = obj.dataPaths(entity, name);
             paths = paths(arrayfun(@isfile, paths));
             if isempty(paths)
                 nansen.internal.throwError("data-not-found", "%s has no '%s'", entity.EntityType, name)
             end
-            data = obj.adapters().get(variable.FileAdapter).read(paths(1));
+            adapter = obj.adapters().get(variable.FileAdapter);
+            path = paths(1);
+            if ~options.Cached
+                data = adapter.read(path);
+                return
+            end
+            info = dir(path);
+            data = obj.DataCache.getOrLoad(nansen.Project.cacheKey(variable.FileAdapter, path), ...
+                [info.datenum, info.bytes], @() adapter.read(path));
         end
 
         function path = save(obj, entity, name, data)
@@ -889,6 +909,7 @@ classdef Project < handle
                 mkdir(folder);
             end
             obj.adapters().get(variable.FileAdapter).write(path, data);
+            obj.DataCache.remove(nansen.Project.cacheKey(variable.FileAdapter, path));   % a rewrite in the same tick keeps the time
         end
 
         function status = dataStatus(obj, entity)
@@ -953,6 +974,13 @@ classdef Project < handle
             nansen.internal.writeJson(fullfile(obj.Folder, nansen.Project.ProjectFile), document)
             document.entityTypes = nansen.internal.asCellOfStructs(document.entityTypes);
             obj.Document = document;
+        end
+    end
+
+    methods (Static, Access = private)
+        function key = cacheKey(adapterId, path)
+            % One entry per file and file adapter
+            key = string(adapterId) + "|" + string(path);
         end
     end
 

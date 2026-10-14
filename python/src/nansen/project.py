@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .adapters import AdapterRegistry
+from .cache import DataCache
 from .dataset import Dataset, Scan, copy_dataset
 from .datavars import DataVariable, check_against_pattern, read_paths
 from .documents import PathLike, check_document, read_document, write_json
@@ -49,6 +50,8 @@ class Project:
         self._dataset: Optional[Dataset] = None
         self._adapters: Optional[AdapterRegistry] = None
         self._modules: Optional[List[Module]] = None
+        # Data read by load, kept until its file changes; dev's DataCache, but this project's own
+        self.data_cache = DataCache()
 
     # -- creating and opening -------------------------------------------------------------
 
@@ -562,13 +565,23 @@ class Project:
         location, relative = self.write_target(entity, name)
         return self.require_dataset().absolute(location, relative)
 
-    def load(self, entity: Entity, name: str) -> Any:
-        """Read the variable for the entity with its file adapter (the first file, when a pattern matches several)."""
+    def load(self, entity: Entity, name: str, cached: bool = True) -> Any:
+        """Read the variable for the entity with its file adapter (the first file, when a pattern matches several).
+
+        What was read is kept in ``data_cache`` and given again until the file changes; ``cached=False``
+        reads the file and keeps nothing.
+        """
         variable = self.data_variable(name)
         existing = [p for p in self.data_paths(entity, name) if p.is_file()]
         if not existing:
             raise NansenError("data-not-found", f"{entity.entity_type} {entity.key} has no {name!r}")
-        return self.adapters.get(variable.file_adapter).read(existing[0])
+        adapter = self.adapters.get(variable.file_adapter)
+        path = existing[0]
+        if not cached:
+            return adapter.read(path)
+        stat = path.stat()
+        return self.data_cache.get_or_load((variable.file_adapter, str(path.resolve())), (stat.st_mtime_ns, stat.st_size),
+                                           lambda: adapter.read(path))
 
     def save(self, entity: Entity, name: str, data: Any) -> Path:
         """Write the variable for the entity, creating folders as needed. Returns the path written."""
@@ -576,6 +589,7 @@ class Project:
         path = self.write_path(entity, name)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.adapters.get(variable.file_adapter).write(path, data)
+        self.data_cache.remove((variable.file_adapter, str(path.resolve())))  # a rewrite in the same tick keeps mtime
         return path
 
     def data_status(self, entity: Entity) -> List[Dict[str, Any]]:

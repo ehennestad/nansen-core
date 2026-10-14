@@ -72,6 +72,8 @@ function result = ophysCorrectMotion(entity, options, context)
 end
 ```
 
+`load` keeps what it read in the project's data cache (`project.data_cache`, `project.DataCache`), so methods run one after another on an entity read its files once. An entry is read again when its file changes on disk, `save` drops the entry of the file it writes, and the least recently used entries leave first once the cache holds 2 GiB. In Python, an array from the cache is read-only, so a method that changes it works on a copy (`movie.copy()`); dicts and lists are copied for each caller. MATLAB values are copied when changed anyway. `load(entity, name, cached=False)` (`Cached=false`) reads the file and keeps nothing.
+
 The context gives the project, `log`, `progress(fraction, message)` and cancellation. Nothing else is shared: a method gets everything through its arguments.
 
 Run a method now with `project.run(methodId, entities, Options=…, Preset=…)` / `project.run(method_id, entities, options=…, preset=…)`, or queue it as a task (below).

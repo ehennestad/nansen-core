@@ -16,6 +16,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - Entities are DSM records joined with the authored tables. Table keys are checked against DSM identity, `sync` adds rows for new entities, scans are cached, and roots are chosen per environment ([entities](docs/reference/entities.md)).
 - New entities get their paths from DSM's path generation (added to DSM, in both of its readers).
 - Data variables find their files through DSM file patterns or file name templates, and read and write them with file adapters: `json`, `text`, `mat`, and `npy` in Python.
+- `load` keeps what it read in the project's data cache, as dev's `DataCache` does: 2 GiB, least recently used out first. An entry is read again when its file's time or size changes, and `save` drops the entry of the file it writes. `load(..., cached=False)` / `Cached=false` reads without it.
 
 **Methods and tasks**
 

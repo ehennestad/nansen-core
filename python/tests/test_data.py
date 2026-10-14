@@ -122,3 +122,47 @@ def test_mat_adapter_round_trip(project):
     entity = session(project, "m1-001")
     entity.save("traces", {"dff": [1.0, 2.0, 3.0]})
     assert list(entity.load("traces")["dff"]) == [1.0, 2.0, 3.0]
+
+
+# -- the data cache ---------------------------------------------------------------------------
+
+def test_load_is_cached_until_the_file_changes(project):
+    entity = session(project, "m1-001")
+    project.save(entity, "summary", {"cells": [1, 2]})
+    project.data_cache.clear()
+    first = project.load(entity, "summary")
+    first["cells"].append(3)  # what a caller is given is its own copy
+    assert project.load(entity, "summary") == {"cells": [1, 2]}
+    assert project.data_cache.stats()["hits"] == 1
+    path = project.data_paths(entity, "summary")[0]
+    path.write_text(json.dumps({"cells": [7, 8, 9]}))  # changed on disk, not through save
+    assert project.load(entity, "summary") == {"cells": [7, 8, 9]}
+    project.save(entity, "summary", {"cells": []})  # save drops the entry, whatever the clock says
+    assert project.load(entity, "summary") == {"cells": []}
+    assert project.load(entity, "summary", cached=False) == {"cells": []}
+
+
+def test_cache_keeps_within_its_budget():
+    from nansen.cache import DataCache, size_of
+
+    cache = DataCache(max_bytes=size_of("x" * 100) * 2)
+    for key in "abc":
+        assert cache.get_or_load(key, 1, lambda: "x" * 100) == "x" * 100
+    stats = cache.stats()
+    assert (stats["entries"], stats["evictions"]) == (2, 1)
+    loads = []
+    cache.get_or_load("a", 1, lambda: loads.append("a") or "x" * 100)  # "a" was the least recently used
+    assert loads == ["a"]
+    cache.get_or_load("huge", 1, lambda: "y" * 1000)  # bigger than the budget: given, not kept
+    assert cache.stats()["entries"] == 2
+
+
+def test_cached_arrays_are_read_only():
+    np = pytest.importorskip("numpy")
+    from nansen.cache import DataCache
+
+    cache = DataCache()
+    array = cache.get_or_load("m", 1, lambda: {"frames": np.zeros(4)})["frames"]
+    with pytest.raises(ValueError):
+        array[0] = 1
+    assert cache.get_or_load("m", 1, lambda: None)["frames"] is array

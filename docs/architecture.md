@@ -50,6 +50,7 @@ Each step was usable without a GUI before the next one started.
 | Batch processor with `task_list.mat` | Task queue of `nansen.task` files: claims, cancellation, logs, recovery, retry, dependencies |
 | Pipelines | Pipelines: one chain of tasks per entity |
 | File adapters | File adapters: built-in `json`, `text`, `mat` (and `npy` in Python), others from modules |
+| `nansen.cache.DataCache`, one per MATLAB session | A data cache per project (`project.data_cache`, `project.DataCache`): the same 2 GiB least-recently-used budget, and an entry is read again when its file changes on disk |
 | Modules (`module.nansen.json`) | Modules listing fragments, methods, adapters and pipelines by path; code for either language |
 | `nansen.App` on the Java Widgets Toolbox | One HTML/JS dashboard for MATLAB (`uihtml`) and Python (browser) |
 | MATLAB only | MATLAB R2023a+ and Python 3.9+, held to the same behaviour by shared conformance cases |
@@ -57,7 +58,6 @@ Each step was usable without a GUI before the next one started.
 
 Not carried over, by choice or not yet:
 
-- **Data cache.** dev keeps an LRU cache of loaded data. Methods here load what they need through `project.load`. A cache can be added inside the file adapter registry without changing the API.
 - **Add-on and toolbox management.** Out of scope for the core.
 
 ## Decisions recorded so far

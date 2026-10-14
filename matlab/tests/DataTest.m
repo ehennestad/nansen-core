@@ -125,5 +125,35 @@ classdef DataTest < matlab.unittest.TestCase
         function npyIsPythonOnly(testCase)
             testCase.verifyError(@() testCase.Project.adapters().get("npy"), "nansen:AdapterUnavailable");
         end
+
+        function loadIsCachedUntilTheFileChanges(testCase)
+            project = testCase.Project;
+            entity = testCase.session("m1-001");
+            entity.save("summary", struct("cells", [1, 2]));
+            project.DataCache.removeAll();
+            testCase.verifyEqual(project.load(entity, "summary"), struct("cells", [1; 2]));
+            testCase.verifyEqual(project.load(entity, "summary"), struct("cells", [1; 2]));
+            counts = project.DataCache.stats();
+            testCase.verifyEqual(counts.hits, 1);
+            paths = project.dataPaths(entity, "summary");
+            nansen.internal.writeText(paths(1), '{"cells": [7, 8, 9]}');   % changed on disk, not through save
+            testCase.verifyEqual(project.load(entity, "summary"), struct("cells", [7; 8; 9]));
+            entity.save("summary", struct("cells", 5));   % save drops the entry, whatever the clock says
+            testCase.verifyEqual(project.load(entity, "summary"), struct("cells", 5));
+            testCase.verifyEqual(project.load(entity, "summary", Cached=false), struct("cells", 5));
+        end
+
+        function cacheKeepsWithinItsBudget(testCase)
+            value = repmat('x', 1, 100);
+            cache = nansen.DataCache(2 * nansen.DataCache.sizeOf(value));
+            for key = ["a", "b", "c"]
+                testCase.verifyEqual(cache.getOrLoad(key, 1, @() value), value);
+            end
+            counts = cache.stats();
+            testCase.verifyEqual([counts.entries, counts.evictions], [2, 1]);
+            cache.getOrLoad("huge", 1, @() repmat('y', 1, 1000));   % bigger than the budget: given, not kept
+            counts = cache.stats();
+            testCase.verifyEqual(counts.entries, 2);
+        end
     end
 end
