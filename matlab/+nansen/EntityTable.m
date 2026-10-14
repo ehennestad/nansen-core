@@ -284,6 +284,11 @@ classdef EntityTable < handle
             end
             isKeyColumn = ismember(obj.columnNames(), obj.Key);
             nColumns = numel(obj.Columns);
+            if obj.readFast(records, quoted, isKeyColumn)
+                obj.Path = sidecarPath;
+                return
+            end
+            % Cell by cell: slower, and it reports the first problem in row order.
             values = cell(numel(records) - 1, nColumns);
             for r = 2:numel(records)
                 record = records{r};
@@ -305,6 +310,53 @@ classdef EntityTable < handle
     end
 
     methods (Access = private)
+        function done = readFast(obj, records, quoted, isKeyColumn)
+            % Decode column by column; false (and nothing changed) when any field or key needs a closer look
+            done = false;
+            body = records(2:end);
+            nColumns = numel(obj.Columns);
+            if isempty(body) || any(cellfun('length', body) ~= nColumns)
+                return
+            end
+            fields = vertcat(body{:});
+            wasQuoted = vertcat(quoted{2:end});
+            columns = cell(1, nColumns);
+            for i = 1:nColumns
+                [columns{i}, ok] = nansen.internal.decodeColumn(fields(:, i), wasQuoted(:, i), ...
+                    obj.Columns(i).DataType, isKeyColumn(i));
+                if ~ok
+                    return
+                end
+            end
+            % The key text of each row, as keyText builds it, with key columns in column order.
+            parts = strings(numel(body), 0);
+            for i = find(isKeyColumn)
+                if obj.Columns(i).DataType == "integer"
+                    parts(:, end + 1) = compose("%d", columns{i}); %#ok<AGROW>
+                else
+                    parts(:, end + 1) = columns{i}; %#ok<AGROW>
+                end
+            end
+            keys = cellstr(join(parts, char(31), 2));
+            if numel(unique(keys)) < numel(keys)
+                return   % the cell-by-cell pass names the repeated record
+            end
+            names = cellstr(obj.columnNames());
+            data = table(columns{:}, VariableNames=names);
+            [dateFormat, datetimeFormat] = nansen.internal.dateFormats();
+            for i = 1:nColumns
+                switch obj.Columns(i).DataType
+                    case "date"
+                        data.(names{i}).Format = dateFormat;
+                    case "datetime"
+                        data.(names{i}).Format = datetimeFormat;
+                end
+            end
+            obj.Data = data;
+            obj.KeyIndex = containers.Map(keys, num2cell(1:numel(keys)), UniformValues=true);
+            done = true;
+        end
+
         function checkSpec(obj)
             names = obj.columnNames();
             [unique_names, firstIndex] = unique(names, "stable");

@@ -47,6 +47,27 @@ classdef EntityTableTest < matlab.unittest.TestCase
             testCase.log(1, sprintf("%d rows: read %.2f s, written %.2f s", n, readSeconds, writeSeconds));
         end
 
+        function largeTableReportsTheFirstBadRecord(testCase)
+            % The column-wise reader hands a bad file to the cell-by-cell one, which names the record.
+            template = EntityTableTest.makeTable();
+            table = nansen.EntityTable("session", template.Key, template.Columns, File="session.csv");
+            sidecar = fullfile(testCase.Folder, "session.table.nansen.json");
+            table.write(sidecar);
+            i = (1:5000)';
+            lines = compose("m%03d,s%06d,false,%d,2025-01-01T09:30:00", mod(i, 100), i, i);
+            lines(4000) = "m000,s004000,false,deep,2025-01-01T09:30:00";
+            lines(4500) = "m000,s004500,maybe,1,2025-01-01T09:30:00";
+            header = nansen.internal.readText(fullfile(testCase.Folder, "session.csv"));
+            nansen.internal.writeText(fullfile(testCase.Folder, "session.csv"), string(header) + strjoin(lines, newline) + newline);
+            try
+                nansen.EntityTable.read(sidecar);
+                testCase.verifyFail("a bad value was read")
+            catch err
+                testCase.verifyEqual(err.Code, "invalid-value");
+                testCase.verifySubstring(err.message, "record 4001");
+            end
+        end
+
         function roundTripThroughFiles(testCase)
             table = EntityTableTest.makeTable();
             table.addRow(struct("subject_id", "m1", "session_id", "s1", "ignore", false, "depth", 12.5, ...
