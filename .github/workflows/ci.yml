@@ -89,3 +89,9 @@ jobs:
         uses: matlab-actions/run-command@v2
         with:
           command: addpath("matlab"); runNansenCoreTests();
+
+      - name: Run the DSM reader's own MATLAB suite (its CI runs only for main)
+        if: ${{ !cancelled() }}
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath("dsm/src/matlab"); runMatlabTests();

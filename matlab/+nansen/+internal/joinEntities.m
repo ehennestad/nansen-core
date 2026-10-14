@@ -5,46 +5,55 @@ function entities = joinEntities(entityType, keyColumns, records, table, recordK
 %   recordKey a function from a record to its key struct. Returns a cell row
 %   of nansen.Entity. Records whose key cannot be completed come last, with
 %   the issue incomplete-key.
-    byKey = containers.Map("KeyType", "char", "ValueType", "any");
-    order = {};
+    complete = false(1, numel(records));
+    recordTexts = strings(1, numel(records));
     incomplete = {};
     for i = 1:numel(records)
         key = recordKey(records{i});
-        missing = keyColumns(~arrayfun(@(name) isfield(key, name) && ~isempty(key.(name)), keyColumns));
-        if ~isempty(missing)
+        present = false(1, numel(keyColumns));
+        for c = 1:numel(keyColumns)
+            present(c) = isfield(key, keyColumns(c)) && ~isempty(key.(keyColumns(c)));
+        end
+        if ~all(present)
             partial = struct();
             for name = keyColumns
                 partial.(name) = nansen.internal.getField(key, name, []);
             end
-            issue = struct("code", 'incomplete-key', "message", char("no value for " + strjoin(missing, ", ")));
+            issue = struct("code", 'incomplete-key', "message", char("no value for " + strjoin(keyColumns(~present), ", ")));
             incomplete{end + 1} = nansen.Entity(entityType, partial, records{i}, [], {issue}); %#ok<AGROW>
             continue
         end
-        text = keyTextOf(key, keyColumns);
-        byKey(text) = records{i};
-        order{end + 1} = text; %#ok<AGROW>
+        complete(i) = true;
+        recordTexts(i) = keyTextOf(key, keyColumns);
     end
+    keyed = records(complete);
+    recordTexts = recordTexts(complete);
+    % When two records share a key, the last one is the one joined (ismember finds the first, so search reversed)
+    count = numel(recordTexts);
+    [~, lastOf] = ismember(recordTexts, flip(recordTexts));
+    lastOf = count + 1 - lastOf;
 
-    entities = {};
-    seen = containers.Map("KeyType", "char", "ValueType", "logical");
     rows = table2struct(table.Data);
+    rowTexts = strings(1, numel(rows));
     for i = 1:numel(rows)
-        row = rows(i);
-        text = keyTextOf(row, keyColumns);
-        seen(text) = true;
+        rowTexts(i) = keyTextOf(rows(i), keyColumns);
+    end
+    [joined, at] = ismember(rowTexts, flip(recordTexts));
+    entities = cell(1, numel(rows));
+    for i = 1:numel(rows)
         record = [];
-        if isKey(byKey, text)
-            record = byKey(text);
+        if joined(i)
+            record = keyed{count + 1 - at(i)};
         end
-        entities{end + 1} = nansen.Entity(entityType, keyOf(row, keyColumns), record, row); %#ok<AGROW>
+        entities{i} = nansen.Entity(entityType, keyOf(rows(i), keyColumns), record, rows(i));
     end
-    for i = 1:numel(order)
-        if ~isKey(seen, order{i})
-            record = byKey(order{i});
-            entities{end + 1} = nansen.Entity(entityType, keyOf(recordKey(record), keyColumns), record); %#ok<AGROW>
-        end
+    storeOnly = find(~ismember(recordTexts, rowTexts));
+    extra = cell(1, numel(storeOnly));
+    for j = 1:numel(storeOnly)
+        record = keyed{lastOf(storeOnly(j))};
+        extra{j} = nansen.Entity(entityType, keyOf(recordKey(record), keyColumns), record);
     end
-    entities = [entities, incomplete];
+    entities = [entities, extra, incomplete];
 end
 
 function key = keyOf(values, keyColumns)
@@ -59,5 +68,5 @@ function text = keyTextOf(values, keyColumns)
     for i = 1:numel(keyColumns)
         parts{i} = values.(keyColumns(i));
     end
-    text = nansen.internal.keyText(parts);
+    text = string(nansen.internal.keyText(parts));
 end

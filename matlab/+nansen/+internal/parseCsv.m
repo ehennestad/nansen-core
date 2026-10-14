@@ -17,13 +17,19 @@ function [records, quoted] = parseCsv(text)
     Q = '"';
 
     if ~any(text == Q) && ~any(text == CR)
-        % Nothing is quoted: records are lines, fields are split on commas.
-        lines = strsplit(text, LF, CollapseDelimiters=false);
-        if text(end) == LF
-            lines(end) = [];
+        % Nothing is quoted: records are lines, fields are split on commas. Split the whole text
+        % at once, then group the fields by how many commas each line has.
+        body = text;
+        if body(end) == LF
+            body(end) = [];
         end
-        records = cellfun(@(line) strsplit(line, ",", CollapseDelimiters=false), lines, UniformOutput=false);
-        quoted = cellfun(@(record) false(1, numel(record)), records, UniformOutput=false);
+        lineEnds = body == LF;
+        lineOfComma = cumsum(lineEnds(body == ',' | lineEnds)) + 1;
+        lineOfComma = lineOfComma(body(body == ',' | lineEnds) == ',');
+        fieldCounts = accumarray(reshape(lineOfComma, [], 1), 1, [nnz(lineEnds) + 1, 1])' + 1;
+        fields = regexp(body, '[,\n]', 'split');
+        records = mat2cell(fields, 1, fieldCounts);
+        quoted = mat2cell(false(1, numel(fields)), 1, fieldCounts);
         return
     end
 

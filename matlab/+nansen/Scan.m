@@ -54,7 +54,12 @@ classdef Scan
             if ~isfolder(folder)
                 mkdir(folder);
             end
-            doc = nansen.checkDocument(obj.toDocument(), ExpectedType="nansen.scan");
+            % Records are already in their JSON form (they come from jsondecode), so only the rest
+            % of the document is put through JSON before it is checked: a scan can be large.
+            doc = obj.toDocument();
+            decoded = jsondecode(jsonencode(rmfield(doc, "records")));
+            decoded.records = obj.Records;
+            nansen.checkDocument(decoded, ExpectedType="nansen.scan", Decoded=true);
             nansen.internal.writeJson(path, doc)
         end
     end
