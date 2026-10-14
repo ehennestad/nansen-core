@@ -1,4 +1,4 @@
 {
-  "description": "Creating projects from the app: the demo, a project from an existing DSM config (copied, with its relative roots made absolute, and an entity type per DSM entity type), an empty project that gets its dataset afterwards, an import from a NANSEN dev export, and new columns for the imported tables (a project fragment added to entity types that have rows; a refused one is not saved); and the errors for a folder already in use, a second dataset and missing files. ${scratch} is a fresh folder and ${case} this case's folder.",
-  "steps": 20
+  "description": "Creating projects from the app: the demo, a project from an existing DSM config (copied, with its relative roots made absolute, and an entity type per DSM entity type), an empty project that gets its dataset afterwards, an import from a NANSEN dev export, and new columns for the imported tables (a project fragment added to entity types that have rows; a refused one is not saved); and the errors for a folder already in use, a second dataset, an invalid dataset (refused before the folder is made) and missing files. ${scratch} is a fresh folder and ${case} this case's folder.",
+  "steps": 22
 }

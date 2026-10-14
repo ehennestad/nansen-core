@@ -30,6 +30,47 @@ classdef EntitiesTest < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function largeProjectTimings(testCase)
+            % 5,000 sessions of 50 subjects on disk; the times are logged, so CI shows how the join scales.
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            folder = string(fixture.Folder);
+            config = struct("schemaVersion", '0.1.0', ...
+                "entityTypes", {{struct("name", 'subject', "identifierRef", 'subject_id'), struct("name", 'session', "identifierRef", 'session_id')}}, ...
+                "metadataDefinitions", struct( ...
+                    "subject_id", struct("name", 'subject_id', "dataType", 'string', "ofEntity", 'subject'), ...
+                    "session_id", struct("name", 'session_id', "dataType", 'string', "ofEntity", 'session')), ...
+                "dataLocations", {{struct("identifier", 'raw', "displayName", 'Raw', "dataCategory", 'raw', "access", 'read', ...
+                    "sourceType", 'filesystem', "filesystemSource", struct( ...
+                        "rootStoragePaths", {{struct("identifier", 'here', "path", 'data')}}, ...
+                        "entityLayout", {{struct("name", 'subjects', "entityType", 'subject', "pathComponentTemplate", 'subject-{subject_id}'), ...
+                                          struct("name", 'sessions', "entityType", 'session', "pathComponentTemplate", 'session-{session_id}')}}, ...
+                        "metadataMapping", {{struct("metadataRef", 'subject_id', "extraction", struct("method", 'regex', "pattern", '^subject-(.+)$', "entityLayoutLevel", 'subjects')), ...
+                                             struct("metadataRef", 'session_id', "extraction", struct("method", 'regex', "pattern", '^session-(.+)$', "entityLayoutLevel", 'sessions'))}}))}});
+            nansen.internal.writeJson(fullfile(folder, "dataset.dsm.json"), config);
+            for s = 0:49
+                subject = sprintf("m%03d", s);
+                for k = 0:99
+                    mkdir(fullfile(folder, "data", "subject-" + subject, sprintf("session-%s-%03d", subject, k)));
+                end
+            end
+            project = nansen.Project.create(fullfile(folder, "p"), "P", Dataset="../dataset.dsm.json");
+            project.addModule("core");
+            project.addEntityType("subject", [], Fragments="core.notes");
+            project.addEntityType("session", [], Fragments="core.notes");
+            times = struct();
+            started = tic; scan = project.scan(); times.scan = toc(started);
+            started = tic; project.sync("session", scan); times.sync = toc(started);
+            started = tic; entities = project.entities("session", scan); times.entities = toc(started);
+            testCase.verifyNumElements(entities, 5000);
+            api = nansen.Api(Project=project);
+            started = tic;
+            response = jsondecode(char(api.handleJson('{"id": 1, "method": "entities.list", "params": {"entityType": "session"}}')));
+            times.list = toc(started);
+            testCase.verifyNumElements(response.result.rows, 5000);
+            testCase.log(1, sprintf("5000 sessions: scan %.2f s, sync %.2f s, join %.2f s, entities.list %.2f s", ...
+                times.scan, times.sync, times.entities, times.list));
+        end
+
         function keyComesFromTheDataset(testCase)
             testCase.verifyEqual(testCase.Project.table("subject").Key, "subject_id");
             testCase.verifyEqual(testCase.Project.table("session").Key, ["subject_id", "session_id"]);

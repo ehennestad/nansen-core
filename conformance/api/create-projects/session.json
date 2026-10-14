@@ -147,6 +147,32 @@
     },
     {
       "request": {
+        "id": 63,
+        "method": "project.create",
+        "params": {
+          "path": "${scratch}/broken",
+          "name": "Broken",
+          "datasetSource": "${case}/invalid.dsm.json"
+        }
+      },
+      "expect": {
+        "error": "dataset-invalid"
+      }
+    },
+    {
+      "request": {
+        "id": 64,
+        "method": "project.open",
+        "params": {
+          "path": "${scratch}/broken"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
         "id": 61,
         "method": "project.setDataset",
         "params": {

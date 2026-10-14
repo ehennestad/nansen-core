@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "0.1.0",
+  "entityTypes": [
+    {
+      "name": "session",
+      "identifierRef": "session_id"
+    }
+  ],
+  "metadataDefinitions": {},
+  "dataLocations": []
+}

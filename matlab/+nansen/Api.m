@@ -159,8 +159,8 @@ classdef Api < handle
         function result = apiProjectCreate(obj, params)
             % A new project; with datasetSource, a copy of that DSM config, and with entityTypes, its entity types
             source = string(nansen.internal.getField(params, "datasetSource", ""));
-            if source ~= "" && ~isfile(source)
-                nansen.internal.throwError("file-not-found", "no DSM config %s", source)
+            if source ~= ""
+                nansen.Dataset.load(source, "");   % file-not-found or dataset-invalid before anything is written
             end
             project = nansen.Project.create(nansen.Api.param(params, "path"), nansen.Api.param(params, "name"), ...
                 Title=string(nansen.internal.getField(params, "title", "")), ...

@@ -17,6 +17,7 @@ import dsm
 
 from . import __version__
 from .catalog import Catalog
+from .dataset import Dataset
 from .documents import check_document
 from .entities import Entity
 from .errors import NansenError
@@ -157,8 +158,8 @@ class Api:
     def project__create(self, params: dict) -> dict:
         """A new project; with datasetSource, a copy of that DSM config, and with entityTypes, its entity types."""
         source = params.get("datasetSource")
-        if source and not Path(source).is_file():
-            raise NansenError("file-not-found", f"no DSM config {source}")
+        if source:
+            Dataset.load(source)  # file-not-found or dataset-invalid before anything is written
         project = Project.create(params["path"], params["name"], params.get("title"), params.get("dataset"),
                                  params.get("description"))
         self._configure(project, params)
