@@ -5,7 +5,8 @@
     {"schemaType": "nansen.fragment", "file": "fragment.schema.json", "version": "0.1.0", "status": "core"},
     {"schemaType": "nansen.table", "file": "table.schema.json", "version": "0.1.0", "status": "core"},
     {"schemaType": "nansen.scan", "file": "scan.schema.json", "version": "0.1.0", "status": "core"},
-    {"schemaType": "nansen.dataVariable", "file": "data-variable.schema.json", "version": "0.1.0", "status": "draft"},
+    {"schemaType": "nansen.dataVariable", "file": "data-variable.schema.json", "version": "0.1.0", "status": "core"},
+    {"schemaType": "nansen.fileAdapter", "file": "file-adapter.schema.json", "version": "0.1.0", "status": "core"},
     {"schemaType": "nansen.method", "file": "method.schema.json", "version": "0.1.0", "status": "draft"},
     {"schemaType": "nansen.options", "file": "options.schema.json", "version": "0.1.0", "status": "draft"},
     {"schemaType": "nansen.task", "file": "task.schema.json", "version": "0.1.0", "status": "draft"}

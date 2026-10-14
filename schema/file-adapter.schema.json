@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:fileAdapter",
+  "title": "NANSEN file adapter",
+  "description": "Declares a file adapter: which files it handles and where its implementation is in each language. An implementation reads a file into a value and writes a value to a file. Built-in adapters (json, text, mat, npy) need no declaration.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "id", "version", "implementations"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.fileAdapter" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][A-Za-z0-9_]*)*$" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "extensions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9.]+$" }
+    },
+    "dataType": { "type": "string" },
+    "implementations": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "python": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "'module.path:ClassName'. The module is imported from the declaring module's folder. The class has read(path) and write(path, data)."
+        },
+        "matlab": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
+          "description": "Name of a class with read(obj, path) and write(obj, path, data) methods, on the path while the declaring module is in use."
+        }
+      }
+    }
+  }
+}

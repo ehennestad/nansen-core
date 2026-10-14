@@ -20,6 +20,8 @@ class Entity:
         self.row = row
         self.issues: List[dict] = list(record.get("issues", [])) if record else []
         self.issues += issues or []
+        # Set by Project.entities, so the entity can read and write its data.
+        self.project = None
 
     def __repr__(self) -> str:
         return f"Entity({self.entity_type}, {self.key})"
@@ -61,6 +63,20 @@ class Entity:
 
     def get(self, name: str, default: Any = None) -> Any:
         return self.values.get(name, default)
+
+    def load(self, name: str) -> Any:
+        return self._project().load(self, name)
+
+    def save(self, name: str, data: Any):
+        return self._project().save(self, name, data)
+
+    def data_paths(self, name: str):
+        return self._project().data_paths(self, name)
+
+    def _project(self):
+        if self.project is None:
+            raise RuntimeError("this entity was not obtained from a project, so it cannot read or write data")
+        return self.project
 
     def key_tuple(self, key_columns: List[str]) -> Tuple[Any, ...]:
         return tuple(self.key.get(name) for name in key_columns)

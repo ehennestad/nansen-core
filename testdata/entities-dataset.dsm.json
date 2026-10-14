@@ -116,7 +116,14 @@
           {
             "name": "sessions",
             "entityType": "session",
-            "pathComponentTemplate": "{session_id}"
+            "pathComponentTemplate": "{session_id}",
+            "filePatterns": [
+              {
+                "name": "roi_signals",
+                "pattern": "^{session_id}_roi\\.json$",
+                "cardinality": "one"
+              }
+            ]
           }
         ],
         "metadataMapping": [

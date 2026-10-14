@@ -148,7 +148,12 @@ classdef EntityTable < handle
                 filled{i} = nansen.internal.checkValue(value, columns(i), false);
             end
             for i = 1:numel(columns)
-                obj.Data.(columns(i).Name) = repmat(filled{i}, obj.numRows(), 1);
+                name = char(columns(i).Name);
+                if isempty(name)
+                    error("nansen:EntityTable:EmptyColumnName", "Column %d of %d has no name (%s)", ...
+                        i, numel(columns), jsonencode(arrayfun(@toStruct, columns, UniformOutput=false)))
+                end
+                obj.Data.(name) = repmat(filled{i}, obj.numRows(), 1);
                 if isfield(defaults, columns(i).Name)
                     obj.Defaults.(columns(i).Name) = defaults.(columns(i).Name);
                 end

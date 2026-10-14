@@ -13,7 +13,11 @@ function result = runCase(caseId, root)
         [actual, written] = evaluate(kind, folder, expected);
     catch err
         if ~isa(err, "nansen.NansenError")
-            result.Detail = "unexpected error " + err.identifier + ": " + err.message;
+            where = "";
+            if ~isempty(err.stack)
+                where = sprintf(" (in %s at line %d)", err.stack(1).name, err.stack(1).line);
+            end
+            result.Detail = "unexpected error " + err.identifier + ": " + err.message + where;
             return
         end
         if isfield(expected, "error") && err.Code == string(expected.error)
