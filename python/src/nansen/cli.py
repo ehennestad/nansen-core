@@ -20,7 +20,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     conformance = commands.add_parser("conformance", help="run the conformance cases")
     conformance.add_argument("root", nargs="?", default=None)
     conformance.add_argument("-v", "--verbose", action="store_true")
+    run_task = commands.add_parser("run-task", help="run one queued task of a project (used by worker processes)")
+    run_task.add_argument("project")
+    run_task.add_argument("task_id")
+    run_task.add_argument("--environment", default=None)
     args = parser.parse_args(argv)
+
+    if args.command == "run-task":
+        from .project import Project
+        from .tasks import run_task as run
+
+        task = run(Project.open(args.project, environment=args.environment), args.task_id)
+        return 0 if task["status"] in ("completed", "cancelled") else 1
 
     if args.command == "validate":
         failed = 0
