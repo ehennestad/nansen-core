@@ -11,9 +11,14 @@ def test_core_keeps_no_global_state():
     assert result.returncode == 0, result.stdout
 
 
-def test_every_matlab_conformance_kind_matches_python():
+def test_matlab_runs_the_same_conformance_kinds_as_python():
+    import re
+
     from nansen.conformance import KINDS
 
     text = (REPO / "matlab" / "+nansen" / "+conformance" / "listCases.m").read_text()
-    assert '["documents", "tables", "projects"]' in text
-    assert KINDS == ("documents", "tables", "projects")
+    kinds = re.search(r"for kind = \[(.*?)\]", text).group(1)
+    assert tuple(re.findall(r'"([a-z]+)"', kinds)) == KINDS
+    run_case = (REPO / "matlab" / "+nansen" / "+conformance" / "runCase.m").read_text()
+    for kind in KINDS:
+        assert f'case "{kind}"' in run_case, kind

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:scan",
+  "title": "NANSEN dataset scan",
+  "description": "The result of walking a project's data locations with its Dataset Structure Model config: which roots were read, and the entity records found. Derived and recomputable; kept in cache/scan.nansen.json so the app can show entities without walking the stores again.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "scannedAt", "roots", "records", "unmatched"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.scan" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "scannedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?$" },
+    "environment": { "type": ["string", "null"] },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dataLocation", "rootStoragePath", "available"],
+        "additionalProperties": false,
+        "properties": {
+          "dataLocation": { "type": "string" },
+          "rootStoragePath": { "type": "string" },
+          "path": { "type": "string", "description": "The root as resolved on this machine." },
+          "available": { "type": "boolean", "description": "Whether the root was found and read." },
+          "entries": { "type": "integer", "description": "Number of listing entries read under the root." }
+        }
+      }
+    },
+    "records": {
+      "type": "array",
+      "description": "Entity records as the DSM reader emits them (EntityRecord.schema.json).",
+      "items": { "type": "object" }
+    },
+    "unmatched": {
+      "type": "array",
+      "description": "Topmost entries no entity accounts for, as the DSM reader emits them.",
+      "items": { "type": "object" }
+    }
+  }
+}

@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional
 
+import dsm
+
 from .documents import PathLike, read_document
+from .entities import entity_summary
 from .errors import NansenError
 from .project import Project
 from .tables import EntityTable
 
-KINDS = ("documents", "tables", "projects")
+KINDS = ("documents", "tables", "projects", "entities")
 
 
 @dataclass
@@ -70,6 +75,8 @@ def _evaluate(kind: str, case: Path, expected: dict):
             fresh = EntityTable(table.spec, [_from_json_row(table, row) for row in expected["rows"]])
             written = fresh.to_csv()
         return {"rows": table.to_json_rows()}, written
+    if kind == "entities":
+        return _evaluate_entities(case), None
     project = Project.open(case / "project")
     tables = {}
     for name in project.entity_types:
@@ -77,6 +84,23 @@ def _evaluate(kind: str, case: Path, expected: dict):
         tables[name] = {"key": table.spec.key, "columns": table.spec.column_names,
                         "revision": table.spec.revision, "rows": table.to_json_rows()}
     return {"name": project.name, "title": project.title, "entityTypes": project.entity_types, "tables": tables}, None
+
+
+def _evaluate_entities(case: Path) -> dict:
+    # Sync writes the tables, so work on a copy.
+    with tempfile.TemporaryDirectory() as scratch:
+        folder = Path(scratch) / "project"
+        shutil.copytree(case / "project", folder)
+        project = Project.open(folder)
+        scan = project.scan(dsm.load_listing(case / "listing.json"), save=False)
+        entities, synced = {}, {}
+        for name in project.entity_types:
+            table = project.table(name)
+            entities[name] = [dict(entity_summary(e), values=table.json_row(e.row) if e.row is not None else None)
+                              for e in project.entities(name, scan)]
+        for name in project.entity_types:
+            synced[name] = project.sync(name, scan)
+        return {"entities": entities, "sync": synced}
 
 
 def _from_json_row(table: EntityTable, row: dict) -> dict:

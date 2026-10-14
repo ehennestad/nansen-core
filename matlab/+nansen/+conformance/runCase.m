@@ -69,6 +69,8 @@ function [actual, written] = evaluate(kind, folder, expected)
                 end
                 written = fresh.toCsv();
             end
+        case "entities"
+            actual = evaluateEntities(folder);
         case "projects"
             project = nansen.Project.open(fullfile(folder, "project"));
             tables = struct();
@@ -80,6 +82,27 @@ function [actual, written] = evaluate(kind, folder, expected)
             actual = struct("name", char(project.Name), "title", char(project.Title), ...
                 "entityTypes", {cellstr(project.EntityTypes)}, "tables", tables);
     end
+end
+
+function actual = evaluateEntities(folder)
+    % Sync writes the tables, so work on a copy.
+    scratch = string(tempname);
+    copyfile(fullfile(folder, "project"), fullfile(scratch, "project"));
+    cleanup = onCleanup(@() rmdir(scratch, "s"));
+    project = nansen.Project.open(fullfile(scratch, "project"));
+    scan = project.scan(dsm.loadListing(fullfile(folder, "listing.json")), Save=false);
+    entities = struct();
+    synced = struct();
+    for name = project.EntityTypes
+        table = project.table(name);
+        summaries = cellfun(@(e) nansen.internal.entitySummary(e, table), project.entities(name, scan), ...
+            UniformOutput=false);
+        entities.(name) = summaries;
+    end
+    for name = project.EntityTypes
+        synced.(name) = project.sync(name, scan);
+    end
+    actual = struct("entities", entities, "sync", synced);
 end
 
 function value = canonical(value)
@@ -103,6 +126,7 @@ function value = canonical(value)
         for name = reshape(string(fieldnames(value)), 1, [])
             value.(name) = canonical(value.(name));
         end
+        value = orderfields(value);
     elseif isempty(value)
         value = [];
     end

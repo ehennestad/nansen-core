@@ -192,7 +192,10 @@ class EntityTable:
 
     def to_json_rows(self) -> List[Row]:
         """The rows as JSON values, dates and datetimes in their CSV form; the conformance output."""
-        return [{c.name: to_json_value(row[c.name], c) for c in self.spec.columns} for row in self._rows]
+        return [self.json_row(row) for row in self._rows]
+
+    def json_row(self, row: Row) -> Row:
+        return {c.name: to_json_value(row[c.name], c) for c in self.spec.columns}
 
     # -- rows ----------------------------------------------------------------------------
 

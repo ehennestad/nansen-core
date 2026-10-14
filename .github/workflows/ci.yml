@@ -42,6 +42,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check out the DSM reader
+        uses: actions/checkout@v4
+        with:
+          repository: framover/dataset-structure-model
+          ref: claude/nansen-core-rebuild-jl86j3
+          path: dsm
+
       - uses: matlab-actions/setup-matlab@v2
         with:
           release: ${{ matrix.release }}

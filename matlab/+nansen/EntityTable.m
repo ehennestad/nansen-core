@@ -236,6 +236,14 @@ classdef EntityTable < handle
             end
         end
 
+        function row = jsonRow(obj, row)
+            %jsonRow One row struct (as table2struct gives it) as JSON values
+            for i = 1:numel(obj.Columns)
+                name = obj.Columns(i).Name;
+                row.(name) = nansen.internal.jsonValue(row.(name), obj.Columns(i));
+            end
+        end
+
         function column = column(obj, name)
             match = [obj.Columns.Name] == name;
             if ~any(match)

@@ -9,7 +9,10 @@ description = "NANSEN core: versioned project, fragment and table documents, sha
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-dependencies = ["jsonschema>=4.17"]
+dependencies = [
+    "jsonschema>=4.17",
+    "dataset-structure-model @ git+https://github.com/framover/dataset-structure-model@claude/nansen-core-rebuild-jl86j3",
+]
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
@@ -19,6 +22,9 @@ nansen = "nansen.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ehennestad/nansen-core"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["python/src/nansen"]

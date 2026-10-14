@@ -1,0 +1,146 @@
+{
+  "schemaVersion": "0.1.0",
+  "entityTypes": [
+    {
+      "name": "subject",
+      "identifierRef": "subject_id"
+    },
+    {
+      "name": "session",
+      "identifierRef": "session_id"
+    }
+  ],
+  "metadataDefinitions": {
+    "subject_id": {
+      "name": "subject_id",
+      "dataType": "string",
+      "ofEntity": "subject"
+    },
+    "session_id": {
+      "name": "session_id",
+      "dataType": "string",
+      "ofEntity": "session"
+    },
+    "session_number": {
+      "name": "session_number",
+      "dataType": "integer",
+      "ofEntity": "session"
+    }
+  },
+  "dataLocations": [
+    {
+      "identifier": "raw",
+      "displayName": "Raw",
+      "dataCategory": "raw",
+      "access": "read",
+      "sourceType": "filesystem",
+      "filesystemSource": {
+        "rootStoragePaths": [
+          {
+            "identifier": "here",
+            "path": "data/raw",
+            "environment": "laptop"
+          },
+          {
+            "identifier": "lab",
+            "path": "/nonexistent/lab/raw",
+            "environment": "lab"
+          }
+        ],
+        "entityLayout": [
+          {
+            "name": "subjects",
+            "entityType": "subject",
+            "pathComponentTemplate": "sub-{subject_id}"
+          },
+          {
+            "name": "sessions",
+            "entityType": "session",
+            "pathComponentTemplate": "ses-{session_id}",
+            "filePatterns": [
+              {
+                "name": "movie",
+                "pattern": "\\.tif$"
+              }
+            ]
+          }
+        ],
+        "metadataMapping": [
+          {
+            "metadataRef": "subject_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "^sub-(.+)$",
+              "entityLayoutLevel": "subjects"
+            }
+          },
+          {
+            "metadataRef": "session_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "^ses-(.+)$",
+              "entityLayoutLevel": "sessions"
+            }
+          },
+          {
+            "metadataRef": "session_number",
+            "extraction": {
+              "method": "regex",
+              "pattern": "-(\\d+)$",
+              "entityLayoutLevel": "sessions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "identifier": "processed",
+      "displayName": "Processed",
+      "dataCategory": "processed",
+      "access": "readwrite",
+      "sourceType": "filesystem",
+      "filesystemSource": {
+        "rootStoragePaths": [
+          {
+            "identifier": "here",
+            "path": "data/processed",
+            "environment": "laptop"
+          }
+        ],
+        "entityLayout": [
+          {
+            "name": "subjects",
+            "entityType": "subject",
+            "pathComponentTemplate": "{subject_id}"
+          },
+          {
+            "name": "sessions",
+            "entityType": "session",
+            "pathComponentTemplate": "{session_id}"
+          }
+        ],
+        "metadataMapping": [
+          {
+            "metadataRef": "subject_id",
+            "extraction": {
+              "method": "substring",
+              "pattern": ":",
+              "entityLayoutLevel": "subjects"
+            }
+          },
+          {
+            "metadataRef": "session_id",
+            "extraction": {
+              "method": "substring",
+              "pattern": ":",
+              "entityLayoutLevel": "sessions"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "preferences": {
+    "environmentIdentifier": "laptop"
+  }
+}

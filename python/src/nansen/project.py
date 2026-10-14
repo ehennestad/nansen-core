@@ -5,12 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from .dataset import Dataset, Scan
 from .documents import PathLike, check_document, read_document, write_json
+from .entities import Entity, join
 from .errors import NansenError
 from .schemas import current_version
 from .tables import Column, EntityTable, TableSpec
 
 PROJECT_FILE = "project.nansen.json"
+SCAN_FILE = "cache/scan.nansen.json"
 
 
 class Fragment:
@@ -30,20 +33,27 @@ class Fragment:
 
 
 class Project:
-    def __init__(self, folder: PathLike, document: dict):
+    def __init__(self, folder: PathLike, document: dict, environment: Optional[str] = None):
         self.folder = Path(folder)
         self.document = document
+        # The environment (machine) whose root paths to use; None means the dataset's preference.
+        self.environment = environment
+        self._dataset: Optional[Dataset] = None
 
     # -- creating and opening -------------------------------------------------------------
 
     @classmethod
-    def create(cls, folder: PathLike, name: str, title: Optional[str] = None) -> "Project":
+    def create(cls, folder: PathLike, name: str, title: Optional[str] = None,
+               dataset: Optional[str] = None) -> "Project":
+        """Make a project folder. ``dataset`` is the path of a DSM config, relative to the folder."""
         folder = Path(folder)
         if (folder / PROJECT_FILE).exists():
             raise FileExistsError(f"{folder} already holds a project")
         document: dict = {"schemaType": "nansen.project", "schemaVersion": current_version("nansen.project"), "name": name}
         if title is not None:
             document["title"] = title
+        if dataset is not None:
+            document["dataset"] = dataset
         document["entityTypes"] = []
         document = check_document(document, "nansen.project")
         folder.mkdir(parents=True, exist_ok=True)
@@ -54,9 +64,9 @@ class Project:
         return project
 
     @classmethod
-    def open(cls, folder: PathLike) -> "Project":
+    def open(cls, folder: PathLike, environment: Optional[str] = None) -> "Project":
         folder = Path(folder)
-        return cls(folder, read_document(folder / PROJECT_FILE, "nansen.project"))
+        return cls(folder, read_document(folder / PROJECT_FILE, "nansen.project"), environment)
 
     # -- properties -----------------------------------------------------------------------
 
@@ -107,13 +117,22 @@ class Project:
     def add_entity_type(
         self,
         name: str,
-        key: Sequence[Column],
+        key: Optional[Sequence[Column]] = None,
         fragments: Sequence[str] = (),
         title: Optional[str] = None,
     ) -> EntityTable:
-        """Declare an entity type and write its empty table: the key columns, then each fragment's columns."""
+        """Declare an entity type and write its empty table: the key columns, then each fragment's columns.
+
+        Without ``key``, the key comes from the dataset: the identity of the
+        entity's ancestors and its own.
+        """
         if name in self.entity_types:
             raise ValueError(f"entity type {name!r} already exists")
+        if key is None:
+            dataset = self.require_dataset()
+            if name not in dataset.entity_types:
+                raise NansenError("unknown-entity-type", f"the dataset has no entity type {name!r}")
+            key = [Column(n, t) for n, t in dataset.key_columns(name)]
         definitions = [self.fragment(f) for f in fragments]
         spec = TableSpec(name, [c.name for c in key], list(key), file=f"{name}.csv")
         table = EntityTable(spec)
@@ -129,6 +148,70 @@ class Project:
         table.write(self.table_path(name))
         return table
 
+    # -- dataset and entities ---------------------------------------------------------------
+
+    @property
+    def dataset(self) -> Optional[Dataset]:
+        """The project's DSM config, or None when the project has none."""
+        if "dataset" not in self.document:
+            return None
+        if self._dataset is None:
+            self._dataset = Dataset.load(self.folder / self.document["dataset"], self.environment)
+        return self._dataset
+
+    def require_dataset(self) -> Dataset:
+        dataset = self.dataset
+        if dataset is None:
+            raise NansenError("no-dataset", f"project {self.name!r} has no dataset")
+        return dataset
+
+    @property
+    def scan_path(self) -> Path:
+        return self.folder / SCAN_FILE
+
+    def scan(self, listing=None, registry=None, save: bool = True) -> Scan:
+        """Walk the data locations (or a given listing) and keep the result in cache/."""
+        result = self.require_dataset().scan(listing, registry)
+        if save:
+            result.write(self.scan_path)
+        return result
+
+    def last_scan(self) -> Optional[Scan]:
+        return Scan.read(self.scan_path) if self.scan_path.is_file() else None
+
+    def entities(self, entity_type: str, scan: Optional[Scan] = None) -> List[Entity]:
+        """The entity type's entities: table rows joined with the records of the last (or given) scan."""
+        table = self.table(entity_type)
+        key = list(table.spec.key)
+        dataset = self.dataset
+        records: List[dict] = []
+        if dataset is not None and entity_type in dataset.entity_types:
+            expected = [n for n, _ in dataset.key_columns(entity_type)]
+            if expected != key:
+                raise NansenError("key-mismatch", f"table key {key} differs from the dataset identity {expected}")
+            scan = scan if scan is not None else self.last_scan()
+            records = scan.records_of(entity_type) if scan is not None else []
+        return join(entity_type, key, records, table.rows, dataset.record_key if dataset else _record_key)
+
+    def entity(self, entity_type: str, key: Dict[str, Any], scan: Optional[Scan] = None) -> Entity:
+        for candidate in self.entities(entity_type, scan):
+            if all(candidate.key.get(k) == v for k, v in key.items()):
+                return candidate
+        raise NansenError("unknown-entity", f"no {entity_type} with key {key}")
+
+    def sync(self, entity_type: str, scan: Optional[Scan] = None) -> List[Dict[str, Any]]:
+        """Add a table row for every entity found in the stores but not in the table. Returns their keys."""
+        table = self.table(entity_type)
+        added = []
+        for entity in self.entities(entity_type, scan):
+            if entity.in_table or any(i["code"] == "incomplete-key" for i in entity.issues):
+                continue
+            table.add(dict(entity.key))
+            added.append(dict(entity.key))
+        if added:
+            table.write()
+        return added
+
     def add_fragment(self, document: dict) -> Fragment:
         """Save a project-defined fragment."""
         fragment = Fragment(check_document(document, "nansen.fragment"))
@@ -138,6 +221,14 @@ class Project:
     def _check_and_save(self) -> None:
         self.document = check_document(self.document, "nansen.project")
         write_json(self.folder / PROJECT_FILE, self.document)
+
+
+def _record_key(record: dict) -> Dict[str, Any]:
+    key: Dict[str, Any] = {}
+    for parent in record["parents"]:
+        key.update(parent["identity"])
+    key.update(record["identity"])
+    return key
 
 
 def check_fragments(spec: TableSpec, fragments: Sequence[Fragment]) -> None:

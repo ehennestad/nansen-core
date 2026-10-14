@@ -8,6 +8,12 @@ classdef Project < handle
     properties (SetAccess = private)
         Folder (1,1) string
         Document struct
+        % The environment (machine) whose root paths to use; "" means the dataset's preference
+        Environment (1,1) string = ""
+    end
+
+    properties (Access = private)
+        DatasetCache = []
     end
 
     properties (Dependent)
@@ -21,13 +27,15 @@ classdef Project < handle
     end
 
     methods
-        function obj = Project(folder, document)
+        function obj = Project(folder, document, environment)
             %Project Wrap a folder and its decoded project document; use create or open instead
             arguments
                 folder (1,1) string
                 document (1,1) struct
+                environment (1,1) string = ""
             end
             obj.Folder = folder;
+            obj.Environment = environment;
             document.entityTypes = nansen.internal.asCellOfStructs(document.entityTypes);
             obj.Document = document;
         end
@@ -93,15 +101,24 @@ classdef Project < handle
             %addEntityType Declare an entity type and write its empty table
             %
             %   The table has the key columns, then each fragment's columns.
+            %   Without key columns (or with []), the key comes from the
+            %   dataset: the identity of the entity's ancestors and its own.
             arguments
                 obj
                 name (1,1) string
-                key (1,:) nansen.Column
+                key = []
                 options.Fragments (1,:) string = string.empty(1, 0)
                 options.Title (1,1) string = ""
             end
             if ismember(name, obj.EntityTypes)
                 error("nansen:Project:EntityTypeExists", "Entity type '%s' already exists", name)
+            end
+            if isempty(key)
+                dataset = obj.requireDataset();
+                if ~ismember(name, dataset.entityTypes())
+                    nansen.internal.throwError("unknown-entity-type", "the dataset has no entity type '%s'", name)
+                end
+                key = dataset.keyColumns(name);
             end
             fragments = arrayfun(@(id) obj.fragment(id), options.Fragments, UniformOutput=false);
             table = nansen.EntityTable(name, [key.Name], key, File=name + ".csv");
@@ -119,6 +136,130 @@ classdef Project < handle
             document.entityTypes{end + 1} = entry;
             obj.save(document)
             table.write(obj.tablePath(name))
+        end
+
+        % -- dataset and entities -----------------------------------------------------
+
+        function dataset = dataset(obj)
+            %dataset The project's nansen.Dataset, or [] when the project has none
+            dataset = [];
+            if ~isfield(obj.Document, "dataset")
+                return
+            end
+            if isempty(obj.DatasetCache)
+                obj.DatasetCache = nansen.Dataset.load(fullfile(obj.Folder, obj.Document.dataset), obj.Environment);
+            end
+            dataset = obj.DatasetCache;
+        end
+
+        function dataset = requireDataset(obj)
+            dataset = obj.dataset();
+            if isempty(dataset)
+                nansen.internal.throwError("no-dataset", "project '%s' has no dataset", obj.Name)
+            end
+        end
+
+        function path = scanPath(obj)
+            path = string(fullfile(obj.Folder, "cache", "scan.nansen.json"));
+        end
+
+        function result = scan(obj, listing, options)
+            %scan Walk the data locations (or a given dsm.Listing) and keep the result in cache/
+            arguments
+                obj
+                listing = []
+                options.Registry = []
+                options.Save (1,1) logical = true
+            end
+            dataset = obj.requireDataset();
+            if isempty(options.Registry)
+                result = dataset.scan(listing);
+            else
+                result = dataset.scan(listing, options.Registry);
+            end
+            if options.Save
+                result.write(obj.scanPath())
+            end
+        end
+
+        function result = lastScan(obj)
+            result = [];
+            if isfile(obj.scanPath())
+                result = nansen.Scan.read(obj.scanPath());
+            end
+        end
+
+        function entities = entities(obj, entityType, scan)
+            %entities Table rows joined with the records of the last (or given) scan: a cell row of nansen.Entity
+            arguments
+                obj
+                entityType (1,1) string
+                scan = []
+            end
+            table = obj.table(entityType);
+            dataset = obj.dataset();
+            records = {};
+            recordKey = @nansen.Project.recordKeyOf;
+            if ~isempty(dataset) && ismember(entityType, dataset.entityTypes())
+                keyColumns = dataset.keyColumns(entityType);
+                expected = [keyColumns.Name];
+                if ~isequal(expected, table.Key)
+                    nansen.internal.throwError("key-mismatch", "table key %s differs from the dataset identity %s", ...
+                        strjoin(table.Key, ","), strjoin(expected, ","))
+                end
+                if isempty(scan)
+                    scan = obj.lastScan();
+                end
+                if ~isempty(scan)
+                    records = scan.recordsOf(entityType);
+                end
+                recordKey = @(record) dataset.recordKey(record);
+            end
+            entities = nansen.internal.joinEntities(entityType, table.Key, records, table, recordKey);
+        end
+
+        function entity = entity(obj, entityType, key, scan)
+            %entity The entity whose key matches the given fields (a struct)
+            arguments
+                obj
+                entityType (1,1) string
+                key (1,1) struct
+                scan = []
+            end
+            for candidate = obj.entities(entityType, scan)
+                matches = true;
+                for name = reshape(string(fieldnames(key)), 1, [])
+                    value = nansen.internal.getField(candidate{1}.Key, name, []);
+                    matches = matches && isequal(string(value), string(key.(name)));
+                end
+                if matches
+                    entity = candidate{1};
+                    return
+                end
+            end
+            nansen.internal.throwError("unknown-entity", "no %s with the given key", entityType)
+        end
+
+        function added = sync(obj, entityType, scan)
+            %sync Add a table row for every entity found in the stores but not in the table; returns their keys
+            arguments
+                obj
+                entityType (1,1) string
+                scan = []
+            end
+            table = obj.table(entityType);
+            added = {};
+            for candidate = obj.entities(entityType, scan)
+                entity = candidate{1};
+                if entity.inTable() || any(cellfun(@(i) string(i.code) == "incomplete-key", entity.Issues))
+                    continue
+                end
+                table.addRow(entity.Key)
+                added{end + 1} = entity.Key; %#ok<AGROW>
+            end
+            if ~isempty(added)
+                table.write()
+            end
         end
 
         function fragment = addFragment(obj, document)
@@ -145,10 +286,13 @@ classdef Project < handle
     methods (Static)
         function obj = create(folder, name, options)
             %create Make a project folder with an empty project file, fragments/ and tables/
+            %
+            %   Dataset is the path of a DSM config, relative to the folder.
             arguments
                 folder (1,1) string
                 name (1,1) string
                 options.Title (1,1) string = ""
+                options.Dataset (1,1) string = ""
             end
             if isfile(fullfile(folder, nansen.Project.ProjectFile))
                 error("nansen:Project:Exists", "%s already holds a project", folder)
@@ -157,6 +301,9 @@ classdef Project < handle
             document = struct("schemaType", 'nansen.project', "schemaVersion", char(entry.version), "name", char(name));
             if options.Title ~= ""
                 document.title = char(options.Title);
+            end
+            if options.Dataset ~= ""
+                document.dataset = char(options.Dataset);
             end
             document.entityTypes = {};
             document = nansen.checkDocument(document, ExpectedType="nansen.project");
@@ -170,12 +317,26 @@ classdef Project < handle
             obj.save(obj.Document)
         end
 
-        function obj = open(folder)
+        function obj = open(folder, options)
             arguments
                 folder (1,1) string
+                options.Environment (1,1) string = ""
             end
             document = nansen.readDocument(fullfile(folder, nansen.Project.ProjectFile), ExpectedType="nansen.project");
-            obj = nansen.Project(folder, document);
+            obj = nansen.Project(folder, document, options.Environment);
+        end
+
+        function key = recordKeyOf(record)
+            %recordKeyOf The key of a DSM record without a dataset: parents' identity, then its own
+            key = struct();
+            for parent = nansen.internal.asCellOfStructs(record.parents)
+                for name = reshape(string(fieldnames(parent{1}.identity)), 1, [])
+                    key.(name) = parent{1}.identity.(name);
+                end
+            end
+            for name = reshape(string(fieldnames(record.identity)), 1, [])
+                key.(name) = record.identity.(name);
+            end
         end
 
         function checkFragments(table, fragments)

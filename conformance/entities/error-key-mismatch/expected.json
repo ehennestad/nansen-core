@@ -1,0 +1,4 @@
+{
+  "description": "The session table is keyed by session_id alone, but the dataset identifies a session by its subject and its own id.",
+  "error": "key-mismatch"
+}

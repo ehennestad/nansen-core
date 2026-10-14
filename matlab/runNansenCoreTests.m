@@ -14,8 +14,31 @@ function results = runNansenCoreTests()
             "Another +nansen package is on the path; run on a clean path (restoredefaultpath):\n%s", ...
             strjoin(others, newline))
     end
+    addDsmReader(thisDir)
     suite = matlab.unittest.TestSuite.fromFolder(fullfile(thisDir, "tests"));
     results = run(suite);
     disp(table(results))
     assertSuccess(results)
+end
+
+function addDsmReader(thisDir)
+%addDsmReader Put the Dataset Structure Model's MATLAB reader on the path if it is not there
+%
+%   Looks in $NANSEN_DSM_PATH, then in a dataset-structure-model or dsm
+%   checkout next to (or inside) this repository.
+    if exist("dsm.walk", "file")
+        return
+    end
+    root = fileparts(thisDir);
+    candidates = [string(getenv("NANSEN_DSM_PATH")), ...
+        fullfile(root, "dsm", "src", "matlab"), ...
+        fullfile(fileparts(root), "dataset-structure-model", "src", "matlab")];
+    for candidate = candidates
+        if candidate ~= "" && isfolder(fullfile(candidate, "+dsm"))
+            addpath(candidate)
+            return
+        end
+    end
+    error("nansen:Tests:NoDsmReader", ...
+        "The DSM MATLAB reader (+dsm) is not on the path; set NANSEN_DSM_PATH to its src/matlab folder")
 end

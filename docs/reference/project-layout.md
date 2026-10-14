@@ -5,7 +5,8 @@ A project is a folder. Everything about it is in that folder, in files that foll
 ```
 <project>/
   project.nansen.json                       nansen.project: name, entity types and their fragments
-  dataset.dsm.json                          DSM config: entity identity and data locations (step 2)
+  dataset.dsm.json                          DSM config: entity identity and data locations
+  dataset.dsm.local.json                    optional, per machine: the active environment (DSM overlay)
   fragments/
     <id>.fragment.nansen.json               nansen.fragment, one per project-defined fragment
   tables/
@@ -20,7 +21,7 @@ These are reserved for later steps and are not read yet:
   methods/<id>.method.nansen.json                   step 4
   options/<methodId>/<preset>.options.nansen.json   step 4
   tasks/<id>.task.nansen.json                       step 4
-  cache/                                            derived and recomputable (DSM records); safe to delete
+  cache/scan.nansen.json                            nansen.scan: the last walk of the stores; derived, safe to delete
 ```
 
 ## Rules

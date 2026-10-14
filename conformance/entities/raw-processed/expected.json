@@ -1,0 +1,181 @@
+{
+  "description": "The DSM raw-processed-matching dataset joined with authored subject and session tables: a subject only in the table (m999), entities only in the stores, and one session in both. Sync adds a row for every entity found only in the stores.",
+  "entities": {
+    "subject": [
+      {
+        "key": {
+          "subject_id": "m999"
+        },
+        "inStore": false,
+        "inTable": true,
+        "attributes": {},
+        "locations": {},
+        "values": {
+          "subject_id": "m999",
+          "ignore": true,
+          "description": "retired"
+        }
+      },
+      {
+        "key": {
+          "subject_id": "m110"
+        },
+        "inStore": true,
+        "inTable": true,
+        "attributes": {
+          "subject_id": "m110"
+        },
+        "locations": {
+          "processed": [
+            "subject-m110/"
+          ]
+        },
+        "values": {
+          "subject_id": "m110",
+          "ignore": false,
+          "description": "cohort A"
+        }
+      },
+      {
+        "key": {
+          "subject_id": "m222"
+        },
+        "inStore": true,
+        "inTable": false,
+        "attributes": {
+          "subject_id": "m222"
+        },
+        "locations": {},
+        "values": null
+      },
+      {
+        "key": {
+          "subject_id": "m333"
+        },
+        "inStore": true,
+        "inTable": false,
+        "attributes": {
+          "subject_id": "m333"
+        },
+        "locations": {
+          "processed": [
+            "subject-m333/"
+          ]
+        },
+        "values": null
+      }
+    ],
+    "session": [
+      {
+        "key": {
+          "subject_id": "m110",
+          "session_id": "m110-20250523-001"
+        },
+        "inStore": true,
+        "inTable": true,
+        "attributes": {
+          "session_id": "m110-20250523-001",
+          "subject_id": "m110",
+          "session_date": "2025-05-23",
+          "session_time": "10:00:00"
+        },
+        "locations": {
+          "raw": [
+            "2025_05_23/2025_05_23_10_00_00_m110-20250523-001/"
+          ],
+          "processed": [
+            "subject-m110/session-m110-20250523-001/"
+          ]
+        },
+        "values": {
+          "subject_id": "m110",
+          "session_id": "m110-20250523-001",
+          "ignore": false,
+          "description": "good imaging"
+        }
+      },
+      {
+        "key": {
+          "subject_id": "m110",
+          "session_id": "m110-20250523-002"
+        },
+        "inStore": true,
+        "inTable": false,
+        "attributes": {
+          "session_id": "m110-20250523-002",
+          "subject_id": "m110",
+          "session_date": "2025-05-23",
+          "session_time": "14:30:00"
+        },
+        "locations": {
+          "raw": [
+            "2025_05_23/2025_05_23_14_30_00_m110-20250523-002/"
+          ]
+        },
+        "values": null
+      },
+      {
+        "key": {
+          "subject_id": "m110",
+          "session_id": "m110-20250523-003"
+        },
+        "inStore": true,
+        "inTable": false,
+        "attributes": {
+          "session_id": "m110-20250523-003",
+          "subject_id": "m110"
+        },
+        "locations": {
+          "processed": [
+            "subject-m110/session-m110-20250523-003/"
+          ]
+        },
+        "values": null
+      },
+      {
+        "key": {
+          "subject_id": "m222",
+          "session_id": "m222-20250524-001"
+        },
+        "inStore": true,
+        "inTable": false,
+        "attributes": {
+          "session_id": "m222-20250524-001",
+          "subject_id": "m222",
+          "session_date": "2025-05-24",
+          "session_time": "09:00:00"
+        },
+        "locations": {
+          "raw": [
+            "2025_05_24/2025_05_24_09_00_00_m222-20250524-001/"
+          ]
+        },
+        "values": null
+      }
+    ]
+  },
+  "sync": {
+    "subject": [
+      {
+        "subject_id": "m222"
+      },
+      {
+        "subject_id": "m333"
+      }
+    ],
+    "session": [
+      {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-002"
+      },
+      {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-003"
+      },
+      {
+        "subject_id": "m222",
+        "session_id": "m222-20250524-001"
+      }
+    ]
+  }
+}

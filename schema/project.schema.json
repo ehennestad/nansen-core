@@ -19,7 +19,7 @@
     "description": { "type": "string" },
     "dataset": {
       "type": "string",
-      "description": "Path to the project's Dataset Structure Model config, relative to the project folder. Reserved for the DSM integration (step 2); readers do not use it yet."
+      "description": "Path to the project's Dataset Structure Model config, relative to the project folder. The config's entity types define identity; a table's key is the identity of the entity's ancestors and its own. Root paths in the config that are not absolute are relative to the config's folder."
     },
     "entityTypes": {
       "type": "array",
