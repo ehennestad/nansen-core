@@ -53,6 +53,9 @@ classdef ApiTest < matlab.unittest.TestCase
         function appAnswersTheDashboard(testCase)
             % The page loads in the uihtml, calls setup, and its requests reach the API over the bridge.
             testCase.assumeTrue(usejava("desktop") || ispc || ismac || ~isempty(getenv("DISPLAY")), "no display");
+            [rendered, probeLog] = uihtmlRenders();
+            testCase.log(1, "uihtml probe (" + version("-release") + "): " + probeLog)
+            testCase.assumeTrue(rendered, "a uihtml does not run its page in this MATLAB session: " + probeLog);
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
             app = nansen.App(Project=project, CatalogPath=fullfile(fixture.Folder, "catalog.json"), StartQueue=false);
@@ -70,4 +73,29 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyFalse(any(startsWith(app.PageLog, ["error:", "unhandled:"])), strjoin(app.PageLog, newline));
         end
     end
+end
+
+function [rendered, log] = uihtmlRenders()
+    % Whether a uihtml runs its page here at all: a minimal page that only calls sendEventToMATLAB and sets Data.
+    % When even this page never answers, the app test has nothing to test in this session.
+    fig = uifigure(Visible="on");
+    cleanup = onCleanup(@() delete(fig));
+    setappdata(fig, "probe", strings(1, 0))
+    note = @(text) setappdata(fig, "probe", [getappdata(fig, "probe"), string(text)]);
+    source = ['<html><body><script>function setup(h) {', ...
+        ' h.Data = "data"; h.sendEventToMATLAB("event", "hello"); }</script></body></html>'];
+    uihtml(fig, HTMLSource=source, ...
+        HTMLEventReceivedFcn=@(~, event) note("event " + string(event.HTMLEventName)), ...
+        DataChangedFcn=@(source, ~) note("data " + string(source.Data)));
+    started = tic;
+    while toc(started) < 30 && numel(getappdata(fig, "probe")) < 2
+        drawnow
+        pause(0.25)
+    end
+    received = getappdata(fig, "probe");
+    rendered = any(startsWith(received, "event"));
+    if isempty(received)
+        received = "nothing";
+    end
+    log = sprintf("%s after %.1f s", strjoin(received, ", "), toc(started));
 end
