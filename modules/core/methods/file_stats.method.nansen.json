@@ -1,0 +1,25 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "core.file_stats",
+  "version": "1.0.0",
+  "title": "Count files",
+  "category": "Inspect",
+  "entityType": "*",
+  "description": "Counts the files in each of the entity's folders in every data location, and their total size.",
+  "implementations": {
+    "python": "core_methods:file_stats",
+    "matlab": "nansenCoreFileStats"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "includeHidden": {
+        "type": "boolean",
+        "default": false,
+        "title": "Include hidden files",
+        "description": "Count files whose names start with a dot"
+      }
+    }
+  }
+}

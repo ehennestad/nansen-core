@@ -21,6 +21,19 @@
       "type": "string",
       "description": "Path to the project's Dataset Structure Model config, relative to the project folder. The config's entity types define identity; a table's key is the identity of the entity's ancestors and its own. Root paths in the config that are not absolute are relative to the config's folder."
     },
+    "modules": {
+      "type": "array",
+      "description": "Modules the project uses, in order of precedence. A module without a path is looked up in the project's modules/ folder, then among the modules that ship with NANSEN.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" },
+          "path": { "type": "string", "description": "Module folder, absolute or relative to the project folder." }
+        }
+      }
+    },
     "entityTypes": {
       "type": "array",
       "description": "The entity types this project keeps tables for. Each one has a table at tables/<name>.table.nansen.json.",
@@ -42,7 +55,7 @@
         "fragments": {
           "type": "array",
           "uniqueItems": true,
-          "description": "Fragments (column groups) this entity type carries, by id. A fragment with id 'a.b' is defined in fragments/a.b.fragment.nansen.json.",
+          "description": "Fragments (column groups) this entity type carries, by id. A fragment with id 'a.b' is defined in fragments/a.b.fragment.nansen.json, or by one of the project's modules.",
           "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" }
         }
       }

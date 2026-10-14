@@ -1,0 +1,24 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "core.file_stats",
+  "version": "1.0.0",
+  "title": "File statistics",
+  "description": "How many files the entity has in the stores, and their total size. Computed.",
+  "columns": [
+    {
+      "name": "n_files",
+      "dataType": "integer",
+      "title": "Files"
+    },
+    {
+      "name": "size_mb",
+      "dataType": "number",
+      "title": "Size",
+      "unit": "MB"
+    }
+  ],
+  "compute": {
+    "method": "core.file_stats"
+  }
+}

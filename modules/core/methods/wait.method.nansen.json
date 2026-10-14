@@ -1,0 +1,44 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "core.wait",
+  "version": "1.0.0",
+  "title": "Wait",
+  "category": "Utilities",
+  "entityType": "*",
+  "description": "Waits, reporting progress, and stops when cancelled. For trying out the task queue.",
+  "implementations": {
+    "python": "core_methods:wait",
+    "matlab": "nansenCoreWait"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "seconds": {
+        "type": "number",
+        "default": 2,
+        "minimum": 0,
+        "maximum": 600,
+        "title": "Seconds"
+      },
+      "steps": {
+        "type": "integer",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 1000,
+        "title": "Steps"
+      },
+      "message": {
+        "type": "string",
+        "default": "waiting",
+        "title": "Message"
+      },
+      "fail": {
+        "type": "boolean",
+        "default": false,
+        "title": "Fail at the end",
+        "description": "Raise an error when done, to try out failure handling"
+      }
+    }
+  }
+}

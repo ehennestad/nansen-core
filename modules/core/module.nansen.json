@@ -1,0 +1,17 @@
+{
+  "schemaType": "nansen.module",
+  "schemaVersion": "0.1.0",
+  "id": "core",
+  "version": "0.1.0",
+  "title": "NANSEN core",
+  "description": "Notes and flags for any entity, file statistics computed from the stores, and utility methods.",
+  "fragments": [
+    "fragments/notes.fragment.nansen.json",
+    "fragments/file_stats.fragment.nansen.json"
+  ],
+  "methods": [
+    "methods/file_stats.method.nansen.json",
+    "methods/export_keys.method.nansen.json",
+    "methods/wait.method.nansen.json"
+  ]
+}

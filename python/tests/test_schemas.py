@@ -11,9 +11,11 @@ from nansen.schemas import load_schema, schema_dir, schema_index
 # Keep in step with matlab/+nansen/+internal/schemaValidationErrors.m
 MATLAB_KEYWORDS = {
     "type", "required", "properties", "additionalProperties", "propertyNames", "minProperties",
-    "items", "minItems", "uniqueItems", "enum", "const", "pattern", "default", "examples",
+    "items", "minItems", "maxItems", "uniqueItems", "enum", "const", "pattern", "minLength", "maxLength",
+    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+    "default", "examples", "format", "readOnly", "writeOnly", "deprecated",
     "allOf", "anyOf", "oneOf", "if", "then", "else", "not", "definitions", "title", "description",
-    "$ref", "$schema", "$id",
+    "$ref", "$schema", "$id", "$comment",
 }
 
 TYPES = sorted(schema_index())

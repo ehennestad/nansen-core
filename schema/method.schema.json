@@ -1,10 +1,10 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:nansen:schema:method",
-  "title": "NANSEN entity method (DRAFT)",
-  "description": "DRAFT, consumed from step 4. Declares a method that runs on entities of one type: where its code is, and the JSON Schema of its options. The frontend renders option forms from that schema.",
+  "title": "NANSEN entity method",
+  "description": "A method that runs on entities of one type: where its code is in each language, and the JSON Schema of its options. The defaults in that schema are the default options, and the frontend renders option forms from it. A serial method is called once per entity as f(entity, options, context); a batch method once with all selected entities as f(entities, options, context). A method may return a struct/dict of column values, which a computed fragment writes to the table.",
   "type": "object",
-  "required": ["schemaType", "schemaVersion", "id", "version", "entityType", "language", "entryPoint"],
+  "required": ["schemaType", "schemaVersion", "id", "version", "entityType", "implementations"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
@@ -14,22 +14,30 @@
     "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
     "title": { "type": "string" },
     "description": { "type": "string" },
-    "entityType": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
-    "language": { "type": "string", "enum": ["matlab", "python"] },
-    "entryPoint": {
-      "type": "string",
-      "description": "MATLAB: a function or class name, e.g. 'ophys.motionCorrect'. Python: 'module.path:function'."
+    "category": { "type": "string", "description": "Menu group, e.g. 'Process' or 'Plot'. Slashes nest groups." },
+    "entityType": { "type": "string", "pattern": "^([A-Za-z][A-Za-z0-9_]*|\\*)$", "description": "The entity type the method runs on, or * for any." },
+    "implementations": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "python": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "'module.path:function', imported from the declaring module's folder."
+        },
+        "matlab": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
+          "description": "Function name, on the path while the declaring module is in use."
+        }
+      }
     },
-    "batchMode": {
-      "type": "string",
-      "enum": ["serial", "batch"],
-      "default": "serial",
-      "description": "serial: called once per entity. batch: called once with all selected entities."
-    },
-    "queueable": { "type": "boolean", "default": true },
+    "batchMode": { "type": "string", "enum": ["serial", "batch"], "default": "serial" },
+    "queueable": { "type": "boolean", "default": true, "description": "Whether the method may run in the background task queue." },
     "options": {
       "type": "object",
-      "description": "A draft-07 JSON Schema for the method's options object. Defaults in it are the default options."
+      "description": "A draft-07 JSON Schema for the options object (type object, with properties). Each property's default is its default value."
     }
   }
 }

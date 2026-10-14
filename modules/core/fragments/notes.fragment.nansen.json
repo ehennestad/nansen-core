@@ -1,0 +1,22 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "core.notes",
+  "version": "1.0.0",
+  "title": "Notes",
+  "description": "Whether to leave the entity out of analyses, and free-text notes.",
+  "columns": [
+    {
+      "name": "ignore",
+      "dataType": "boolean",
+      "default": false,
+      "title": "Ignore",
+      "description": "Leave this entity out of analyses"
+    },
+    {
+      "name": "description",
+      "dataType": "string",
+      "title": "Description"
+    }
+  ]
+}

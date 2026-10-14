@@ -101,7 +101,8 @@ def test_invalid_variables_are_refused(project, fields, code):
 def test_declared_adapter_is_loaded_from_the_project(project):
     folder = project.folder / "file-adapters"
     folder.mkdir()
-    (folder / "upper.py").write_text(
+    (project.folder / "python").mkdir()
+    (project.folder / "python" / "upper.py").write_text(
         "class Upper:\n"
         "    def read(self, path):\n        return open(path).read().upper()\n"
         "    def write(self, path, data):\n        open(path, 'w').write(str(data))\n")

@@ -45,6 +45,31 @@ function errors = validateNode(value, schema, root, path, errors)
     if isfield(schema, "pattern") && isText(value) && isempty(regexp(char(value), schema.pattern, "once"))
         errors(end+1) = sprintf("[%s] '%s' does not match pattern %s", path, char(value), schema.pattern);
     end
+    if isText(value)
+        if isfield(schema, "minLength") && strlength(string(value)) < schema.minLength
+            errors(end+1) = sprintf("[%s] is shorter than %d characters", path, schema.minLength);
+        end
+        if isfield(schema, "maxLength") && strlength(string(value)) > schema.maxLength
+            errors(end+1) = sprintf("[%s] is longer than %d characters", path, schema.maxLength);
+        end
+    end
+    if isnumeric(value) && isscalar(value)
+        if isfield(schema, "minimum") && value < schema.minimum
+            errors(end+1) = sprintf("[%s] %g is less than the minimum %g", path, value, schema.minimum);
+        end
+        if isfield(schema, "maximum") && value > schema.maximum
+            errors(end+1) = sprintf("[%s] %g is greater than the maximum %g", path, value, schema.maximum);
+        end
+        if isfield(schema, "exclusiveMinimum") && value <= schema.exclusiveMinimum
+            errors(end+1) = sprintf("[%s] %g is not greater than %g", path, value, schema.exclusiveMinimum);
+        end
+        if isfield(schema, "exclusiveMaximum") && value >= schema.exclusiveMaximum
+            errors(end+1) = sprintf("[%s] %g is not less than %g", path, value, schema.exclusiveMaximum);
+        end
+        if isfield(schema, "multipleOf") && abs(value / schema.multipleOf - round(value / schema.multipleOf)) > 1e-9
+            errors(end+1) = sprintf("[%s] %g is not a multiple of %g", path, value, schema.multipleOf);
+        end
+    end
 
     if isObjectLike(value)
         names = fieldnames(value);
@@ -81,6 +106,9 @@ function errors = validateNode(value, schema, root, path, errors)
         items = arrayItems(value);
         if isfield(schema, "minItems") && numel(items) < schema.minItems
             errors(end+1) = sprintf("[%s] has fewer than %d items", path, schema.minItems);
+        end
+        if isfield(schema, "maxItems") && numel(items) > schema.maxItems
+            errors(end+1) = sprintf("[%s] has more than %d items", path, schema.maxItems);
         end
         if isfield(schema, "uniqueItems") && schema.uniqueItems && ~allUnique(items)
             errors(end+1) = sprintf("[%s] has duplicate items", path);
@@ -136,10 +164,14 @@ end
 
 function assertKnownKeywords(schema, kw)
     known = ["type", "required", "properties", "additionalProperties", "propertyNames", "minProperties", ...
-        "items", "minItems", "uniqueItems", "enum", "const", "pattern", "default", "examples", ...
+        "items", "minItems", "maxItems", "uniqueItems", "enum", "const", "pattern", "minLength", "maxLength", ...
+        "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", ...
+        "default", "examples", "format", "readOnly", "writeOnly", "deprecated", ...
         "allOf", "anyOf", "oneOf", "then", "definitions", "title", "description", ...
         kw.Ref, kw.Schema, kw.Id, kw.If, kw.Else, kw.Not];
-    unknown = setdiff(string(fieldnames(schema)), known);
+    % Annotations: "$comment" and "x-..." keywords decode to x_...
+    names = string(fieldnames(schema));
+    unknown = setdiff(names(~startsWith(names, "x_")), known);
     if ~isempty(unknown)
         error("nansen:schema:UnsupportedKeyword", ...
             "The MATLAB validator does not implement schema keyword(s): %s", strjoin(unknown, ", "))

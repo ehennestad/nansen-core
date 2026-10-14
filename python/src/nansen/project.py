@@ -11,6 +11,8 @@ from .datavars import DataVariable, check_against_pattern, read_paths
 from .documents import PathLike, check_document, read_document, write_json
 from .entities import Entity, join
 from .errors import NansenError
+from .methods import Method, MethodContext, run_method
+from .modules import Module, resolve_module
 from .schemas import current_version
 from .tables import Column, EntityTable, TableSpec
 
@@ -42,6 +44,7 @@ class Project:
         self.environment = environment
         self._dataset: Optional[Dataset] = None
         self._adapters: Optional[AdapterRegistry] = None
+        self._modules: Optional[List[Module]] = None
 
     # -- creating and opening -------------------------------------------------------------
 
@@ -97,10 +100,27 @@ class Project:
         return self.folder / "fragments" / f"{fragment_id}.fragment.nansen.json"
 
     def fragment(self, fragment_id: str) -> Fragment:
+        """A fragment from the project's fragments/ folder, else from its modules."""
         path = self.fragment_path(fragment_id)
-        if not path.is_file():
-            raise NansenError("unknown-fragment", f"fragment {fragment_id!r} is not defined ({path})")
-        return Fragment.read(path)
+        if path.is_file():
+            return Fragment.read(path)
+        for module in self.modules:
+            for document in module.fragment_documents():
+                if document["id"] == fragment_id:
+                    return Fragment(document)
+        raise NansenError("unknown-fragment", f"fragment {fragment_id!r} is not defined ({path}, or in a module)")
+
+    def fragments(self) -> List[Fragment]:
+        """Every fragment the project can use: its own, then its modules'."""
+        found: Dict[str, Fragment] = {}
+        folder = self.folder / "fragments"
+        for path in sorted(folder.glob("*.fragment.nansen.json")) if folder.is_dir() else []:
+            fragment = Fragment.read(path)
+            found.setdefault(fragment.id, fragment)
+        for module in self.modules:
+            for document in module.fragment_documents():
+                found.setdefault(document["id"], Fragment(document))
+        return list(found.values())
 
     def table_path(self, entity_type: str) -> Path:
         return self.folder / "tables" / f"{entity_type}.table.nansen.json"
@@ -220,14 +240,140 @@ class Project:
 
     # -- data variables and file adapters -----------------------------------------------------
 
+    # -- modules, methods and presets ----------------------------------------------------------
+
+    @property
+    def modules(self) -> List[Module]:
+        if self._modules is None:
+            self._modules = [resolve_module(entry, self.folder) for entry in self.document.get("modules", [])]
+        return self._modules
+
+    def add_module(self, module_id: str, path: Optional[str] = None) -> Module:
+        """List a module in the project file (after checking it can be found)."""
+        entry = {"id": module_id}
+        if path is not None:
+            entry["path"] = path
+        module = resolve_module(entry, self.folder)
+        modules = [m for m in self.document.get("modules", []) if m["id"] != module_id] + [entry]
+        self.document["modules"] = modules
+        self._check_and_save()
+        self._modules = None
+        self._adapters = None
+        return module
+
+    def methods(self, entity_type: Optional[str] = None) -> List[Method]:
+        """The project's own methods (methods/), then its modules'. The first declaration of an id wins."""
+        found: Dict[str, Method] = {}
+        folder = self.folder / "methods"
+        for path in sorted(folder.glob("*.method.nansen.json")) if folder.is_dir() else []:
+            method = Method(read_document(path, "nansen.method"), self.folder / "python", self.folder / "matlab",
+                            "project")
+            found.setdefault(method.id, method)
+        for module in self.modules:
+            for method in module.methods():
+                found.setdefault(method.id, method)
+        return [m for m in found.values() if entity_type is None or m.applies_to(entity_type)]
+
+    def method(self, method_id: str) -> Method:
+        for method in self.methods():
+            if method.id == method_id:
+                return method
+        raise NansenError("unknown-method", f"no method {method_id!r}")
+
+    def preset_path(self, method_id: str, name: str) -> Path:
+        return self.folder / "options" / method_id / f"{name}.options.nansen.json"
+
+    def presets(self, method_id: str) -> List[Dict[str, Any]]:
+        """Saved option sets of a method, after the implicit 'default' (the schema's defaults)."""
+        method = self.method(method_id)
+        presets = [{"name": "default", "description": "The method's defaults", "values": method.default_options()}]
+        folder = self.folder / "options" / method_id
+        for path in sorted(folder.glob("*.options.nansen.json")) if folder.is_dir() else []:
+            doc = read_document(path, "nansen.options")
+            presets.append({"name": doc["name"], "description": doc.get("description", ""), "values": doc["values"]})
+        return presets
+
+    def preset(self, method_id: str, name: str) -> Dict[str, Any]:
+        for preset in self.presets(method_id):
+            if preset["name"] == name:
+                return preset["values"]
+        raise NansenError("unknown-preset", f"method {method_id!r} has no preset {name!r}")
+
+    def save_preset(self, method_id: str, name: str, values: Dict[str, Any], description: str = "") -> None:
+        if name == "default":
+            raise NansenError("invalid-options", "the 'default' preset is the method's defaults and cannot be saved")
+        method = self.method(method_id)
+        resolved = method.resolve_options(values)
+        document = {"schemaType": "nansen.options", "schemaVersion": current_version("nansen.options"),
+                    "method": {"id": method.id, "version": method.version}, "name": name, "values": resolved}
+        if description:
+            document["description"] = description
+        path = self.preset_path(method_id, name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(path, check_document(document, "nansen.options"))
+
+    def delete_preset(self, method_id: str, name: str) -> None:
+        path = self.preset_path(method_id, name)
+        if not path.is_file():
+            raise NansenError("unknown-preset", f"method {method_id!r} has no saved preset {name!r}")
+        path.unlink()
+
+    def run(self, method_id: str, entities: List[Entity], options: Optional[Dict[str, Any]] = None,
+            preset: Optional[str] = None, context: Optional[MethodContext] = None) -> List[Any]:
+        """Run a method now, in this process, on entities of its type."""
+        method = self.method(method_id)
+        values = self.preset(method_id, preset) if preset else {}
+        if options:
+            values = dict(values, **options)
+        context = context or MethodContext(project=self, method=method)
+        if context.project is None:
+            context.project = self
+        return run_method(method, entities, values, context)
+
+    def update_fragment(self, entity_type: str, fragment_id: str, keys: Optional[List[Dict[str, Any]]] = None,
+                        context: Optional[MethodContext] = None) -> Dict[str, Any]:
+        """Recompute a computed fragment's columns for the entity type's table rows (or those with the given keys)."""
+        fragment = self.fragment(fragment_id)
+        if "compute" not in fragment.document:
+            raise NansenError("not-computed", f"fragment {fragment_id!r} has no compute method")
+        if fragment_id not in self.entity_type(entity_type).get("fragments", []):
+            raise NansenError("unknown-fragment", f"entity type {entity_type!r} does not carry {fragment_id!r}")
+        method = self.method(fragment.document["compute"]["method"])
+        table = self.table(entity_type)
+        entities = [e for e in self.entities(entity_type) if e.in_table]
+        if keys is not None:
+            wanted = [tuple(k[n] for n in table.spec.key) for k in keys]
+            entities = [e for e in entities if e.key_tuple(table.spec.key) in wanted]
+        context = context or MethodContext(project=self, method=method)
+        context.project = self
+        options = method.resolve_options({})
+        function = method.function()
+        names = [c.name for c in fragment.columns]
+        updated, failed = 0, []
+        for number, entity in enumerate(entities):
+            context.check_cancelled()
+            try:
+                result = function(entity, options, context) or {}
+                table.update(entity.key, **{n: result.get(n) for n in names if n in result})
+                updated += 1
+            except Exception as error:  # one entity's failure must not stop the others
+                failed.append({"key": entity.key, "error": f"{type(error).__name__}: {error}"})
+                context.log(f"{entity.key}: {error}")
+            context.progress((number + 1) / max(len(entities), 1))
+        table.write()
+        return {"updated": updated, "failed": failed}
+
     @property
     def adapters(self) -> AdapterRegistry:
-        """Built-in adapters plus those declared in file-adapters/."""
+        """Built-in adapters, those declared in file-adapters/ (code in python/), then the modules'."""
         if self._adapters is None:
             registry = AdapterRegistry()
+            for module in reversed(self.modules):
+                for document in module.file_adapter_documents():
+                    registry.declare(document, module.python_root)
             folder = self.folder / "file-adapters"
             for path in sorted(folder.glob("*.fileAdapter.nansen.json")) if folder.is_dir() else []:
-                registry.declare(read_document(path, "nansen.fileAdapter"), folder)
+                registry.declare(read_document(path, "nansen.fileAdapter"), self.folder / "python")
             self._adapters = registry
         return self._adapters
 

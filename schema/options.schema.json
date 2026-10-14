@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "urn:nansen:schema:options",
-  "title": "NANSEN options preset (DRAFT)",
-  "description": "DRAFT, consumed from step 4. A saved set of options for one method version. The values are validated against the options schema in the method declaration.",
+  "title": "NANSEN options preset",
+  "description": "A saved set of options for a method, in options/<methodId>/<name>.options.nansen.json. The values are validated against the options schema of the method declaration, filled with its defaults.",
   "type": "object",
   "required": ["schemaType", "schemaVersion", "method", "name", "values"],
   "additionalProperties": false,

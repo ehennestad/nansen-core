@@ -1,0 +1,26 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "core.export_keys",
+  "version": "1.0.0",
+  "title": "Export selection",
+  "category": "Export",
+  "entityType": "*",
+  "batchMode": "batch",
+  "description": "Writes the keys of the selected entities to a CSV file in the project's exports folder.",
+  "implementations": {
+    "python": "core_methods:export_keys",
+    "matlab": "nansenCoreExportKeys"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "fileName": {
+        "type": "string",
+        "default": "selection.csv",
+        "title": "File name",
+        "pattern": "^[^/\\\\]+\\.csv$"
+      }
+    }
+  }
+}

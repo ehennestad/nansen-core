@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:module",
+  "title": "NANSEN module",
+  "description": "module.nansen.json at the root of a module folder: a versioned bundle of fragments, methods and file adapters. Everything a module provides is listed here by path, relative to the module folder; nothing is found by scanning. A project uses a module by listing it in its modules.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "id", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.module" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "fragments": { "$ref": "#/definitions/paths" },
+    "methods": { "$ref": "#/definitions/paths" },
+    "fileAdapters": { "$ref": "#/definitions/paths" }
+  },
+  "definitions": {
+    "paths": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[^/\\\\][^\\\\]*\\.nansen\\.json$" }
+    }
+  }
+}
