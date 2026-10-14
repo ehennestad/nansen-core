@@ -471,8 +471,125 @@
     },
     {
       "request": {
-        "method": "no.such.method",
+        "method": "pipelines.list",
+        "params": {
+          "entityType": "session"
+        },
         "id": 20
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "core.inspect",
+            "steps": [
+              {
+                "method": "core.file_stats",
+                "title": "Count files"
+              },
+              {
+                "method": "core.wait",
+                "title": "Pause"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.submit",
+        "params": {
+          "pipelineId": "core.inspect",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        },
+        "id": 21
+      },
+      "expect": {
+        "result": [
+          {
+            "status": "queued",
+            "pipeline": {
+              "id": "core.inspect",
+              "step": 0,
+              "steps": 2
+            }
+          },
+          {
+            "status": "queued",
+            "pipeline": {
+              "id": "core.inspect",
+              "step": 1,
+              "steps": 2
+            },
+            "options": {
+              "values": {
+                "message": "pausing"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 22
+      },
+      "expect": {
+        "result": {
+          "status": "completed",
+          "method": {
+            "id": "core.file_stats"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 23
+      },
+      "expect": {
+        "result": {
+          "status": "completed",
+          "method": {
+            "id": "core.wait"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 24
+      },
+      "expect": {
+        "result": null
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.submit",
+        "params": {
+          "pipelineId": "nope",
+          "entityType": "session"
+        },
+        "id": 25
+      },
+      "expect": {
+        "error": "unknown-pipeline"
+      }
+    },
+    {
+      "request": {
+        "method": "no.such.method",
+        "id": 26
       },
       "expect": {
         "error": "unknown-api-method"
@@ -482,7 +599,7 @@
       "request": {
         "method": "entities.list",
         "params": {},
-        "id": 21
+        "id": 27
       },
       "expect": {
         "error": "invalid-params"

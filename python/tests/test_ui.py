@@ -117,3 +117,20 @@ def test_projects_page_lists_the_catalog(app, page):
     page.goto(app["server"].url + "#/projects")
     page.wait_for_selector(".welcome")
     assert "Two-photon demo" in page.locator(".welcome").inner_text()
+
+
+def test_queue_a_pipeline(app, page):
+    open_sessions(app, page)
+    rows(page).nth(2).locator("td.sel input").click()
+    page.click(".selection-bar button:has-text('Run method')")
+    page.click(".method-item:has-text('Inspect')")
+    assert "Count files" in page.locator(".method-detail").inner_text()
+    page.click(".dialog-foot button:has-text('Add to queue')")
+    page.wait_for_selector(".task .pill:has-text('core.inspect 2/2')")
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        texts = page.locator(".task").all_inner_texts()
+        if sum("completed" in t and "core.inspect" in t for t in texts) == 2:
+            break
+        time.sleep(0.1)
+    assert sum("completed" in t and "core.inspect" in t for t in page.locator(".task").all_inner_texts()) == 2

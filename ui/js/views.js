@@ -212,9 +212,11 @@
 
   /* ------------------------------------------------------------------ run a method */
   N.views.methodDialog = async function (app, entityType, rows) {
-    let methods;
+    let methods, pipelines;
     try {
-      methods = await app.client.request("methods.list", { entityType });
+      [methods, pipelines] = await Promise.all([
+        app.client.request("methods.list", { entityType }),
+        app.client.request("pipelines.list", { entityType }).catch(() => [])]);
     } catch (error) { N.showError(error); return; }
     if (!methods.length) { N.toast("No methods", `No method runs on ${entityType}. Add a module with methods.`); return; }
     const target = rows.length ? `${rows.length} selected` : `all ${app.typeTitle(entityType).toLowerCase()}`;
@@ -238,11 +240,34 @@
         list.appendChild(item);
       }
     }
+    if (pipelines.length) {
+      list.appendChild(h("div.group", "Pipelines"));
+      for (const p of pipelines) {
+        const item = h("button.method-item", { on: { click: () => selectPipeline(p) } },
+          h("div.t", N.icon("layers", 13), " ", p.title || p.id), h("div.d", p.steps.map((s) => s.title).join(" → ")));
+        items.set("pipeline:" + p.id, item);
+        list.appendChild(item);
+      }
+    }
+    let pipeline = null;
+    function selectPipeline(p) {
+      selection++;
+      current = null;
+      pipeline = p;
+      items.forEach((el, id) => el.classList.toggle("on", id === "pipeline:" + p.id));
+      N.fill(detail,
+        h("h3", p.title || p.id),
+        h("div.muted", p.description || ""),
+        h("div.meta", h("span.pill.plain", p.id + " " + p.version), h("span.pill.accent", `${p.steps.length} steps per entity`)),
+        h("ol", { style: { paddingLeft: "18px", lineHeight: "1.9" } }, p.steps.map((s) => h("li", h("b", s.title), h("span.muted", ` · ${s.method}` + (s.preset ? ` · preset ${s.preset}` : ""))))),
+        h("div.muted", { style: { marginTop: "10px" } }, "Each selected entity gets its own chain of tasks; a step waits for the one before and is skipped if it fails."));
+    }
 
     let selection = 0;
     async function select(method, presetName) {
       const token = ++selection;
       current = method;
+      pipeline = null;
       items.forEach((el, id) => el.classList.toggle("on", id === method.id));
       const loaded = await app.client.request("presets.list", { methodId: method.id }).catch(() => []);
       if (token !== selection) return; // a later choice won while the presets loaded
@@ -273,6 +298,17 @@
     }
 
     const run = async (close, queued) => {
+      if (pipeline) {
+        const params = { pipelineId: pipeline.id, entityType };
+        if (rows.length) params.keys = rows.map((r) => r.key);
+        try {
+          const tasks = await app.client.request("pipelines.submit", params);
+          N.toast("Pipeline queued", `${pipeline.title || pipeline.id}: ${tasks.length} task(s)`, "success");
+          close();
+          app.go("#/tasks");
+        } catch (error) { N.showError(error, "Could not queue the pipeline"); }
+        return;
+      }
       if (!current) return;
       const problems = form.validate();
       if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
@@ -347,7 +383,8 @@
       const progressClass = task.status === "completed" ? ".done" : task.status === "failed" ? ".failed" : "";
       const el = h("div.task" + (task.id === selectedId ? ".selected" : ""), { dataset: { id: task.id }, on: { click: () => { selectedId = task.id; app.replace("#/tasks/" + task.id); render(); } } },
         h("div",
-          h("div.title", N.statusPill(task.status), app.methodTitle(task.method.id),
+          h("div.title", N.statusPill(task.status),
+            task.pipeline ? [h("span.pill.accent.plain", `${task.pipeline.id} ${task.pipeline.step + 1}/${task.pipeline.steps}`), task.pipeline.title || app.methodTitle(task.method.id)] : app.methodTitle(task.method.id),
             h("span.muted", { style: { fontWeight: 400 } }, `· ${task.entities.length} ${task.entities[0].entityType}(s)`)),
           h("div.sub", [
             `queued ${N.fmt.time(task.createdAt)}`,

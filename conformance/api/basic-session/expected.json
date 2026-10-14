@@ -1,4 +1,4 @@
 {
   "description": "A session of API calls on the raw-processed project with the core module: opening, scanning, listing and editing entities, syncing, methods, presets, a task run in the foreground, and errors. Results are compared as a subset: every field given here must match, others are ignored.",
-  "steps": 21
+  "steps": 27
 }
