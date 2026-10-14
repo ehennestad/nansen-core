@@ -77,23 +77,55 @@ classdef EntityTable < handle
                 obj
                 row (1,1) struct
             end
-            unknown = setdiff(string(fieldnames(row)), obj.columnNames());
-            if ~isempty(unknown)
-                error("nansen:EntityTable:UnknownColumn", "Unknown columns: %s", strjoin(unknown, ", "))
+            obj.addRows({row});
+        end
+
+        function addRows(obj, rows)
+            %addRows Add rows given as a cell of structs, at once: nothing is added if one of them is refused
+            arguments
+                obj
+                rows (1,:) cell
             end
-            values = cell(1, numel(obj.Columns));
-            for i = 1:numel(obj.Columns)
-                column = obj.Columns(i);
-                if isfield(row, column.Name)
-                    value = row.(column.Name);
-                elseif isfield(obj.Defaults, column.Name)
-                    value = obj.Defaults.(column.Name);
-                else
-                    value = [];
+            names = obj.columnNames();
+            keyMask = ismember(names, obj.Key);
+            values = cell(numel(rows), numel(obj.Columns));
+            for r = 1:numel(rows)
+                row = rows{r};
+                unknown = setdiff(string(fieldnames(row)), names);
+                if ~isempty(unknown)
+                    error("nansen:EntityTable:UnknownColumn", "Unknown columns: %s", strjoin(unknown, ", "))
                 end
-                values{i} = nansen.internal.checkValue(value, column, ismember(column.Name, obj.Key));
+                for i = 1:numel(names)
+                    if isfield(row, names(i))
+                        value = row.(names(i));
+                    elseif isfield(obj.Defaults, names(i))
+                        value = obj.Defaults.(names(i));
+                    else
+                        value = [];
+                    end
+                    values{r, i} = nansen.internal.checkValue(value, obj.Columns(i), keyMask(i));
+                end
             end
-            obj.appendRows(values, obj.numRows() + 2)
+            if isempty(rows)
+                return
+            end
+            keys = cell(numel(rows), 1);
+            for r = 1:numel(rows)
+                keys{r} = nansen.internal.keyText(values(r, keyMask));
+            end
+            % The first row whose key is in the table already, or repeats an earlier row's
+            repeated = cellfun(@(k) isKey(obj.KeyIndex, k), keys);
+            [~, firstOfEach] = unique(keys, "stable");
+            repeated(setdiff(1:numel(keys), firstOfEach)) = true;
+            bad = find(repeated, 1);
+            if ~isempty(bad)
+                nansen.internal.throwError("duplicate-key", "record %d repeats the key of an earlier row", obj.numRows() + bad + 1)
+            end
+            first = obj.numRows();
+            obj.Data = [obj.Data; nansen.EntityTable.buildData(values, obj.Columns)];
+            for r = 1:numel(rows)
+                obj.KeyIndex(keys{r}) = first + r;
+            end
         end
 
         function row = getRow(obj, key)

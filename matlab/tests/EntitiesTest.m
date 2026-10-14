@@ -29,6 +29,24 @@ classdef EntitiesTest < matlab.unittest.TestCase
         end
     end
 
+    methods (Static)
+        function logProfile(testCase, label)
+            % The functions that took longest in the last profile, for finding slow spots from CI logs
+            info = profile("info");
+            profile("clear");
+            entries = info.FunctionTable;
+            if isempty(entries)
+                return
+            end
+            [~, order] = sort([entries.TotalTime], "descend");
+            lines = strings(0, 1);
+            for k = order(1:min(15, numel(order)))
+                lines(end + 1) = sprintf("%8.2f s %8d calls  %s", entries(k).TotalTime, entries(k).NumCalls, entries(k).FunctionName); %#ok<AGROW>
+            end
+            testCase.log(1, "profile of " + label + newline + strjoin(lines, newline));
+        end
+    end
+
     methods (Test)
         function largeProjectTimings(testCase)
             % 5,000 sessions of 50 subjects on disk; the times are logged, so CI shows how the join scales.
@@ -58,17 +76,26 @@ classdef EntitiesTest < matlab.unittest.TestCase
             project.addEntityType("subject", [], Fragments="core.notes");
             project.addEntityType("session", [], Fragments="core.notes");
             times = struct();
+            dataset = project.dataset();
+            started = tic; listing = dataset.listing(); times.listing = toc(started);
+            started = tic; dsm.walk(dataset.Config, listing, dsm.ExtractorRegistry()); times.walk = toc(started);
+            profile("on");
             started = tic; scan = project.scan(); times.scan = toc(started);
+            profile("off");
+            EntitiesTest.logProfile(testCase, "scan");
             started = tic; project.sync("session", scan); times.sync = toc(started);
             started = tic; entities = project.entities("session", scan); times.entities = toc(started);
             testCase.verifyNumElements(entities, 5000);
             api = nansen.Api(Project=project);
+            profile("on");
             started = tic;
             response = jsondecode(char(api.handleJson('{"id": 1, "method": "entities.list", "params": {"entityType": "session"}}')));
             times.list = toc(started);
+            profile("off");
+            EntitiesTest.logProfile(testCase, "entities.list");
             testCase.verifyNumElements(response.result.rows, 5000);
-            testCase.log(1, sprintf("5000 sessions: scan %.2f s, sync %.2f s, join %.2f s, entities.list %.2f s", ...
-                times.scan, times.sync, times.entities, times.list));
+            testCase.log(1, sprintf("5000 sessions: listing %.2f s, walk %.2f s, scan %.2f s, sync %.2f s, join %.2f s, entities.list %.2f s", ...
+                times.listing, times.walk, times.scan, times.sync, times.entities, times.list));
         end
 
         function keyComesFromTheDataset(testCase)

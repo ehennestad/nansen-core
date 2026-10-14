@@ -68,6 +68,22 @@ classdef EntityTableTest < matlab.unittest.TestCase
             end
         end
 
+        function addRowsAllOrNothing(testCase)
+            table = EntityTableTest.makeTable();
+            table.addRow(struct("subject_id", "m1", "session_id", "s1", "ignore", false));
+            rows = {struct("subject_id", "m1", "session_id", "s2", "ignore", false), ...
+                struct("subject_id", "m1", "session_id", "s3", "ignore", true)};
+            table.addRows(rows);
+            testCase.verifyEqual(table.numRows(), 3);
+            testCase.verifyTrue(table.hasRow(struct("subject_id", "m1", "session_id", "s3")));
+            again = {struct("subject_id", "m2", "session_id", "s9", "ignore", false), ...
+                struct("subject_id", "m2", "session_id", "s9", "ignore", false)};
+            testCase.verifyError(@() table.addRows(again), "nansen:DuplicateKey");
+            testCase.verifyError(@() table.addRows({struct("subject_id", "m1", "session_id", "s1", "ignore", false)}), ...
+                "nansen:DuplicateKey");
+            testCase.verifyEqual(table.numRows(), 3);   % nothing was added
+        end
+
         function roundTripThroughFiles(testCase)
             table = EntityTableTest.makeTable();
             table.addRow(struct("subject_id", "m1", "session_id", "s1", "ignore", false, "depth", 12.5, ...

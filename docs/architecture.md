@@ -74,4 +74,4 @@ Not carried over, by choice or not yet:
 
 - **Mixed-language queues.** The project format is shared and each method declares its implementations; a task can name the language that must run it, so a Python app can queue MATLAB work for a MATLAB worker. Whether the dashboard should start that worker is open.
 - **Fragment migrations.** When a fragment's columns change, who migrates existing tables? The likely answer is a migration function shipped by the module that owns the fragment.
-- **Large tables.** Both CSV readers are simple loops. If tables reach tens of thousands of rows, MATLAB will need a column-vectorised parser that still reports the first error in row order.
+- **Large tables.** Measured on CI runners: 20,000 rows read in 0.6 s (Python) and 2.7 s (MATLAB, column by column, falling back to cell by cell to report the first error in row order); 5,000 sessions scan, join and list in about a second in either language. Tens of thousands of entities are fine. Hundreds of thousands would want the scan cached per folder and the dashboard to page through `entities.list`.

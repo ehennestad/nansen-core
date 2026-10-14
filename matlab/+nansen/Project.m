@@ -420,10 +420,10 @@ classdef Project < handle
                 if entity.inTable() || any(cellfun(@(i) string(i.code) == "incomplete-key", entity.Issues))
                     continue
                 end
-                table.addRow(entity.Key)
                 added{end + 1} = entity.Key; %#ok<AGROW>
             end
             if ~isempty(added)
+                table.addRows(added);   % at once: one row at a time grows the table quadratically
                 table.write()
             end
         end
