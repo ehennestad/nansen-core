@@ -119,6 +119,23 @@
         "rows": {
           "type": "array",
           "items": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean", "null"] } }
+        },
+        "notes": {
+          "type": "array",
+          "description": "The notes of a Notebook column, each with the index of its row in rows (from 0). The column itself is not listed in columns or skippedColumns.",
+          "items": {
+            "type": "object",
+            "required": ["row", "createdAt", "author", "type", "title", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "row": { "type": "integer", "minimum": 0 },
+              "createdAt": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$" },
+              "author": { "type": "string" },
+              "type": { "type": "string", "description": "As dev wrote it: Informal, Important, Todo or Question." },
+              "title": { "type": "string" },
+              "text": { "type": "string" }
+            }
+          }
         }
       }
     }

@@ -467,8 +467,10 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
         seen = strings(1, 0);
         incomplete = 0;
         renamed = string(struct2cell(renames))';
-        for r = nansen.internal.asCellOfStructs(table.rows)
-            legacyRow = r{1};
+        legacyRows = nansen.internal.asCellOfStructs(table.rows);
+        identities = cell(1, numel(legacyRows));   % per row, its identity, for the notes
+        for index = 1:numel(legacyRows)
+            legacyRow = legacyRows{index};
             row = struct();
             for column = reshape(string(fieldnames(legacyRow)), 1, [])
                 value = legacyRow.(column);
@@ -500,6 +502,7 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
                 incomplete = incomplete + 1;
                 continue
             end
+            identities{index} = identity;
             identityText = strjoin(identity, "/");
             if ismember(identityText, seen)
                 warnings{end + 1} = sprintf("table '%s': %s appears twice; kept the first", label, identityText); %#ok<AGROW>
@@ -517,20 +520,61 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
             warnings{end + 1} = sprintf("table '%s': %d row(s) with no %s; left out", label, incomplete, ...
                 strjoin(keyNames, " or ")); %#ok<AGROW>
         end
+        [notes, warnings] = notesOf(table, identities, keyNames, label, warnings);
         title = upper(extractBefore(entityType, 2)) + extractAfter(entityType, 1) + "s";
         tables{end + 1} = struct("entityType", char(entityType), "title", char(title), "key", {key}, ...
-            "fragments", {fragmentIds}, "rows", {rows}); %#ok<AGROW>
+            "fragments", {fragmentIds}, "rows", {rows}, "notes", {notes}); %#ok<AGROW>
     end
     for entityType = declared(~ismember(declared, done))
         % a table to sync into, for entity types dev kept no table of
         title = upper(extractBefore(entityType, 2)) + extractAfter(entityType, 1) + "s";
         tables{end + 1} = struct("entityType", char(entityType), "title", char(title), ...
-            "key", {keyOf(entityType, declared)}, "fragments", {{'core.notes'}}, "rows", {{}}); %#ok<AGROW>
+            "key", {keyOf(entityType, declared)}, "fragments", {{'core.notes'}}, "rows", {{}}, "notes", {{}}); %#ok<AGROW>
     end
     if ~isempty(tables)
         [~, order] = sort(cellfun(@(t) find(declared == t.entityType, 1), tables));
         tables = tables(order);
     end
+end
+
+function [notes, warnings] = notesOf(table, identities, keyNames, label, warnings)
+    % The Notebook column's notes, on the entity of their row, in the order they were written
+    notes = {};
+    times = strings(1, 0);
+    orphans = 0;
+    untimed = 0;
+    for item = nansen.internal.asCellOfStructs(nansen.internal.getField(table, "notes", []))
+        note = item{1};
+        index = note.row + 1;
+        if index > numel(identities) || isempty(identities{index})
+            orphans = orphans + 1;
+            continue
+        end
+        if isempty(note.createdAt)
+            untimed = untimed + 1;
+            continue
+        end
+        type = lower(string(note.type));
+        if ~ismember(type, nansen.Notebook.Types)
+            warnings{end + 1} = sprintf("table '%s': a note of type '%s' is imported as informal", label, note.type); %#ok<AGROW>
+            type = "informal";
+        end
+        key = struct();
+        for k = 1:numel(keyNames)
+            key.(keyNames(k)) = char(identities{index}(k));
+        end
+        notes{end + 1} = struct("key", key, "createdAt", char(note.createdAt), "author", char(note.author), ...
+            "type", char(type), "title", char(note.title), "text", char(note.text)); %#ok<AGROW>
+        times(end + 1) = string(note.createdAt); %#ok<AGROW>
+    end
+    if orphans
+        warnings{end + 1} = sprintf("table '%s': %d note(s) on rows that were left out; left out", label, orphans);
+    end
+    if untimed
+        warnings{end + 1} = sprintf("table '%s': %d note(s) with no time; left out", label, untimed);
+    end
+    [~, order] = sort(times);   % stable: notes of the same second keep their order
+    notes = notes(order);
 end
 
 function key = keyOf(entityType, declared)

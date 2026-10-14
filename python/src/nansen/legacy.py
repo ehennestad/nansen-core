@@ -14,7 +14,8 @@ What maps over:
 - the master MetaTables of sessions and subjects become entity tables. ``Ignore`` and ``Description``
   go to ``core.notes``; other columns go to a ``legacy.<entityType>`` fragment in the project. An entity
   type the dataset has but dev kept no table of gets an empty table with ``core.notes``;
-- file path settings become data variables, when their file adapter has a built-in equivalent.
+- file path settings become data variables, when their file adapter has a built-in equivalent;
+- the notes of a ``Notebook`` column go into the entity type's notebook, in the order they were written.
 
 Whatever cannot be mapped is left out and named in the report's ``warnings``.
 """
@@ -37,6 +38,7 @@ METADATA = {"Subject ID": ("subject_id", "string", "subject"), "Session ID": ("s
             "Experiment Date": ("session_date", "date", "session"), "Experiment Time": ("session_time", "time", "session")}
 ID_COLUMNS = {"sessionID": "session_id", "SessionID": "session_id", "subjectID": "subject_id", "SubjectID": "subject_id"}
 NOTES = {"Ignore": "ignore", "Description": "description"}
+NOTE_TYPES = {"informal": "informal", "important": "important", "todo": "todo", "question": "question"}
 # Columns the dev tables filled from the folder names; the DSM attributes hold them now.
 DERIVED = {"session": {"Date": "session_date", "Time": "session_time"}}
 ADAPTERS_BY_TYPE = {".mat": "mat", ".json": "json", ".txt": "text"}
@@ -58,6 +60,7 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
     for fragment in plan["fragments"]:
         project.add_fragment(fragment)
     rows: Dict[str, int] = {}
+    notes: Dict[str, int] = {}
     for table in plan["tables"]:
         key = [Column(name, data_type) for name, data_type in table["key"]]
         entity_table = project.add_entity_type(table["entityType"], key=key, fragments=table["fragments"],
@@ -66,10 +69,16 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
             entity_table.add(row)
         entity_table.write()
         rows[table["entityType"]] = len(table["rows"])
+        if table["notes"]:
+            notebook = project.notebook(table["entityType"])
+            for note in table["notes"]:
+                notebook.add(note["key"], note["text"], title=note["title"], note_type=note["type"],
+                             author=note["author"], created_at=note["createdAt"])
+            notes[table["entityType"]] = len(table["notes"])
     for variable in plan["dataVariables"]:
         project.add_data_variable(variable)
-    return {"project": str(folder), "rows": rows, "dataVariables": [v["name"] for v in plan["dataVariables"]],
-            "warnings": plan["warnings"]}
+    return {"project": str(folder), "rows": rows, "notes": notes,
+            "dataVariables": [v["name"] for v in plan["dataVariables"]], "warnings": plan["warnings"]}
 
 
 def plan_legacy(export: dict) -> dict:
@@ -360,7 +369,8 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
         rows: List[dict] = []
         seen: set = set()
         incomplete = 0
-        for legacy_row in table.get("rows", []):
+        identities: Dict[int, Tuple[Any, ...]] = {}  # row index -> identity, for the notes
+        for index, legacy_row in enumerate(table.get("rows", [])):
             row: Dict[str, Any] = {}
             for column, value in legacy_row.items():
                 if column in ID_COLUMNS:
@@ -377,6 +387,7 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
             if any(v in (None, "") for v in identity):
                 incomplete += 1
                 continue
+            identities[index] = identity
             if identity in seen:
                 warnings.append(f"table '{label}': {'/'.join(map(str, identity))} appears twice; kept the first")
                 continue
@@ -385,14 +396,41 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
                          or k in renames.values()})
         if incomplete:
             warnings.append(f"table '{label}': {incomplete} row(s) with no {' or '.join(key_names)}; left out")
+        notes = _notes(table, identities, key_names, label, warnings)
         tables.append({"entityType": entity_type, "title": f"{entity_type.title()}s", "key": key,
-                       "fragments": fragment_ids, "rows": rows})
+                       "fragments": fragment_ids, "rows": rows, "notes": notes})
     for entity_type in declared:
         if entity_type not in done:  # a table to sync into, for entity types dev kept no table of
             tables.append({"entityType": entity_type, "title": f"{entity_type.title()}s",
-                           "key": _key(entity_type, declared), "fragments": ["core.notes"], "rows": []})
+                           "key": _key(entity_type, declared), "fragments": ["core.notes"], "rows": [], "notes": []})
     tables.sort(key=lambda t: declared.index(t["entityType"]))
     return fragments, tables
+
+
+def _notes(table: dict, identities: Dict[int, Tuple[Any, ...]], key_names: List[str], label: str,
+           warnings: List[str]) -> List[dict]:
+    """The Notebook column's notes, on the entity of their row, in the order they were written."""
+    notes: List[dict] = []
+    orphans = untimed = 0
+    for note in table.get("notes", []):
+        if note["row"] not in identities:
+            orphans += 1
+            continue
+        if note["createdAt"] is None:
+            untimed += 1
+            continue
+        note_type = NOTE_TYPES.get(note["type"].lower())
+        if note_type is None:
+            warnings.append(f"table '{label}': a note of type '{note['type']}' is imported as informal")
+            note_type = "informal"
+        notes.append({"key": dict(zip(key_names, identities[note["row"]])), "createdAt": note["createdAt"],
+                      "author": note["author"], "type": note_type, "title": note["title"], "text": note["text"]})
+    if orphans:
+        warnings.append(f"table '{label}': {orphans} note(s) on rows that were left out; left out")
+    if untimed:
+        warnings.append(f"table '{label}': {untimed} note(s) with no time; left out")
+    notes.sort(key=lambda n: n["createdAt"])  # stable: notes of the same second keep their order
+    return notes
 
 
 def _key(entity_type: str, declared: List[str]) -> List[Tuple[str, str]]:

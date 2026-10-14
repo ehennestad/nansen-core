@@ -14,7 +14,8 @@ function report = convert(export, folder)
 %     legacy.<entityType> fragment; an entity type the dataset has but dev
 %     kept no table of gets an empty table with core.notes;
 %   - file path settings become data variables when their file adapter has
-%     a built-in equivalent.
+%     a built-in equivalent;
+%   - the notes of a Notebook column go into the entity type's notebook.
 %
 %   Whatever cannot be mapped is left out and named in report.warnings.
     arguments
@@ -38,6 +39,7 @@ function report = convert(export, folder)
         project.addFragment(plan.fragments{i});
     end
     rows = struct();
+    notes = struct();
     for i = 1:numel(plan.tables)
         spec = plan.tables{i};
         key = nansen.Column.empty(1, 0);
@@ -50,12 +52,21 @@ function report = convert(export, folder)
         end
         table.write();
         rows.(spec.entityType) = numel(spec.rows);
+        if ~isempty(spec.notes)
+            notebook = project.notebook(spec.entityType);
+            for n = 1:numel(spec.notes)
+                note = spec.notes{n};
+                notebook.add(note.key, note.text, Title=note.title, Type=note.type, Author=note.author, ...
+                    CreatedAt=note.createdAt);
+            end
+            notes.(spec.entityType) = numel(spec.notes);
+        end
     end
     names = {};
     for i = 1:numel(plan.dataVariables)
         project.addDataVariable(plan.dataVariables{i});
         names{end + 1} = plan.dataVariables{i}.name; %#ok<AGROW>
     end
-    report = struct("project", char(folder), "rows", rows, "dataVariables", {names}, ...
+    report = struct("project", char(folder), "rows", rows, "notes", notes, "dataVariables", {names}, ...
         "warnings", {plan.warnings});
 end

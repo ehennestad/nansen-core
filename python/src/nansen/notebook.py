@@ -74,7 +74,8 @@ class Notebook:
         return list(reversed(notes))
 
     def add(self, key: Dict[str, Any], text: str, title: str = "", note_type: str = "informal",
-            author: Optional[str] = None) -> dict:
+            author: Optional[str] = None, created_at: Optional[str] = None) -> dict:
+        """Add a note; created_at (YYYY-MM-DDTHH:MM:SS) is now unless given, as when importing."""
         key = self.check_key(key)
         if note_type not in NOTE_TYPES:
             raise NansenError("invalid-params", f"a note's type is one of {', '.join(NOTE_TYPES)}, not {note_type!r}")
@@ -82,7 +83,7 @@ class Notebook:
             raise NansenError("invalid-params", "a note needs a title or text")
         document = self._read()
         note = {"id": document["nextId"], "key": key,
-                "createdAt": dt.datetime.now().isoformat(timespec="seconds"),
+                "createdAt": created_at or dt.datetime.now().isoformat(timespec="seconds"),
                 "author": default_author() if author is None else author,
                 "type": note_type, "title": title, "text": text, "tags": tags_of(title, text)}
         document["notes"].append(note)

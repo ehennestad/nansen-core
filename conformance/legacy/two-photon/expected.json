@@ -1,5 +1,5 @@
 {
-  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates.",
+  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second.",
   "project": {
     "schemaType": "nansen.project",
     "schemaVersion": "0.1.0",
@@ -332,6 +332,97 @@
     "table 'Sessions': column 'DataLocation' holds values with no table type; left out",
     "table 'Sessions': column 'Progress' holds values with no table type; left out",
     "table 'Sessions': m110/m110-001 appears twice; kept the first",
-    "table 'Sessions': 1 row(s) with no subject_id or session_id; left out"
+    "table 'Sessions': 1 row(s) with no subject_id or session_id; left out",
+    "table 'Sessions': a note of type 'Reminder' is imported as informal",
+    "table 'Sessions': 1 note(s) on rows that were left out; left out",
+    "table 'Sessions': 1 note(s) with no time; left out"
+  ],
+  "notebooks": [
+    {
+      "schemaType": "nansen.notebook",
+      "schemaVersion": "0.1.0",
+      "entityType": "session",
+      "nextId": 5,
+      "notes": [
+        {
+          "id": 1,
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-001"
+          },
+          "createdAt": "2025-05-23T09:00:00",
+          "author": "ben",
+          "type": "informal",
+          "title": "",
+          "text": "Good imaging, stable #window",
+          "tags": [
+            "window"
+          ]
+        },
+        {
+          "id": 2,
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-001"
+          },
+          "createdAt": "2025-05-23T09:00:00",
+          "author": "ben",
+          "type": "informal",
+          "title": "Order",
+          "text": "Same second as the first note",
+          "tags": []
+        },
+        {
+          "id": 3,
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-001"
+          },
+          "createdAt": "2025-05-23T12:00:00",
+          "author": "ana",
+          "type": "todo",
+          "title": "Re-run motion correction",
+          "text": "",
+          "tags": []
+        },
+        {
+          "id": 4,
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-002"
+          },
+          "createdAt": "2025-05-24T10:00:00",
+          "author": "ana",
+          "type": "important",
+          "title": "Lost frames",
+          "text": "Frames 1200 to 1300 were dropped. #artifact",
+          "tags": [
+            "artifact"
+          ]
+        }
+      ]
+    },
+    {
+      "schemaType": "nansen.notebook",
+      "schemaVersion": "0.1.0",
+      "entityType": "subject",
+      "nextId": 2,
+      "notes": [
+        {
+          "id": 1,
+          "key": {
+            "subject_id": "m110"
+          },
+          "createdAt": "2025-04-02T15:30:00",
+          "author": "ana",
+          "type": "question",
+          "title": "Window clear?",
+          "text": "Check at week 6 #window",
+          "tags": [
+            "window"
+          ]
+        }
+      ]
+    }
   ]
 }

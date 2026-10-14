@@ -58,6 +58,14 @@
         { "sessionID": "m110-002", "subjectID": "m110", "Date": "2025-05-24", "Time": null, "Ignore": true, "Description": "", "NumRois": null, "Quality": null, "Reviewed": false },
         { "sessionID": "m111-001", "subjectID": "", "Date": null, "Time": null, "Ignore": false, "Description": "", "NumRois": null, "Quality": null, "Reviewed": false },
         { "sessionID": "m110-001", "subjectID": "m110", "Date": "2025-05-23", "Time": null, "Ignore": false, "Description": "copy", "NumRois": null, "Quality": null, "Reviewed": false }
+      ],
+      "notes": [
+        { "row": 1, "createdAt": "2025-05-24T10:00:00", "author": "ana", "type": "Important", "title": "Lost frames", "text": "Frames 1200 to 1300 were dropped. #artifact" },
+        { "row": 0, "createdAt": "2025-05-23T09:00:00", "author": "ben", "type": "Informal", "title": "", "text": "Good imaging, stable #window" },
+        { "row": 3, "createdAt": "2025-05-23T12:00:00", "author": "ana", "type": "Todo", "title": "Re-run motion correction", "text": "" },
+        { "row": 2, "createdAt": "2025-05-25T08:00:00", "author": "ana", "type": "Question", "title": "Which subject?", "text": "" },
+        { "row": 1, "createdAt": null, "author": "ben", "type": "Informal", "title": "", "text": "no time" },
+        { "row": 0, "createdAt": "2025-05-23T09:00:00", "author": "ben", "type": "Reminder", "title": "Order", "text": "Same second as the first note" }
       ]
     },
     {
@@ -74,6 +82,9 @@
       "rows": [
         { "SubjectID": "m110", "DateOfBirth": "2024-11-01", "BiologicalSex": "female", "Description": "Head-fixed" },
         { "SubjectID": "m111", "DateOfBirth": null, "BiologicalSex": "male", "Description": null }
+      ],
+      "notes": [
+        { "row": 0, "createdAt": "2025-04-02T15:30:00", "author": "ana", "type": "Question", "title": "Window clear?", "text": "Check at week 6 #window" }
       ]
     }
   ]

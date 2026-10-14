@@ -11,7 +11,9 @@ function export = exportProject(folder, options)
 %
 %   Table values become JSON values: text, numbers, logicals and dates.
 %   Columns of other types (structs, objects, several columns per variable)
-%   are listed in skippedColumns. Empty text and NaN/NaT are null.
+%   are listed in skippedColumns. Empty text and NaN/NaT are null. The notes
+%   of a Notebook column (dev's nansen.notes.Note structs) are the table's
+%   notes, each with the index of its row.
 %
 %   exportProject(folder, File=path) also writes the export as JSON, which
 %   the Python command `nansen import-legacy` converts as well.
@@ -132,7 +134,7 @@ function tables = readTables(folder)
         className = textOf(S, "MetaTableClass");
         parts = split(string(className), ".");
         entries = S.MetaTableEntries;
-        [columns, skipped, rows] = readEntries(entries);
+        [columns, skipped, rows, notes] = readEntries(entries);
         label = textOf(S, "MetaTableName");
         if label == ""
             [~, label] = fileparts(name);
@@ -141,17 +143,23 @@ function tables = readTables(folder)
         isMaster = getOr(S, "IsMaster", true);
         tables{end + 1} = struct("name", label, "entityClass", char(lower(parts(end))), ...
             "isMaster", ~isempty(isMaster) && logical(isMaster(1)), "columns", {columns}, ...
-            "skippedColumns", {cellstr(skipped)}, "rows", {rows}); %#ok<AGROW>
+            "skippedColumns", {cellstr(skipped)}, "notes", {notes}, "rows", {rows}); %#ok<AGROW>
     end
 end
 
-function [columns, skipped, rows] = readEntries(entries)
+function [columns, skipped, rows, notes] = readEntries(entries)
     names = string(entries.Properties.VariableNames);
     columns = {};
     skipped = strings(1, 0);
     values = {};
     kept = strings(1, 0);
+    notes = {};
     for name = names
+        [isNotebook, columnNotes] = notebookNotes(name, entries.(name));
+        if isNotebook
+            notes = [notes, columnNotes]; %#ok<AGROW>
+            continue
+        end
         [dataType, column] = columnValues(entries.(name));
         if dataType == ""
             skipped(end + 1) = name; %#ok<AGROW>
@@ -220,6 +228,61 @@ function [dataType, column] = columnValues(value)
     if dataType ~= ""
         column = reshape(column, n, 1);
     end
+end
+
+function [isNotebook, notes] = notebookNotes(name, value)
+    % A Notebook column holds, per row, a struct array of notes (often wrapped in a cell)
+    notes = {};
+    if ~iscell(value) && ~isstruct(value)
+        isNotebook = false;
+        return
+    end
+    cells = value;
+    if isstruct(value)
+        cells = num2cell(value);
+    end
+    noteFields = ["Title", "Text", "Type", "DateTime"];
+    shaped = cellfun(@(v) isempty(v) || (isstruct(unwrap(v)) && any(isfield(unwrap(v), noteFields))), cells);
+    hasNotes = any(cellfun(@(v) ~isempty(v) && isstruct(unwrap(v)) && ~isempty(unwrap(v)), cells));
+    isNotebook = all(shaped) && (hasNotes || name == "Notebook") && size(value, 2) == 1;
+    if ~isNotebook
+        return
+    end
+    for r = 1:numel(cells)
+        items = unwrap(cells{r});
+        for i = 1:numel(items)
+            note = items(i);
+            createdAt = [];
+            stamp = getOr(note, "DateTime", NaT);
+            if isdatetime(stamp) && isscalar(stamp) && ~isnat(stamp)
+                createdAt = datetimeOrNull(stamp, 'yyyy-MM-dd''T''HH:mm:ss');
+            end
+            type = textOf(note, "Type");
+            if isempty(type)
+                type = 'Informal';
+            end
+            notes{end + 1} = struct("row", r - 1, "createdAt", createdAt, "author", textOf(note, "Author"), ...
+                "type", type, "title", textOf(note, "Title"), "text", multilineText(getOr(note, "Text", ''))); %#ok<AGROW>
+        end
+    end
+end
+
+function value = unwrap(value)
+    if iscell(value) && isscalar(value)
+        value = value{1};
+    end
+end
+
+function text = multilineText(value)
+    % A note's text: one char row, a char matrix or a cell of lines, as one char row with line feeds
+    if iscell(value)
+        value = strjoin(cellfun(@(line) char(line), reshape(value, 1, []), UniformOutput=false), newline);
+    elseif isstring(value)
+        value = strjoin(value, newline);
+    elseif ischar(value) && size(value, 1) > 1
+        value = strjoin(cellstr(value), newline);
+    end
+    text = textOf(value);
 end
 
 function value = numberOrNull(v)

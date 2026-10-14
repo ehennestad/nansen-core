@@ -42,9 +42,10 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 - The master table of sessions becomes the `session` table, keyed by `subject_id` and `session_id`. The master table of subjects becomes the `subject` table, keyed by `subject_id`. Filtered (non-master) tables are left out: they hold a subset of the master's rows.
 - `Ignore` and `Description` go to the `core.notes` fragment.
 - `Date` and `Time` are left out of the session table when the dataset reads them from folder names: they are DSM attributes now.
-- Every other column with a table type goes to a fragment `legacy.<entityType>` in the project. Columns holding structs or objects, such as `DataLocation`, `Progress` and `Notebook`, are left out and listed.
+- Every other column with a table type goes to a fragment `legacy.<entityType>` in the project. Columns holding structs or objects, such as `DataLocation` and `Progress`, are left out and listed.
 - Rows without a complete key are left out. A row whose key appears twice is left out after the first.
 - An entity type the dataset has but dev kept no table of gets an empty table with `core.notes`. Fill it with `project.sync`.
+- The notes in a `Notebook` column go into the entity type's [notebook](project-layout.md), on the entity of their row and in the order they were written. Their author, time, title and text are kept. Their type maps to `informal`, `important`, `todo` or `question`; any other type becomes `informal`, with a warning. Their tags are found again from the `#words`. Notes on rows that were left out, and notes without a time, are left out and counted in the warnings.
 
 **Variables → data variables.**
 
@@ -56,5 +57,5 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 ## Not carried over
 
 - Session methods, table variable functions and custom file adapters. They are code: port them as module methods, computed fragments and adapters.
-- Pipelines, the task list, notebooks and per-user preferences.
+- Pipelines, the task list and per-user preferences.
 - Local root path overrides. Set up the new project's per-machine roots with DSM environments.

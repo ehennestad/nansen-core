@@ -171,6 +171,7 @@ def _evaluate_legacy(case: Path) -> dict:
                 "dataset": json.loads((folder / "dataset.dsm.json").read_text(encoding="utf-8")),
                 "fragments": documents("fragments/*.fragment.nansen.json"),
                 "dataVariables": documents("data-variables/*.dataVariable.nansen.json"),
+                "notebooks": documents("notes/*.notebook.nansen.json"),
                 "tables": tables, "warnings": report["warnings"]}
 
 

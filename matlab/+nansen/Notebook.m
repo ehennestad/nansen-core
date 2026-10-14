@@ -69,6 +69,7 @@ classdef Notebook
                 options.Title = ""
                 options.Type = "informal"
                 options.Author = []
+                options.CreatedAt = ""   % YYYY-MM-DDTHH:MM:SS; now unless given, as when importing
             end
             key = obj.checkKey(key);
             type = string(options.Type);
@@ -86,8 +87,11 @@ classdef Notebook
                 author = nansen.Notebook.defaultAuthor();
             end
             document = obj.read();
-            note = struct("id", document.nextId, "key", key, ...
-                "createdAt", char(datetime("now", Format="yyyy-MM-dd'T'HH:mm:ss")), ...
+            createdAt = char(options.CreatedAt);
+            if isempty(createdAt)
+                createdAt = char(datetime("now", Format="yyyy-MM-dd'T'HH:mm:ss"));
+            end
+            note = struct("id", document.nextId, "key", key, "createdAt", createdAt, ...
                 "author", char(author), "type", char(type), "title", title, "text", text, ...
                 "tags", {cellstr(nansen.Notebook.tagsOf(title, text))});
             document.notes{end + 1} = note;

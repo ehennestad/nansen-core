@@ -78,6 +78,13 @@ classdef LegacyTest < matlab.unittest.TestCase
             entries.Quality = [0.8; NaN; 1];
             entries.Reviewed = {true; false; true};
             entries.DataLocation = repmat(struct("Uuid", 'a1', "RootUid", 'local'), 3, 1);
+            note = @(author, when, type, title, text) struct("Author", author, "DateTime", when, "TimeStamp", '', ...
+                "ObjectType", 'Session', "ObjectID", '', "Title", title, "Type", type, "Text", text, "Tags", {{}});
+            entries.Notebook = { ...   % as dev keeps it: per row, a struct array of notes in a cell
+                [note('ana', datetime(2025, 5, 23, 9, 0, 0), 'Important', 'Drift', 'Slow #drift'), ...
+                 note('ben', datetime(2025, 5, 23, 12, 30, 0), 'Todo', 'Rerun', {'line one'; 'line two'})]; ...
+                struct([]); ...
+                note('ana', datetime(2025, 5, 25, 8, 0, 0), 'Question', 'Which subject?', '')};
             S = struct("MetaTableMembers", {entries.sessionID}, "MetaTableEntries", entries, ...
                 "MetaTableVariables", {entries.Properties.VariableNames}, "IsMaster", true, ...
                 "MetaTableName", 'Sessions', "MetaTableClass", 'nansen.metadata.type.Session', ...
@@ -106,7 +113,12 @@ classdef LegacyTest < matlab.unittest.TestCase
             names = string(cellfun(@(c) c.name, columns, UniformOutput=false));
             testCase.verifyEqual(names, ["sessionID", "subjectID", "Date", "Ignore", "Description", "NumRois", "Quality", "Reviewed"]);
             testCase.verifyEqual(types, ["string", "string", "date", "boolean", "string", "integer", "number", "boolean"]);
-            testCase.verifyEqual(string(sessions.skippedColumns), "DataLocation");
+            testCase.verifyEqual(string(sessions.skippedColumns), "DataLocation");   % Notebook is not skipped
+            notes = nansen.internal.asCellOfStructs(sessions.notes);
+            testCase.verifyEqual(cellfun(@(n) n.row, notes), [0, 0, 2]);
+            testCase.verifyEqual(string(notes{1}.createdAt), "2025-05-23T09:00:00");
+            testCase.verifyEqual(string(notes{2}.text), "line one" + newline + "line two");
+            testCase.verifyEqual(string(notes{3}.type), "Question");
             rows = nansen.internal.asCellOfStructs(sessions.rows);
             testCase.verifyEqual(string(rows{1}.Date), "2025-05-23");
             testCase.verifyEmpty(rows{2}.Description);   % empty text is null
@@ -127,6 +139,8 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(report.dataVariables), ["SessionConfig", "RoiArray"]);
             testCase.verifyTrue(any(contains(string(report.warnings), "'MotionCorrected'")));
             testCase.verifyTrue(any(contains(string(report.warnings), "1 row(s) with no subject_id or session_id")));
+            testCase.verifyEqual(report.notes, struct("session", 2));
+            testCase.verifyTrue(any(contains(string(report.warnings), "1 note(s) on rows that were left out")));
 
             project = nansen.Project.open(target);
             testCase.verifyEqual(project.Name, "RatNav");
@@ -140,6 +154,10 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyEqual(first.Row.NumRois, 120);
             testCase.verifyEqual(project.load(first, "SessionConfig"), struct("zoom", 2));
             testCase.verifyEmpty(entities{ids == "m111-001"}.Row);
+            notes = project.notebook("session").notes();   % newest first
+            testCase.verifyEqual(cellfun(@(n) string(n.type), notes), ["todo", "important"]);
+            testCase.verifyEqual(string(notes{2}.tags), "drift");
+            testCase.verifyEqual(string(notes{2}.key.session_id), "m110-001");
         end
 
         function importNeedsAnEmptyFolder(testCase)
