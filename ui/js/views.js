@@ -349,10 +349,25 @@
     const detailEl = h("div");
     const queueControls = h("div", { style: { display: "flex", gap: "8px", alignItems: "center" } });
 
+    // A list or an event can be older than what the view already shows (a poll answered just before a task
+    // finished), so a task only moves forward: queued, running, then finished, with progress only growing.
+    const stage = (task) => ({ queued: 0, running: 1 }[task.status] ?? 2);
+    function newer(incoming, shown) {
+      if (!shown) return incoming;
+      if (stage(incoming) !== stage(shown)) return stage(incoming) > stage(shown) ? incoming : shown;
+      if (stage(incoming) === 2 && incoming.id === shown.id && incoming.finishedAt !== shown.finishedAt) return incoming;
+      return (incoming.progress || 0) >= (shown.progress || 0) ? incoming : shown;
+    }
+    let loadToken = 0;
     async function load() {
+      const token = ++loadToken;
+      let listed;
       try {
-        [tasks, status] = await Promise.all([app.client.request("tasks.list"), app.client.request("queue.status")]);
+        [listed, status] = await Promise.all([app.client.request("tasks.list"), app.client.request("queue.status")]);
       } catch (error) { N.showError(error); return; }
+      if (token !== loadToken) return;
+      const shown = new Map(tasks.map((task) => [task.id, task]));
+      tasks = listed.map((task) => newer(task, shown.get(task.id)));
       render();
     }
     function renderControls() {
@@ -406,9 +421,13 @@
         load();
       } catch (error) { N.showError(error); }
     }
+    let detailToken = 0;
     async function showDetail(id) {
+      // Renders overlap; only the newest request may fill the panel, or an older answer hides newer log lines.
+      const token = ++detailToken;
       let task;
-      try { task = await app.client.request("tasks.get", { id }); } catch (error) { N.clear(detailEl); return; }
+      try { task = await app.client.request("tasks.get", { id }); } catch (error) { if (token === detailToken) N.clear(detailEl); return; }
+      if (token !== detailToken) return;
       N.fill(detailEl, h("div.card",
         h("div.card-head", h("h3", app.methodTitle(task.method.id)), h("div.spacer"), N.statusPill(task.status)),
         h("div.card-body",
@@ -432,7 +451,7 @@
 
     app.onTaskEvent = (task) => {
       const index = tasks.findIndex((t) => t.id === task.id);
-      if (index >= 0) tasks[index] = task; else tasks.push(task);
+      if (index >= 0) tasks[index] = newer(task, tasks[index]); else tasks.push(task);
       render();
     };
     // Events can pass while the view loads; the task files are the truth, so poll while tasks are active.
@@ -442,7 +461,10 @@
     app.onLogEvent = (event) => {
       if (event.id === selectedId) {
         const log = document.getElementById("task-log");
-        if (log) { log.textContent = (log.textContent === "(nothing logged yet)" ? "" : log.textContent + "\n") + event.line; log.scrollTop = log.scrollHeight; }
+        if (log && !log.textContent.split("\n").includes(event.line)) {  // a refresh may have brought it already
+          log.textContent = (log.textContent === "(nothing logged yet)" ? "" : log.textContent + "\n") + event.line;
+          log.scrollTop = log.scrollHeight;
+        }
       }
     };
     await load();
