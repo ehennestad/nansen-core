@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import re
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -200,6 +203,64 @@ class Project:
             raise
         self._check_and_save()
         return dataset
+
+    def set_root(self, data_location: str, path: str, environment: Optional[str] = None,
+                 root_storage_path: Optional[str] = None) -> Dataset:
+        """Say where a data location is: a given root, or the location in this machine's environment or another.
+
+        With root_storage_path, that root gets the new path and nothing else changes. Otherwise the root
+        the location uses in the environment gets it. Without one, a root is
+        added for the environment. When the environment is not the active one, it becomes active on
+        this machine (the DSM config's .local.json overlay), and every other location that would have
+        no root there gets one at the path it uses now. Only those values change in the config's text.
+        """
+        from . import jsontext
+
+        dataset = self.require_dataset()
+        config_path = self.folder / self.document["dataset"]
+        text = config_path.read_text(encoding="utf-8")
+        config = json.loads(text)
+        locations = config.get("dataLocations", [])
+        index = next((i for i, loc in enumerate(locations) if loc.get("identifier") == data_location), None)
+        if index is None:
+            raise NansenError("unknown-location", f"the dataset has no data location {data_location!r}")
+        active = dataset.environment
+        target = environment or active
+        roots = locations[index].get("filesystemSource", {}).get("rootStoragePaths", [])
+        pointer = f"/dataLocations/{index}/filesystemSource/rootStoragePaths"
+        if root_storage_path is not None:
+            j = next((j for j, r in enumerate(roots) if r.get("identifier") == root_storage_path), None)
+            if j is None:
+                raise NansenError("unknown-location", f"{data_location!r} has no root {root_storage_path!r}")
+            text = jsontext.replace(text, f"{pointer}/{j}/path", path)
+            with open(config_path, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+            self._dataset = None
+            return self.require_dataset()
+        match = next((j for j, r in enumerate(roots) if r.get("environment") == target), None) if target else \
+            next((j for j, r in enumerate(roots) if "environment" not in r), None)
+        if match is None and target is None:
+            target = default_environment()
+        if match is not None:
+            text = jsontext.replace(text, f"{pointer}/{match}/path", path)
+        else:
+            text = jsontext.append(text, pointer, {"identifier": _root_identifier(target, roots), "path": path,
+                                                   "environment": target})
+        if target != active:
+            for i, location in enumerate(locations):
+                others = location.get("filesystemSource", {}).get("rootStoragePaths", [])
+                if i == index or any(r.get("environment") in (None, target) for r in others):
+                    continue
+                current = [r for r in dataset.roots() if r.data_location == location.get("identifier")]
+                if current:  # keep it working where it is
+                    text = jsontext.append(text, f"/dataLocations/{i}/filesystemSource/rootStoragePaths",
+                                           {"identifier": _root_identifier(target, others),
+                                            "path": current[0].path.as_posix(), "environment": target})
+            _set_environment(config_path, target)
+        with open(config_path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        self._dataset = None
+        return self.require_dataset()
 
     def add_dataset_entity_types(self, fragments: Sequence[str] = ()) -> List[str]:
         """Add every entity type of the dataset that the project does not have yet; returns their names."""
@@ -546,6 +607,42 @@ class Project:
     def _check_and_save(self) -> None:
         self.document = check_document(self.document, "nansen.project")
         write_json(self.folder / PROJECT_FILE, self.document)
+
+
+def default_environment() -> str:
+    """This machine's environment name when none is set: its host name, as a DSM identifier."""
+    import socket
+
+    name = re.sub(r"[^a-z0-9-]+", "-", socket.gethostname().lower()).strip("-")
+    return name if name and name[0].isalpha() else "machine-" + (name or "local")
+
+
+def _root_identifier(environment: str, roots: List[dict]) -> str:
+    base = re.sub(r"[^A-Za-z0-9_-]+", "-", environment).strip("-") or "root"
+    if not base[0].isalpha():
+        base = "root-" + base
+    used = {r.get("identifier") for r in roots}
+    candidate, n = base, 2
+    while candidate in used:
+        candidate, n = f"{base}-{n}", n + 1
+    return candidate
+
+
+def _set_environment(config_path: Path, environment: str) -> None:
+    """Make the environment active on this machine, in the DSM config's .local.json overlay."""
+    from . import jsontext
+
+    overlay = config_path.with_name(config_path.stem + ".local.json")
+    if overlay.is_file():
+        text = overlay.read_text(encoding="utf-8")
+        if "preferences" in json.loads(text):
+            text = jsontext.set_member(text, "/preferences", "environmentIdentifier", environment)
+        else:
+            text = jsontext.set_member(text, "", "preferences", {"environmentIdentifier": environment})
+    else:
+        text = '{\n  "preferences": {\n    "environmentIdentifier": ' + jsontext.encode(environment) + "\n  }\n}\n"
+    with open(overlay, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
 
 
 def _record_key(record: dict) -> Dict[str, Any]:

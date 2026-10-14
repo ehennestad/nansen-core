@@ -216,6 +216,90 @@ classdef Project < handle
             obj.writeDocument(document);
         end
 
+        function dataset = setRoot(obj, dataLocation, path, options)
+            %setRoot Say where a data location is: a given root, or the location in this machine's environment or another
+            %
+            %   With RootStoragePath, that root gets the new path and nothing else
+            %   changes. Otherwise the root the location uses in the environment
+            %   (Environment, default: the active one, else this machine's host
+            %   name) gets it, or a root is added for the environment. When the
+            %   environment is not the active one, it becomes active on this
+            %   machine (the DSM config's .local.json overlay), and every other
+            %   location that would have no root there gets one at the path it
+            %   uses now. Only those values change in the config's text, as in
+            %   Python's Project.set_root.
+            arguments
+                obj
+                dataLocation (1,1) string
+                path (1,1) string
+                options.Environment (1,1) string = ""
+                options.RootStoragePath (1,1) string = ""
+            end
+            dataset = obj.requireDataset();
+            configPath = fullfile(obj.Folder, obj.Document.dataset);
+            text = nansen.internal.readText(configPath);
+            config = jsondecode(char(text));
+            locations = nansen.internal.asCellOfStructs(nansen.internal.getField(config, "dataLocations", []));
+            ids = string(cellfun(@(l) l.identifier, locations, UniformOutput=false));
+            index = find(ids == dataLocation, 1);
+            if isempty(index)
+                nansen.internal.throwError("unknown-location", "the dataset has no data location '%s'", dataLocation)
+            end
+            roots = rootsOf(locations{index});
+            pointer = sprintf("/dataLocations/%d/filesystemSource/rootStoragePaths", index - 1);
+            if options.RootStoragePath ~= ""
+                j = find(string(cellfun(@(r) r.identifier, roots, UniformOutput=false)) == options.RootStoragePath, 1);
+                if isempty(j)
+                    nansen.internal.throwError("unknown-location", "'%s' has no root '%s'", dataLocation, options.RootStoragePath)
+                end
+                text = nansen.internal.JsonText.replace(text, pointer + "/" + (j - 1) + "/path", path);
+                nansen.internal.writeText(configPath, text);
+                obj.DatasetCache = [];
+                dataset = obj.requireDataset();
+                return
+            end
+            active = dataset.Environment;
+            target = options.Environment;
+            if target == ""
+                target = active;
+            end
+            environments = string(cellfun(@(r) string(nansen.internal.getField(r, "environment", "")), roots, UniformOutput=false));
+            if target ~= ""
+                match = find(environments == target, 1);
+            else
+                match = find(environments == "", 1);
+                if isempty(match)
+                    target = nansen.Project.defaultEnvironment();
+                end
+            end
+            if ~isempty(match)
+                text = nansen.internal.JsonText.replace(text, pointer + "/" + (match - 1) + "/path", path);
+            else
+                text = nansen.internal.JsonText.append(text, pointer, struct("identifier", char(rootIdentifier(target, roots)), ...
+                    "path", char(path), "environment", char(target)));
+            end
+            if target ~= active
+                current = dataset.roots();
+                for i = 1:numel(locations)
+                    others = rootsOf(locations{i});
+                    otherEnvironments = string(cellfun(@(r) string(nansen.internal.getField(r, "environment", "")), others, UniformOutput=false));
+                    if i == index || any(otherEnvironments == "" | otherEnvironments == target)
+                        continue
+                    end
+                    used = current([current.DataLocation] == ids(i));
+                    if ~isempty(used)   % keep it working where it is
+                        text = nansen.internal.JsonText.append(text, sprintf("/dataLocations/%d/filesystemSource/rootStoragePaths", i - 1), ...
+                            struct("identifier", char(rootIdentifier(target, others)), ...
+                            "path", char(replace(used(1).Path, "\", "/")), "environment", char(target)));
+                    end
+                end
+                setEnvironment(configPath, target);
+            end
+            nansen.internal.writeText(configPath, text);
+            obj.DatasetCache = [];
+            dataset = obj.requireDataset();
+        end
+
         function added = addDatasetEntityTypes(obj, options)
             %addDatasetEntityTypes Add every entity type of the dataset the project does not have yet; returns their names
             arguments
@@ -859,6 +943,25 @@ classdef Project < handle
     end
 
     methods (Static)
+        function name = defaultEnvironment()
+            %defaultEnvironment This machine's environment name when none is set: its host name, as a DSM identifier
+            name = string(getenv("COMPUTERNAME"));
+            if name == ""
+                [status, output] = system("hostname");
+                if status == 0
+                    name = strtrim(string(output));
+                end
+            end
+            name = regexprep(lower(name), "[^a-z0-9-]+", "-");
+            name = regexprep(name, "^-+|-+$", "");
+            if name == "" || isempty(regexp(name, "^[a-z]", "once"))
+                if name == ""
+                    name = "local";
+                end
+                name = "machine-" + name;
+            end
+        end
+
         function obj = create(folder, name, options)
             %create Make a project folder with an empty project file, fragments/ and tables/
             %
@@ -954,4 +1057,46 @@ function text = keyTextOf(key, keyColumns)
         parts{i} = key.(keyColumns(i));
     end
     text = nansen.internal.keyText(parts);
+end
+
+function roots = rootsOf(location)
+    filesystem = nansen.internal.getField(location, "filesystemSource", struct());
+    roots = nansen.internal.asCellOfStructs(nansen.internal.getField(filesystem, "rootStoragePaths", []));
+end
+
+function id = rootIdentifier(environment, roots)
+    % A root identifier for the environment, unique among the location's roots (as Python's _root_identifier)
+    base = regexprep(char(environment), '[^A-Za-z0-9_-]+', '-');
+    base = regexprep(base, '^-+|-+$', '');
+    if isempty(base)
+        base = 'root';
+    end
+    if ~isletter(base(1))
+        base = ['root-', base];
+    end
+    used = string(cellfun(@(r) string(nansen.internal.getField(r, "identifier", "")), roots, UniformOutput=false));
+    id = string(base);
+    n = 2;
+    while ismember(id, used)
+        id = string(base) + "-" + n;
+        n = n + 1;
+    end
+end
+
+function setEnvironment(configPath, environment)
+    % Make the environment active on this machine, in the DSM config's .local.json overlay
+    [folder, stem] = fileparts(configPath);
+    overlay = fullfile(folder, stem + ".local.json");
+    if isfile(overlay)
+        text = nansen.internal.readText(overlay);
+        if isfield(jsondecode(char(text)), "preferences")
+            text = nansen.internal.JsonText.setMember(text, "/preferences", "environmentIdentifier", environment);
+        else
+            text = nansen.internal.JsonText.setMember(text, "", "preferences", struct("environmentIdentifier", char(environment)));
+        end
+    else
+        text = "{" + newline + "  ""preferences"": {" + newline + "    ""environmentIdentifier"": " + ...
+            nansen.internal.JsonText.encode(environment) + newline + "  }" + newline + "}" + newline;
+    end
+    nansen.internal.writeText(overlay, text);
 end

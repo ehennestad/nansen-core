@@ -31,7 +31,7 @@ classdef Api < handle
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
-                "project.setDataset", "demo.create", "legacy.import", ...
+                "project.setDataset", "dataset.setRoot", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
@@ -181,6 +181,17 @@ classdef Api < handle
             result = obj.apiProjectInfo(struct());
         end
 
+        function result = apiDatasetSetRoot(obj, params)
+            % Where a data location is on this machine (or in the given environment)
+            project = obj.requireProject();
+            project.setRoot(string(nansen.Api.param(params, "dataLocation")), string(nansen.Api.param(params, "path")), ...
+                Environment=string(nansen.internal.getField(params, "environment", "")), ...
+                RootStoragePath=string(nansen.internal.getField(params, "rootStoragePath", "")));
+            obj.setProject(nansen.Project.open(project.Folder, Environment=project.Environment));
+            obj.emit("project", struct("name", char(obj.Project.Name)));
+            result = obj.apiProjectInfo(struct());
+        end
+
         function result = apiDemoCreate(obj, params)
             obj.setProject(nansen.demo.create(nansen.Api.param(params, "path")));
             obj.emit("project", struct("name", char(obj.Project.Name)));
@@ -242,9 +253,9 @@ classdef Api < handle
                     "category", char(nansen.internal.getField(l, "dataCategory", "")), ...
                     "access", char(nansen.internal.getField(l, "access", "read"))), dataset.Config.locations(), UniformOutput=false);
                 roots = arrayfun(@(r) struct("dataLocation", char(r.DataLocation), "rootStoragePath", char(r.RootStoragePath), ...
-                    "path", char(r.Path), "environment", char(r.Environment), "available", r.Available), dataset.roots(), ...
-                    UniformOutput=false);
-                result.dataset = struct("environment", char(dataset.Environment), ...
+                    "path", char(r.Path), "environment", nansen.Api.nullIfEmpty(r.Environment), "available", r.Available), ...
+                    dataset.roots(), UniformOutput=false);
+                result.dataset = struct("environment", nansen.Api.nullIfEmpty(dataset.Environment), ...
                     "entityTypes", {cellstr(dataset.entityTypes())}, "locations", {locations}, "roots", {roots});
             end
         end
@@ -646,6 +657,14 @@ classdef Api < handle
     end
 
     methods (Static, Access = private)
+        function value = nullIfEmpty(text)
+            % No environment is null in the protocol, as in Python
+            value = [];
+            if ~(isempty(text) || (isstring(text) && (ismissing(text) || text == "")))
+                value = char(text);
+            end
+        end
+
         function summary = fragmentSummary(f)
             summary = struct("id", char(f.Id), "version", char(f.Version), ...
                 "title", char(nansen.internal.getField(f.Document, "title", f.Id)), ...

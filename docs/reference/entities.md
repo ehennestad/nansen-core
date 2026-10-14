@@ -43,6 +43,7 @@ A row whose record disappears is kept: the stores may be offline, or the data mo
 - **Environments.** Each root storage path in the DSM config may name an `environment`. The active environment comes from the `Project` (`environment=`), else from the config's preferences, which the DSM `.local.json` overlay can set per machine. Roots of other environments are ignored.
 - **Relative root paths** are resolved against the folder of the DSM config, so a project can carry its data with it.
 - **Unavailable roots.** A root that does not exist on this machine is reported as unavailable and skipped.
+- **Changing where data is.** `project.setRoot` / `set_root` (`dataset.setRoot` in the app, "Change path" on the Data page) sets the path of a named root, or of the root a location uses in an environment. For an environment that is not active yet, it adds a root there, makes the environment active on this machine in the config's `.local.json` overlay, and gives every other location that would have no root in it one at its current path. Only those values change in the config's text.
 
 ## Writing new entities
 

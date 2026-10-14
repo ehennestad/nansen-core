@@ -235,3 +235,17 @@ def test_add_a_column_to_a_table_with_rows(empty_app, page):
     page.wait_for_selector(".grid-table th:has-text('depth_um')")
     rows = api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"]
     assert len(rows) == 14 and all(row["values"]["depth_um"] == 150 for row in rows)
+
+
+def test_change_where_a_data_location_is(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    moved = empty_app["folder"] / "moved-raw"
+    moved.mkdir()
+    page.goto(empty_app["server"].url + "#/data")
+    page.click("table.simple tbody tr:first-child button:has-text('Change path')")
+    page.fill(".dialog input", str(moved))
+    page.click(".dialog-foot button:has-text('OK')")
+    page.wait_for_selector(f"table.simple td.mono:has-text('{moved}')")
+    roots = api.handle({"id": 2, "method": "project.info"})["result"]["dataset"]["roots"]
+    assert roots[0]["path"] == str(moved) and roots[0]["available"] is True

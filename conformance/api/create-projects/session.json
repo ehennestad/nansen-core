@@ -505,6 +505,132 @@
           }
         ]
       }
+    },
+    {
+      "request": {
+        "id": 30,
+        "method": "dataset.setRoot",
+        "params": {
+          "dataLocation": "rawdata",
+          "path": "${scratch}/raw-here"
+        }
+      },
+      "expect": {
+        "result": {
+          "dataset": {
+            "environment": null,
+            "roots": [
+              {
+                "dataLocation": "rawdata",
+                "rootStoragePath": "local",
+                "path": "${scratch}/raw-here"
+              },
+              {
+                "dataLocation": "processed",
+                "rootStoragePath": "root1",
+                "path": "/data/processed"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "id": 31,
+        "method": "dataset.setRoot",
+        "params": {
+          "dataLocation": "processed",
+          "path": "${scratch}/processed-ci",
+          "environment": "ci"
+        }
+      },
+      "expect": {
+        "result": {
+          "dataset": {
+            "environment": "ci",
+            "roots": [
+              {
+                "dataLocation": "rawdata",
+                "rootStoragePath": "local",
+                "path": "${scratch}/raw-here"
+              },
+              {
+                "dataLocation": "processed",
+                "rootStoragePath": "root1",
+                "path": "/data/processed"
+              },
+              {
+                "dataLocation": "processed",
+                "rootStoragePath": "ci",
+                "path": "${scratch}/processed-ci",
+                "environment": "ci"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "id": 32,
+        "method": "dataset.setRoot",
+        "params": {
+          "dataLocation": "processed",
+          "rootStoragePath": "root1",
+          "path": "${scratch}/processed-old"
+        }
+      },
+      "expect": {
+        "result": {
+          "dataset": {
+            "environment": "ci",
+            "roots": [
+              {
+                "dataLocation": "rawdata",
+                "path": "${scratch}/raw-here"
+              },
+              {
+                "dataLocation": "processed",
+                "rootStoragePath": "root1",
+                "path": "${scratch}/processed-old"
+              },
+              {
+                "dataLocation": "processed",
+                "rootStoragePath": "ci",
+                "path": "${scratch}/processed-ci"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "id": 33,
+        "method": "dataset.setRoot",
+        "params": {
+          "dataLocation": "nope",
+          "path": "/x"
+        }
+      },
+      "expect": {
+        "error": "unknown-location"
+      }
+    },
+    {
+      "request": {
+        "id": 34,
+        "method": "dataset.setRoot",
+        "params": {
+          "dataLocation": "processed",
+          "rootStoragePath": "zzz",
+          "path": "/x"
+        }
+      },
+      "expect": {
+        "error": "unknown-location"
+      }
     }
   ]
 }

@@ -184,6 +184,14 @@ class Api:
             core = any(m["id"] == "core" for m in project.document.get("modules", []))
             project.add_dataset_entity_types(["core.notes"] if core else [])
 
+    def dataset__setRoot(self, params: dict) -> dict:
+        """Where a data location is on this machine (or in the given environment)."""
+        project = self._require_project()
+        project.set_root(params["dataLocation"], params["path"], params.get("environment"), params.get("rootStoragePath"))
+        self._set_project(Project.open(project.folder, environment=project.environment))
+        self.emit("project", {"name": self.project.name})
+        return self.project__info({})
+
     def demo__create(self, params: dict) -> dict:
         from .demo import create_demo
 

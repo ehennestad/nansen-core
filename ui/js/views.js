@@ -499,11 +499,22 @@
       h("div.grid",
         h("div.card", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
           dataset ? h("span.muted", `environment: ${dataset.environment || "default"}`) : null),
-          dataset ? h("table.simple", h("thead", h("tr", ["Location", "Category", "Access", "Root", ""].map((t) => h("th", t)))),
+          dataset ? h("table.simple", h("thead", h("tr", ["Location", "Category", "Access", "Root", "", ""].map((t) => h("th", t)))),
             h("tbody", dataset.roots.map((root) => {
               const loc = dataset.locations.find((l) => l.id === root.dataLocation) || {};
               return h("tr", h("td", h("b", loc.title || root.dataLocation), h("div.muted.mono", root.dataLocation)), h("td", loc.category),
-                h("td", loc.access), h("td.mono", root.path), h("td", h("span.pill." + (root.available ? "good" : "bad"), root.available ? "available" : "offline")));
+                h("td", loc.access), h("td.mono", root.path, root.environment ? h("div.muted", `environment ${root.environment}`) : null),
+                h("td", h("span.pill." + (root.available ? "good" : "bad"), root.available ? "available" : "offline")),
+                h("td", h("button.btn.small", { title: "Where this data is on this computer", on: { click: async () => {
+                  const path = await N.prompt(`Where is ${loc.title || root.dataLocation}?`, "Folder on this computer", root.path);
+                  if (!path || path === root.path) return;
+                  try {
+                    app.project = await app.client.request("dataset.setRoot", { dataLocation: root.dataLocation, rootStoragePath: root.rootStoragePath, path });
+                    await app.reloadProject();
+                    app.render();
+                    N.toast("Path changed", "Scan the stores to see what is there", "success");
+                  } catch (error) { N.showError(error, "Could not change the path"); }
+                } } }, "Change path")));
             }))) : h("div.card-body.muted", "No dataset.")),
         h("div.card", h("div.card-head", N.icon("file"), h("h3", "Data variables")),
           variables.length ? h("table.simple", h("thead", h("tr", ["Name", "Entity", "Location", "File", "Adapter"].map((t) => h("th", t)))),
