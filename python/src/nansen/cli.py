@@ -20,11 +20,38 @@ def main(argv: Optional[List[str]] = None) -> int:
     conformance = commands.add_parser("conformance", help="run the conformance cases")
     conformance.add_argument("root", nargs="?", default=None)
     conformance.add_argument("-v", "--verbose", action="store_true")
+    app = commands.add_parser("app", help="open the NANSEN app in the browser")
+    app.add_argument("project", nargs="?", help="project folder to open")
+    app.add_argument("--port", type=int, default=8765)
+    app.add_argument("--catalog", default=None, help="project catalog file (default: the user's)")
+    app.add_argument("--no-browser", action="store_true")
+    app.add_argument("--executor", choices=["thread", "process"], default="thread")
+    demo = commands.add_parser("demo", help="create a demo project with a small dataset")
+    demo.add_argument("folder")
     run_task = commands.add_parser("run-task", help="run one queued task of a project (used by worker processes)")
     run_task.add_argument("project")
     run_task.add_argument("task_id")
     run_task.add_argument("--environment", default=None)
     args = parser.parse_args(argv)
+
+    if args.command == "app":
+        from .api import Api
+        from .catalog import Catalog, default_catalog_path
+        from .project import Project
+        from .server import run_app
+
+        catalog = Catalog(args.catalog or default_catalog_path())
+        project = Project.open(args.project) if args.project else None
+        run_app(Api(catalog=catalog, project=project, executor=args.executor), port=args.port,
+                open_browser=not args.no_browser)
+        return 0
+
+    if args.command == "demo":
+        from .demo import create_demo
+
+        project = create_demo(args.folder)
+        print(f"Created {project.title} in {project.folder}. Open it with: nansen app {project.folder}")
+        return 0
 
     if args.command == "run-task":
         from .project import Project

@@ -19,7 +19,7 @@ def file_stats(entity, options, context):
                     continue
                 count += 1
                 total += file.stat().st_size
-    context.log(f"{entity.key}: {count} files")
+    context.log(f"{' / '.join(map(str, entity.key.values()))}: {count} files")
     return {"n_files": count, "size_mb": round(total / 1e6, 6)}
 
 
@@ -45,7 +45,7 @@ def wait(entity, options, context):
         context.check_cancelled()
         time.sleep(options["seconds"] / steps)
         context.progress((step + 1) / steps, f"{options['message']} {step + 1}/{steps}")
-    context.log(f"{entity.key}: done {options['message']}")
+    context.log(f"{' / '.join(map(str, entity.key.values()))}: done {options['message']}")
     if options["fail"]:
         raise RuntimeError("failed on purpose")
     return {"waited": options["seconds"]}

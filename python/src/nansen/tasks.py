@@ -8,6 +8,7 @@ tasks/<id>.cancel.
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import os
@@ -123,7 +124,8 @@ class TaskQueue:
     def _save(self, document: dict) -> None:
         self.folder.mkdir(exist_ok=True)
         write_task(self.path(document["id"]), document)
-        self._emit("task", document)
+        # A copy: the worker keeps changing its document while listeners may serialize later.
+        self._emit("task", copy.deepcopy(document))
 
     # -- queueing -----------------------------------------------------------------------------
 

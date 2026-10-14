@@ -5,7 +5,7 @@ function result = nansenCoreWait(entity, options, context)
         pause(options.seconds / options.steps);
         context.progress(step / options.steps, sprintf("%s %d/%d", options.message, step, options.steps));
     end
-    context.log("%s: done %s", jsonencode(entity.Key), options.message);
+    context.log("%s: done %s", strjoin(string(struct2cell(entity.Key)), " / "), options.message);
     if options.fail
         error("nansen:core:Failed", "failed on purpose")
     end

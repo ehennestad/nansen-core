@@ -27,6 +27,6 @@ function result = nansenCoreFileStats(entity, options, context)
             end
         end
     end
-    context.log("%s: %d files", jsonencode(entity.Key), count);
+    context.log("%s: %d files", strjoin(string(struct2cell(entity.Key)), " / "), count);
     result = struct("n_files", count, "size_mb", round(total / 1e6, 6));
 end

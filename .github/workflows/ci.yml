@@ -32,6 +32,27 @@ jobs:
       - name: Run the conformance cases
         run: nansen conformance -v
 
+  ui:
+    name: Dashboard in a browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package, Playwright and Chromium
+        run: |
+          pip install -e ".[test]" playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Check the frontend scripts parse
+        run: for f in ui/js/*.js; do node --check "$f"; done
+
+      - name: Run the browser tests
+        run: pytest -v python/tests/test_ui.py python/tests/test_server.py
+
   matlab:
     name: MATLAB tests and conformance (${{ matrix.release }})
     runs-on: ubuntu-latest

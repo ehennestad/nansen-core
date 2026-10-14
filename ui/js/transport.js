@@ -1,0 +1,95 @@
+/* Transports carry protocol messages (docs/reference/protocol.md) to the core and events back.
+   HTTP when served by Python (POST /api, GET /events); uihtml when shown by MATLAB. */
+(function () {
+  "use strict";
+  const N = (window.N = window.N || {});
+
+  class HttpTransport {
+    constructor(base = "") {
+      this.base = base;
+      this.kind = "http";
+      this.listeners = [];
+      this.statusListeners = [];
+      this.source = null;
+    }
+    async send(request) {
+      const response = await fetch(this.base + "/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }
+    listen(listener) {
+      this.listeners.push(listener);
+      if (!this.source) this.open();
+    }
+    onStatus(listener) {
+      this.statusListeners.push(listener);
+    }
+    open() {
+      this.source = new EventSource(this.base + "/events");
+      this.source.onopen = () => this.statusListeners.forEach((l) => l(true));
+      this.source.onerror = () => this.statusListeners.forEach((l) => l(false));
+      this.source.onmessage = (message) => {
+        let event;
+        try { event = JSON.parse(message.data); } catch (e) { return; }
+        this.listeners.forEach((l) => l(event));
+      };
+    }
+  }
+
+  class MatlabTransport {
+    constructor(htmlComponent) {
+      this.kind = "matlab";
+      this.component = htmlComponent;
+      this.pending = new Map();
+      this.listeners = [];
+      htmlComponent.addEventListener("response", (event) => {
+        const response = typeof event.Data === "string" ? JSON.parse(event.Data) : event.Data;
+        const waiting = this.pending.get(response.id);
+        if (waiting) {
+          this.pending.delete(response.id);
+          waiting(response);
+        }
+      });
+      htmlComponent.addEventListener("event", (event) => {
+        const message = typeof event.Data === "string" ? JSON.parse(event.Data) : event.Data;
+        this.listeners.forEach((l) => l(message));
+      });
+    }
+    send(request) {
+      return new Promise((resolve) => {
+        this.pending.set(request.id, resolve);
+        this.component.sendEventToMATLAB("request", JSON.stringify(request));
+      });
+    }
+    listen(listener) {
+      this.listeners.push(listener);
+    }
+    onStatus(listener) {
+      listener(true);
+    }
+  }
+
+  N.HttpTransport = HttpTransport;
+  N.MatlabTransport = MatlabTransport;
+
+  /* Resolve with a transport: MATLAB calls window.setup(htmlComponent) when it shows the page in a
+     uihtml (inside an iframe); a page served by Python is the top window and talks HTTP. */
+  N.connect = function () {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (transport) => {
+        if (!done) {
+          done = true;
+          resolve(transport);
+        }
+      };
+      window.setup = (htmlComponent) => finish(new MatlabTransport(htmlComponent));
+      const embedded = window.parent !== window;
+      setTimeout(() => finish(new HttpTransport("")), embedded ? 4000 : 0);
+    });
+  };
+})();
