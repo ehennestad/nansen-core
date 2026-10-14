@@ -1,0 +1,20 @@
+{
+  "schemaType": "nansen.table",
+  "schemaVersion": "0.1.0",
+  "entityType": "trial",
+  "file": "session.csv",
+  "revision": 0,
+  "key": [
+    "trial"
+  ],
+  "columns": [
+    {
+      "name": "trial",
+      "dataType": "integer"
+    },
+    {
+      "name": "outcome",
+      "dataType": "string"
+    }
+  ]
+}

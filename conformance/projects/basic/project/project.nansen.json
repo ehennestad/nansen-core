@@ -1,0 +1,17 @@
+{
+  "schemaType": "nansen.project",
+  "schemaVersion": "0.1.0",
+  "name": "Pilot",
+  "title": "Pilot study",
+  "entityTypes": [
+    {
+      "name": "subject"
+    },
+    {
+      "name": "session",
+      "fragments": [
+        "notes"
+      ]
+    }
+  ]
+}

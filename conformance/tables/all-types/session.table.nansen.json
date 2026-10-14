@@ -1,0 +1,58 @@
+{
+  "schemaType": "nansen.table",
+  "schemaVersion": "0.1.0",
+  "entityType": "session",
+  "file": "session.csv",
+  "revision": 0,
+  "key": [
+    "subject_id",
+    "session_id"
+  ],
+  "columns": [
+    {
+      "name": "subject_id",
+      "dataType": "string"
+    },
+    {
+      "name": "session_id",
+      "dataType": "string"
+    },
+    {
+      "name": "ignore",
+      "dataType": "boolean",
+      "fragment": "review"
+    },
+    {
+      "name": "n_trials",
+      "dataType": "integer",
+      "fragment": "review"
+    },
+    {
+      "name": "depth",
+      "dataType": "number",
+      "fragment": "review",
+      "unit": "um"
+    },
+    {
+      "name": "session_date",
+      "dataType": "date",
+      "fragment": "review"
+    },
+    {
+      "name": "started_at",
+      "dataType": "datetime",
+      "fragment": "review"
+    },
+    {
+      "name": "notes",
+      "dataType": "string",
+      "fragment": "review"
+    }
+  ],
+  "fragments": [
+    {
+      "id": "review",
+      "version": "1.0.0"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "description": "One column of every data type, missing values in non-key columns, and the canonical number and datetime forms.",
+  "canonical": true,
+  "rows": [
+    {
+      "subject_id": "m110",
+      "session_id": "m110-20250510-001",
+      "ignore": false,
+      "n_trials": 120,
+      "depth": 100,
+      "session_date": "2025-05-10",
+      "started_at": "2025-05-10T10:00:00",
+      "notes": "good"
+    },
+    {
+      "subject_id": "m110",
+      "session_id": "m110-20250511-001",
+      "ignore": true,
+      "n_trials": -3,
+      "depth": 1.5,
+      "session_date": "2025-05-11",
+      "started_at": "2025-05-11T09:30:15.250",
+      "notes": null
+    },
+    {
+      "subject_id": "m111",
+      "session_id": "m111-20250510-001",
+      "ignore": false,
+      "n_trials": null,
+      "depth": 0.001234,
+      "session_date": null,
+      "started_at": null,
+      "notes": "needs review"
+    },
+    {
+      "subject_id": "m111",
+      "session_id": "m111-20250512-002",
+      "ignore": false,
+      "n_trials": 0,
+      "depth": 1e+20,
+      "session_date": "2024-02-29",
+      "started_at": "1999-12-31T23:59:59.001",
+      "notes": "x"
+    },
+    {
+      "subject_id": "m112",
+      "session_id": "m112-20250101-001",
+      "ignore": true,
+      "n_trials": 9007199254740992,
+      "depth": -2.5e-07,
+      "session_date": "2025-01-01",
+      "started_at": "2025-01-01T00:00:00",
+      "notes": "y"
+    }
+  ]
+}

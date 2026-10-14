@@ -1,0 +1,4 @@
+{
+  "description": "The table's notes columns have a different type than the definition.",
+  "error": "fragment-mismatch"
+}

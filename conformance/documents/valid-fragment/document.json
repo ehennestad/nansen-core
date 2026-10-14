@@ -1,0 +1,24 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.qc",
+  "version": "1.0.0",
+  "title": "Quality control",
+  "columns": [
+    {
+      "name": "ignore",
+      "dataType": "boolean",
+      "default": false
+    },
+    {
+      "name": "snr",
+      "dataType": "number",
+      "unit": "dB"
+    },
+    {
+      "name": "reviewer",
+      "dataType": "string",
+      "default": null
+    }
+  ]
+}

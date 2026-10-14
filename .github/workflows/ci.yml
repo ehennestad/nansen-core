@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python:
+    name: Python tests and conformance
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package and test dependencies
+        run: pip install -e ".[test]"
+
+      - name: Check the core keeps no global state
+        run: python tools/check_no_global_state.py
+
+      - name: Run the test suite
+        run: pytest -v
+
+      - name: Run the conformance cases
+        run: nansen conformance -v
+
+  matlab:
+    name: MATLAB tests and conformance (${{ matrix.release }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        release: [R2023a, latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: ${{ matrix.release }}
+
+      - name: Run the MATLAB suite (unit tests and every conformance case)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath("matlab"); runNansenCoreTests();

@@ -1,0 +1,5 @@
+{
+  "description": "A project with two entity types.",
+  "valid": true,
+  "schemaType": "nansen.project"
+}

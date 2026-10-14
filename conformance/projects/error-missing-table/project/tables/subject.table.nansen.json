@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.table",
+  "schemaVersion": "0.1.0",
+  "entityType": "subject",
+  "file": "subject.csv",
+  "revision": 3,
+  "key": [
+    "subject_id"
+  ],
+  "columns": [
+    {
+      "name": "subject_id",
+      "dataType": "string"
+    }
+  ]
+}

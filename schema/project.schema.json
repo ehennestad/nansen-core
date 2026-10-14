@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:project",
+  "title": "NANSEN project",
+  "description": "The project file, project.nansen.json, at the root of a project folder. It names the project and declares its entity types. Paths are relative to the project folder.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "name", "entityTypes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string", "description": "Optional pointer for editors. Readers ignore it." },
+    "schemaType": { "const": "nansen.project" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+      "description": "Short identifier of the project. Unlike the dev branch, it does not name a MATLAB package, so renaming a project does not break code."
+    },
+    "title": { "type": "string", "description": "Display name." },
+    "description": { "type": "string" },
+    "dataset": {
+      "type": "string",
+      "description": "Path to the project's Dataset Structure Model config, relative to the project folder. Reserved for the DSM integration (step 2); readers do not use it yet."
+    },
+    "entityTypes": {
+      "type": "array",
+      "description": "The entity types this project keeps tables for. Each one has a table at tables/<name>.table.nansen.json.",
+      "items": { "$ref": "#/definitions/entityType" }
+    }
+  },
+  "definitions": {
+    "entityType": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "description": "Name of the entity type. Once a DSM config is attached, it must match an entity type there; the DSM entity type defines identity."
+        },
+        "title": { "type": "string" },
+        "fragments": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Fragments (column groups) this entity type carries, by id. A fragment with id 'a.b' is defined in fragments/a.b.fragment.nansen.json.",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" }
+        }
+      }
+    }
+  }
+}

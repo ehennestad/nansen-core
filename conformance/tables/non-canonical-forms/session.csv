@@ -1,0 +1,5 @@
+session_id,value,count
+s1,1.50,"7"
+s2,1E3,""
+s3,2.5e-3,-0
+"s4",0e5,12

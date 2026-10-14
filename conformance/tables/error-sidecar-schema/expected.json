@@ -1,0 +1,4 @@
+{
+  "description": "The sidecar lacks the required revision field.",
+  "error": "schema-validation"
+}

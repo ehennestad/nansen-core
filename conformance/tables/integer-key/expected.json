@@ -1,0 +1,18 @@
+{
+  "description": "An integer key column.",
+  "canonical": true,
+  "rows": [
+    {
+      "trial": 1,
+      "outcome": "hit"
+    },
+    {
+      "trial": 2,
+      "outcome": "miss"
+    },
+    {
+      "trial": 10,
+      "outcome": "hit"
+    }
+  ]
+}

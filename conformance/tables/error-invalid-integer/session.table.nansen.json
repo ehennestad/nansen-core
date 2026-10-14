@@ -1,0 +1,24 @@
+{
+  "schemaType": "nansen.table",
+  "schemaVersion": "0.1.0",
+  "entityType": "session",
+  "file": "session.csv",
+  "revision": 0,
+  "key": [
+    "session_id"
+  ],
+  "columns": [
+    {
+      "name": "session_id",
+      "dataType": "string"
+    },
+    {
+      "name": "value",
+      "dataType": "number"
+    },
+    {
+      "name": "count",
+      "dataType": "integer"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "description": "An older version for which no migration is registered.",
+  "error": "unsupported-version"
+}

@@ -1,0 +1,4 @@
+{
+  "description": "A decimal number in an integer column.",
+  "error": "invalid-value"
+}

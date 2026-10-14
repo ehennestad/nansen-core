@@ -1,0 +1,38 @@
+{
+  "description": "Quoting only where needed, the empty string versus a missing value, untrimmed whitespace and non-ASCII text.",
+  "canonical": true,
+  "rows": [
+    {
+      "session_id": "s1",
+      "notes": "a, b"
+    },
+    {
+      "session_id": "s2",
+      "notes": "she said \"hi\""
+    },
+    {
+      "session_id": "s3",
+      "notes": "line one\nline two"
+    },
+    {
+      "session_id": "s4",
+      "notes": ""
+    },
+    {
+      "session_id": "s5",
+      "notes": null
+    },
+    {
+      "session_id": "s6",
+      "notes": " padded "
+    },
+    {
+      "session_id": "s7",
+      "notes": "comma, \"quote\" and\nnewline"
+    },
+    {
+      "session_id": "s8",
+      "notes": "ÆØÅ æøå 🙂"
+    }
+  ]
+}

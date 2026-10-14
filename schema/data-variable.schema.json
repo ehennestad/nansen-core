@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:dataVariable",
+  "title": "NANSEN data variable (DRAFT)",
+  "description": "DRAFT, consumed from step 3. A named piece of an entity's data: which DSM file pattern holds it and which file adapter reads and writes it. It refers to the DSM membership pattern by name instead of repeating a file name expression.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "name", "entityType", "dataLocation", "filePattern", "fileAdapter"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.dataVariable" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+    "entityType": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+    "dataLocation": { "type": "string", "description": "DSM dataLocation identifier." },
+    "filePattern": { "type": "string", "description": "Name of a DSM filePatterns entry at the entity's level in that location." },
+    "fileAdapter": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][A-Za-z0-9_]*)*$", "description": "Id of a registered file adapter." },
+    "dataType": { "type": "string", "description": "What the adapter returns, for example 'ImageStack' or 'RoiArray'." },
+    "description": { "type": "string" }
+  }
+}

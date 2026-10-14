@@ -1,0 +1,81 @@
+# Document conventions
+
+Every file NANSEN reads or writes is described by a versioned schema in [`schema/`](../schema). This page fixes how a document says what it is, how versions change, and how readers deal with old documents.
+
+## The envelope
+
+Every JSON document starts with two fields:
+
+```json
+{
+  "schemaType": "nansen.project",
+  "schemaVersion": "0.1.0",
+  ...
+}
+```
+
+- `schemaType` names the kind of document. It is a dotted name starting with `nansen.`, and it selects the schema the document is validated against. [`schema/index.json`](../schema/index.json) maps each type to its schema file and current version.
+- `schemaVersion` is the version of that type's schema, as a semantic version string. Each type is versioned on its own: a change to the task schema does not bump the project schema.
+- An optional `$schema` field may point editors at the schema file. Readers ignore it.
+
+CSV tables cannot carry an envelope, so each table has a JSON sidecar (`schemaType: "nansen.table"`) that carries it, together with the column types. See [Table format](reference/table-format.md).
+
+### Why this convention
+
+The NANSEN dev branch uses `_type`/`_version` (and `_schema_version` in `dependencies.nansen.json`). The Dataset Structure Model (DSM) uses `schemaVersion`. We settled on `schemaType` + `schemaVersion` for these reasons:
+
+- It matches DSM, which NANSEN embeds. A project then holds one convention, not two.
+- The `schema` prefix says that the version is the schema's version, not a revision of the document. On the dev branch, `_version` and `VersionedFile.VersionNumber` (a save counter) are easy to confuse. Here the save counter is a separate field, `revision`, and only tables have it.
+- Plain camelCase names survive MATLAB's `jsondecode` unchanged. Leading underscores and `$` do not: `_type` becomes `x_type`.
+- It needs no network and no URL parsing, so it works offline. `$schema` stays optional, for editors only.
+
+DSM configs keep DSM's own envelope (`schemaVersion` only). A project points at its DSM config by path, so the config's type is known from where it is referenced.
+
+## Versioning
+
+- Versions are `MAJOR.MINOR.PATCH`.
+- Before 1.0, any structural change to a schema bumps MINOR and ships with a migration from the previous minor version. A PATCH change never changes what validates; it is for descriptions and clarifications only.
+- The policy after 1.0 is decided at 1.0. The likely rule: MINOR is additive and needs no migration, and MAJOR breaks and needs one.
+
+## Reading old and new documents
+
+A reader compares the document's `schemaVersion` with the current version of its type, using MAJOR.MINOR only:
+
+| Document version | What the reader does |
+|---|---|
+| Same MAJOR.MINOR (any PATCH) | Validates and returns it |
+| Older | Runs the migration chain one minor step at a time, then validates against the current schema. If a step is missing, fails with `unsupported-version` |
+| Newer | Fails with `unsupported-version`; this reader is too old |
+
+Migrations run in memory. A file on disk is only rewritten when the caller saves it, and writers always write the current version. Migrations are plain functions registered per type and step. They are injected, so tests can supply their own.
+
+## A field enters the core when a reader consumes it
+
+This rule is taken from DSM. A field goes into a core schema only when code in both implementations reads it. Schemas that describe parts not built yet are marked **DRAFT** in `schema/index.json`. They are validated, so they can be written by hand, but they may change in any release.
+
+## Two implementations, one behaviour
+
+The MATLAB and Python implementations must behave the same. [`conformance/`](../conformance) makes that checkable: each case is a set of input files plus the expected output, or the expected error code. Both test suites run every case. A change to a schema or to reading rules goes in with a conformance case.
+
+## Error codes
+
+Both implementations raise errors that carry one of these codes. MATLAB raises `nansen.NansenError`, with the code in its `Code` property. Python raises `nansen.NansenError`, with the code in its `code` attribute.
+
+| Code | Meaning |
+|---|---|
+| `file-not-found` | A referenced file does not exist |
+| `malformed-json` | The file is not valid JSON |
+| `unknown-schema-type` | `schemaType` is missing or not in `schema/index.json` |
+| `unsupported-version` | `schemaVersion` is not a semantic version, is newer than the reader, or has no migration path |
+| `schema-validation` | The document does not validate against its schema |
+| `invalid-table-spec` | A table sidecar validates, but is inconsistent (for example, a key column not among its columns) |
+| `malformed-csv` | The CSV breaks the quoting or record rules, or a row has the wrong number of fields |
+| `header-mismatch` | The CSV header differs from the columns in the sidecar |
+| `invalid-value` | A cell cannot be parsed as its column's type |
+| `missing-value` | A required cell is empty (boolean cells are always required) |
+| `missing-key` | A key cell is empty |
+| `duplicate-key` | Two rows share a key |
+| `revision-conflict` | The table changed on disk since it was read |
+| `unknown-entity-type` | The project has no entity type of that name |
+| `unknown-fragment` | An entity type references a fragment that cannot be found |
+| `fragment-mismatch` | A table's columns or fragment versions differ from the fragment definition |

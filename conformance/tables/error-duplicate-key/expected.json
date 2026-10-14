@@ -1,0 +1,4 @@
+{
+  "description": "Two rows with the same composite key.",
+  "error": "duplicate-key"
+}

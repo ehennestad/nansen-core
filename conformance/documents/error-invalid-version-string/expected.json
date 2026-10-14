@@ -1,0 +1,4 @@
+{
+  "description": "schemaVersion must be a semantic version.",
+  "error": "unsupported-version"
+}

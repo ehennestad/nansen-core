@@ -1,0 +1,5 @@
+{
+  "description": "The optional $schema pointer is allowed and ignored.",
+  "valid": true,
+  "schemaType": "nansen.project"
+}

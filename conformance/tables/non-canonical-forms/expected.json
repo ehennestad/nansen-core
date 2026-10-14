@@ -1,0 +1,26 @@
+{
+  "description": "Readers accept every number form the grammar allows, and quoted non-string cells.",
+  "canonical": false,
+  "rows": [
+    {
+      "session_id": "s1",
+      "value": 1.5,
+      "count": 7
+    },
+    {
+      "session_id": "s2",
+      "value": 1000,
+      "count": null
+    },
+    {
+      "session_id": "s3",
+      "value": 0.0025,
+      "count": 0
+    },
+    {
+      "session_id": "s4",
+      "value": 0,
+      "count": 12
+    }
+  ]
+}

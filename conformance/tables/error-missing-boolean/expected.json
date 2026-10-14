@@ -1,0 +1,4 @@
+{
+  "description": "Boolean cells always have a value.",
+  "error": "missing-value"
+}

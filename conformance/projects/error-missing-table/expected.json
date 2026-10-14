@@ -1,0 +1,4 @@
+{
+  "description": "An entity type without a table file.",
+  "error": "file-not-found"
+}

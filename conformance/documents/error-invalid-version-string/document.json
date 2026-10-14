@@ -1,0 +1,18 @@
+{
+  "schemaType": "nansen.project",
+  "schemaVersion": "1",
+  "name": "TwoPhotonPilot",
+  "title": "Two-photon pilot",
+  "entityTypes": [
+    {
+      "name": "subject"
+    },
+    {
+      "name": "session",
+      "fragments": [
+        "notes",
+        "ophys.qc"
+      ]
+    }
+  ]
+}

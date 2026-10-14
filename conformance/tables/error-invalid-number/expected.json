@@ -1,0 +1,4 @@
+{
+  "description": "NaN is not a number literal; missing values are written as empty cells.",
+  "error": "invalid-value"
+}

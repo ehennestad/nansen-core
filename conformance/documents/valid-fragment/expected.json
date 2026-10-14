@@ -1,0 +1,5 @@
+{
+  "description": "A fragment with a boolean, a number and a string column.",
+  "valid": true,
+  "schemaType": "nansen.fragment"
+}

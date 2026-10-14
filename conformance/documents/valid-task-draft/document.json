@@ -1,0 +1,26 @@
+{
+  "schemaType": "nansen.task",
+  "schemaVersion": "0.1.0",
+  "id": "0f8fad5b-d9cb-469f-a165-70867728950e",
+  "method": {
+    "id": "ophys.motion_correct",
+    "version": "1.2.0"
+  },
+  "entities": [
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250510-001"
+      }
+    }
+  ],
+  "options": {
+    "preset": "default",
+    "values": {
+      "maxShift": 20
+    }
+  },
+  "status": "queued",
+  "createdAt": "2026-10-14T12:00:00"
+}

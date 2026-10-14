@@ -1,0 +1,4 @@
+{
+  "description": "Only lowercase true and false are booleans.",
+  "error": "invalid-value"
+}

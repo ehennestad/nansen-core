@@ -1,0 +1,4 @@
+{
+  "description": "An integer beyond 2^53.",
+  "error": "invalid-value"
+}

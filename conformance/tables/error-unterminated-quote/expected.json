@@ -1,0 +1,4 @@
+{
+  "description": "A quoted field that never closes.",
+  "error": "malformed-csv"
+}

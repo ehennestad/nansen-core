@@ -1,0 +1,4 @@
+{
+  "description": "The header's column order differs from the sidecar.",
+  "error": "header-mismatch"
+}

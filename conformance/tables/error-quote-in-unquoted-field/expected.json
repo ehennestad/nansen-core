@@ -1,0 +1,4 @@
+{
+  "description": "A double quote inside an unquoted field.",
+  "error": "malformed-csv"
+}

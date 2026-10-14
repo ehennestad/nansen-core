@@ -1,0 +1,12 @@
+{
+  "description": "Every document type NANSEN reads or writes: its schemaType, schema file, current version and status. Readers load this to dispatch on schemaType. DRAFT schemas are validated but may change in any release.",
+  "schemas": [
+    {"schemaType": "nansen.project", "file": "project.schema.json", "version": "0.1.0", "status": "core"},
+    {"schemaType": "nansen.fragment", "file": "fragment.schema.json", "version": "0.1.0", "status": "core"},
+    {"schemaType": "nansen.table", "file": "table.schema.json", "version": "0.1.0", "status": "core"},
+    {"schemaType": "nansen.dataVariable", "file": "data-variable.schema.json", "version": "0.1.0", "status": "draft"},
+    {"schemaType": "nansen.method", "file": "method.schema.json", "version": "0.1.0", "status": "draft"},
+    {"schemaType": "nansen.options", "file": "options.schema.json", "version": "0.1.0", "status": "draft"},
+    {"schemaType": "nansen.task", "file": "task.schema.json", "version": "0.1.0", "status": "draft"}
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "description": "Key columns must be string or integer.",
+  "error": "invalid-table-spec"
+}

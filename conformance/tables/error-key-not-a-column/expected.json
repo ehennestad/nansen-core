@@ -1,0 +1,4 @@
+{
+  "description": "A key column that is not among the columns.",
+  "error": "invalid-table-spec"
+}

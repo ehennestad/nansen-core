@@ -1,0 +1,4 @@
+{
+  "description": "A boolean fragment column must declare a default.",
+  "error": "schema-validation"
+}

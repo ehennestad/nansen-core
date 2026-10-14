@@ -1,0 +1,11 @@
+session_id,notes
+s1,"a, b"
+s2,"she said ""hi"""
+s3,"line one
+line two"
+s4,""
+s5,
+s6, padded 
+s7,"comma, ""quote"" and
+newline"
+s8,ÆØÅ æøå 🙂

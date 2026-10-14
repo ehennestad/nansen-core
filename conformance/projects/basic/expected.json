@@ -1,0 +1,55 @@
+{
+  "description": "A project with a subject and a session table, where sessions carry the notes fragment.",
+  "name": "Pilot",
+  "title": "Pilot study",
+  "entityTypes": [
+    "subject",
+    "session"
+  ],
+  "tables": {
+    "subject": {
+      "key": [
+        "subject_id"
+      ],
+      "columns": [
+        "subject_id"
+      ],
+      "revision": 3,
+      "rows": [
+        {
+          "subject_id": "m110"
+        },
+        {
+          "subject_id": "m111"
+        }
+      ]
+    },
+    "session": {
+      "key": [
+        "subject_id",
+        "session_id"
+      ],
+      "columns": [
+        "subject_id",
+        "session_id",
+        "ignore",
+        "description"
+      ],
+      "revision": 12,
+      "rows": [
+        {
+          "subject_id": "m110",
+          "session_id": "m110-001",
+          "ignore": false,
+          "description": "first"
+        },
+        {
+          "subject_id": "m111",
+          "session_id": "m111-001",
+          "ignore": true,
+          "description": null
+        }
+      ]
+    }
+  }
+}

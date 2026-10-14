@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:method",
+  "title": "NANSEN entity method (DRAFT)",
+  "description": "DRAFT, consumed from step 4. Declares a method that runs on entities of one type: where its code is, and the JSON Schema of its options. The frontend renders option forms from that schema.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "id", "version", "entityType", "language", "entryPoint"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.method" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][A-Za-z0-9_]*)*$" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "entityType": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+    "language": { "type": "string", "enum": ["matlab", "python"] },
+    "entryPoint": {
+      "type": "string",
+      "description": "MATLAB: a function or class name, e.g. 'ophys.motionCorrect'. Python: 'module.path:function'."
+    },
+    "batchMode": {
+      "type": "string",
+      "enum": ["serial", "batch"],
+      "default": "serial",
+      "description": "serial: called once per entity. batch: called once with all selected entities."
+    },
+    "queueable": { "type": "boolean", "default": true },
+    "options": {
+      "type": "object",
+      "description": "A draft-07 JSON Schema for the method's options object. Defaults in it are the default options."
+    }
+  }
+}

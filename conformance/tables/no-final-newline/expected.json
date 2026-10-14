@@ -1,0 +1,14 @@
+{
+  "description": "Readers accept a file whose last record has no line end.",
+  "canonical": false,
+  "rows": [
+    {
+      "session_id": "s1",
+      "notes": "x"
+    },
+    {
+      "session_id": "s2",
+      "notes": "y"
+    }
+  ]
+}

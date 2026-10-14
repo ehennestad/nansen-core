@@ -1,0 +1,5 @@
+{
+  "description": "A DRAFT task document validates like any other.",
+  "valid": true,
+  "schemaType": "nansen.task"
+}

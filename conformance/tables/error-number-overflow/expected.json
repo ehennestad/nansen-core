@@ -1,0 +1,4 @@
+{
+  "description": "A number literal that overflows to infinity.",
+  "error": "invalid-value"
+}
