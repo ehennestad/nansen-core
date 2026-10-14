@@ -115,7 +115,7 @@ classdef EntityTable < handle
             index = obj.rowIndex(key);
             for name = reshape(string(fieldnames(values)), 1, [])
                 if ismember(name, obj.Key)
-                    error("nansen:EntityTable:KeyChange", "Cannot change key column '%s'", name)
+                    nansen.internal.throwError("read-only-column", "cannot change key column '%s'", name)
                 end
                 column = obj.column(name);
                 obj.Data.(name)(index) = nansen.internal.checkValue(values.(name), column, false);

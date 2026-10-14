@@ -228,7 +228,7 @@ class EntityTable:
         index = self._index[self._normalize_key(key)]
         for name, value in values.items():
             if name in self.spec.key:
-                raise ValueError(f"cannot change key column {name!r}")
+                raise NansenError("read-only-column", f"cannot change key column {name!r}")
             self._rows[index][name] = check_value(value, self.spec.column(name), False)
 
     def remove(self, key: Union[Sequence[Any], Dict[str, Any]]) -> None:

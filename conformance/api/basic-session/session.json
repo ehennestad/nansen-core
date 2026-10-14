@@ -1,0 +1,492 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "app.info",
+        "id": 1
+      },
+      "expect": {
+        "result": {
+          "name": "nansen",
+          "protocolVersion": "0.1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.info",
+        "id": 2
+      },
+      "expect": {
+        "error": "no-project"
+      }
+    },
+    {
+      "request": {
+        "method": "project.open",
+        "params": {
+          "path": "${project}"
+        },
+        "id": 3
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton",
+          "entityTypes": [
+            {
+              "name": "subject",
+              "rows": 2
+            },
+            {
+              "name": "session",
+              "rows": 1
+            }
+          ],
+          "modules": [
+            {
+              "id": "core"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "params": {
+          "listing": "${listing}"
+        },
+        "id": 4
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 3,
+            "session": 4
+          },
+          "unmatched": 3
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "params": {
+          "entityType": "session"
+        },
+        "id": 5
+      },
+      "expect": {
+        "result": {
+          "entityType": "session",
+          "key": [
+            "subject_id",
+            "session_id"
+          ],
+          "columns": [
+            {
+              "name": "subject_id",
+              "source": "key",
+              "editable": false
+            },
+            {
+              "name": "session_id",
+              "source": "key",
+              "editable": false
+            },
+            {
+              "name": "ignore",
+              "dataType": "boolean",
+              "source": "table",
+              "editable": true,
+              "fragment": "notes"
+            },
+            {
+              "name": "description",
+              "dataType": "string",
+              "source": "table",
+              "editable": true
+            },
+            {
+              "name": "session_date",
+              "dataType": "date",
+              "source": "attribute",
+              "editable": false,
+              "title": "Session date"
+            },
+            {
+              "name": "session_time",
+              "dataType": "time",
+              "source": "attribute",
+              "editable": false
+            }
+          ],
+          "rows": [
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              },
+              "inStore": true,
+              "inTable": true,
+              "values": {
+                "description": "good imaging",
+                "session_date": "2025-05-23"
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-002"
+              },
+              "inStore": true,
+              "inTable": false
+            },
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-003"
+              },
+              "inStore": true,
+              "inTable": false
+            },
+            {
+              "key": {
+                "subject_id": "m222",
+                "session_id": "m222-20250524-001"
+              },
+              "inStore": true,
+              "inTable": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "description": "updated",
+            "ignore": true
+          }
+        },
+        "id": 6
+      },
+      "expect": {
+        "result": {
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "description": "updated",
+            "ignore": true
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "session_id": "x"
+          }
+        },
+        "id": 7
+      },
+      "expect": {
+        "error": "read-only-column"
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "ignore": "yes"
+          }
+        },
+        "id": 8
+      },
+      "expect": {
+        "error": "invalid-value"
+      }
+    },
+    {
+      "request": {
+        "method": "project.sync",
+        "params": {
+          "entityType": "session"
+        },
+        "id": 9
+      },
+      "expect": {
+        "result": {
+          "added": {
+            "session": [
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-002"
+              },
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-003"
+              },
+              {
+                "subject_id": "m222",
+                "session_id": "m222-20250524-001"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        },
+        "id": 10
+      },
+      "expect": {
+        "result": {
+          "entityType": "session",
+          "inStore": true,
+          "locations": [
+            {
+              "dataLocationIdentifier": "raw"
+            },
+            {
+              "dataLocationIdentifier": "processed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "nope"
+          }
+        },
+        "id": 11
+      },
+      "expect": {
+        "error": "unknown-entity"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.list",
+        "params": {
+          "entityType": "session"
+        },
+        "id": 12
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "core.file_stats",
+            "batchMode": "serial"
+          },
+          {
+            "id": "core.export_keys",
+            "batchMode": "batch"
+          },
+          {
+            "id": "core.wait",
+            "queueable": true
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "presets.save",
+        "params": {
+          "methodId": "core.wait",
+          "name": "quick",
+          "values": {
+            "seconds": 0,
+            "steps": 1
+          }
+        },
+        "id": 13
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "default"
+          },
+          {
+            "name": "quick",
+            "values": {
+              "seconds": 0,
+              "steps": 1,
+              "message": "waiting",
+              "fail": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "params": {
+          "methodId": "core.wait",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "preset": "quick"
+        },
+        "id": 14
+      },
+      "expect": {
+        "result": {
+          "status": "queued",
+          "method": {
+            "id": "core.wait"
+          },
+          "options": {
+            "preset": "quick",
+            "values": {
+              "seconds": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 15
+      },
+      "expect": {
+        "result": {
+          "status": "completed",
+          "progress": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.list",
+        "id": 16
+      },
+      "expect": {
+        "result": [
+          {
+            "status": "completed"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "params": {
+          "methodId": "core.wait",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "options": {
+            "steps": 0
+          }
+        },
+        "id": 17
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "queue.status",
+        "id": 18
+      },
+      "expect": {
+        "result": {
+          "running": false,
+          "counts": {
+            "completed": 1
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.list",
+        "id": 19
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "notes",
+            "computed": false
+          },
+          {
+            "id": "core.notes"
+          },
+          {
+            "id": "core.file_stats",
+            "computed": true
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "no.such.method",
+        "id": 20
+      },
+      "expect": {
+        "error": "unknown-api-method"
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "params": {},
+        "id": 21
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    }
+  ]
+}

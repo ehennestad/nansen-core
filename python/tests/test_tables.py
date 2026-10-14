@@ -57,7 +57,7 @@ def test_get_update_remove():
     table.remove(("m1", "s1"))
     assert [r["session_id"] for r in table.rows] == ["s2"]
     assert table.has(("m1", "s2")) and not table.has(("m1", "s1"))
-    with pytest.raises(ValueError):
+    with pytest.raises(NansenError):
         table.update(("m1", "s2"), session_id="s3")
 
 

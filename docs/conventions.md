@@ -84,4 +84,5 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `key-mismatch` | A table's key differs from the identity the dataset gives its entity type |
 | `unknown-entity` | No entity of the type has the given key |
 | `unknown-location` | The dataset has no root for the data location in the active environment |
+| `read-only-column` | A key column, or a column of a computed fragment, cannot be edited |
 | `generation-failed` | DSM cannot generate a path for the entity in the location (the DSM code is in the message) |

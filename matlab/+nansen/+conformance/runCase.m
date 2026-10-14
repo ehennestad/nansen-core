@@ -9,6 +9,11 @@ function result = runCase(caseId, root)
     folder = fullfile(root, kind, parts(2));
     expected = nansen.internal.readJson(fullfile(folder, "expected.json"));
     result = struct("Passed", false, "Detail", "");
+    if kind == "api"
+        result.Detail = runApiCase(folder);
+        result.Passed = result.Detail == "";
+        return
+    end
     try
         [actual, written] = evaluate(kind, folder, expected);
     catch err
@@ -77,6 +82,8 @@ function [actual, written] = evaluate(kind, folder, expected)
             actual = evaluateEntities(folder);
         case "data"
             actual = evaluateData(folder);
+        case "api"
+            actual = struct();   % handled by runApiCase
         case "projects"
             project = nansen.Project.open(fullfile(folder, "project"));
             tables = struct();
@@ -109,6 +116,112 @@ function actual = evaluateEntities(folder)
         synced.(name) = project.sync(name, scan);
     end
     actual = struct("entities", entities, "sync", synced);
+end
+
+function detail = runApiCase(folder)
+    % Send each request of session.json to a fresh Api, as JSON, and compare the answers as subsets.
+    detail = "";
+    steps = nansen.internal.asCellOfStructs(nansen.internal.readJson(fullfile(folder, "session.json")).steps);
+    listing = [];
+    if isfile(fullfile(folder, "listing.json"))
+        listing = nansen.internal.readText(fullfile(folder, "listing.json"));
+    end
+    scratch = string(tempname);
+    mkdir(scratch);
+    cleanup = onCleanup(@() rmdir(scratch, "s"));
+    project = fullfile(scratch, "project");
+    if isfolder(fullfile(folder, "project"))
+        copyfile(fullfile(folder, "project"), project);
+    end
+    api = nansen.Api();
+    for number = 1:numel(steps)
+        step = steps{number};
+        text = string(jsonencode(step.request));
+        text = replace(text, """${project}""", string(jsonencode(char(project))));
+        if ~isempty(listing)
+            text = replace(text, """${listing}""", string(listing));
+        end
+        request = jsondecode(char(text));
+        response = jsondecode(char(api.handleJson(text)));
+        if ~isequal(response.id, request.id)
+            detail = sprintf("step %d: response id does not match the request", number);
+            return
+        end
+        if isfield(step.expect, "error")
+            if ~isfield(response, "error") || string(response.error.code) ~= string(step.expect.error)
+                detail = sprintf("step %d %s: expected error %s, got %s", number, request.method, ...
+                    step.expect.error, extractBefore(jsonencode(response) + string(blanks(400)), 401));
+                return
+            end
+            continue
+        end
+        if isfield(response, "error")
+            detail = sprintf("step %d %s: unexpected error %s: %s", number, request.method, ...
+                response.error.code, response.error.message);
+            return
+        end
+        mismatch = subsetMismatch(step.expect.result, response.result, "result");
+        if mismatch ~= ""
+            detail = sprintf("step %d %s: %s", number, request.method, mismatch);
+            return
+        end
+    end
+end
+
+function mismatch = subsetMismatch(expected, actual, where)
+    % Where actual fails to contain expected: objects by the expected keys, arrays element by element.
+    mismatch = "";
+    if isstruct(expected) && isscalar(expected) && ~(isstruct(actual) && ~isscalar(actual)) && ~iscell(actual)
+        if ~(isstruct(actual) && isscalar(actual))
+            mismatch = where + ": expected an object";
+            return
+        end
+        for name = reshape(string(fieldnames(expected)), 1, [])
+            if ~isfield(actual, name)
+                mismatch = where + "." + name + ": missing";
+                return
+            end
+            mismatch = subsetMismatch(expected.(name), actual.(name), where + "." + name);
+            if mismatch ~= ""
+                return
+            end
+        end
+        return
+    end
+    if iscell(expected) || isstruct(expected) || ((isnumeric(expected) || islogical(expected)) && numel(expected) > 1) ...
+            || (isnumeric(expected) && isempty(expected) && (iscell(actual) || isstruct(actual)))
+        expectedItems = asItems(expected);
+        actualItems = asItems(actual);
+        if numel(expectedItems) ~= numel(actualItems)
+            mismatch = sprintf("%s: expected %d items, got %d", where, numel(expectedItems), numel(actualItems));
+            return
+        end
+        for i = 1:numel(expectedItems)
+            mismatch = subsetMismatch(expectedItems{i}, actualItems{i}, sprintf("%s[%d]", where, i - 1));
+            if mismatch ~= ""
+                return
+            end
+        end
+        return
+    end
+    if ischar(expected) || isstring(expected)
+        same = (ischar(actual) || isstring(actual)) && string(expected) == string(actual);
+    else
+        same = isequal(expected, actual);
+    end
+    if ~same
+        mismatch = where + ": expected " + string(jsonencode(expected)) + ", got " + string(jsonencode(actual));
+    end
+end
+
+function items = asItems(value)
+    if iscell(value)
+        items = reshape(value, 1, []);
+    elseif isstruct(value) || isnumeric(value) || islogical(value)
+        items = num2cell(reshape(value, 1, []));
+    else
+        items = {value};
+    end
 end
 
 function actual = evaluateData(folder)

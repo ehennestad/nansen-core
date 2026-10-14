@@ -74,7 +74,7 @@ classdef EntityTableTest < matlab.unittest.TestCase
             testCase.verifyTrue(table.hasRow({"m1", "s2"}));
             testCase.verifyFalse(table.hasRow({"m1", "s1"}));
             testCase.verifyError(@() table.updateRow({"m1", "s2"}, struct("session_id", "s3")), ...
-                "nansen:EntityTable:KeyChange");
+                "nansen:ReadOnlyColumn");
         end
 
         function addChecksValues(testCase)

@@ -17,7 +17,7 @@ from .errors import NansenError
 from .project import Project
 from .tables import EntityTable
 
-KINDS = ("documents", "tables", "projects", "entities", "data")
+KINDS = ("documents", "tables", "projects", "entities", "data", "api")
 
 
 @dataclass
@@ -44,6 +44,9 @@ def run_cases(root: Optional[PathLike] = None) -> List[CaseResult]:
 def run_case(kind: str, case: Path) -> CaseResult:
     with open(case / "expected.json", encoding="utf-8") as f:
         expected = json.load(f)
+    if kind == "api":
+        detail = _run_api_case(case)
+        return CaseResult(kind, case.name, not detail, detail)
     try:
         actual, written = _evaluate(kind, case, expected)
     except NansenError as error:
@@ -124,6 +127,77 @@ def _evaluate_data(case: Path) -> dict:
             result["write"] = {"error": error.code}
         results.append(result)
     return {"results": results}
+
+
+def _run_api_case(case: Path) -> str:
+    """Send each request of session.json to a fresh Api and compare the answers as subsets."""
+    from .api import Api
+
+    with open(case / "session.json", encoding="utf-8") as f:
+        steps = json.load(f)["steps"]
+    listing = None
+    if (case / "listing.json").is_file():
+        with open(case / "listing.json", encoding="utf-8") as f:
+            listing = json.load(f)
+    with tempfile.TemporaryDirectory() as scratch:
+        folder = Path(scratch) / "project"
+        if (case / "project").is_dir():
+            shutil.copytree(case / "project", folder)
+        api = Api(start_queue=False)
+        try:
+            for number, step in enumerate(steps, start=1):
+                request = _substitute(step["request"], {"${project}": str(folder), "${listing}": listing})
+                response = api.handle(request)
+                if response.get("id") != request.get("id"):
+                    return f"step {number}: response id {response.get('id')!r} for request {request.get('id')!r}"
+                expect = step["expect"]
+                if "error" in expect:
+                    if "error" not in response or response["error"]["code"] != expect["error"]:
+                        return f"step {number} {request['method']}: expected error {expect['error']}, got {json.dumps(response)[:400]}"
+                    continue
+                if "error" in response:
+                    return f"step {number} {request['method']}: unexpected error {response['error']}"
+                mismatch = subset_mismatch(expect["result"], response["result"], "result")
+                if mismatch:
+                    return f"step {number} {request['method']}: {mismatch}"
+        finally:
+            api.close()
+    return ""
+
+
+def _substitute(value: Any, replacements: dict) -> Any:
+    if isinstance(value, str) and value in replacements:
+        return replacements[value]
+    if isinstance(value, dict):
+        return {k: _substitute(v, replacements) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_substitute(v, replacements) for v in value]
+    return value
+
+
+def subset_mismatch(expected: Any, actual: Any, where: str) -> str:
+    """Where actual fails to contain expected: objects by the expected keys, arrays element by element."""
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return f"{where}: expected an object, got {json.dumps(actual, default=str)[:200]}"
+        for key, value in expected.items():
+            if key not in actual:
+                return f"{where}.{key}: missing"
+            mismatch = subset_mismatch(value, actual[key], f"{where}.{key}")
+            if mismatch:
+                return mismatch
+        return ""
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return f"{where}: expected {len(expected)} items, got {json.dumps(actual, default=str)[:300]}"
+        for index, (e, a) in enumerate(zip(expected, actual)):
+            mismatch = subset_mismatch(e, a, f"{where}[{index}]")
+            if mismatch:
+                return mismatch
+        return ""
+    if not _equal(expected, actual):
+        return f"{where}: expected {json.dumps(expected)}, got {json.dumps(actual, default=str)}"
+    return ""
 
 
 def _from_json_row(table: EntityTable, row: dict) -> dict:
