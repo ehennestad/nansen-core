@@ -7,6 +7,9 @@ no global state.
 
 from __future__ import annotations
 
+import json
+import os
+import re
 import threading
 import traceback
 from pathlib import Path
@@ -22,7 +25,31 @@ from .project import Project
 from .tasks import TaskQueue
 
 PROTOCOL_VERSION = "0.1"
-Listener = Callable[[dict], None]
+
+
+def copy_dataset(source, target: Path) -> None:
+    """Copy a DSM config into a project, making its relative root paths absolute so they still point there.
+
+    The text is kept as it is except for those paths, so MATLAB (which cannot write JSON back unchanged)
+    does the same edit.
+    """
+    source = Path(source)
+    if not source.is_file():
+        raise NansenError("file-not-found", f"no DSM config {source}")
+    text = source.read_text(encoding="utf-8")
+    try:
+        config = json.loads(text)
+    except ValueError as error:
+        raise NansenError("malformed-json", f"{source}: {error}") from None
+    folder = source.resolve().parent
+    for location in config.get("dataLocations", []):
+        for root in location.get("filesystemSource", {}).get("rootStoragePaths", []):
+            path = root.get("path")
+            if isinstance(path, str) and not os.path.isabs(path) and not re.match(r"^[A-Za-z]:[\\/]", path):
+                absolute = os.path.normpath(os.path.join(folder, path)).replace("\\", "/")
+                pattern = r'("path"\s*:\s*)' + re.escape(json.dumps(path, ensure_ascii=False))
+                text = re.sub(pattern, lambda m: m.group(1) + json.dumps(absolute, ensure_ascii=False), text)
+    target.write_text(text, encoding="utf-8", newline="")
 
 
 class Api:
@@ -154,12 +181,49 @@ class Api:
         return self.project__info({})
 
     def project__create(self, params: dict) -> dict:
-        project = Project.create(params["path"], params["name"], params.get("title"), params.get("dataset"))
-        for module in params.get("modules", []):
+        """A new project; with datasetSource, a copy of that DSM config, and with entityTypes, its entity types."""
+        folder = Path(params["path"])
+        dataset = params.get("dataset")
+        if params.get("datasetSource"):
+            if (folder / "project.nansen.json").exists():
+                raise NansenError("folder-not-empty", f"{folder} already holds a project")
+            folder.mkdir(parents=True, exist_ok=True)
+            copy_dataset(params["datasetSource"], folder / "dataset.dsm.json")
+            dataset = "dataset.dsm.json"
+        project = Project.create(folder, params["name"], params.get("title"), dataset, params.get("description"))
+        modules = list(params.get("modules", []))
+        for module in modules:
             project.add_module(module)
+        if params.get("entityTypes"):
+            fragments = ["core.notes"] if "core" in modules else []
+            for name in project.require_dataset().entity_types:
+                project.add_entity_type(name, fragments=fragments, title=name.replace("_", " ").title() + "s")
         self._set_project(project)
         self.emit("project", {"name": project.name})
         return self.project__info({})
+
+    def demo__create(self, params: dict) -> dict:
+        from .demo import create_demo
+
+        self._set_project(create_demo(params["path"]))
+        self.emit("project", {"name": self.project.name})
+        return self.project__info({})
+
+    def legacy__import(self, params: dict) -> dict:
+        """A project from a NANSEN dev project; Python reads the JSON export that MATLAB writes."""
+        from .legacy import convert_legacy
+
+        source = Path(params["source"])
+        if source.is_dir():
+            raise NansenError("legacy-needs-matlab", "reading a NANSEN dev project folder needs MATLAB: export it "
+                                                     "with nansen.legacy.exportProject, then import the JSON file")
+        if not source.is_file():
+            raise NansenError("file-not-found", f"no file {source}")
+        with open(source, encoding="utf-8") as f:
+            report = convert_legacy(json.load(f), params["path"])
+        self._set_project(Project.open(params["path"]))
+        self.emit("project", {"name": self.project.name})
+        return {"project": self.project__info({}), "warnings": report["warnings"]}
 
     def project__info(self, params: dict) -> dict:
         project = self._require_project()

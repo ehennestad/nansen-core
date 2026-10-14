@@ -160,13 +160,16 @@ def _run_api_case(case: Path) -> str:
     """Send each request of session.json to a fresh Api and compare the answers as subsets."""
     from .api import Api
 
-    with open(case / "session.json", encoding="utf-8") as f:
-        steps = json.load(f)["steps"]
+    session_text = (case / "session.json").read_text(encoding="utf-8")
     listing = None
     if (case / "listing.json").is_file():
         with open(case / "listing.json", encoding="utf-8") as f:
             listing = json.load(f)
     with tempfile.TemporaryDirectory() as scratch:
+        # ${scratch} and ${case} may appear inside any string, in requests and expected results alike
+        for placeholder, path in (("${scratch}", Path(scratch)), ("${case}", case.resolve())):
+            session_text = session_text.replace(placeholder, json.dumps(path.as_posix())[1:-1])
+        steps = json.loads(session_text)["steps"]
         folder = Path(scratch) / "project"
         if (case / "project").is_dir():
             shutil.copytree(case / "project", folder)

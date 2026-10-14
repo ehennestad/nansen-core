@@ -35,3 +35,18 @@ def test_every_error_code_is_documented():
     for path in list((root / "python" / "src").rglob("*.py")) + list((root / "matlab").rglob("*.m")):
         used |= set(re.findall(r"(?:NansenError|throwError)\(\s*\"([a-z-]+)\"", path.read_text()))
     assert used - documented == set()
+
+
+def test_both_apis_offer_the_same_methods_as_the_protocol():
+    import re
+
+    from nansen.api import Api
+
+    python = set(Api().method_names)
+    text = (REPO / "matlab" / "+nansen" / "Api.m").read_text()
+    block = re.search(r"names = \[(.*?)\];", text, re.S).group(1)
+    matlab = set(re.findall(r'"([a-zA-Z]+\.[a-zA-Z]+)"', block))
+    protocol = set()
+    for cell in re.findall(r"^\| (`[^|]+`) \|", (REPO / "docs" / "reference" / "protocol.md").read_text(), re.M):
+        protocol |= set(re.findall(r"`([a-zA-Z]+\.[a-zA-Z]+)`", cell))
+    assert python == matlab == protocol

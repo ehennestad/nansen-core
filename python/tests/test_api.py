@@ -59,3 +59,34 @@ def test_background_queue_reports_task_events(tmp_path):
     detail = Api(project=Project.open(tmp_path), start_queue=False).handle(
         {"id": 2, "method": "tasks.get", "params": {"id": task["id"]}})["result"]
     assert "completed" in detail["logText"]
+
+
+def test_a_copied_dataset_keeps_its_text_and_its_roots(tmp_path):
+    import json
+
+    from nansen.api import copy_dataset
+
+    study = tmp_path / "study"
+    study.mkdir()
+    original = (Path(__file__).resolve().parents[2] / "testdata" / "entities-dataset.dsm.json").read_text()
+    (study / "dataset.dsm.json").write_text(original)
+    target = tmp_path / "copy.dsm.json"
+    copy_dataset(study / "dataset.dsm.json", target)
+    copied = target.read_text()
+    paths = [root["path"] for loc in json.loads(copied)["dataLocations"]
+             for root in loc["filesystemSource"]["rootStoragePaths"]]
+    assert paths == [(study / "data" / "raw").as_posix(), "/nonexistent/lab/raw", (study / "data" / "processed").as_posix()]
+    # only the relative paths changed
+    assert copied.replace((study / "data").as_posix(), "data") == original
+
+
+def test_the_app_creates_and_imports_projects(tmp_path):
+    from nansen.catalog import Catalog
+
+    api = Api(catalog=Catalog(tmp_path / "catalog.json"), start_queue=False)
+    demo = api.handle({"id": 1, "method": "demo.create", "params": {"path": str(tmp_path / "demo")}})["result"]
+    assert demo["name"] == "TwoPhotonDemo"
+    assert [p["path"] for p in api.handle({"id": 2, "method": "catalog.list"})["result"]] == [str(tmp_path / "demo")]
+    error = api.handle({"id": 3, "method": "legacy.import", "params": {"source": str(tmp_path), "path": str(tmp_path / "x")}})
+    assert error["error"]["code"] == "legacy-needs-matlab"
+    api.close()

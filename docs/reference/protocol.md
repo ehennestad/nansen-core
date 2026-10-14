@@ -25,6 +25,7 @@ Error codes are those in [conventions](../conventions.md#error-codes), plus:
 | `unknown-api-method` | No such method |
 | `invalid-params` | A parameter is missing or has the wrong shape |
 | `no-project` | The method needs an open project |
+| `legacy-needs-matlab` | Python was asked to read a NANSEN dev project folder; export it from MATLAB first |
 | `internal-error` | An unexpected failure; the message says what happened |
 
 Events flow from the core to the frontend:
@@ -55,8 +56,10 @@ Events flow from the core to the frontend:
 | `catalog.list` | | Projects in the catalog, most recently opened first |
 | `catalog.remove` | `path` | The remaining projects |
 | `project.open` | `path`, `environment?` | `project.info` |
-| `project.create` | `path`, `name`, `title?`, `dataset?`, `modules?` | `project.info` |
-| `project.info` | | `{name, title, folder, entityTypes[{name, title, fragments, rows, records}], modules, lastScan, dataset{environment, entityTypes, locations, roots}}` |
+| `project.create` | `path`, `name`, `title?`, `description?`, `dataset?` (a config in the folder) or `datasetSource?` (a config to copy in; its relative roots are made absolute), `modules?`, `entityTypes?` (true: one per DSM entity type, with `core.notes` when `core` is listed) | `project.info` |
+| `demo.create` | `path` (an empty or new folder) | `project.info` of the demo project, now open |
+| `legacy.import` | `source` (a NANSEN dev project folder, MATLAB only, or a `nansen.legacyExport` JSON file), `path` | `{project: project.info, warnings}` |
+| `project.info` | | `{name, title, description, folder, entityTypes[{name, title, fragments, rows, records}], modules, lastScan, dataset{environment, entityTypes, locations, roots}}` |
 | `project.scan` | `listing?` (a DSM DirectoryListing, instead of the file system) | `{scannedAt, records{type: count}, roots, unmatched}` |
 | `project.sync` | `entityType?` | `{added{type: [keys]}}` |
 | `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute, editable}], rows[{key, inStore, inTable, values, issues?}]}` |
@@ -71,6 +74,8 @@ Events flow from the core to the frontend:
 | `methods.list` | `entityType?` | Method summaries, including the options schema |
 | `methods.run` | `methodId`, `entityType`, `keys?`, `options?`, `preset?` | `{results}`, run in the foreground |
 | `presets.list` / `presets.save` / `presets.delete` | `methodId`, `name`, `values`, `description?` | The method's presets |
+| `pipelines.list` | `entityType?` | Pipeline documents, each step with its method's title |
+| `pipelines.submit` | `pipelineId`, `entityType`, `keys?`, `language?` | The queued tasks: one chain per entity, each step waiting for the one before |
 | `tasks.submit` | `methodId`, `entityType`, `keys?`, `options?`, `preset?`, `language?` | The queued task |
 | `tasks.list` | `status?` | Tasks in creation order |
 | `tasks.get` | `id` | The task plus `logText` |

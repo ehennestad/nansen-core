@@ -151,7 +151,9 @@ end
 function detail = runApiCase(folder)
     % Send each request of session.json to a fresh Api, as JSON, and compare the answers as subsets.
     detail = "";
-    steps = nansen.internal.asCellOfStructs(nansen.internal.readJson(fullfile(folder, "session.json")).steps);
+    listingOfCase = dir(fullfile(folder, "session.json"));
+    caseFolder = string(listingOfCase(1).folder);
+    sessionText = string(nansen.internal.readText(fullfile(folder, "session.json")));
     listing = [];
     if isfile(fullfile(folder, "listing.json"))
         listing = nansen.internal.readText(fullfile(folder, "listing.json"));
@@ -159,6 +161,10 @@ function detail = runApiCase(folder)
     scratch = string(tempname);
     mkdir(scratch);
     cleanup = onCleanup(@() rmdir(scratch, "s"));
+    % ${scratch} and ${case} may appear inside any string, in requests and expected results alike
+    sessionText = replace(sessionText, "${scratch}", jsonContent(replace(scratch, "\", "/")));
+    sessionText = replace(sessionText, "${case}", jsonContent(replace(caseFolder, "\", "/")));
+    steps = nansen.internal.asCellOfStructs(jsondecode(char(sessionText)).steps);
     project = fullfile(scratch, "project");
     if isfolder(fullfile(folder, "project"))
         copyfile(fullfile(folder, "project"), project);
@@ -242,6 +248,12 @@ function mismatch = subsetMismatch(expected, actual, where)
     if ~same
         mismatch = where + ": expected " + string(jsonencode(expected)) + ", got " + string(jsonencode(actual));
     end
+end
+
+function text = jsonContent(value)
+    % A string as it appears between the quotes of a JSON string
+    text = string(jsonencode(char(value)));
+    text = extractBetween(text, 2, strlength(text) - 1);
 end
 
 function items = asItems(value)

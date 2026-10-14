@@ -512,10 +512,22 @@
         await app.openProject(folder);
       } catch (error) { N.showError(error, "Could not open the project"); }
     };
-    N.fill(content, 
+    const opened = async (info, message) => {
+      app.project = info;
+      await app.reloadProject();
+      app.go("#/overview");
+      if (message) N.toast(message, info.title, "success");
+    };
+    const action = (icon, title, text, onClick) => h("button.action-card", { on: { click: onClick } },
+      h("div.action-icon", N.icon(icon, 20)), h("div", h("div.title", title), h("div.sub", text)));
+    N.fill(content,
       h("div.welcome",
         h("h1", app.project ? "Projects" : "Welcome to NANSEN"),
-        h("p.muted", "Open a project folder. Projects you open are remembered here."),
+        h("p.muted", "Open a project folder, start a new one, or bring one over from NANSEN. Projects you open are remembered here."),
+        h("div.action-cards",
+          action("plus", "New project", "In an empty folder, optionally from an existing dataset config", () => newProjectDialog(app, opened)),
+          action("compass", "Create the demo", "A small two-photon dataset to try things on", () => demoDialog(app, opened)),
+          action("download", "Import from NANSEN", "Convert a project made with the existing NANSEN", () => importDialog(app, opened))),
         h("div.card", { style: { margin: "18px 0" } }, h("div.card-body", { style: { display: "flex", gap: "8px" } }, path,
           h("button.btn.primary", { on: { click: () => open(path.value) } }, N.icon("folder"), "Open"))),
         h("div.card", projects.length ? h("ul.list", projects.map((p) => h("li",
@@ -524,7 +536,96 @@
           h("span.muted", p.lastOpened ? N.fmt.ago(p.lastOpened) : ""),
           h("button.btn.small" + (p.available ? ".primary" : ""), { disabled: !p.available, on: { click: () => open(p.path) } }, "Open"),
           h("button.btn.small.ghost.icon", { title: "Forget", on: { click: async () => { await app.client.request("catalog.remove", { path: p.path }).catch(N.showError); N.views.projects(app, content); } } }, N.icon("x", 14))))) :
-          h("div.empty", N.icon("folder", 40), h("h3", "No projects yet"), h("div", "Create one with `nansen demo <folder>` or nansen.Project.create, then open it.")))));
+          h("div.empty", N.icon("folder", 40), h("h3", "No projects yet"), h("div", "Create one above, or open a project folder.")))));
     path.addEventListener("keydown", (e) => { if (e.key === "Enter") open(path.value); });
   };
+
+  /* A dialog with a form drawn from a schema; submit gets the values without empty text, and may throw. */
+  function formDialog({ title, intro, schema, values, label, required, submit }) {
+    const form = N.schemaForm(schema, values || {});
+    const message = h("div.form-message.hidden");
+    N.dialog({
+      title,
+      content: h("div", { style: { padding: "16px 20px" } }, intro ? h("p.muted", { style: { marginTop: 0 } }, intro) : null, form.el, message),
+      buttons: [
+        { label: "Cancel" },
+        { label, kind: "primary", onClick: async (close) => {
+          const entered = Object.fromEntries(Object.entries(form.getValue()).filter(([, v]) => v !== ""));
+          const missing = (required || []).filter((name) => !entered[name]).map((name) => schema.properties[name].title || name);
+          const problems = missing.length ? missing.map((name) => `${name} is required`) : form.validate();
+          if (problems.length) {
+            message.textContent = problems.join(" · ");
+            message.classList.remove("hidden");
+            return;
+          }
+          try {
+            await submit(entered);
+            close();
+          } catch (error) {
+            message.textContent = error.message || String(error);
+            message.classList.remove("hidden");
+          }
+        } },
+      ],
+    });
+  }
+
+  function newProjectDialog(app, opened) {
+    formDialog({
+      title: "New project",
+      intro: "The folder must be new or empty. With a dataset config, the project's entity types and data locations come from it.",
+      label: "Create",
+      required: ["path", "name"],
+      schema: { type: "object", properties: {
+        path: { type: "string", title: "Folder" },
+        name: { type: "string", title: "Name", description: "A short identifier: a letter, then letters, digits or _", pattern: "^[A-Za-z][A-Za-z0-9_]*$" },
+        title: { type: "string", title: "Title" },
+        description: { type: "string", title: "Description" },
+        datasetSource: { type: "string", title: "Dataset config", description: "An existing dataset.dsm.json to copy in (optional)" },
+        entityTypes: { type: "boolean", default: true, title: "Add the dataset's entity types" },
+        core: { type: "boolean", default: true, title: "Use the core module (notes, file statistics)" },
+      } },
+      submit: async (values) => {
+        const params = { path: values.path, name: values.name, title: values.title, description: values.description,
+          datasetSource: values.datasetSource, modules: values.core ? ["core"] : [], entityTypes: !!values.datasetSource && values.entityTypes };
+        await opened(await app.client.request("project.create", params), "Project created");
+      },
+    });
+  }
+
+  function demoDialog(app, opened) {
+    formDialog({
+      title: "Create the demo",
+      intro: "Writes a small two-photon dataset (raw and partly processed sessions of four mice) and a project over it.",
+      label: "Create",
+      required: ["path"],
+      schema: { type: "object", properties: { path: { type: "string", title: "Folder", description: "A new or empty folder" } } },
+      submit: async (values) => opened(await app.client.request("demo.create", values), "Demo created"),
+    });
+  }
+
+  function importDialog(app, opened) {
+    const python = app.info && app.info.language === "python";
+    formDialog({
+      title: "Import from NANSEN",
+      intro: python
+        ? "Python reads the export that MATLAB writes: run nansen.legacy.exportProject(folder, File=\"export.json\") in MATLAB, then give that file here."
+        : "Give the folder of a project made with the existing NANSEN, or an export of one. The old project is not changed.",
+      label: "Import",
+      required: ["source", "path"],
+      schema: { type: "object", properties: {
+        source: { type: "string", title: python ? "Export file" : "NANSEN project folder or export file" },
+        path: { type: "string", title: "New project folder", description: "A new or empty folder" },
+      } },
+      submit: async (values) => {
+        const result = await app.client.request("legacy.import", values);
+        await opened(result.project, "Project imported");
+        if (result.warnings.length) {
+          N.dialog({ title: "Not carried over", content: h("div", { style: { padding: "16px 20px" } },
+            h("p.muted", { style: { marginTop: 0 } }, "The import left these out:"),
+            h("ul.notes", result.warnings.map((w) => h("li", w)))), buttons: [{ label: "OK", kind: "primary" }] });
+        }
+      },
+    });
+  }
 })();

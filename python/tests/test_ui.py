@@ -168,3 +168,35 @@ def test_dashboard_talks_through_the_matlab_bridge(app, page):
     sent = page.evaluate("window.sent")
     assert {"app.info", "project.info", "fragments.list", "methods.list"} <= set(sent)
     assert frame.locator(".sidebar-foot").inner_text().startswith("Connected")
+
+
+@pytest.fixture
+def empty_app(app, tmp_path):
+    """An app with no project open, on its own server; the browser is shared."""
+    api = Api(catalog=Catalog(tmp_path / "catalog.json"), start_queue=False)
+    server = serve(api)
+    yield {"server": server, "api": api, "folder": tmp_path}
+    server.shutdown()
+    api.close()
+
+
+def test_create_the_demo_and_a_project_from_the_projects_page(empty_app, page):
+    page.goto(empty_app["server"].url)
+    page.wait_for_selector(".welcome h1:has-text('Welcome to NANSEN')")
+    page.click(".action-card:has-text('Create the demo')")
+    page.fill(".dialog .field:has-text('Folder') input", str(empty_app["folder"] / "demo"))
+    page.click(".dialog-foot button:has-text('Create')")
+    page.wait_for_selector(".stat")
+    assert page.locator(".stat .value").all_inner_texts() == ["4", "14"]
+
+    page.goto(empty_app["server"].url + "#/projects")
+    page.click(".action-card:has-text('New project')")
+    page.click(".dialog-foot button:has-text('Create')")  # nothing filled in: refused
+    assert page.locator(".dialog .form-message").inner_text() == "Folder is required · Name is required"
+    page.fill(".dialog .field:has-text('Folder') input", str(empty_app["folder"] / "study"))
+    page.fill(".dialog .field:has-text('Name') input", "Study")
+    page.fill(".dialog .field:has-text('Dataset config') input", str(empty_app["folder"] / "demo" / "dataset.dsm.json"))
+    page.click(".dialog-foot button:has-text('Create')")
+    page.wait_for_selector(".project-switch:has-text('Study')")
+    assert page.locator(".nav a:has-text('Sessions') .count").inner_text() == "0"  # the demo's entity types, no rows yet
+    assert [p["name"] for p in empty_app["api"].handle({"id": 1, "method": "catalog.list"})["result"]] == ["Study", "TwoPhotonDemo"]

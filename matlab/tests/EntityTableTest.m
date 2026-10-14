@@ -22,6 +22,31 @@ classdef EntityTableTest < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function largeTableRoundTrip(testCase)
+            % 20,000 rows read and written back; the times are logged, so CI shows how the reader scales.
+            template = EntityTableTest.makeTable();
+            table = nansen.EntityTable("session", template.Key, template.Columns, File="session.csv");
+            sidecar = fullfile(testCase.Folder, "session.table.nansen.json");
+            table.write(sidecar);
+            n = 20000;
+            i = (1:n)';
+            flags = ["false"; "true"];
+            lines = compose("m%03d,s%06d,", mod(i, 100), i) + flags(1 + (mod(i, 7) == 0)) + ...
+                compose(",%d,2025-01-01T09:30:00.000", i);
+            header = nansen.internal.readText(fullfile(testCase.Folder, "session.csv"));
+            nansen.internal.writeText(fullfile(testCase.Folder, "session.csv"), string(header) + strjoin(lines, newline) + newline);
+            started = tic;
+            read = nansen.EntityTable.read(sidecar);
+            readSeconds = toc(started);
+            testCase.verifyEqual(read.numRows(), n);
+            rows = read.toJsonRows();
+            testCase.verifyEqual(string(rows{n}.session_id), "s020000");
+            started = tic;
+            read.write();
+            writeSeconds = toc(started);
+            testCase.log(1, sprintf("%d rows: read %.2f s, written %.2f s", n, readSeconds, writeSeconds));
+        end
+
         function roundTripThroughFiles(testCase)
             table = EntityTableTest.makeTable();
             table.addRow(struct("subject_id", "m1", "session_id", "s1", "ignore", false, "depth", 12.5, ...

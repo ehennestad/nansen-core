@@ -1,0 +1,4 @@
+{
+  "description": "Creating projects from the app: the demo, a project from an existing DSM config (copied, with its relative roots made absolute, and an entity type per DSM entity type), an empty project, and an import from a NANSEN dev export; and the errors for a folder already in use and missing files. ${scratch} is a fresh folder and ${case} this case's folder.",
+  "steps": 9
+}
