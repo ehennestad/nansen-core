@@ -141,12 +141,14 @@ HOST_PAGE = """<!doctype html><html><body style="margin:0">
 <script>
   // Plays MATLAB's part: uihtml shows the page in an iframe and calls setup(htmlComponent) once it has loaded.
   window.sent = [];
+  window.pageLog = [];
   const frame = document.querySelector("iframe");
   frame.addEventListener("load", () => {
     const listeners = {};
     const component = {
       addEventListener: (name, listener) => (listeners[name] = listeners[name] || []).push(listener),
       sendEventToMATLAB: async (name, data) => {
+        if (name === "page") { window.pageLog.push(data); return; }
         window.sent.push(JSON.parse(data).method);
         const response = await fetch("api", { method: "POST", headers: { "Content-Type": "application/json" }, body: data });
         const text = await response.text();
@@ -168,6 +170,8 @@ def test_dashboard_talks_through_the_matlab_bridge(app, page):
     sent = page.evaluate("window.sent")
     assert {"app.info", "project.info", "fragments.list", "methods.list"} <= set(sent)
     assert frame.locator(".sidebar-foot").inner_text().startswith("Connected")
+    log = page.evaluate("window.pageLog")
+    assert len(log) == 1 and log[0].startswith("hello: ")  # and no errors
 
 
 @pytest.fixture

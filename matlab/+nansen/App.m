@@ -13,6 +13,8 @@ classdef App < handle
         Api
         % Methods of the last requests the page sent, oldest first (at most 200): for tests and diagnosis
         Requests (1,:) string = string.empty(1, 0)
+        % What the page reported about itself: "hello: <browser>" when it connects, and its errors
+        PageLog (1,:) string = string.empty(1, 0)
     end
 
     properties (Access = private)
@@ -70,6 +72,14 @@ classdef App < handle
 
     methods (Access = private)
         function onHtmlEvent(obj, event)
+            if string(event.HTMLEventName) == "page"
+                line = string(event.HTMLEventData);
+                obj.PageLog = [obj.PageLog(max(1, end - 48):end), line];
+                if ~startsWith(line, "hello:")
+                    fprintf(2, "NANSEN app page: %s\n", line);
+                end
+                return
+            end
             if string(event.HTMLEventName) ~= "request"
                 return
             end

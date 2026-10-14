@@ -65,7 +65,9 @@ classdef ApiTest < matlab.unittest.TestCase
                 pause(0.25)
             end
             testCase.verifyTrue(all(ismember(expected, app.Requests)), ...
-                "requests from the page: " + strjoin(app.Requests, ", "));
+                "requests from the page: " + strjoin(app.Requests, ", ") + newline + ...
+                "the page reported: " + strjoin(app.PageLog, newline));
+            testCase.verifyFalse(any(startsWith(app.PageLog, ["error:", "unhandled:"])), strjoin(app.PageLog, newline));
         end
     end
 end

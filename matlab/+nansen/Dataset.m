@@ -113,7 +113,9 @@ classdef Dataset < handle
                     end
                     path = string(entry.path);
                     if ~nansen.internal.isAbsolutePath(path)
-                        path = string(fullfile(obj.Folder, path));
+                        % Relative to the config's folder, with "." and ".." resolved: dir() reports
+                        % folders without them, so a walk could not tell its entries are under this root.
+                        path = replace(nansen.internal.normalizePath(fullfile(obj.Folder, path)), "/", filesep);
                     end
                     roots(end + 1) = struct("DataLocation", location, "RootStoragePath", string(entry.identifier), ...
                         "Path", path, "Environment", environment, ...

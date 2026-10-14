@@ -81,8 +81,18 @@
   // Defined as soon as this script runs: MATLAB may call setup before the app starts, and the call is kept.
   let matlabComponent = null;
   let onSetup = null;
+  const earlyProblems = [];
+  const report = (text) => {
+    if (matlabComponent) matlabComponent.sendEventToMATLAB("page", text);
+    else earlyProblems.push(text);
+  };
+  // Errors on the page reach MATLAB (nansen.App shows them), where there is no developer console.
+  window.addEventListener("error", (event) => report(`error: ${event.message} (${event.filename || ""}:${event.lineno || ""})`));
+  window.addEventListener("unhandledrejection", (event) => report(`unhandled: ${event.reason && event.reason.message || event.reason}`));
   window.setup = (htmlComponent) => {
     matlabComponent = htmlComponent;
+    report(`hello: ${navigator.userAgent}`);
+    earlyProblems.splice(0).forEach(report);
     if (onSetup) onSetup(htmlComponent);
   };
 

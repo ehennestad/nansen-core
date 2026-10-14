@@ -130,8 +130,8 @@ class Dataset:
                 if self.environment and environment and environment != self.environment:
                     continue
                 path = Path(entry["path"])
-                if not path.is_absolute():
-                    path = self.folder / path
+                if not path.is_absolute():  # relative to the config's folder, "." and ".." resolved
+                    path = Path(os.path.normpath(self.folder / path))
                 roots.append(RootInfo(location, entry["identifier"], path, environment,
                                       entry.get("priority", 0), path.is_dir()))
         return roots
