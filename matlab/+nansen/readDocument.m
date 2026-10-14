@@ -13,5 +13,5 @@ function doc = readDocument(path, options)
         options.Migrations struct = nansen.defaultMigrations()
     end
     doc = nansen.checkDocument(nansen.internal.readJson(path), ...
-        ExpectedType=options.ExpectedType, Migrations=options.Migrations, Source=path);
+        ExpectedType=options.ExpectedType, Migrations=options.Migrations, Source=path, Decoded=true);
 end

@@ -31,16 +31,29 @@ classdef EntitiesTest < matlab.unittest.TestCase
 
     methods (Static)
         function logProfile(testCase, label)
-            % The functions that took longest in the last profile, for finding slow spots from CI logs
+            % Where the time went in the last profile: functions by their own time (without callees), and
+            % nansen and dsm functions by total time, for finding slow spots from CI logs
             info = profile("info");
             profile("clear");
             entries = info.FunctionTable;
             if isempty(entries)
                 return
             end
-            [~, order] = sort([entries.TotalTime], "descend");
-            lines = strings(0, 1);
-            for k = order(1:min(15, numel(order)))
+            self = zeros(1, numel(entries));
+            for k = 1:numel(entries)
+                children = entries(k).Children;
+                self(k) = entries(k).TotalTime - sum([children.TotalTime]);
+            end
+            [~, bySelf] = sort(self, "descend");
+            lines = "by own time:";
+            for k = bySelf(1:min(20, numel(bySelf)))
+                lines(end + 1) = sprintf("%8.2f s %8d calls  %s", self(k), entries(k).NumCalls, entries(k).FunctionName); %#ok<AGROW>
+            end
+            ours = find(startsWith(string({entries.FunctionName}), ["nansen.", "dsm.", "Project>", "Dataset>", ...
+                "Scan>", "EntityTable>", "Api>", "Entity>", "Config>", "WalkResult>", "Listing>"]));
+            [~, order] = sort([entries(ours).TotalTime], "descend");
+            lines(end + 1) = "nansen and dsm by total time:";
+            for k = ours(order(1:min(20, numel(order))))
                 lines(end + 1) = sprintf("%8.2f s %8d calls  %s", entries(k).TotalTime, entries(k).NumCalls, entries(k).FunctionName); %#ok<AGROW>
             end
             testCase.log(1, "profile of " + label + newline + strjoin(lines, newline));
