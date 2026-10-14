@@ -16,7 +16,7 @@ classdef EntityTable < handle
     properties (SetAccess = private)
         EntityType (1,1) string
         Key (1,:) string
-        Columns (1,:) nansen.Column
+        Columns (1,:) nansen.Column = nansen.Column.empty(1, 0)
         FragmentIds (1,:) string
         FragmentVersions (1,:) string
         File (1,1) string

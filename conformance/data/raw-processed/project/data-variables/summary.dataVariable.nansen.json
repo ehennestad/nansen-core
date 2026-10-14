@@ -1,0 +1,10 @@
+{
+  "schemaType": "nansen.dataVariable",
+  "schemaVersion": "0.1.0",
+  "name": "summary",
+  "entityType": "session",
+  "dataLocation": "processed",
+  "subfolder": "qc",
+  "fileName": "summary.json",
+  "fileAdapter": "json"
+}

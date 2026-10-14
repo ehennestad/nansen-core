@@ -1,0 +1,10 @@
+{
+  "schemaType": "nansen.dataVariable",
+  "schemaVersion": "0.1.0",
+  "name": "mislabelled",
+  "entityType": "session",
+  "dataLocation": "processed",
+  "filePattern": "motion_corrected",
+  "fileName": "{session_id}.tif",
+  "fileAdapter": "text"
+}

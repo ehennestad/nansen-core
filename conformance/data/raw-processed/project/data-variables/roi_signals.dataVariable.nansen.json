@@ -1,0 +1,10 @@
+{
+  "schemaType": "nansen.dataVariable",
+  "schemaVersion": "0.1.0",
+  "name": "roi_signals",
+  "entityType": "session",
+  "dataLocation": "processed",
+  "filePattern": "roi_signals",
+  "fileName": "{session_id}_roi_signals_all.mat",
+  "fileAdapter": "mat"
+}

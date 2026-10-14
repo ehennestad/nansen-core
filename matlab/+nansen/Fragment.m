@@ -7,7 +7,7 @@ classdef Fragment
     properties (SetAccess = private)
         Id (1,1) string
         Version (1,1) string
-        Columns (1,:) nansen.Column
+        Columns (1,:) nansen.Column = nansen.Column.empty(1, 0)
         % Default value of each column that declares one, by column name
         Defaults (1,1) struct = struct()
         Document struct

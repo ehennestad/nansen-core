@@ -12,6 +12,8 @@ classdef Entity
         Row = []
         % Issue structs (code, message): the record's issues plus incomplete-key
         Issues (1,:) cell = {}
+        % The nansen.Project the entity came from, so it can read and write its data
+        Project = []
     end
 
     methods
@@ -31,6 +33,22 @@ classdef Entity
                 obj.Issues = nansen.internal.asCellOfStructs(nansen.internal.getField(record, "issues", []));
             end
             obj.Issues = [obj.Issues, issues];
+        end
+
+        function obj = withProject(obj, project)
+            obj.Project = project;
+        end
+
+        function data = load(obj, name)
+            data = obj.project().load(obj, name);
+        end
+
+        function path = save(obj, name, data)
+            path = obj.project().save(obj, name, data);
+        end
+
+        function paths = dataPaths(obj, name)
+            paths = obj.project().dataPaths(obj, name);
         end
 
         function tf = inStore(obj)
@@ -100,6 +118,16 @@ classdef Entity
             end
             values = obj.values();
             value = nansen.internal.getField(values, name, default);
+        end
+    end
+
+    methods (Access = private)
+        function project = project(obj)
+            if isempty(obj.Project)
+                error("nansen:Entity:NoProject", ...
+                    "This entity was not obtained from a project, so it cannot read or write data")
+            end
+            project = obj.Project;
         end
     end
 end

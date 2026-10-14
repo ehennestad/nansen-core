@@ -75,6 +75,8 @@ function [actual, written] = evaluate(kind, folder, expected)
             end
         case "entities"
             actual = evaluateEntities(folder);
+        case "data"
+            actual = evaluateData(folder);
         case "projects"
             project = nansen.Project.open(fullfile(folder, "project"));
             tables = struct();
@@ -107,6 +109,39 @@ function actual = evaluateEntities(folder)
         synced.(name) = project.sync(name, scan);
     end
     actual = struct("entities", entities, "sync", synced);
+end
+
+function actual = evaluateData(folder)
+    project = nansen.Project.open(fullfile(folder, "project"));
+    scan = project.scan(dsm.loadListing(fullfile(folder, "listing.json")), Save=false);
+    requests = nansen.internal.asCellOfStructs(nansen.internal.readJson(fullfile(folder, "requests.json")).requests);
+    results = cell(1, numel(requests));
+    for i = 1:numel(requests)
+        request = requests{i};
+        entity = project.entity(request.entityType, request.key, scan);
+        result = struct();
+        try
+            targets = project.readTargets(entity, request.variable);
+            result.read = arrayfun(@(r) cellstr(targets(r, :)), 1:size(targets, 1), UniformOutput=false);
+        catch err
+            result.read = struct("error", char(errorCode(err)));
+        end
+        try
+            [dataLocation, relative] = project.writeTarget(entity, request.variable);
+            result.write = cellstr([dataLocation, relative]);
+        catch err
+            result.write = struct("error", char(errorCode(err)));
+        end
+        results{i} = result;
+    end
+    actual = struct("results", {results});
+end
+
+function code = errorCode(err)
+    if ~isa(err, "nansen.NansenError")
+        rethrow(err)
+    end
+    code = err.Code;
 end
 
 function value = canonical(value)

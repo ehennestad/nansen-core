@@ -4,7 +4,7 @@ function cases = listCases(root)
         root (1,1) string = nansen.conformance.casesDirectory()
     end
     cases = strings(1, 0);
-    for kind = ["documents", "tables", "projects", "entities"]
+    for kind = ["documents", "tables", "projects", "entities", "data"]
         listing = dir(fullfile(root, kind));
         names = sort(string({listing([listing.isdir] & ~startsWith({listing.name}, ".")).name}));
         cases = [cases, kind + "/" + names]; %#ok<AGROW>

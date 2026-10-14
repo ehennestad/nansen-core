@@ -15,9 +15,12 @@ classdef Column
 
     methods
         function obj = Column(name, dataType, options)
+            % name and dataType are required: with defaults, MATLAB would
+            % take a column named like an option ("description", "unit")
+            % for the start of the name-value pairs.
             arguments
-                name (1,1) string = ""
-                dataType (1,1) string = "string"
+                name (1,1) string
+                dataType (1,1) string
                 options.Fragment (1,1) string = ""
                 options.Unit (1,1) string = ""
                 options.Description (1,1) string = ""

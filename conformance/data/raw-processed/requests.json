@@ -1,0 +1,75 @@
+{
+  "requests": [
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-001"
+      },
+      "variable": "movie"
+    },
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-001"
+      },
+      "variable": "motion_corrected"
+    },
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-002"
+      },
+      "variable": "motion_corrected"
+    },
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-001"
+      },
+      "variable": "roi_signals"
+    },
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-001"
+      },
+      "variable": "summary"
+    },
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-002"
+      },
+      "variable": "summary"
+    },
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-001"
+      },
+      "variable": "mislabelled"
+    },
+    {
+      "entityType": "subject",
+      "key": {
+        "subject_id": "m222"
+      },
+      "variable": "subject_notes"
+    },
+    {
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-001"
+      },
+      "variable": "nonexistent"
+    }
+  ]
+}

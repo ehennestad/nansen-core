@@ -14,6 +14,7 @@ classdef Project < handle
 
     properties (Access = private)
         DatasetCache = []
+        AdapterCache = []
     end
 
     properties (Dependent)
@@ -134,7 +135,7 @@ classdef Project < handle
             end
             document = obj.Document;
             document.entityTypes{end + 1} = entry;
-            obj.save(document)
+            obj.writeDocument(document)
             table.write(obj.tablePath(name))
         end
 
@@ -216,6 +217,7 @@ classdef Project < handle
                 recordKey = @(record) dataset.recordKey(record);
             end
             entities = nansen.internal.joinEntities(entityType, table.Key, records, table, recordKey);
+            entities = cellfun(@(e) e.withProject(obj), entities, UniformOutput=false);
         end
 
         function entity = entity(obj, entityType, key, scan)
@@ -262,6 +264,205 @@ classdef Project < handle
             end
         end
 
+        % -- data variables and file adapters ------------------------------------------
+
+        function registry = adapters(obj)
+            %adapters Built-in file adapters plus those declared in file-adapters/
+            if isempty(obj.AdapterCache)
+                registry = nansen.AdapterRegistry();
+                folder = fullfile(obj.Folder, "file-adapters");
+                if isfolder(folder)
+                    listing = dir(fullfile(folder, "*.fileAdapter.nansen.json"));
+                    for name = sort(string({listing.name}))
+                        registry.declare(nansen.readDocument(fullfile(folder, name), ...
+                            ExpectedType="nansen.fileAdapter"), folder);
+                    end
+                end
+                obj.AdapterCache = registry;
+            end
+            registry = obj.AdapterCache;
+        end
+
+        function path = dataVariablePath(obj, name)
+            path = string(fullfile(obj.Folder, "data-variables", name + ".dataVariable.nansen.json"));
+        end
+
+        function variables = dataVariables(obj, entityType)
+            %dataVariables The project's data variables, optionally of one entity type: a row of nansen.DataVariable
+            arguments
+                obj
+                entityType (1,1) string = ""
+            end
+            variables = nansen.DataVariable.empty(1, 0);
+            folder = fullfile(obj.Folder, "data-variables");
+            if ~isfolder(folder)
+                return
+            end
+            listing = dir(fullfile(folder, "*.dataVariable.nansen.json"));
+            for name = sort(string({listing.name}))
+                variable = nansen.DataVariable(nansen.readDocument(fullfile(folder, name), ExpectedType="nansen.dataVariable"));
+                if entityType == "" || variable.EntityType == entityType
+                    variables(end + 1) = variable; %#ok<AGROW>
+                end
+            end
+        end
+
+        function variable = dataVariable(obj, name)
+            path = obj.dataVariablePath(name);
+            if ~isfile(path)
+                nansen.internal.throwError("unknown-data-variable", "no data variable '%s'", name)
+            end
+            variable = nansen.DataVariable(nansen.readDocument(path, ExpectedType="nansen.dataVariable"));
+        end
+
+        function variable = addDataVariable(obj, document)
+            %addDataVariable Save a data variable; its entity type, location, file pattern and adapter must exist
+            document = nansen.checkDocument(document, ExpectedType="nansen.dataVariable");
+            variable = nansen.DataVariable(document);
+            obj.entityType(variable.EntityType);
+            if ~obj.adapters().has(variable.FileAdapter)
+                nansen.internal.throwError("unknown-file-adapter", "no file adapter '%s'", variable.FileAdapter)
+            end
+            dataset = obj.requireDataset();
+            if ~ismember(variable.DataLocation, dataset.Config.locationIds())
+                nansen.internal.throwError("unknown-location", "the dataset has no data location '%s'", variable.DataLocation)
+            end
+            patterns = obj.levelPatterns(variable);
+            if variable.FilePattern ~= "" && ~isKey(patterns, char(variable.FilePattern))
+                nansen.internal.throwError("unknown-file-pattern", "no file pattern '%s' at that level", variable.FilePattern)
+            end
+            folder = fullfile(obj.Folder, "data-variables");
+            if ~isfolder(folder)
+                mkdir(folder);
+            end
+            nansen.internal.writeJson(obj.dataVariablePath(variable.Name), document)
+        end
+
+        function patterns = levelPatterns(obj, variable)
+            %levelPatterns File pattern names to patterns at the variable's entity level in its location
+            patterns = containers.Map("KeyType", "char", "ValueType", "char");
+            config = obj.requireDataset().Config;
+            if ~ismember(variable.DataLocation, config.locationIds())
+                return
+            end
+            index = config.entityLevelIndex(variable.DataLocation, variable.EntityType);
+            if isempty(index)
+                return
+            end
+            levels = config.layout(variable.DataLocation);
+            for item = nansen.internal.asCellOfStructs(nansen.internal.getField(levels{index}, "filePatterns", []))
+                if isfield(item{1}, "name")
+                    patterns(char(item{1}.name)) = char(item{1}.pattern);
+                end
+            end
+        end
+
+        function targets = readTargets(obj, entity, name)
+            %readTargets [dataLocation, relative path] of each file that holds the variable for the entity (N-by-2 string)
+            variable = obj.dataVariable(name);
+            targets = strings(0, 2);
+            if variable.FilePattern ~= ""
+                if ~isKey(obj.levelPatterns(variable), char(variable.FilePattern))
+                    nansen.internal.throwError("unknown-file-pattern", "no file pattern '%s' at the %s level of '%s'", ...
+                        variable.FilePattern, variable.EntityType, variable.DataLocation)
+                end
+                for path = entity.files(variable.DataLocation, variable.FilePattern)
+                    targets(end + 1, :) = [variable.DataLocation, path]; %#ok<AGROW>
+                end
+                return
+            end
+            location = entity.location(variable.DataLocation);
+            if isempty(location) || string(nansen.internal.getField(location, "fileSystemType", "folder")) ~= "folder"
+                return
+            end
+            relative = variable.relativeFile(entity.values());
+            for folder = reshape(string(nansen.internal.asCellstr(location.paths)), 1, [])
+                targets(end + 1, :) = [variable.DataLocation, folder + relative]; %#ok<AGROW>
+            end
+        end
+
+        function [dataLocation, relative] = writeTarget(obj, entity, name)
+            %writeTarget Where the variable is written: in the entity's folder, generated by DSM if it has none yet
+            variable = obj.dataVariable(name);
+            dataset = obj.requireDataset();
+            values = entity.values();
+            location = entity.location(variable.DataLocation);
+            if ~isempty(location) && string(nansen.internal.getField(location, "fileSystemType", "folder")) == "folder" ...
+                    && ~isempty(location.paths)
+                paths = sort(string(nansen.internal.asCellstr(location.paths)));
+                folder = paths(1);
+            else
+                folder = dataset.generatePath(variable.DataLocation, entity.EntityType, values);
+            end
+            if variable.FilePattern ~= ""
+                patterns = obj.levelPatterns(variable);
+                regex = nansen.internal.patternRegex(patterns(char(variable.FilePattern)), values);
+                file = variable.relativeFile(values);
+                parts = split(file, "/");
+                if isempty(regexp(char(parts(end)), regex, "once"))
+                    nansen.internal.throwError("file-name-mismatch", "data variable '%s': '%s' does not match file pattern '%s'", ...
+                        variable.Name, parts(end), patterns(char(variable.FilePattern)))
+                end
+            end
+            dataLocation = variable.DataLocation;
+            relative = folder + variable.relativeFile(values);
+        end
+
+        function paths = dataPaths(obj, entity, name)
+            %dataPaths Absolute paths of the files that hold the variable for the entity (they may not exist)
+            dataset = obj.requireDataset();
+            targets = obj.readTargets(entity, name);
+            paths = strings(1, size(targets, 1));
+            for i = 1:size(targets, 1)
+                paths(i) = dataset.absolute(targets(i, 1), targets(i, 2));
+            end
+        end
+
+        function path = writePath(obj, entity, name)
+            [dataLocation, relative] = obj.writeTarget(entity, name);
+            path = obj.requireDataset().absolute(dataLocation, relative);
+        end
+
+        function data = load(obj, entity, name)
+            %load Read the variable for the entity with its file adapter (the first file when several match)
+            variable = obj.dataVariable(name);
+            paths = obj.dataPaths(entity, name);
+            paths = paths(arrayfun(@isfile, paths));
+            if isempty(paths)
+                nansen.internal.throwError("data-not-found", "%s has no '%s'", entity.EntityType, name)
+            end
+            data = obj.adapters().get(variable.FileAdapter).read(paths(1));
+        end
+
+        function path = save(obj, entity, name, data)
+            %save Write the variable for the entity, creating folders as needed; returns the path written
+            variable = obj.dataVariable(name);
+            path = obj.writePath(entity, name);
+            folder = fileparts(path);
+            if ~isfolder(folder)
+                mkdir(folder);
+            end
+            obj.adapters().get(variable.FileAdapter).write(path, data);
+        end
+
+        function status = dataStatus(obj, entity)
+            %dataStatus Each data variable of the entity's type: whether a file exists, and where
+            status = {};
+            for variable = obj.dataVariables(entity.EntityType)
+                try
+                    paths = obj.dataPaths(entity, variable.Name);
+                catch err
+                    if ~isa(err, "nansen.NansenError")
+                        rethrow(err)
+                    end
+                    paths = strings(1, 0);
+                end
+                files = paths(arrayfun(@isfile, paths));
+                status{end + 1} = struct("name", char(variable.Name), "dataLocation", char(variable.DataLocation), ...
+                    "fileAdapter", char(variable.FileAdapter), "files", {cellstr(files)}); %#ok<AGROW>
+            end
+        end
+
         function fragment = addFragment(obj, document)
             %addFragment Save a project-defined fragment, given as a struct
             arguments
@@ -275,7 +476,7 @@ classdef Project < handle
     end
 
     methods (Access = private)
-        function save(obj, document)
+        function writeDocument(obj, document)
             document = nansen.checkDocument(document, ExpectedType="nansen.project");
             nansen.internal.writeJson(fullfile(obj.Folder, nansen.Project.ProjectFile), document)
             document.entityTypes = nansen.internal.asCellOfStructs(document.entityTypes);
@@ -314,7 +515,7 @@ classdef Project < handle
                 end
             end
             obj = nansen.Project(folder, document);
-            obj.save(obj.Document)
+            obj.writeDocument(obj.Document)
         end
 
         function obj = open(folder, options)

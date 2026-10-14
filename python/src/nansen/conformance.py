@@ -17,7 +17,7 @@ from .errors import NansenError
 from .project import Project
 from .tables import EntityTable
 
-KINDS = ("documents", "tables", "projects", "entities")
+KINDS = ("documents", "tables", "projects", "entities", "data")
 
 
 @dataclass
@@ -77,6 +77,8 @@ def _evaluate(kind: str, case: Path, expected: dict):
         return {"rows": table.to_json_rows()}, written
     if kind == "entities":
         return _evaluate_entities(case), None
+    if kind == "data":
+        return _evaluate_data(case), None
     project = Project.open(case / "project")
     tables = {}
     for name in project.entity_types:
@@ -101,6 +103,27 @@ def _evaluate_entities(case: Path) -> dict:
         for name in project.entity_types:
             synced[name] = project.sync(name, scan)
         return {"entities": entities, "sync": synced}
+
+
+def _evaluate_data(case: Path) -> dict:
+    project = Project.open(case / "project")
+    scan = project.scan(dsm.load_listing(case / "listing.json"), save=False)
+    with open(case / "requests.json", encoding="utf-8") as f:
+        requests = json.load(f)["requests"]
+    results = []
+    for request in requests:
+        entity = project.entity(request["entityType"], request["key"], scan)
+        result = {}
+        try:
+            result["read"] = [list(t) for t in project.read_targets(entity, request["variable"])]
+        except NansenError as error:
+            result["read"] = {"error": error.code}
+        try:
+            result["write"] = list(project.write_target(entity, request["variable"]))
+        except NansenError as error:
+            result["write"] = {"error": error.code}
+        results.append(result)
+    return {"results": results}
 
 
 def _from_json_row(table: EntityTable, row: dict) -> dict:

@@ -1,0 +1,9 @@
+{
+  "schemaType": "nansen.dataVariable",
+  "schemaVersion": "0.1.0",
+  "name": "movie",
+  "entityType": "session",
+  "dataLocation": "raw",
+  "filePattern": "two_photon_movie",
+  "fileAdapter": "text"
+}

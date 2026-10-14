@@ -1,0 +1,9 @@
+{
+  "schemaType": "nansen.dataVariable",
+  "schemaVersion": "0.1.0",
+  "name": "subject_notes",
+  "entityType": "subject",
+  "dataLocation": "processed",
+  "fileName": "notes-{subject_id}.txt",
+  "fileAdapter": "text"
+}

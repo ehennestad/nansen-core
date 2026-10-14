@@ -1,0 +1,96 @@
+{
+  "description": "Where data variables are read from and written to on the raw-processed dataset: through DSM file patterns (one and many files), through a file name in a subfolder, in folders DSM generates for entities that have none, and the errors for a variable that cannot be written, a file name its pattern would not read back, and an unknown variable.",
+  "results": [
+    {
+      "read": [
+        [
+          "raw",
+          "2025_05_23/2025_05_23_10_00_00_m110-20250523-001/rec.raw"
+        ]
+      ],
+      "write": {
+        "error": "no-file-name"
+      }
+    },
+    {
+      "read": [
+        [
+          "processed",
+          "subject-m110/session-m110-20250523-001/m110-20250523-001_two_photon_motion_corrected.tif"
+        ]
+      ],
+      "write": [
+        "processed",
+        "subject-m110/session-m110-20250523-001/m110-20250523-001_two_photon_motion_corrected.tif"
+      ]
+    },
+    {
+      "read": [],
+      "write": [
+        "processed",
+        "subject-m110/session-m110-20250523-002/m110-20250523-002_two_photon_motion_corrected.tif"
+      ]
+    },
+    {
+      "read": [
+        [
+          "processed",
+          "subject-m110/session-m110-20250523-001/m110-20250523-001_roi_signals_plane1.mat"
+        ],
+        [
+          "processed",
+          "subject-m110/session-m110-20250523-001/m110-20250523-001_roi_signals_plane2.mat"
+        ]
+      ],
+      "write": [
+        "processed",
+        "subject-m110/session-m110-20250523-001/m110-20250523-001_roi_signals_all.mat"
+      ]
+    },
+    {
+      "read": [
+        [
+          "processed",
+          "subject-m110/session-m110-20250523-001/qc/summary.json"
+        ]
+      ],
+      "write": [
+        "processed",
+        "subject-m110/session-m110-20250523-001/qc/summary.json"
+      ]
+    },
+    {
+      "read": [],
+      "write": [
+        "processed",
+        "subject-m110/session-m110-20250523-002/qc/summary.json"
+      ]
+    },
+    {
+      "read": [
+        [
+          "processed",
+          "subject-m110/session-m110-20250523-001/m110-20250523-001_two_photon_motion_corrected.tif"
+        ]
+      ],
+      "write": {
+        "error": "file-name-mismatch"
+      }
+    },
+    {
+      "read": [],
+      "write": [
+        "processed",
+        "subject-m222/notes-m222.txt"
+      ]
+    },
+    {
+      "read": {
+        "error": "unknown-data-variable"
+      },
+      "write": {
+        "error": "unknown-data-variable"
+      }
+    }
+  ]
+}

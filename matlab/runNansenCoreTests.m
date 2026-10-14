@@ -17,7 +17,8 @@ function results = runNansenCoreTests()
     addDsmReader(thisDir)
     suite = matlab.unittest.TestSuite.fromFolder(fullfile(thisDir, "tests"));
     results = run(suite);
-    disp(table(results))
+    fprintf("%d passed, %d failed, %d incomplete\n", nnz([results.Passed]), nnz([results.Failed]), ...
+        nnz([results.Incomplete]));
     assertSuccess(results)
 end
 
