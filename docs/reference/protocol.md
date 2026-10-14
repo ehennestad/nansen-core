@@ -69,6 +69,8 @@ Events flow from the core to the frontend:
 | `entities.add` | `entityType`, `key`, `values?` | The new row |
 | `entities.remove` | `entityType`, `key` | `{removed}` |
 | `fragments.list` | | `[{id, version, title, description, computed, columns}]` |
+| `fragments.create` | `document` (a `nansen.fragment`), `entityType?` | The fragment summary; with `entityType`, it is also added to that entity type (as `fragments.attach`) |
+| `fragments.attach` | `entityType`, `fragmentId` | `{entityType, fragments}`; existing rows get the columns' defaults |
 | `fragments.update` | `entityType`, `fragmentId`, `keys?` | `{updated, failed}` |
 | `dataVariables.list` | `entityType?` | Data variable documents |
 | `data.status` | `entityType`, `key` | `[{name, dataLocation, fileAdapter, files}]` |

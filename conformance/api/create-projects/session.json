@@ -267,6 +267,218 @@
       "expect": {
         "error": "file-not-found"
       }
+    },
+    {
+      "request": {
+        "id": 20,
+        "method": "fragments.create",
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "lab.qc",
+            "version": "1.0.0",
+            "title": "Quality control",
+            "columns": [
+              {
+                "name": "qc_pass",
+                "dataType": "boolean",
+                "default": false
+              },
+              {
+                "name": "qc_note",
+                "dataType": "string"
+              }
+            ]
+          },
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "lab.qc",
+          "version": "1.0.0",
+          "title": "Quality control",
+          "computed": false
+        }
+      }
+    },
+    {
+      "request": {
+        "id": 21,
+        "method": "project.info"
+      },
+      "expect": {
+        "result": {
+          "entityTypes": [
+            {
+              "name": "subject",
+              "fragments": [
+                "core.notes",
+                "legacy.subject"
+              ]
+            },
+            {
+              "name": "session",
+              "fragments": [
+                "core.notes",
+                "legacy.session",
+                "lab.qc"
+              ],
+              "rows": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "id": 22,
+        "method": "entities.get",
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "description": "Good",
+            "NumRois": 120,
+            "qc_pass": false,
+            "qc_note": null
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "id": 23,
+        "method": "fragments.attach",
+        "params": {
+          "entityType": "subject",
+          "fragmentId": "lab.qc"
+        }
+      },
+      "expect": {
+        "result": {
+          "entityType": "subject",
+          "fragments": [
+            "core.notes",
+            "legacy.subject",
+            "lab.qc"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "id": 24,
+        "method": "fragments.attach",
+        "params": {
+          "entityType": "subject",
+          "fragmentId": "lab.qc"
+        }
+      },
+      "expect": {
+        "error": "fragment-exists"
+      }
+    },
+    {
+      "request": {
+        "id": 25,
+        "method": "fragments.attach",
+        "params": {
+          "entityType": "session",
+          "fragmentId": "nope.none"
+        }
+      },
+      "expect": {
+        "error": "unknown-fragment"
+      }
+    },
+    {
+      "request": {
+        "id": 26,
+        "method": "fragments.create",
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "lab.flags",
+            "version": "1.0.0",
+            "title": "Quality control",
+            "columns": [
+              {
+                "name": "ignore",
+                "dataType": "boolean",
+                "default": false
+              }
+            ]
+          },
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "error": "column-exists"
+      }
+    },
+    {
+      "request": {
+        "id": 27,
+        "method": "fragments.create",
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "lab.qc",
+            "version": "1.0.0",
+            "title": "Quality control",
+            "columns": [
+              {
+                "name": "qc_pass",
+                "dataType": "boolean",
+                "default": false
+              },
+              {
+                "name": "qc_note",
+                "dataType": "string"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "fragment-exists"
+      }
+    },
+    {
+      "request": {
+        "id": 28,
+        "method": "fragments.list"
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "lab.qc"
+          },
+          {
+            "id": "legacy.session"
+          },
+          {
+            "id": "legacy.subject"
+          },
+          {
+            "id": "core.notes"
+          },
+          {
+            "id": "core.file_stats"
+          }
+        ]
+      }
     }
   ]
 }

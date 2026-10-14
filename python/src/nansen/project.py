@@ -527,6 +527,22 @@ class Project:
         write_json(self.fragment_path(fragment.id), fragment.document)
         return fragment
 
+    def attach_fragment(self, entity_type: str, fragment_id: str) -> EntityTable:
+        """Add a fragment to an entity type that may already have rows; they get the columns' defaults."""
+        entry = self.entity_type(entity_type)
+        fragment = self.fragment(fragment_id)
+        if fragment_id in entry.get("fragments", []):
+            raise NansenError("fragment-exists", f"{entity_type} already has fragment {fragment_id!r}")
+        table = self.table(entity_type)
+        clash = sorted(set(table.spec.column_names) & {c.name for c in fragment.columns})
+        if clash:
+            raise NansenError("column-exists", f"{entity_type} already has column(s) {', '.join(clash)}")
+        table.add_columns(fragment.columns, fragment.defaults, (fragment.id, fragment.version))
+        table.write()
+        entry["fragments"] = list(entry.get("fragments", [])) + [fragment_id]
+        self._check_and_save()
+        return table
+
     def _check_and_save(self) -> None:
         self.document = check_document(self.document, "nansen.project")
         write_json(self.folder / PROJECT_FILE, self.document)

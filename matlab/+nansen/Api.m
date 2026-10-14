@@ -33,7 +33,7 @@ classdef Api < handle
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "fragments.list", "fragments.update", "dataVariables.list", "data.status", ...
+                "entities.remove", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -349,11 +349,39 @@ classdef Api < handle
 
         function result = apiFragmentsList(obj, ~)
             project = obj.requireProject();
-            result = cellfun(@(f) struct("id", char(f.Id), "version", char(f.Version), ...
-                "title", char(nansen.internal.getField(f.Document, "title", f.Id)), ...
-                "description", char(nansen.internal.getField(f.Document, "description", "")), ...
-                "computed", isfield(f.Document, "compute"), ...
-                "columns", {nansen.internal.asCellOfStructs(f.Document.columns)}), project.fragments(), UniformOutput=false);
+            result = cellfun(@nansen.Api.fragmentSummary, project.fragments(), UniformOutput=false);
+        end
+
+        function result = apiFragmentsCreate(obj, params)
+            % Save a project fragment (the document); with entityType, also add it to that entity type
+            project = obj.requireProject();
+            document = nansen.checkDocument(nansen.Api.param(params, "document"), ExpectedType="nansen.fragment");
+            entityType = string(nansen.internal.getField(params, "entityType", ""));
+            if entityType ~= ""
+                names = string(cellfun(@(c) c.name, nansen.internal.asCellOfStructs(document.columns), UniformOutput=false));
+                clash = sort(intersect(project.table(entityType).columnNames(), names));
+                if ~isempty(clash)   % checked before anything is written
+                    nansen.internal.throwError("column-exists", "%s already has column(s) %s", entityType, strjoin(clash, ", "))
+                end
+            end
+            if any(cellfun(@(f) f.Id == string(document.id), project.fragments()))
+                nansen.internal.throwError("fragment-exists", "the project already has a fragment '%s'", document.id)
+            end
+            project.addFragment(document);
+            if entityType ~= ""
+                project.attachFragment(entityType, document.id);
+                obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
+            end
+            result = nansen.Api.fragmentSummary(project.fragment(string(document.id)));
+        end
+
+        function result = apiFragmentsAttach(obj, params)
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            project.attachFragment(entityType, string(nansen.Api.param(params, "fragmentId")));
+            obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
+            entry = project.entityType(entityType);
+            result = struct("entityType", char(entityType), "fragments", {nansen.internal.asCellstr(entry.fragments)});
         end
 
         function result = apiFragmentsUpdate(obj, params)
@@ -618,6 +646,14 @@ classdef Api < handle
     end
 
     methods (Static, Access = private)
+        function summary = fragmentSummary(f)
+            summary = struct("id", char(f.Id), "version", char(f.Version), ...
+                "title", char(nansen.internal.getField(f.Document, "title", f.Id)), ...
+                "description", char(nansen.internal.getField(f.Document, "description", "")), ...
+                "computed", isfield(f.Document, "compute"), ...
+                "columns", {nansen.internal.asCellOfStructs(f.Document.columns)});
+        end
+
         function configure(project, params)
             source = string(nansen.internal.getField(params, "datasetSource", ""));
             if source ~= ""

@@ -15,16 +15,22 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(response.error.code), "no-project");
         end
 
-        function sameMethodsAsPython(testCase)
+        function sameMethodsAsTheProtocol(testCase)
+            % The methods table of docs/reference/protocol.md, which Python's API is checked against too
             api = nansen.Api();
             info = jsondecode(char(api.handleJson('{"id": 1, "method": "app.info"}'))).result;
-            expected = ["app.info", "catalog.list", "catalog.remove", "data.status", "dataVariables.list", ...
-                "entities.add", "entities.get", "entities.list", "entities.remove", "entities.update", ...
-                "fragments.list", "fragments.update", "methods.list", "methods.run", "pipelines.list", "pipelines.submit", "presets.delete", ...
-                "presets.list", "presets.save", "project.create", "project.info", "project.open", "project.scan", ...
-                "project.sync", "queue.start", "queue.status", "queue.stop", "tasks.cancel", "tasks.clear", ...
-                "tasks.get", "tasks.list", "tasks.remove", "tasks.retry", "tasks.runNext", "tasks.submit"];
-            testCase.verifyEqual(sort(string(info.methods))', expected);
+            text = nansen.internal.readText(fullfile(nansen.internal.repoRoot(), "docs", "reference", "protocol.md"));
+            expected = strings(1, 0);
+            for line = reshape(splitlines(string(text)), 1, [])
+                first = regexp(char(line), '^\| ([^|]+) \|', "tokens", "once");
+                if isempty(first)
+                    continue
+                end
+                for found = regexp(first{1}, '`([a-zA-Z]+\.[a-zA-Z]+)`', "tokens")
+                    expected(end + 1) = string(found{1}{1}); %#ok<AGROW>
+                end
+            end
+            testCase.verifyEqual(sort(string(info.methods))', sort(unique(expected)));
             testCase.verifyEqual(string(info.language), "matlab");
         end
 

@@ -46,7 +46,8 @@ class TextAdapter:
         return Path(path).read_text(encoding="utf-8")
 
     def write(self, path: Path, data: Any) -> None:
-        Path(path).write_text(str(data), encoding="utf-8", newline="")
+        with open(path, "w", encoding="utf-8", newline="") as f:  # Path.write_text has newline= from 3.10 only
+            f.write(str(data))
 
 
 class MatAdapter:

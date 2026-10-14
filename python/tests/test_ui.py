@@ -215,3 +215,19 @@ def test_a_project_without_a_dataset_offers_to_set_one_up(empty_app, page):
     page.wait_for_selector(".nav a:has-text('Sessions')")
     info = api.handle({"id": 2, "method": "project.info"})["result"]
     assert [(e["name"], e["fragments"]) for e in info["entityTypes"]] == [("subject", ["core.notes"]), ("session", ["core.notes"])]
+
+
+def test_add_a_column_to_a_table_with_rows(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.click(".toolbar button:has-text('Columns')")
+    page.click(".menu .item:has-text('Add a column')")
+    page.fill(".dialog .field:has-text('Column name') input", "depth_um")
+    page.select_option(".dialog .field:has-text('Type') select", "number")
+    page.fill(".dialog .field:has-text('Default') input", "150")
+    page.click(".dialog-foot button:has-text('Add column')")
+    page.wait_for_selector(".grid-table th:has-text('depth_um')")
+    rows = api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"]
+    assert len(rows) == 14 and all(row["values"]["depth_um"] == 150 for row in rows)

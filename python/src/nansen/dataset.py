@@ -207,4 +207,5 @@ def copy_dataset(source, target: Path) -> None:
                 absolute = os.path.normpath(os.path.join(folder, path)).replace("\\", "/")
                 pattern = r'("path"\s*:\s*)' + re.escape(json.dumps(path, ensure_ascii=False))
                 text = re.sub(pattern, lambda m: m.group(1) + json.dumps(absolute, ensure_ascii=False), text)
-    target.write_text(text, encoding="utf-8", newline="")
+    with open(target, "w", encoding="utf-8", newline="") as f:  # Path.write_text has newline= from 3.10 only
+        f.write(text)

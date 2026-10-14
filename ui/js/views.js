@@ -103,6 +103,18 @@
         node: h("label.item", h("input", { type: "checkbox", checked: !grid.hidden.has(c.name),
           on: { change: () => grid.toggleColumn(c.name) } }), c.title || c.name, h("span.muted", { style: { marginLeft: "auto", fontSize: "11px" } }, c.source)),
       })));
+      const available = (app.fragments || []).filter((f) => !type.fragments.includes(f.id) && !f.computed);
+      items.push({ heading: "Add" }, { label: "Add a column…", icon: "plus", onClick: () => addColumnDialog(app, entityType) });
+      for (const f of available) {
+        items.push({ label: `${f.title} (${f.columns.map((c) => c.name).join(", ")})`, icon: "layers", onClick: async () => {
+          try {
+            await app.client.request("fragments.attach", { entityType, fragmentId: f.id });
+            await app.reloadProject();
+            app.render();
+            N.toast("Columns added", f.title, "success");
+          } catch (error) { N.showError(error, "Could not add the columns"); }
+        } });
+      }
       N.menu(columnsButton, items);
     });
     const computed = (app.fragments || []).filter((f) => f.computed && type.fragments.includes(f.id));
@@ -542,6 +554,41 @@
           h("div.empty", N.icon("folder", 40), h("h3", "No projects yet"), h("div", "Create one above, or open a project folder.")))));
     path.addEventListener("keydown", (e) => { if (e.key === "Enter") open(path.value); });
   };
+
+  function addColumnDialog(app, entityType) {
+    formDialog({
+      title: "Add a column",
+      intro: "The column is added to every row, with the default below. It is kept as a fragment of the project, so it has a type and a version.",
+      label: "Add column",
+      required: ["name"],
+      schema: { type: "object", properties: {
+        name: { type: "string", title: "Column name", description: "A letter, then letters, digits or _", pattern: "^[A-Za-z][A-Za-z0-9_]*$" },
+        title: { type: "string", title: "Title" },
+        dataType: { type: "string", title: "Type", enum: ["string", "number", "integer", "boolean", "date", "datetime"], default: "string" },
+        default: { type: "string", title: "Default", description: "For existing and new rows; empty for none (yes/no columns: true or false, else false)" },
+        description: { type: "string", title: "Description" },
+      } },
+      submit: async (values) => {
+        const column = { name: values.name, dataType: values.dataType };
+        if (values.title) column.title = values.title;
+        if (values.description) column.description = values.description;
+        const text = values.default;
+        if (values.dataType === "boolean") column.default = text === "true";
+        else if (text !== undefined && (values.dataType === "number" || values.dataType === "integer")) {
+          const number = Number(text);
+          if (!Number.isFinite(number) || (values.dataType === "integer" && !Number.isInteger(number))) throw new Error(`Default: ${text} is not a${values.dataType === "integer" ? "n integer" : " number"}`);
+          column.default = number;
+        } else if (text !== undefined) column.default = text;
+        const document = { schemaType: "nansen.fragment", schemaVersion: "0.1.0",
+          id: `columns.${entityType.toLowerCase()}_${values.name.toLowerCase()}`, version: "1.0.0",
+          title: values.title || values.name, columns: [column] };
+        await app.client.request("fragments.create", { document, entityType });
+        await app.reloadProject();
+        app.render();
+        N.toast("Column added", values.title || values.name, "success");
+      },
+    });
+  }
 
   function datasetDialog(app) {
     const hasCore = app.project.modules.some((m) => m.id === "core");

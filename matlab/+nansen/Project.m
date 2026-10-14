@@ -811,6 +811,32 @@ classdef Project < handle
             end
         end
 
+        function table = attachFragment(obj, entityType, fragmentId)
+            %attachFragment Add a fragment to an entity type that may already have rows; they get the columns' defaults
+            arguments
+                obj
+                entityType (1,1) string
+                fragmentId (1,1) string
+            end
+            entry = obj.entityType(entityType);
+            fragment = obj.fragment(fragmentId);
+            listed = string(nansen.internal.asCellstr(nansen.internal.getField(entry, "fragments", {})));
+            if ismember(fragmentId, listed)
+                nansen.internal.throwError("fragment-exists", "%s already has fragment '%s'", entityType, fragmentId)
+            end
+            table = obj.table(entityType);
+            clash = sort(intersect(table.columnNames(), [fragment.Columns.Name]));
+            if ~isempty(clash)
+                nansen.internal.throwError("column-exists", "%s already has column(s) %s", entityType, strjoin(clash, ", "))
+            end
+            table.addColumns(fragment.Columns, fragment.Defaults, fragment.Id, fragment.Version);
+            table.write();
+            entry.fragments = cellstr([listed, fragmentId]);
+            document = obj.Document;
+            document.entityTypes{obj.EntityTypes == entityType} = entry;
+            obj.writeDocument(document);
+        end
+
         function fragment = addFragment(obj, document)
             %addFragment Save a project-defined fragment, given as a struct
             arguments

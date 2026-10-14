@@ -17,6 +17,7 @@ import dsm
 
 from . import __version__
 from .catalog import Catalog
+from .documents import check_document
 from .entities import Entity
 from .errors import NansenError
 from .project import Project
@@ -341,9 +342,37 @@ class Api:
 
     def fragments__list(self, params: dict) -> list:
         project = self._require_project()
-        return [{"id": f.id, "version": f.version, "title": f.document.get("title", f.id),
-                 "description": f.document.get("description", ""), "computed": "compute" in f.document,
-                 "columns": f.document["columns"]} for f in project.fragments()]
+        return [self._fragment_summary(f) for f in project.fragments()]
+
+    @staticmethod
+    def _fragment_summary(f) -> dict:
+        return {"id": f.id, "version": f.version, "title": f.document.get("title", f.id),
+                "description": f.document.get("description", ""), "computed": "compute" in f.document,
+                "columns": f.document["columns"]}
+
+    def fragments__create(self, params: dict) -> dict:
+        """Save a project fragment (the document); with entityType, also add it to that entity type."""
+        project = self._require_project()
+        document = check_document(params["document"], "nansen.fragment")
+        entity_type = params.get("entityType")
+        if entity_type is not None:
+            names = {c["name"] for c in document["columns"]}
+            clash = sorted(set(project.table(entity_type).spec.column_names) & names)
+            if clash:  # checked before anything is written
+                raise NansenError("column-exists", f"{entity_type} already has column(s) {', '.join(clash)}")
+        if any(f.id == document["id"] for f in project.fragments()):
+            raise NansenError("fragment-exists", f"the project already has a fragment {document['id']!r}")
+        project.add_fragment(document)
+        if entity_type is not None:
+            project.attach_fragment(entity_type, document["id"])
+            self.emit("entities", {"entityTypes": [entity_type]})
+        return self._fragment_summary(project.fragment(document["id"]))
+
+    def fragments__attach(self, params: dict) -> dict:
+        project = self._require_project()
+        project.attach_fragment(params["entityType"], params["fragmentId"])
+        self.emit("entities", {"entityTypes": [params["entityType"]]})
+        return {"entityType": params["entityType"], "fragments": project.entity_type(params["entityType"])["fragments"]}
 
     def fragments__update(self, params: dict) -> dict:
         project = self._require_project()

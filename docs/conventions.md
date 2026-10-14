@@ -78,6 +78,8 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `revision-conflict` | The table changed on disk since it was read |
 | `unknown-entity-type` | The project has no entity type of that name |
 | `unknown-fragment` | An entity type references a fragment that cannot be found |
+| `fragment-exists` | The fragment is already defined, or already part of the entity type |
+| `column-exists` | The entity type already has a column of that name |
 | `fragment-mismatch` | A table's columns or fragment versions differ from the fragment definition |
 | `no-dataset` | The operation needs a DSM config and the project has none |
 | `dataset-invalid` | The project's DSM config is refused by the DSM reader |
