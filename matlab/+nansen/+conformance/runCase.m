@@ -82,6 +82,8 @@ function [actual, written] = evaluate(kind, folder, expected)
             actual = evaluateEntities(folder);
         case "data"
             actual = evaluateData(folder);
+        case "legacy"
+            actual = evaluateLegacy(folder);
         case "api"
             actual = struct();   % handled by runApiCase
         case "projects"
@@ -116,6 +118,34 @@ function actual = evaluateEntities(folder)
         synced.(name) = project.sync(name, scan);
     end
     actual = struct("entities", entities, "sync", synced);
+end
+
+function actual = evaluateLegacy(folder)
+    % Convert export.json and read back every file the new project holds.
+    scratch = string(tempname);
+    mkdir(scratch);
+    cleanup = onCleanup(@() rmdir(scratch, "s"));
+    target = fullfile(scratch, "project");
+    report = nansen.legacy.convert(nansen.internal.readJson(fullfile(folder, "export.json")), target);
+    project = nansen.Project.open(target);
+    tables = struct();
+    for name = project.EntityTypes
+        table = project.table(name);
+        tables.(name) = struct("key", {cellstr(table.Key)}, "columns", {cellstr(table.columnNames())}, ...
+            "rows", {table.toJsonRows()});
+    end
+    actual = struct( ...
+        "project", nansen.internal.readJson(fullfile(target, "project.nansen.json")), ...
+        "dataset", nansen.internal.readJson(fullfile(target, "dataset.dsm.json")), ...
+        "fragments", {readAll(fullfile(target, "fragments"), "*.fragment.nansen.json")}, ...
+        "dataVariables", {readAll(fullfile(target, "data-variables"), "*.dataVariable.nansen.json")}, ...
+        "tables", tables, "warnings", {report.warnings});
+end
+
+function documents = readAll(folder, pattern)
+    listing = dir(fullfile(folder, pattern));
+    names = sort(string({listing.name}));
+    documents = arrayfun(@(n) nansen.internal.readJson(fullfile(folder, n)), names, UniformOutput=false);
 end
 
 function detail = runApiCase(folder)

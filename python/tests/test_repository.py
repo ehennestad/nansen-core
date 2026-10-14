@@ -22,3 +22,16 @@ def test_matlab_runs_the_same_conformance_kinds_as_python():
     run_case = (REPO / "matlab" / "+nansen" / "+conformance" / "runCase.m").read_text()
     for kind in KINDS:
         assert f'case "{kind}"' in run_case, kind
+
+
+def test_every_error_code_is_documented():
+    import re
+
+    root = Path(__file__).resolve().parents[2]
+    documented = set()
+    for page in ("docs/conventions.md", "docs/reference/protocol.md"):
+        documented |= set(re.findall(r"^\| `([a-z-]+)` \|", (root / page).read_text(), re.M))
+    used = set()
+    for path in list((root / "python" / "src").rglob("*.py")) + list((root / "matlab").rglob("*.m")):
+        used |= set(re.findall(r"(?:NansenError|throwError)\(\s*\"([a-z-]+)\"", path.read_text()))
+    assert used - documented == set()

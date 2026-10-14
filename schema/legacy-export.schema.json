@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:legacyExport",
+  "title": "NANSEN legacy export",
+  "description": "What a NANSEN dev project holds, read from its .mat files by MATLAB (nansen.legacy.exportProject) and written as plain JSON. Both implementations convert it into a project (nansen.legacy.convert, nansen.legacy.convert_legacy). Field names follow the dev files in lowerCamelCase.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "project"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.legacyExport" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "source": { "type": "string", "description": "The dev project folder that was read. Informational." },
+    "project": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Properties.Name of the dev project.nansen.json." },
+        "shortName": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "dataLocations": { "type": "array", "items": { "$ref": "#/definitions/dataLocation" } },
+    "variables": { "type": "array", "items": { "$ref": "#/definitions/variable" } },
+    "tables": { "type": "array", "items": { "$ref": "#/definitions/table" } }
+  },
+  "definitions": {
+    "dataLocation": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "description": "recorded, processed, curated or temporary." },
+        "rootPaths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["value"],
+            "additionalProperties": false,
+            "properties": { "key": { "type": "string" }, "value": { "type": "string" }, "diskName": { "type": "string" } }
+          }
+        },
+        "subfolders": {
+          "type": "array",
+          "description": "SubfolderStructure, outermost first.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string", "description": "Subject, Session, Date or Other." },
+              "expression": { "type": "string", "description": "Regular expression a folder name must contain." },
+              "ignoreList": { "type": "array", "items": { "type": "string" } },
+              "isFolder": { "type": "boolean" }
+            }
+          }
+        },
+        "metadata": {
+          "type": "array",
+          "description": "MetaDataDef: how each metadata value is read from folder names.",
+          "items": {
+            "type": "object",
+            "required": ["variableName"],
+            "additionalProperties": false,
+            "properties": {
+              "variableName": { "type": "string" },
+              "subfolderLevel": {
+                "description": "The 1-based folder level(s) the value is read from; dev stores one level as a number.",
+                "anyOf": [ { "type": "integer", "minimum": 1 }, { "type": "array", "items": { "type": "integer", "minimum": 1 } } ]
+              },
+              "mode": { "type": "string", "enum": ["ind", "expr", "func"] },
+              "input": { "type": "string", "description": "A MATLAB index expression (ind) or a regular expression (expr)." },
+              "format": { "type": "string", "description": "Date or time format of the text, as for MATLAB datetime." },
+              "separator": { "type": "string" },
+              "functionName": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "variable": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "dataLocation": { "type": "string", "description": "Name of the data location." },
+        "subfolder": { "type": "string" },
+        "fileNameExpression": { "type": "string" },
+        "fileType": { "type": "string" },
+        "fileAdapter": { "type": "string" },
+        "dataType": { "type": "string" },
+        "isInternal": { "type": "boolean" }
+      }
+    },
+    "table": {
+      "type": "object",
+      "required": ["name", "entityClass", "columns", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "entityClass": { "type": "string", "description": "session, subject or the last part of another MetaTableClass." },
+        "isMaster": { "type": "boolean" },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "dataType"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "dataType": { "type": "string", "enum": ["string", "integer", "number", "boolean", "date", "datetime"] }
+            }
+          }
+        },
+        "skippedColumns": { "type": "array", "items": { "type": "string" }, "description": "Columns whose values have no table type (structs, objects)." },
+        "rows": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean", "null"] } }
+        }
+      }
+    }
+  }
+}

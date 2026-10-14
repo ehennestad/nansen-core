@@ -86,3 +86,26 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `unknown-location` | The dataset has no root for the data location in the active environment |
 | `read-only-column` | A key column, or a column of a computed fragment, cannot be edited |
 | `generation-failed` | DSM cannot generate a path for the entity in the location (the DSM code is in the message) |
+| `unknown-data-variable` | The project has no data variable of that name |
+| `unknown-file-adapter` | No file adapter has that id |
+| `unknown-file-pattern` | A data variable names a file pattern that its entity's level does not have |
+| `adapter-unavailable` | The file adapter needs a package that is not installed (for example SciPy for `mat`) |
+| `data-not-found` | The entity has no file for the data variable |
+| `no-file-name` | The data variable has no `fileName`, so it cannot be written |
+| `file-name-mismatch` | A generated file name would not match the variable's file pattern, so it would not be found again |
+| `unknown-module` | A module listed by the project cannot be found |
+| `module-mismatch` | The folder of a listed module holds a different module |
+| `unknown-method` | No method has that id |
+| `method-unavailable` | The method has no implementation in this language |
+| `wrong-entity-type` | The method runs on another entity type |
+| `invalid-options` | Options or a preset do not fit the method's options schema |
+| `unknown-preset` | The method has no preset of that name |
+| `not-computed` | The fragment has no compute method |
+| `no-entities` | A task or run was given no entities |
+| `not-queueable` | The method cannot run as a background task |
+| `unknown-task` | No task has that id |
+| `task-active` | The task is queued or running, so it cannot be retried or removed |
+| `unknown-pipeline` | No pipeline has that id |
+| `no-catalog` | The app was started without a project catalog |
+| `unknown-project` | The project is not in the catalog |
+| `folder-not-empty` | A new project, demo or import needs an empty folder |

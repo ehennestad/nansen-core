@@ -28,6 +28,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     app.add_argument("--executor", choices=["thread", "process"], default="thread")
     demo = commands.add_parser("demo", help="create a demo project with a small dataset")
     demo.add_argument("folder")
+    legacy = commands.add_parser("import-legacy", help="make a project from a NANSEN dev export (nansen.legacyExport)")
+    legacy.add_argument("export", help="the JSON written by nansen.legacy.exportProject in MATLAB")
+    legacy.add_argument("folder", help="new, empty project folder")
     run_task = commands.add_parser("run-task", help="run one queued task of a project (used by worker processes)")
     run_task.add_argument("project")
     run_task.add_argument("task_id")
@@ -51,6 +54,19 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         project = create_demo(args.folder)
         print(f"Created {project.title} in {project.folder}. Open it with: nansen app {project.folder}")
+        return 0
+
+    if args.command == "import-legacy":
+        import json
+
+        from .legacy import convert_legacy
+
+        with open(args.export, encoding="utf-8") as f:
+            report = convert_legacy(json.load(f), args.folder)
+        counts = ", ".join(f"{n} {name}(s)" for name, n in report["rows"].items()) or "no rows"
+        print(f"Created {args.folder}: {counts}, {len(report['dataVariables'])} data variable(s)")
+        for warning in report["warnings"]:
+            print(f"  note: {warning}")
         return 0
 
     if args.command == "run-task":

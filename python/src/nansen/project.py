@@ -50,7 +50,7 @@ class Project:
 
     @classmethod
     def create(cls, folder: PathLike, name: str, title: Optional[str] = None,
-               dataset: Optional[str] = None) -> "Project":
+               dataset: Optional[str] = None, description: Optional[str] = None) -> "Project":
         """Make a project folder. ``dataset`` is the path of a DSM config, relative to the folder."""
         folder = Path(folder)
         if (folder / PROJECT_FILE).exists():
@@ -58,6 +58,8 @@ class Project:
         document: dict = {"schemaType": "nansen.project", "schemaVersion": current_version("nansen.project"), "name": name}
         if title is not None:
             document["title"] = title
+        if description:
+            document["description"] = description
         if dataset is not None:
             document["dataset"] = dataset
         document["entityTypes"] = []

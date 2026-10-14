@@ -17,7 +17,7 @@ from .errors import NansenError
 from .project import Project
 from .tables import EntityTable
 
-KINDS = ("documents", "tables", "projects", "entities", "data", "api")
+KINDS = ("documents", "tables", "projects", "entities", "data", "legacy", "api")
 
 
 @dataclass
@@ -82,6 +82,8 @@ def _evaluate(kind: str, case: Path, expected: dict):
         return _evaluate_entities(case), None
     if kind == "data":
         return _evaluate_data(case), None
+    if kind == "legacy":
+        return _evaluate_legacy(case), None
     project = Project.open(case / "project")
     tables = {}
     for name in project.entity_types:
@@ -127,6 +129,31 @@ def _evaluate_data(case: Path) -> dict:
             result["write"] = {"error": error.code}
         results.append(result)
     return {"results": results}
+
+
+def _evaluate_legacy(case: Path) -> dict:
+    """Convert export.json and read back every file the new project holds."""
+    from .legacy import convert_legacy
+
+    with open(case / "export.json", encoding="utf-8") as f:
+        export = json.load(f)
+    with tempfile.TemporaryDirectory() as scratch:
+        folder = Path(scratch) / "project"
+        report = convert_legacy(export, folder)
+
+        def documents(pattern: str) -> list:
+            return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(folder.glob(pattern))]
+
+        project = Project.open(folder)
+        tables = {}
+        for name in project.entity_types:
+            table = project.table(name)
+            tables[name] = {"key": table.spec.key, "columns": table.spec.column_names, "rows": table.to_json_rows()}
+        return {"project": json.loads((folder / "project.nansen.json").read_text(encoding="utf-8")),
+                "dataset": json.loads((folder / "dataset.dsm.json").read_text(encoding="utf-8")),
+                "fragments": documents("fragments/*.fragment.nansen.json"),
+                "dataVariables": documents("data-variables/*.dataVariable.nansen.json"),
+                "tables": tables, "warnings": report["warnings"]}
 
 
 def _run_api_case(case: Path) -> str:

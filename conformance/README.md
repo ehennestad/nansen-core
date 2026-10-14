@@ -2,7 +2,7 @@
 
 These cases pin down how NANSEN documents are read and written. Both implementations must pass every case: the MATLAB suite (`matlab/tests`) and the Python suite (`python/tests`), and `nansen conformance` as well.
 
-There are three kinds of case. Each case is a folder with an `expected.json` that has a `description` and either the expected result or `"error": "<code>"` (see [error codes](../docs/conventions.md#error-codes)).
+There are seven kinds of case. Each case is a folder with an `expected.json` that has a `description` and either the expected result or `"error": "<code>"` (see [error codes](../docs/conventions.md#error-codes)).
 
 ## `documents/<case>/`
 
@@ -24,6 +24,30 @@ There are three kinds of case. Each case is a folder with an `expected.json` tha
 
 - On success, `expected.json` gives the project `name` and `title`, the `entityTypes` in order, and for each table its `key`, column names, `revision` and `rows`.
 - On failure, it gives the first error code.
+
+## `entities/<case>/`
+
+`project/` is a project with a DSM config, and `listing.json` is a DSM directory listing used instead of the file system. The implementation scans the listing, joins the records with the tables and then syncs.
+
+- `expected.json` gives, per entity type, each entity's key, whether it is in the stores (`inStore`) and in the table (`inTable`), its DSM attributes and locations, and its table values; then the keys that `sync` adds.
+
+## `data/<case>/`
+
+Like `entities`, plus `requests.json`: a list of `{entityType, key, variable}`.
+
+- `expected.json` gives, per request, the files the variable would be read from (`read`) and the location and relative path it would be written to (`write`), or an error code for either.
+
+## `legacy/<case>/`
+
+`export.json` is a `nansen.legacyExport` document, as MATLAB's `nansen.legacy.exportProject` writes it. The implementation converts it into a new project in an empty folder ([legacy import](../docs/reference/legacy-import.md)).
+
+- `expected.json` gives the written `project.nansen.json` and `dataset.dsm.json`, the fragments and data variables (sorted by file name), each table's `key`, columns and `rows`, and the report's `warnings` in order.
+
+## `api/<case>/`
+
+`session.json` is a list of `steps`, each a protocol `request` and what to `expect`: a `result` or an `error` code. Each case starts a fresh API. `${project}` in a request is replaced by the path of a scratch copy of `project/` (if the case has one), and `${listing}` by the contents of `listing.json`.
+
+- A result is compared as a subset: every key in the expected object must be present with the expected value, and arrays must have the same length. Other keys are ignored, so the cases pin down what clients rely on without freezing everything else.
 
 ## Adding a case
 

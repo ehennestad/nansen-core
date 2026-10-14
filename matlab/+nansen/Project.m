@@ -798,6 +798,7 @@ classdef Project < handle
                 name (1,1) string
                 options.Title (1,1) string = ""
                 options.Dataset (1,1) string = ""
+                options.Description (1,1) string = ""
             end
             if isfile(fullfile(folder, nansen.Project.ProjectFile))
                 error("nansen:Project:Exists", "%s already holds a project", folder)
@@ -806,6 +807,9 @@ classdef Project < handle
             document = struct("schemaType", 'nansen.project', "schemaVersion", char(entry.version), "name", char(name));
             if options.Title ~= ""
                 document.title = char(options.Title);
+            end
+            if options.Description ~= ""
+                document.description = char(options.Description);
             end
             if options.Dataset ~= ""
                 document.dataset = char(options.Dataset);

@@ -93,9 +93,8 @@ def create_demo(folder: PathLike, seed: int = 7) -> Project:
                 processed.mkdir(parents=True, exist_ok=True)
                 (processed / f"{subject}-{session}_motion_corrected.json").write_text(
                     json.dumps({"shifts": [rng.random() for _ in range(5)]}))
-    project = Project.create(folder, "TwoPhotonDemo", "Two-photon demo", dataset="dataset.dsm.json")
-    project.document["description"] = "A small two-photon dataset: raw recordings, some processed, for trying NANSEN."
-    project._check_and_save()
+    project = Project.create(folder, "TwoPhotonDemo", "Two-photon demo", dataset="dataset.dsm.json",
+                             description="A small two-photon dataset: raw recordings, some processed, for trying NANSEN.")
     project.add_module("core")
     project.add_entity_type("subject", fragments=["core.notes"], title="Subjects")
     project.add_entity_type("session", fragments=["core.notes", "core.file_stats"], title="Sessions")
