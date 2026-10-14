@@ -89,7 +89,7 @@ classdef DataCache < handle
         end
 
         function counts = stats(obj)
-            counts = struct("entries", obj.Entries.Count, "bytes", obj.Bytes, "maxBytes", obj.MaxBytes, ...
+            counts = struct("entries", double(obj.Entries.Count), "bytes", obj.Bytes, "maxBytes", obj.MaxBytes, ...
                 "hits", obj.Hits, "misses", obj.Misses, "evictions", obj.Evictions);
         end
     end
