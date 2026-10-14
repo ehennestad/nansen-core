@@ -1,66 +1,75 @@
 # nansen-core
 
-A rebuild of the NANSEN core for MATLAB and Python. It is built around versioned documents and has no global state.
+A rebuild of the NANSEN core for MATLAB and Python. It is built around versioned documents, has no global state, and has one HTML dashboard for both languages.
 
-> **Status: 0.1.0, step 1 of the plan.** This release covers schemas, the project layout, entity tables and the conformance cases. Entities from the Dataset Structure Model, data variables, methods and tasks, and the HTML frontend come in later steps. Nothing is stable before 1.0.
+> **Status: 0.1.0, every step of the [plan](docs/architecture.md) is in.** MATLAB (R2023a+) and Python (3.9+) pass the same conformance cases on every change. Nothing is stable before 1.0: schemas may still change, with migrations.
 
-## Design in one page
+## What it does
 
-- **Every file has a versioned schema.** Each JSON document carries `schemaType` and `schemaVersion`, and old versions are migrated when read. Tables are CSV with a JSON sidecar that holds the column types. See [conventions](docs/conventions.md).
-- **Entity tables hold what people author.** The key columns identify the entity. The other columns come from *fragments*, which are named, versioned groups of columns such as notes, QC flags or a lab's own table variables. Anything derived from the dataset's files (paths, file lists, attributes in folder names) comes from the [Dataset Structure Model](https://github.com/framover/dataset-structure-model) and is recomputed, never stored in the table. A re-scan never overwrites what people typed.
-- **No singletons.** A project is opened from a folder and passed to whatever needs it. There is no "current project" in preferences, appdata or persistent variables, and CI fails on `global`, `persistent`, `getpref`/`setpref` or `setappdata(0, …)` in the core. Tests make a project in a temporary folder.
-- **Two implementations, one behaviour.** MATLAB (R2023a+) and Python (3.9+) share the schemas and the [conformance cases](conformance). Both suites run every case on every change.
+- **Projects are folders of documents.** Every JSON file carries `schemaType` and `schemaVersion` and has a schema in [`schema/`](schema). Entity tables are CSV with a typed JSON sidecar. A project can be opened from either language, put under version control, or diffed. See [conventions](docs/conventions.md) and [project layout](docs/reference/project-layout.md).
+- **Entities come from the data.** The [Dataset Structure Model](https://github.com/framover/dataset-structure-model) (DSM) describes where the data is: data locations, folder levels, roots per machine and the rules that read ids and dates from names. A scan finds every subject and session, with their folders and files, in every location. It is joined with the entity tables, which hold only what people author, so a re-scan never overwrites what was typed. See [entities](docs/reference/entities.md).
+- **Entity types are composed, not subclassed.** Columns come from *fragments*: versioned column groups such as notes, QC flags or file statistics. A fragment can be computed by a method, which replaces table variables. Data variables name a file, found through DSM, and the file adapter that reads it.
+- **Methods, presets, pipelines and a task queue.** Methods declare their options as JSON Schema and can be implemented in MATLAB, in Python, or in both. Tasks are files holding entity keys, so either language's worker can run them, in the background or in other processes. See [modules](docs/reference/modules.md).
+- **A dashboard.** One dependency-free HTML/JS app. MATLAB shows it in a `uihtml` (`nansen.App`), and Python serves it on localhost (`nansen app`). It covers the project overview, entity tables (virtual scrolling, search, sort, filters, inline editing, a detail drawer), method forms drawn from their options schemas, the live task queue and logs, data locations and variables, a project catalog, and light and dark themes. Both backends answer the same [protocol](docs/reference/protocol.md).
+- **No singletons.** A project is opened from a folder and passed to whatever needs it. CI fails on `global`, `persistent`, `getpref`/`setpref` or `setappdata(0, …)` in the core, so every test builds its project in a temporary folder.
+- **Import from NANSEN.** Existing projects from the `dev` branch convert in one call. See [legacy import](docs/reference/legacy-import.md).
 
-The full plan and the reasons behind it are in [docs/architecture.md](docs/architecture.md).
+## Quick start
+
+### MATLAB
+
+```matlab
+addpath("matlab")                        % on a clean path: no other NANSEN installation
+addpath("path/to/dataset-structure-model/src/matlab")   % the DSM reader
+
+project = nansen.demo.create(fullfile(tempdir, "nansen-demo"));
+app = nansen.App(Project=project.Folder);
+
+sessions = project.entities("session");
+project.run("core.file_stats", sessions(1:3));
+
+results = runNansenCoreTests();          % unit tests and every conformance case
+```
+
+### Python
+
+```bash
+pip install -e ".[test]"
+nansen demo /tmp/nansen-demo
+nansen app /tmp/nansen-demo              # opens the dashboard in the browser
+pytest && nansen conformance
+```
+
+```python
+from nansen import Project
+
+project = Project.open("/tmp/nansen-demo")
+sessions = project.entities("session")
+project.run("core.file_stats", sessions[:3])
+table = project.table("session")
+table.update(sessions[0].key, description="Good imaging")
+table.write()
+```
+
+### An existing NANSEN project
+
+```matlab
+report = nansen.legacy.importProject("~/NANSEN/projects/MyProject", "~/nansen/MyProject");
+report.warnings
+```
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `schema/` | JSON Schemas (draft-07) and `index.json`, which maps each `schemaType` to its file, version and status |
-| `conformance/` | Cases for documents, tables and projects: input files plus expected output or error code |
-| `docs/` | Conventions, architecture, and reference pages for the table format and project layout |
-| `matlab/` | `+nansen` package and `matlab.unittest` tests |
-| `python/` | `nansen` package (distribution `nansen-core`) and pytest tests |
-| `ui/` | The HTML/JS frontend (step 5; not started) |
+| `conformance/` | Cases both implementations must pass: documents, tables, projects, entities, data, legacy import and the app protocol |
+| `docs/` | Conventions, architecture, and reference pages |
+| `matlab/` | The `+nansen` package, `matlab.unittest` tests and `runNansenCoreTests` |
+| `python/` | The `nansen` package (distribution `nansen-core`), pytest tests and the `nansen` command |
+| `ui/` | The dashboard: classic scripts and CSS, no build step |
+| `modules/` | Modules that ship with NANSEN: `core` (notes, file statistics, utility methods, the demo) |
 | `tools/` | Repository checks |
-
-## Quick start
-
-Python:
-
-```bash
-pip install -e ".[test]"
-nansen conformance -v
-pytest
-```
-
-```python
-from nansen import Column, Project
-
-project = Project.create("/tmp/pilot", "Pilot")
-project.add_fragment({"schemaType": "nansen.fragment", "schemaVersion": "0.1.0", "id": "notes", "version": "1.0.0",
-                      "columns": [{"name": "ignore", "dataType": "boolean", "default": False},
-                                  {"name": "description", "dataType": "string"}]})
-sessions = project.add_entity_type("session", key=[Column("session_id", "string")], fragments=["notes"])
-sessions.add({"session_id": "m110-001", "description": "first session"})
-sessions.write()
-```
-
-MATLAB:
-
-```matlab
-addpath("matlab")   % on a clean path: no other NANSEN installation
-project = nansen.Project.create(tempname, "Pilot");
-project.addFragment(struct("schemaType", "nansen.fragment", "schemaVersion", "0.1.0", "id", "notes", ...
-    "version", "1.0.0", "columns", {{struct("name", "ignore", "dataType", "boolean", "default", false), ...
-    struct("name", "description", "dataType", "string")}}));
-sessions = project.addEntityType("session", nansen.Column("session_id", "string"), Fragments="notes");
-sessions.addRow(struct("session_id", "m110-001", "description", "first session"));
-sessions.write();
-
-results = runNansenCoreTests();   % unit tests and every conformance case
-```
 
 ## License
 

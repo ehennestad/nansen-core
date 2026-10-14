@@ -24,16 +24,41 @@ What cannot be fixed one piece at a time:
 
 ## Steps
 
-Each step is usable without a GUI before the next one starts.
+Each step was usable without a GUI before the next one started.
 
 | Step | Contents | Status |
 |---|---|---|
-| 1 | Envelope convention, schemas, project layout, entity tables (CSV + sidecar), fragments, conformance, `Project` without globals | **This release** |
-| 2 | DSM integration: entity records joined with authored tables; key columns checked against DSM identity; records cached under `cache/`; path generation for derived locations (implemented in DSM first, both readers and conformance) | Next |
-| 3 | Data variables (DSM file pattern + file adapter) and an explicit adapter registry; existing adapters wrapped | |
-| 4 | Methods, options and tasks: method declarations with JSON Schema options, presets, tasks as `nansen.task` documents (entity references, never live objects); MATLAB runs on `parfeval`/`backgroundPool`, Python on a process pool | |
-| 5 | JSON message protocol and the HTML/JS frontend in one `uihtml` (MATLAB) or a local server (Python) | |
-| 6 | One-way importer from `dev` projects (`project.nansen.json` + `.mat` files) | |
+| 1 | Envelope convention, schemas, project layout, entity tables (CSV + sidecar), fragments, conformance, `Project` without globals | Done |
+| 2 | DSM integration: entity records joined with authored tables; key columns checked against DSM identity; records cached under `cache/`; path generation for new entities (in DSM, both readers) | Done |
+| 3 | Data variables (DSM file pattern or file name template + file adapter) and an explicit adapter registry | Done |
+| 4 | Modules, methods with JSON Schema options and presets, computed fragments, pipelines, tasks as `nansen.task` documents (entity keys, never live objects); MATLAB on `backgroundPool`, Python on threads or processes | Done |
+| 5 | JSON message protocol and the HTML/JS dashboard in one `uihtml` (MATLAB) or a local server (Python); project catalog | Done |
+| 6 | One-way importer from `dev` projects (`project.nansen.json` + `.mat` files), with the conversion in both languages | Done |
+
+## Compared with NANSEN dev
+
+| dev | nansen-core |
+|---|---|
+| `ProjectManager` singleton, `nansen.getCurrentProject()` | `Project.open(folder)`, passed explicitly; `nansen.catalog` lists known projects for the app |
+| `project.nansen.json` + `.mat` catalogs | Versioned JSON documents and CSV tables, each with a schema |
+| `DataLocationModel` (root paths, subfolder structure, metadata rules) | A DSM config: locations, roots per environment, folder levels, extraction rules; the same file is read by DSM's own tools |
+| `VariableModel` (file path settings) | Data variables: DSM file pattern or file name template + file adapter |
+| `MetaTable` of `Session`/`Subject` objects | Entity tables joined with DSM records; one generic entity, so entity types are documents, not classes |
+| Table variables (with update functions) | Fragments; computed fragments for the ones with update functions |
+| Session methods with `OptionsManager` presets | Methods with JSON Schema options and preset documents; MATLAB and/or Python implementations |
+| Batch processor with `task_list.mat` | Task queue of `nansen.task` files: claims, cancellation, logs, recovery, retry, dependencies |
+| Pipelines | Pipelines: one chain of tasks per entity |
+| File adapters | File adapters: built-in `json`, `text`, `mat` (and `npy` in Python), others from modules |
+| Modules (`module.nansen.json`) | Modules listing fragments, methods, adapters and pipelines by path; code for either language |
+| `nansen.App` on the Java Widgets Toolbox | One HTML/JS dashboard for MATLAB (`uihtml`) and Python (browser) |
+| MATLAB only | MATLAB R2023a+ and Python 3.9+, held to the same behaviour by shared conformance cases |
+| ~360 unit tests with a throwaway user session | Unit tests in both languages, conformance cases shared by both, browser tests for the dashboard |
+
+Not carried over, by choice or not yet:
+
+- **Data cache.** dev keeps an LRU cache of loaded data. Methods here load what they need through `project.load`. A cache can be added inside the file adapter registry without changing the API.
+- **Notebook.** dev has a per-session notebook. `core.notes` holds one description per entity; a notes fragment with entries over time would be the replacement.
+- **Add-on and toolbox management.** Out of scope for the core.
 
 ## Decisions recorded so far
 
@@ -42,11 +67,11 @@ Each step is usable without a GUI before the next one starts.
 - **Namespace `nansen` in both languages.** The existing NANSEN also uses `+nansen`, and MATLAB merges package folders of the same name, so the two must never be on the path together. Run the new core on a path with nothing else on it; `runNansenCoreTests` refuses to start if another `+nansen` folder is on the path. The Python distribution is named `nansen-core` and imports as `nansen`.
 - **MATLAB R2023a minimum.** This is what `uihtml`'s `sendEventToHTMLSource` needs, and it is what `dev` requires today. CI tests on R2023a and the latest release.
 - **Validation in MATLAB** uses a small draft-07 interpreter ported from DSM's MATLAB reader, so both languages validate against the schema files themselves. A Python test keeps the schemas within the keywords it implements.
-- **Fragments carry their own version.** A table records the version of each fragment its columns follow. A mismatch is an error for now; fragment migrations come with modules.
-- **Modules** (from `dev`) will supply fragments, methods, data variables and adapters through an explicit list in the project file, not by scanning the MATLAB path.
+- **Fragments carry their own version.** A table records the version of each fragment its columns follow. A mismatch is an error for now (see the open questions).
+- **Modules** (from `dev`) supply fragments, methods, adapters and pipelines through an explicit list in the project file, not by scanning the MATLAB path.
 
 ## Open questions
 
-- **Projects and languages.** Can a Python project run MATLAB methods and the reverse? The current proposal: the project format is shared, and each method declares its language.
+- **Mixed-language queues.** The project format is shared and each method declares its implementations; a task can name the language that must run it, so a Python app can queue MATLAB work for a MATLAB worker. Whether the dashboard should start that worker is open.
 - **Fragment migrations.** When a fragment's columns change, who migrates existing tables? The likely answer is a migration function shipped by the module that owns the fragment.
 - **Large tables.** Both CSV readers are simple loops. If tables reach tens of thousands of rows, MATLAB will need a column-vectorised parser that still reports the first error in row order.
