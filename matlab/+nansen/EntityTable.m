@@ -262,14 +262,18 @@ classdef EntityTable < handle
 
         function rows = toJsonRows(obj)
             %toJsonRows The rows as JSON values (the conformance output): a cell row of structs
-            rows = cell(1, obj.numRows());
-            for r = 1:obj.numRows()
-                row = struct();
-                for i = 1:numel(obj.Columns)
-                    name = obj.Columns(i).Name;
-                    row.(name) = nansen.internal.jsonValue(obj.Data.(name)(r), obj.Columns(i));
-                end
-                rows{r} = row;
+            n = obj.numRows();
+            rows = cell(1, n);
+            if n == 0
+                return
+            end
+            names = cellstr(obj.columnNames());
+            cells = cell(n, numel(names));
+            for i = 1:numel(names)   % column by column: indexing a table cell by cell is slow
+                cells(:, i) = nansen.internal.jsonColumn(obj.Data.(names{i}), obj.Columns(i).DataType);
+            end
+            for r = 1:n
+                rows{r} = cell2struct(cells(r, :), names, 2);
             end
         end
 

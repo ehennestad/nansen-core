@@ -296,7 +296,16 @@ classdef Api < handle
             entityType = string(nansen.Api.param(params, "entityType"));
             table = project.table(entityType);
             entities = project.entities(entityType);
-            rows = cellfun(@(e) obj.row(e, table), entities, UniformOutput=false);
+            % The first entities are the table's rows, in table order: convert the table once.
+            jsonRows = table.toJsonRows();
+            rows = cell(1, numel(entities));
+            for i = 1:numel(entities)
+                if i <= numel(jsonRows)
+                    rows{i} = obj.row(entities{i}, table, jsonRows{i});
+                else
+                    rows{i} = obj.row(entities{i}, table);
+                end
+            end
             result = struct("entityType", char(entityType), "key", {cellstr(table.Key)}, ...
                 "columns", {obj.columns(entityType, table)}, "rows", {rows});
         end
@@ -590,11 +599,15 @@ classdef Api < handle
             end
         end
 
-        function out = row(~, entity, table)
+        function out = row(~, entity, table, jsonRow)
+            % jsonRow: the entity's table row as JSON values, when the caller has it already
             values = entity.Key;
             values = nansen.internal.mergeStructs(values, entity.attributes());
             if entity.inTable()
-                values = nansen.internal.mergeStructs(values, table.jsonRow(entity.Row));
+                if nargin < 4
+                    jsonRow = table.jsonRow(entity.Row);
+                end
+                values = nansen.internal.mergeStructs(values, jsonRow);
             end
             out = struct("key", entity.Key, "inStore", entity.inStore(), "inTable", entity.inTable(), "values", values);
             if ~isempty(entity.Issues)
