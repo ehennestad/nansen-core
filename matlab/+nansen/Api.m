@@ -31,7 +31,7 @@ classdef Api < handle
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
-                "demo.create", "legacy.import", ...
+                "project.setDataset", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "fragments.list", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
@@ -158,40 +158,26 @@ classdef Api < handle
 
         function result = apiProjectCreate(obj, params)
             % A new project; with datasetSource, a copy of that DSM config, and with entityTypes, its entity types
-            folder = string(nansen.Api.param(params, "path"));
-            dataset = string(nansen.internal.getField(params, "dataset", ""));
             source = string(nansen.internal.getField(params, "datasetSource", ""));
-            if source ~= ""
-                if isfile(fullfile(folder, nansen.Project.ProjectFile))
-                    nansen.internal.throwError("folder-not-empty", "%s already holds a project", folder)
-                end
-                if ~isfolder(folder)
-                    mkdir(folder);
-                end
-                nansen.Api.copyDataset(source, fullfile(folder, "dataset.dsm.json"));
-                dataset = "dataset.dsm.json";
+            if source ~= "" && ~isfile(source)
+                nansen.internal.throwError("file-not-found", "no DSM config %s", source)
             end
-            project = nansen.Project.create(folder, nansen.Api.param(params, "name"), ...
-                Title=string(nansen.internal.getField(params, "title", "")), Dataset=dataset, ...
+            project = nansen.Project.create(nansen.Api.param(params, "path"), nansen.Api.param(params, "name"), ...
+                Title=string(nansen.internal.getField(params, "title", "")), ...
+                Dataset=string(nansen.internal.getField(params, "dataset", "")), ...
                 Description=string(nansen.internal.getField(params, "description", "")));
-            modules = string(nansen.internal.asCellstr(nansen.internal.getField(params, "modules", {})));
-            for module = modules
-                project.addModule(module);
-            end
-            addTypes = nansen.internal.getField(params, "entityTypes", false);
-            if islogical(addTypes) && isscalar(addTypes) && addTypes
-                fragments = string.empty(1, 0);
-                if ismember("core", modules)
-                    fragments = "core.notes";
-                end
-                for name = reshape(string(project.requireDataset().entityTypes()), 1, [])
-                    words = split(replace(name, "_", " "), " ")';
-                    title = join(upper(extractBefore(words, 2)) + extractAfter(words, 1), " ") + "s";
-                    project.addEntityType(name, [], Fragments=fragments, Title=title);
-                end
-            end
+            nansen.Api.configure(project, params);
             obj.setProject(project);
             obj.emit("project", struct("name", char(project.Name)));
+            result = obj.apiProjectInfo(struct());
+        end
+
+        function result = apiProjectSetDataset(obj, params)
+            % Give the open project a copy of a DSM config; also add modules, and with entityTypes, its entity types
+            project = obj.requireProject();
+            nansen.Api.configure(project, params);
+            obj.setProject(nansen.Project.open(project.Folder, Environment=project.Environment));
+            obj.emit("project", struct("name", char(obj.Project.Name)));
             result = obj.apiProjectInfo(struct());
         end
 
@@ -632,53 +618,23 @@ classdef Api < handle
     end
 
     methods (Static, Access = private)
-        function copyDataset(source, target)
-            % Copy a DSM config into a project, making its relative root paths absolute so they still
-            % point there. The rest of the text is kept as it is (as Python's copy_dataset does).
-            if ~isfile(source)
-                nansen.internal.throwError("file-not-found", "no DSM config %s", source)
+        function configure(project, params)
+            source = string(nansen.internal.getField(params, "datasetSource", ""));
+            if source ~= ""
+                project.setDataset(source);
             end
-            text = string(nansen.internal.readText(source));
-            try
-                config = jsondecode(char(text));
-            catch err
-                nansen.internal.throwError("malformed-json", "%s: %s", source, err.message)
+            for module = string(nansen.internal.asCellstr(nansen.internal.getField(params, "modules", {})))
+                project.addModule(module);
             end
-            listing = dir(source);
-            folder = string(listing(1).folder);
-            for location = nansen.internal.asCellOfStructs(nansen.internal.getField(config, "dataLocations", []))
-                filesystem = nansen.internal.getField(location{1}, "filesystemSource", struct());
-                for root = nansen.internal.asCellOfStructs(nansen.internal.getField(filesystem, "rootStoragePaths", []))
-                    path = nansen.internal.getField(root{1}, "path", []);
-                    if ~(ischar(path) || isstring(path)) || nansen.internal.isAbsolutePath(string(path))
-                        continue
-                    end
-                    absolute = nansen.Api.normalizePath(folder + "/" + string(path));
-                    pattern = "(""path""\s*:\s*)" + regexptranslate("escape", jsonencode(char(path)));
-                    replacement = replace(replace(string(jsonencode(char(absolute))), "\", "\\"), "$", "\$");
-                    text = regexprep(text, pattern, "$1" + replacement);
+            addTypes = nansen.internal.getField(params, "entityTypes", false);
+            if islogical(addTypes) && isscalar(addTypes) && addTypes
+                modules = cellfun(@(m) string(m.id), nansen.internal.asCellOfStructs( ...
+                    nansen.internal.getField(project.Document, "modules", [])), UniformOutput=false);
+                fragments = string.empty(1, 0);
+                if ismember("core", [modules{:}])
+                    fragments = "core.notes";
                 end
-            end
-            nansen.internal.writeText(target, text);
-        end
-
-        function path = normalizePath(path)
-            % Resolve "." and ".." and use "/" (as Python's os.path.normpath, then "\" -> "/")
-            path = replace(string(path), "\", "/");
-            parts = split(path, "/")';
-            kept = strings(1, 0);
-            for part = parts
-                if part == "." || (part == "" && ~isempty(kept))
-                    continue
-                elseif part == ".." && ~isempty(kept) && kept(end) ~= ".." && kept(end) ~= ""
-                    kept(end) = [];
-                else
-                    kept(end + 1) = part; %#ok<AGROW>
-                end
-            end
-            path = join(kept, "/");
-            if path == ""
-                path = "/";
+                project.addDatasetEntityTypes(Fragments=fragments);
             end
         end
 

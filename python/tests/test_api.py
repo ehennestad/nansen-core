@@ -7,6 +7,7 @@ import pytest
 
 from nansen import Project
 from nansen.api import Api
+from nansen.errors import NansenError
 from nansen.catalog import Catalog
 
 
@@ -64,7 +65,7 @@ def test_background_queue_reports_task_events(tmp_path):
 def test_a_copied_dataset_keeps_its_text_and_its_roots(tmp_path):
     import json
 
-    from nansen.api import copy_dataset
+    from nansen.dataset import copy_dataset
 
     study = tmp_path / "study"
     study.mkdir()
@@ -90,3 +91,27 @@ def test_the_app_creates_and_imports_projects(tmp_path):
     error = api.handle({"id": 3, "method": "legacy.import", "params": {"source": str(tmp_path), "path": str(tmp_path / "x")}})
     assert error["error"]["code"] == "legacy-needs-matlab"
     api.close()
+
+
+def test_a_project_gets_its_dataset_later(tmp_path):
+    from nansen.demo import demo_dir
+
+    api = Api(start_queue=False)
+    api.handle({"id": 1, "method": "project.create", "params": {"path": str(tmp_path / "p"), "name": "P", "modules": ["core"]}})
+    info = api.handle({"id": 2, "method": "project.setDataset", "params": {
+        "datasetSource": str(demo_dir() / "dataset.dsm.json"), "entityTypes": True}})["result"]
+    assert [(e["name"], e["fragments"]) for e in info["entityTypes"]] == [("subject", ["core.notes"]), ("session", ["core.notes"])]
+    again = api.handle({"id": 3, "method": "project.setDataset", "params": {"datasetSource": str(demo_dir() / "dataset.dsm.json")}})
+    assert again["error"]["code"] == "dataset-exists"
+    api.close()
+
+
+def test_an_invalid_dataset_is_not_kept(tmp_path):
+    bad = tmp_path / "bad.dsm.json"
+    bad.write_text('{"schemaVersion": "0.1.0", "entityTypes": "no"}')
+    project = Project.create(tmp_path / "p", "P")
+    with pytest.raises(NansenError) as error:
+        project.set_dataset(bad)
+    assert error.value.code == "dataset-invalid"
+    assert "dataset" not in Project.open(tmp_path / "p").document
+    assert not (tmp_path / "p" / "dataset.dsm.json").exists()

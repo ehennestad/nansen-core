@@ -57,6 +57,7 @@ Events flow from the core to the frontend:
 | `catalog.remove` | `path` | The remaining projects |
 | `project.open` | `path`, `environment?` | `project.info` |
 | `project.create` | `path`, `name`, `title?`, `description?`, `dataset?` (a config in the folder) or `datasetSource?` (a config to copy in; its relative roots are made absolute), `modules?`, `entityTypes?` (true: one per DSM entity type, with `core.notes` when `core` is listed) | `project.info` |
+| `project.setDataset` | `datasetSource`, `modules?`, `entityTypes?` | `project.info`: the open project with a copy of that DSM config (`dataset-exists` if it has one) |
 | `demo.create` | `path` (an empty or new folder) | `project.info` of the demo project, now open |
 | `legacy.import` | `source` (a NANSEN dev project folder, MATLAB only, or a `nansen.legacyExport` JSON file), `path` | `{project: project.info, warnings}` |
 | `project.info` | | `{name, title, description, folder, entityTypes[{name, title, fragments, rows, records}], modules, lastScan, dataset{environment, entityTypes, locations, roots}}` |

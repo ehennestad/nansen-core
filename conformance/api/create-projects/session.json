@@ -147,6 +147,58 @@
     },
     {
       "request": {
+        "id": 61,
+        "method": "project.setDataset",
+        "params": {
+          "datasetSource": "${case}/dataset.dsm.json",
+          "entityTypes": true
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "Plain",
+          "entityTypes": [
+            {
+              "name": "subject",
+              "fragments": [],
+              "rows": 0
+            },
+            {
+              "name": "session",
+              "fragments": [],
+              "rows": 0
+            }
+          ],
+          "dataset": {
+            "environment": "laptop",
+            "roots": [
+              {
+                "dataLocation": "raw",
+                "path": "${case}/data/raw"
+              },
+              {
+                "dataLocation": "processed",
+                "path": "${case}/data/processed"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "id": 62,
+        "method": "project.setDataset",
+        "params": {
+          "datasetSource": "${case}/dataset.dsm.json"
+        }
+      },
+      "expect": {
+        "error": "dataset-exists"
+      }
+    },
+    {
+      "request": {
         "id": 7,
         "method": "legacy.import",
         "params": {

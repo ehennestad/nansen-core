@@ -189,6 +189,50 @@ classdef Project < handle
             dataset = obj.DatasetCache;
         end
 
+        function dataset = setDataset(obj, source)
+            %setDataset Copy a DSM config into the project as dataset.dsm.json (relative roots made absolute) and use it
+            arguments
+                obj
+                source (1,1) string
+            end
+            if isfield(obj.Document, "dataset")
+                nansen.internal.throwError("dataset-exists", "project '%s' already has a dataset", obj.Name)
+            end
+            target = fullfile(obj.Folder, "dataset.dsm.json");
+            nansen.internal.copyDataset(source, target);
+            document = obj.Document;
+            document.dataset = 'dataset.dsm.json';
+            obj.DatasetCache = [];
+            previous = obj.Document;
+            obj.Document = document;
+            try
+                dataset = obj.requireDataset();
+            catch err
+                obj.Document = previous;
+                obj.DatasetCache = [];
+                delete(target);
+                rethrow(err)
+            end
+            obj.writeDocument(document);
+        end
+
+        function added = addDatasetEntityTypes(obj, options)
+            %addDatasetEntityTypes Add every entity type of the dataset the project does not have yet; returns their names
+            arguments
+                obj
+                options.Fragments (1,:) string = string.empty(1, 0)
+            end
+            added = strings(1, 0);
+            for name = reshape(string(obj.requireDataset().entityTypes()), 1, [])
+                if ~ismember(name, obj.EntityTypes)
+                    words = split(replace(name, "_", " "), " ")';
+                    title = join(upper(extractBefore(words, 2)) + extractAfter(words, 1), " ") + "s";
+                    obj.addEntityType(name, [], Fragments=options.Fragments, Title=title);
+                    added(end + 1) = name; %#ok<AGROW>
+                end
+            end
+        end
+
         function dataset = requireDataset(obj)
             dataset = obj.dataset();
             if isempty(dataset)
@@ -801,7 +845,7 @@ classdef Project < handle
                 options.Description (1,1) string = ""
             end
             if isfile(fullfile(folder, nansen.Project.ProjectFile))
-                error("nansen:Project:Exists", "%s already holds a project", folder)
+                nansen.internal.throwError("folder-not-empty", "%s already holds a project", folder)
             end
             entry = nansen.internal.schemaEntry("nansen.project");
             document = struct("schemaType", 'nansen.project', "schemaVersion", char(entry.version), "name", char(name));

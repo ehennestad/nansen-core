@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .adapters import AdapterRegistry
-from .dataset import Dataset, Scan
+from .dataset import Dataset, Scan, copy_dataset
 from .datavars import DataVariable, check_against_pattern, read_paths
 from .documents import PathLike, check_document, read_document, write_json
 from .entities import Entity, join
@@ -54,7 +54,7 @@ class Project:
         """Make a project folder. ``dataset`` is the path of a DSM config, relative to the folder."""
         folder = Path(folder)
         if (folder / PROJECT_FILE).exists():
-            raise FileExistsError(f"{folder} already holds a project")
+            raise NansenError("folder-not-empty", f"{folder} already holds a project")
         document: dict = {"schemaType": "nansen.project", "schemaVersion": current_version("nansen.project"), "name": name}
         if title is not None:
             document["title"] = title
@@ -183,6 +183,32 @@ class Project:
         if self._dataset is None:
             self._dataset = Dataset.load(self.folder / self.document["dataset"], self.environment)
         return self._dataset
+
+    def set_dataset(self, source: PathLike) -> Dataset:
+        """Copy a DSM config into the project as dataset.dsm.json (relative roots made absolute) and use it."""
+        if "dataset" in self.document:
+            raise NansenError("dataset-exists", f"project {self.name!r} already has a dataset")
+        target = self.folder / "dataset.dsm.json"
+        copy_dataset(source, target)
+        self.document["dataset"] = "dataset.dsm.json"
+        self._dataset = None
+        try:
+            dataset = self.require_dataset()
+        except NansenError:
+            del self.document["dataset"]
+            target.unlink()
+            raise
+        self._check_and_save()
+        return dataset
+
+    def add_dataset_entity_types(self, fragments: Sequence[str] = ()) -> List[str]:
+        """Add every entity type of the dataset that the project does not have yet; returns their names."""
+        added = []
+        for name in self.require_dataset().entity_types:
+            if name not in self.entity_types:
+                self.add_entity_type(name, fragments=fragments, title=name.replace("_", " ").title() + "s")
+                added.append(name)
+        return added
 
     def require_dataset(self) -> Dataset:
         dataset = self.dataset

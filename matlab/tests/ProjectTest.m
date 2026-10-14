@@ -61,7 +61,7 @@ classdef ProjectTest < matlab.unittest.TestCase
 
         function createRefusesAnExistingProject(testCase)
             nansen.Project.create(testCase.Folder, "A");
-            testCase.verifyError(@() nansen.Project.create(testCase.Folder, "B"), "nansen:Project:Exists");
+            testCase.verifyError(@() nansen.Project.create(testCase.Folder, "B"), "nansen:FolderNotEmpty");
         end
 
         function unknownEntityTypeAndFragment(testCase)

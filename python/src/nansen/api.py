@@ -8,8 +8,6 @@ no global state.
 from __future__ import annotations
 
 import json
-import os
-import re
 import threading
 import traceback
 from pathlib import Path
@@ -25,31 +23,6 @@ from .project import Project
 from .tasks import TaskQueue
 
 PROTOCOL_VERSION = "0.1"
-
-
-def copy_dataset(source, target: Path) -> None:
-    """Copy a DSM config into a project, making its relative root paths absolute so they still point there.
-
-    The text is kept as it is except for those paths, so MATLAB (which cannot write JSON back unchanged)
-    does the same edit.
-    """
-    source = Path(source)
-    if not source.is_file():
-        raise NansenError("file-not-found", f"no DSM config {source}")
-    text = source.read_text(encoding="utf-8")
-    try:
-        config = json.loads(text)
-    except ValueError as error:
-        raise NansenError("malformed-json", f"{source}: {error}") from None
-    folder = source.resolve().parent
-    for location in config.get("dataLocations", []):
-        for root in location.get("filesystemSource", {}).get("rootStoragePaths", []):
-            path = root.get("path")
-            if isinstance(path, str) and not os.path.isabs(path) and not re.match(r"^[A-Za-z]:[\\/]", path):
-                absolute = os.path.normpath(os.path.join(folder, path)).replace("\\", "/")
-                pattern = r'("path"\s*:\s*)' + re.escape(json.dumps(path, ensure_ascii=False))
-                text = re.sub(pattern, lambda m: m.group(1) + json.dumps(absolute, ensure_ascii=False), text)
-    target.write_text(text, encoding="utf-8", newline="")
 
 
 class Api:
@@ -182,25 +155,32 @@ class Api:
 
     def project__create(self, params: dict) -> dict:
         """A new project; with datasetSource, a copy of that DSM config, and with entityTypes, its entity types."""
-        folder = Path(params["path"])
-        dataset = params.get("dataset")
-        if params.get("datasetSource"):
-            if (folder / "project.nansen.json").exists():
-                raise NansenError("folder-not-empty", f"{folder} already holds a project")
-            folder.mkdir(parents=True, exist_ok=True)
-            copy_dataset(params["datasetSource"], folder / "dataset.dsm.json")
-            dataset = "dataset.dsm.json"
-        project = Project.create(folder, params["name"], params.get("title"), dataset, params.get("description"))
-        modules = list(params.get("modules", []))
-        for module in modules:
-            project.add_module(module)
-        if params.get("entityTypes"):
-            fragments = ["core.notes"] if "core" in modules else []
-            for name in project.require_dataset().entity_types:
-                project.add_entity_type(name, fragments=fragments, title=name.replace("_", " ").title() + "s")
+        source = params.get("datasetSource")
+        if source and not Path(source).is_file():
+            raise NansenError("file-not-found", f"no DSM config {source}")
+        project = Project.create(params["path"], params["name"], params.get("title"), params.get("dataset"),
+                                 params.get("description"))
+        self._configure(project, params)
         self._set_project(project)
         self.emit("project", {"name": project.name})
         return self.project__info({})
+
+    def project__setDataset(self, params: dict) -> dict:
+        """Give the open project a copy of a DSM config; also add modules, and with entityTypes, its entity types."""
+        project = self._require_project()
+        self._configure(project, params)
+        self._set_project(Project.open(project.folder, environment=project.environment))
+        self.emit("project", {"name": self.project.name})
+        return self.project__info({})
+
+    def _configure(self, project: Project, params: dict) -> None:
+        if params.get("datasetSource"):
+            project.set_dataset(params["datasetSource"])
+        for module in params.get("modules", []):
+            project.add_module(module)
+        if params.get("entityTypes"):
+            core = any(m["id"] == "core" for m in project.document.get("modules", []))
+            project.add_dataset_entity_types(["core.notes"] if core else [])
 
     def demo__create(self, params: dict) -> dict:
         from .demo import create_demo

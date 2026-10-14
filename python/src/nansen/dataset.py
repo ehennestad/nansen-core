@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -180,3 +183,28 @@ class Dataset:
 
     def absolute(self, data_location: str, relative: str, root_storage_path: Optional[str] = None) -> Path:
         return self.root(data_location, root_storage_path).path / relative
+
+
+def copy_dataset(source, target: Path) -> None:
+    """Copy a DSM config into a project, making its relative root paths absolute so they still point there.
+
+    The text is kept as it is except for those paths, so MATLAB (which cannot write JSON back unchanged)
+    makes the same edit (nansen.internal.copyDataset).
+    """
+    source = Path(source)
+    if not source.is_file():
+        raise NansenError("file-not-found", f"no DSM config {source}")
+    text = source.read_text(encoding="utf-8")
+    try:
+        config = json.loads(text)
+    except ValueError as error:
+        raise NansenError("malformed-json", f"{source}: {error}") from None
+    folder = source.resolve().parent
+    for location in config.get("dataLocations", []):
+        for root in location.get("filesystemSource", {}).get("rootStoragePaths", []):
+            path = root.get("path")
+            if isinstance(path, str) and not os.path.isabs(path) and not re.match(r"^[A-Za-z]:[\\/]", path):
+                absolute = os.path.normpath(os.path.join(folder, path)).replace("\\", "/")
+                pattern = r'("path"\s*:\s*)' + re.escape(json.dumps(path, ensure_ascii=False))
+                text = re.sub(pattern, lambda m: m.group(1) + json.dumps(absolute, ensure_ascii=False), text)
+    target.write_text(text, encoding="utf-8", newline="")

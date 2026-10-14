@@ -31,8 +31,9 @@ def test_two_projects_are_independent(tmp_path):
 
 def test_create_refuses_an_existing_project(tmp_path):
     Project.create(tmp_path, "A")
-    with pytest.raises(FileExistsError):
+    with pytest.raises(NansenError) as error:
         Project.create(tmp_path, "B")
+    assert error.value.code == "folder-not-empty"
 
 
 def test_unknown_entity_type_and_fragment(tmp_path):

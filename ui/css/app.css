@@ -417,6 +417,8 @@ table.simple th { font-size: 12px; color: var(--text-3); font-weight: 600; borde
 .action-card .title { font-weight: 600; margin-bottom: 2px; }
 .action-card .sub { font-size: 12.5px; color: var(--text-3); }
 .action-icon { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.card-body.setup p { margin: 0 0 12px; color: var(--text-2); }
+.nav-empty { padding: 4px 12px 8px; font-size: 12.5px; color: var(--text-3); }
 .form-message { margin-top: 12px; padding: 8px 12px; border-radius: 8px; background: var(--bad-soft, #fdecec); color: var(--bad); font-size: 13px; }
 .form-message.hidden { display: none; }
 ul.notes { margin: 0; padding-left: 18px; max-height: 320px; overflow: auto; }

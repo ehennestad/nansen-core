@@ -81,6 +81,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `fragment-mismatch` | A table's columns or fragment versions differ from the fragment definition |
 | `no-dataset` | The operation needs a DSM config and the project has none |
 | `dataset-invalid` | The project's DSM config is refused by the DSM reader |
+| `dataset-exists` | The project already has a DSM config |
 | `key-mismatch` | A table's key differs from the identity the dataset gives its entity type |
 | `unknown-entity` | No entity of the type has the given key |
 | `unknown-location` | The dataset has no root for the data location in the active environment |

@@ -163,7 +163,8 @@
       N.append(this.navEl, [
         link("#/overview", "home", "Overview"),
         h("div.nav-section", "Entities"),
-        project.entityTypes.map((t) => link(`#/entities/${t.name}`, "table", t.title || N.titleCase(t.name), t.rows)),
+        project.entityTypes.length ? project.entityTypes.map((t) => link(`#/entities/${t.name}`, "table", t.title || N.titleCase(t.name), t.rows))
+          : h("div.nav-empty", "None yet"),
         h("div.nav-section", "Work"),
         link("#/tasks", "tasks", "Tasks", this.runningTasks || null),
         link("#/data", "database", "Data"),

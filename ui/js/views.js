@@ -39,7 +39,10 @@
       return h("li", h("span.dot." + (root.available ? "good" : "bad")),
         h("div.grow", h("div.title", location.title), h("div.sub.mono", root.path)),
         h("span.pill.plain", location.access === "readwrite" ? "read/write" : "read only"));
-    })) : h("div.card-body.muted", "This project has no dataset (DSM config), so entities come only from its tables.");
+    })) : h("div.card-body.setup",
+      h("p", "This project has no dataset yet. A dataset config (", h("span.mono", "dataset.dsm.json"),
+        ") says where the data is and how subjects and sessions are named, so NANSEN can find them."),
+      h("button.btn.primary", { on: { click: () => datasetDialog(app) } }, N.icon("plus"), "Set up the dataset"));
 
     const recent = tasks.slice(-6).reverse();
     const taskList = recent.length ? h("ul.list", recent.map((task) => h("li", { style: { cursor: "pointer" }, on: { click: () => app.go("#/tasks") } },
@@ -539,6 +542,28 @@
           h("div.empty", N.icon("folder", 40), h("h3", "No projects yet"), h("div", "Create one above, or open a project folder.")))));
     path.addEventListener("keydown", (e) => { if (e.key === "Enter") open(path.value); });
   };
+
+  function datasetDialog(app) {
+    const hasCore = app.project.modules.some((m) => m.id === "core");
+    formDialog({
+      title: "Set up the dataset",
+      intro: "The config is copied into the project. Root paths in it that are relative are made absolute, so they still point to the data.",
+      label: "Use this dataset",
+      required: ["datasetSource"],
+      schema: { type: "object", properties: {
+        datasetSource: { type: "string", title: "Dataset config", description: "Path of an existing dataset.dsm.json" },
+        entityTypes: { type: "boolean", default: true, title: "Add the dataset's entity types" },
+        core: { type: "boolean", default: !hasCore, title: "Use the core module (notes, file statistics)" },
+      } },
+      submit: async (values) => {
+        app.project = await app.client.request("project.setDataset", { datasetSource: values.datasetSource,
+          entityTypes: values.entityTypes, modules: values.core ? ["core"] : [] });
+        await app.reloadProject();
+        app.render();
+        N.toast("Dataset added", "Scan the stores to find the entities", "success");
+      },
+    });
+  }
 
   /* A dialog with a form drawn from a schema; submit gets the values without empty text, and may throw. */
   function formDialog({ title, intro, schema, values, label, required, submit }) {

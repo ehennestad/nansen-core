@@ -200,3 +200,18 @@ def test_create_the_demo_and_a_project_from_the_projects_page(empty_app, page):
     page.wait_for_selector(".project-switch:has-text('Study')")
     assert page.locator(".nav a:has-text('Sessions') .count").inner_text() == "0"  # the demo's entity types, no rows yet
     assert [p["name"] for p in empty_app["api"].handle({"id": 1, "method": "catalog.list"})["result"]] == ["Study", "TwoPhotonDemo"]
+
+
+def test_a_project_without_a_dataset_offers_to_set_one_up(empty_app, page):
+    from nansen.demo import demo_dir
+
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "project.create", "params": {"path": str(empty_app["folder"] / "plain"), "name": "Plain"}})
+    page.goto(empty_app["server"].url + "#/overview")
+    page.wait_for_selector(".nav-empty:has-text('None yet')")
+    page.click("button:has-text('Set up the dataset')")
+    page.fill(".dialog .field:has-text('Dataset config') input", str(demo_dir() / "dataset.dsm.json"))
+    page.click(".dialog-foot button:has-text('Use this dataset')")
+    page.wait_for_selector(".nav a:has-text('Sessions')")
+    info = api.handle({"id": 2, "method": "project.info"})["result"]
+    assert [(e["name"], e["fragments"]) for e in info["entityTypes"]] == [("subject", ["core.notes"]), ("session", ["core.notes"])]
