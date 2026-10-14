@@ -74,6 +74,12 @@ jobs:
         with:
           release: ${{ matrix.release }}
 
+      - name: Start a virtual display, so the app test can show the dashboard
+        run: |
+          sudo apt-get install -y -q xvfb > /dev/null
+          Xvfb :99 -screen 0 1600x1000x24 > /dev/null 2>&1 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
       - name: Run the MATLAB suite (unit tests and every conformance case)
         uses: matlab-actions/run-command@v2
         with:

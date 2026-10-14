@@ -78,6 +78,14 @@
 
   /* Resolve with a transport: MATLAB calls window.setup(htmlComponent) when it shows the page in a
      uihtml (inside an iframe); a page served by Python is the top window and talks HTTP. */
+  // Defined as soon as this script runs: MATLAB may call setup before the app starts, and the call is kept.
+  let matlabComponent = null;
+  let onSetup = null;
+  window.setup = (htmlComponent) => {
+    matlabComponent = htmlComponent;
+    if (onSetup) onSetup(htmlComponent);
+  };
+
   N.connect = function () {
     return new Promise((resolve) => {
       let done = false;
@@ -87,7 +95,11 @@
           resolve(transport);
         }
       };
-      window.setup = (htmlComponent) => finish(new MatlabTransport(htmlComponent));
+      if (matlabComponent) {
+        finish(new MatlabTransport(matlabComponent));
+        return;
+      }
+      onSetup = (htmlComponent) => finish(new MatlabTransport(htmlComponent));
       const embedded = window.parent !== window;
       setTimeout(() => finish(new HttpTransport("")), embedded ? 4000 : 0);
     });

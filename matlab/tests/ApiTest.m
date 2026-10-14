@@ -44,14 +44,22 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(projects{1}.name), "Pilot");
         end
 
-        function appOpensWhenThereIsADisplay(testCase)
-            testCase.assumeTrue(usejava("desktop") || ~isempty(getenv("DISPLAY")), "no display");
+        function appAnswersTheDashboard(testCase)
+            % The page loads in the uihtml, calls setup, and its requests reach the API over the bridge.
+            testCase.assumeTrue(usejava("desktop") || ispc || ismac || ~isempty(getenv("DISPLAY")), "no display");
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
-            project = nansen.Project.create(fullfile(fixture.Folder, "p"), "Pilot");
-            app = nansen.App(Project=project, CatalogPath=fullfile(fixture.Folder, "catalog.json"), ...
-                Visible=false, StartQueue=false);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            app = nansen.App(Project=project, CatalogPath=fullfile(fixture.Folder, "catalog.json"), StartQueue=false);
             testCase.addTeardown(@() app.close());
             testCase.verifyClass(app.Html, "matlab.ui.control.HTML");
+            expected = ["app.info", "project.info", "fragments.list", "methods.list", "queue.status"];
+            started = tic;
+            while toc(started) < 60 && ~all(ismember(expected, app.Requests))
+                drawnow
+                pause(0.25)
+            end
+            testCase.verifyTrue(all(ismember(expected, app.Requests)), ...
+                "requests from the page: " + strjoin(app.Requests, ", "));
         end
     end
 end

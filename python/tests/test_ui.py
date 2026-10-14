@@ -134,3 +134,37 @@ def test_queue_a_pipeline(app, page):
             break
         time.sleep(0.1)
     assert sum("completed" in t and "core.inspect" in t for t in page.locator(".task").all_inner_texts()) == 2
+
+
+HOST_PAGE = """<!doctype html><html><body style="margin:0">
+<iframe src="index.html" style="width:1400px;height:880px;border:0"></iframe>
+<script>
+  // Plays MATLAB's part: uihtml shows the page in an iframe and calls setup(htmlComponent) once it has loaded.
+  window.sent = [];
+  const frame = document.querySelector("iframe");
+  frame.addEventListener("load", () => {
+    const listeners = {};
+    const component = {
+      addEventListener: (name, listener) => (listeners[name] = listeners[name] || []).push(listener),
+      sendEventToMATLAB: async (name, data) => {
+        window.sent.push(JSON.parse(data).method);
+        const response = await fetch("api", { method: "POST", headers: { "Content-Type": "application/json" }, body: data });
+        const text = await response.text();
+        (listeners.response || []).forEach((listener) => listener({ Data: text }));
+      },
+    };
+    frame.contentWindow.setup(component);
+  });
+</script></body></html>"""
+
+
+def test_dashboard_talks_through_the_matlab_bridge(app, page):
+    host = app["server"].url + "matlab-host.html"
+    page.route(host, lambda route: route.fulfill(status=200, content_type="text/html", body=HOST_PAGE))
+    page.goto(host)
+    frame = page.frame_locator("iframe")
+    frame.locator(".stat").first.wait_for()
+    assert frame.locator(".stat .value").all_inner_texts() == ["4", "14"]
+    sent = page.evaluate("window.sent")
+    assert {"app.info", "project.info", "fragments.list", "methods.list"} <= set(sent)
+    assert frame.locator(".sidebar-foot").inner_text().startswith("Connected")

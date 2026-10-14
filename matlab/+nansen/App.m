@@ -11,6 +11,8 @@ classdef App < handle
         Figure
         Html
         Api
+        % Methods of the last requests the page sent, oldest first (at most 200): for tests and diagnosis
+        Requests (1,:) string = string.empty(1, 0)
     end
 
     properties (Access = private)
@@ -70,6 +72,12 @@ classdef App < handle
         function onHtmlEvent(obj, event)
             if string(event.HTMLEventName) ~= "request"
                 return
+            end
+            try
+                request = jsondecode(char(event.HTMLEventData));
+                obj.Requests = [obj.Requests(max(1, end - 198):end), string(request.method)];
+            catch
+                % not a request object; handleJson answers it with invalid-request
             end
             text = obj.Api.handleJson(event.HTMLEventData);
             sendEventToHTMLSource(obj.Html, "response", char(text));
