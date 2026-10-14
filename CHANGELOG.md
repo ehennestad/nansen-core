@@ -27,7 +27,9 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 
 - Added the app protocol, with the same API in both languages ([protocol](docs/reference/protocol.md)), and the project catalog.
 - Added the dashboard: one HTML/JS app, shown by `nansen.App` in MATLAB (`uihtml`) and by `nansen app` in Python (local server with Server-Sent Events). It shows the overview, entity tables, the detail drawer, method forms with presets, pipelines, the live task queue, data and the catalog, in light and dark themes.
-- Added `nansen demo` / `nansen.demo.create`: a two-photon demo project.
+- Added `nansen demo` / `nansen.demo.create`: a two-photon demo project, built from the same description in both languages.
+- The dashboard creates projects (optionally from an existing DSM config, with its entity types), the demo, and imports from NANSEN. A project without a dataset gets a form to set one up. Columns can be added to tables that already have rows (`fragments.create`, `fragments.attach`): NANSEN's table variables without code.
+- The MATLAB app is tested end to end in CI: the dashboard loads in a `uihtml` under a virtual display, and its requests reach the API.
 
 **Import**
 

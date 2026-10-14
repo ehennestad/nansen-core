@@ -664,10 +664,12 @@ classdef Api < handle
             end
             addTypes = nansen.internal.getField(params, "entityTypes", false);
             if islogical(addTypes) && isscalar(addTypes) && addTypes
-                modules = cellfun(@(m) string(m.id), nansen.internal.asCellOfStructs( ...
-                    nansen.internal.getField(project.Document, "modules", [])), UniformOutput=false);
+                modules = strings(1, 0);
+                for module = nansen.internal.asCellOfStructs(nansen.internal.getField(project.Document, "modules", []))
+                    modules(end + 1) = string(module{1}.id); %#ok<AGROW>
+                end
                 fragments = string.empty(1, 0);
-                if ismember("core", [modules{:}])
+                if ismember("core", modules)
                     fragments = "core.notes";
                 end
                 project.addDatasetEntityTypes(Fragments=fragments);
