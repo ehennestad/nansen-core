@@ -39,7 +39,8 @@ class Catalog:
 
     def projects(self) -> List[dict]:
         """Projects, most recently opened first, each with whether its folder still holds a project."""
-        projects = self._read()["projects"]
+        # Entries are appended when added, so of two opened in the same second the later one is last
+        projects = list(reversed(self._read()["projects"]))
         projects.sort(key=lambda p: p.get("lastOpened", ""), reverse=True)
         return [dict(p, available=(Path(p["path"]) / "project.nansen.json").is_file()) for p in projects]
 

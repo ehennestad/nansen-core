@@ -50,6 +50,18 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(projects{1}.name), "Pilot");
         end
 
+        function catalogListsTheLastOpenedFirstWithinOneSecond(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));
+            names = ["First", "Second", "Third"];   % often in one second, which lastOpened cannot tell apart
+            for name = names
+                api.handle(struct("id", 1, "method", "project.create", "params", ...
+                    struct("path", fullfile(fixture.Folder, name), "name", name, "modules", {{'core'}})));
+            end
+            projects = api.handle(struct("id", 2, "method", "catalog.list")).result;
+            testCase.verifyEqual(cellfun(@(p) string(p.name), projects), flip(names));
+        end
+
         function appAnswersTheDashboard(testCase)
             % The page loads in the uihtml, calls setup, and its requests reach the API over the bridge.
             testCase.assumeTrue(usejava("desktop") || ispc || ismac || ~isempty(getenv("DISPLAY")), "no display");

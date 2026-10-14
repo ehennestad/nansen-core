@@ -19,6 +19,16 @@ def test_dispatch_errors():
     assert api.handle({"id": 3, "method": "app.info"})["id"] == 3
 
 
+def test_catalog_lists_the_last_opened_first_within_one_second(tmp_path):
+    api = Api(catalog=Catalog(tmp_path / "catalog.json"), start_queue=False)
+    for name in ["First", "Second", "Third"]:  # often in one second, which lastOpened cannot tell apart
+        api.handle({"id": 1, "method": "project.create",
+                    "params": {"path": str(tmp_path / name), "name": name, "modules": ["core"]}})
+    projects = api.handle({"id": 2, "method": "catalog.list"})["result"]
+    assert [p["name"] for p in projects] == ["Third", "Second", "First"]
+    api.close()
+
+
 def test_events_and_catalog(tmp_path):
     catalog = Catalog(tmp_path / "catalog.json")
     api = Api(catalog=catalog, start_queue=False)

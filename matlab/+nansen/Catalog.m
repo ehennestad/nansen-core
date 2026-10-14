@@ -22,6 +22,8 @@ classdef Catalog
             if isempty(projects)
                 return
             end
+            % Entries are appended when added, so of two opened in the same second the later one is last
+            projects = flip(projects);
             opened = cellfun(@(p) string(nansen.internal.getField(p, "lastOpened", "")), projects);
             [~, order] = sort(opened, "descend");
             projects = projects(order);
