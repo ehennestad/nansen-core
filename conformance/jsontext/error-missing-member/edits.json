@@ -1,0 +1,9 @@
+{
+  "edits": [
+    {
+      "op": "replace",
+      "pointer": "/a/c",
+      "value": 2
+    }
+  ]
+}

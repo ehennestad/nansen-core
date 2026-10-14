@@ -84,6 +84,8 @@ function [actual, written] = evaluate(kind, folder, expected)
             actual = evaluateData(folder);
         case "legacy"
             actual = evaluateLegacy(folder);
+        case "jsontext"
+            actual = evaluateJsonText(folder);
         case "api"
             actual = struct();   % handled by runApiCase
         case "projects"
@@ -118,6 +120,23 @@ function actual = evaluateEntities(folder)
         synced.(name) = project.sync(name, scan);
     end
     actual = struct("entities", entities, "sync", synced);
+end
+
+function actual = evaluateJsonText(folder)
+    text = nansen.internal.readText(fullfile(folder, "input.json"));
+    edits = nansen.internal.asCellOfStructs(nansen.internal.readJson(fullfile(folder, "edits.json")).edits);
+    for i = 1:numel(edits)
+        edit = edits{i};
+        switch string(edit.op)
+            case "replace"
+                text = nansen.internal.JsonText.replace(text, edit.pointer, edit.value);
+            case "append"
+                text = nansen.internal.JsonText.append(text, edit.pointer, edit.value);
+            otherwise
+                text = nansen.internal.JsonText.setMember(text, edit.pointer, edit.key, edit.value);
+        end
+    end
+    actual = struct("output", string(text));
 end
 
 function actual = evaluateLegacy(folder)

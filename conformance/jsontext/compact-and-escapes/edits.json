@@ -1,0 +1,37 @@
+{
+  "edits": [
+    {
+      "op": "append",
+      "pointer": "/a",
+      "value": 3
+    },
+    {
+      "op": "setMember",
+      "pointer": "/o",
+      "key": "p",
+      "value": "q"
+    },
+    {
+      "op": "replace",
+      "pointer": "/k~0~1/n",
+      "value": "ø"
+    },
+    {
+      "op": "append",
+      "pointer": "/a",
+      "value": {
+        "m": [
+          1,
+          2
+        ],
+        "t": true,
+        "z": null
+      }
+    },
+    {
+      "op": "append",
+      "pointer": "/m",
+      "value": 3
+    }
+  ]
+}

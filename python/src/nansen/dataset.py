@@ -188,8 +188,7 @@ class Dataset:
 def copy_dataset(source, target: Path) -> None:
     """Copy a DSM config into a project, making its relative root paths absolute so they still point there.
 
-    The text is kept as it is except for those paths, so MATLAB (which cannot write JSON back unchanged)
-    makes the same edit (nansen.internal.copyDataset).
+    Only those values change in the text (nansen.jsontext), as in MATLAB's nansen.internal.copyDataset.
     """
     source = Path(source)
     if not source.is_file():
@@ -199,13 +198,14 @@ def copy_dataset(source, target: Path) -> None:
         config = json.loads(text)
     except ValueError as error:
         raise NansenError("malformed-json", f"{source}: {error}") from None
+    from . import jsontext
+
     folder = source.resolve().parent
-    for location in config.get("dataLocations", []):
-        for root in location.get("filesystemSource", {}).get("rootStoragePaths", []):
+    for i, location in enumerate(config.get("dataLocations", [])):
+        for j, root in enumerate(location.get("filesystemSource", {}).get("rootStoragePaths", [])):
             path = root.get("path")
             if isinstance(path, str) and not os.path.isabs(path) and not re.match(r"^[A-Za-z]:[\\/]", path):
                 absolute = os.path.normpath(os.path.join(folder, path)).replace("\\", "/")
-                pattern = r'("path"\s*:\s*)' + re.escape(json.dumps(path, ensure_ascii=False))
-                text = re.sub(pattern, lambda m: m.group(1) + json.dumps(absolute, ensure_ascii=False), text)
+                text = jsontext.replace(text, f"/dataLocations/{i}/filesystemSource/rootStoragePaths/{j}/path", absolute)
     with open(target, "w", encoding="utf-8", newline="") as f:  # Path.write_text has newline= from 3.10 only
         f.write(text)

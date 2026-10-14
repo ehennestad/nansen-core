@@ -1,9 +1,8 @@
 function copyDataset(source, target)
 %copyDataset Copy a DSM config, making its relative root paths absolute so they still point there
 %
-%   Only those path values change in the text, as in Python's
-%   nansen.dataset.copy_dataset: MATLAB cannot write decoded JSON back
-%   unchanged.
+%   Only those path values change in the text (nansen.internal.JsonText),
+%   as in Python's nansen.dataset.copy_dataset.
     if ~isfile(source)
         nansen.internal.throwError("file-not-found", "no DSM config %s", source)
     end
@@ -15,17 +14,18 @@ function copyDataset(source, target)
     end
     listing = dir(source);
     folder = string(listing(1).folder);
-    for location = nansen.internal.asCellOfStructs(nansen.internal.getField(config, "dataLocations", []))
-        filesystem = nansen.internal.getField(location{1}, "filesystemSource", struct());
-        for root = nansen.internal.asCellOfStructs(nansen.internal.getField(filesystem, "rootStoragePaths", []))
-            path = nansen.internal.getField(root{1}, "path", []);
+    locations = nansen.internal.asCellOfStructs(nansen.internal.getField(config, "dataLocations", []));
+    for i = 1:numel(locations)
+        filesystem = nansen.internal.getField(locations{i}, "filesystemSource", struct());
+        roots = nansen.internal.asCellOfStructs(nansen.internal.getField(filesystem, "rootStoragePaths", []));
+        for j = 1:numel(roots)
+            path = nansen.internal.getField(roots{j}, "path", []);
             if ~(ischar(path) || isstring(path)) || nansen.internal.isAbsolutePath(string(path))
                 continue
             end
             absolute = nansen.internal.normalizePath(folder + "/" + string(path));
-            pattern = "(""path""\s*:\s*)" + regexptranslate("escape", jsonencode(char(path)));
-            replacement = replace(replace(string(jsonencode(char(absolute))), "\", "\\"), "$", "\$");
-            text = regexprep(text, pattern, "$1" + replacement);
+            pointer = sprintf("/dataLocations/%d/filesystemSource/rootStoragePaths/%d/path", i - 1, j - 1);
+            text = nansen.internal.JsonText.replace(text, pointer, absolute);
         end
     end
     nansen.internal.writeText(target, text);

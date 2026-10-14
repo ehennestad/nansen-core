@@ -1,0 +1,4 @@
+{
+  "description": "One-line JSON: items are added after ', '; brackets and quotes inside strings are skipped; pointer segments with ~0 and ~1; non-ASCII text; an array whose items do not start on their own line.",
+  "output": "{\"a\":[1,2, 3, {\"m\": [1, 2], \"t\": true, \"z\": null}],\"s\":\"x]\\\"}{\",\"o\":{\"p\": \"q\"},\"k~/\":{\"n\":\"ø\"},\"m\":[1,\n2, 3]}"
+}

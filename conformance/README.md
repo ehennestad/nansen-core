@@ -2,7 +2,7 @@
 
 These cases pin down how NANSEN documents are read and written. Both implementations must pass every case: the MATLAB suite (`matlab/tests`) and the Python suite (`python/tests`), and `nansen conformance` as well.
 
-There are seven kinds of case. Each case is a folder with an `expected.json` that has a `description` and either the expected result or `"error": "<code>"` (see [error codes](../docs/conventions.md#error-codes)).
+There are eight kinds of case. Each case is a folder with an `expected.json` that has a `description` and either the expected result or `"error": "<code>"` (see [error codes](../docs/conventions.md#error-codes)).
 
 ## `documents/<case>/`
 
@@ -42,6 +42,12 @@ Like `entities`, plus `requests.json`: a list of `{entityType, key, variable}`.
 `export.json` is a `nansen.legacyExport` document, as MATLAB's `nansen.legacy.exportProject` writes it. The implementation converts it into a new project in an empty folder ([legacy import](../docs/reference/legacy-import.md)).
 
 - `expected.json` gives the written `project.nansen.json` and `dataset.dsm.json`, the fragments and data variables (sorted by file name), each table's `key`, columns and `rows`, and the report's `warnings` in order.
+
+## `jsontext/<case>/`
+
+`input.json` is JSON text, and `edits.json` lists `edits`: `{op: "replace" | "append" | "setMember", pointer, key?, value}`, applied in order with the JSON text editor (`nansen.jsontext`, `nansen.internal.JsonText`). Pointers are JSON Pointers (RFC 6901).
+
+- `expected.json` gives the resulting text as `output`, byte for byte, or an error code. Values in `edits.json` must not hold one-element arrays, which MATLAB's `jsondecode` cannot tell from scalars.
 
 ## `api/<case>/`
 

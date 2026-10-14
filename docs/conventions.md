@@ -65,6 +65,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 |---|---|
 | `file-not-found` | A referenced file does not exist |
 | `malformed-json` | The file is not valid JSON |
+| `json-pointer-not-found` | An edit to JSON text names a member or element that is not there |
 | `unknown-schema-type` | `schemaType` is missing or not in `schema/index.json` |
 | `unsupported-version` | `schemaVersion` is not a semantic version, is newer than the reader, or has no migration path |
 | `schema-validation` | The document does not validate against its schema |

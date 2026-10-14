@@ -1,0 +1,4 @@
+{
+  "description": "A pretty-printed config: an item appended to a one-per-line array goes on its own line with the same indentation; an empty array and a new top-level member; replacing values keeps the rest of the text.",
+  "output": "{\n  \"schemaVersion\": \"0.1.0\",\n  \"dataLocations\": [\n    {\n      \"identifier\": \"raw\",\n      \"filesystemSource\": {\n        \"rootStoragePaths\": [\n          {\n            \"identifier\": \"lab\",\n            \"path\": \"/mnt/lab/raw\",\n            \"environment\": \"lab\"\n          },\n          {\"identifier\": \"my-pc\", \"path\": \"D:/data/raw\", \"environment\": \"my-pc\"}\n        ],\n        \"entityLayout\": [\n          { \"name\": \"sessions\", \"excludePatterns\": [\"^tmp$\"] }\n        ]\n      }\n    }\n  ],\n  \"preferences\": {\n    \"environmentIdentifier\": \"my-pc\"\n  },\n  \"description\": \"Raw data, two machines\"\n}\n"
+}

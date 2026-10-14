@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "0.1.0",
+  "dataLocations": [
+    {
+      "identifier": "raw",
+      "filesystemSource": {
+        "rootStoragePaths": [
+          {
+            "identifier": "lab",
+            "path": "/lab/raw",
+            "environment": "lab"
+          }
+        ],
+        "entityLayout": [
+          { "name": "sessions", "excludePatterns": [] }
+        ]
+      }
+    }
+  ],
+  "preferences": {
+    "environmentIdentifier": "lab"
+  }
+}

@@ -17,7 +17,7 @@ from .errors import NansenError
 from .project import Project
 from .tables import EntityTable
 
-KINDS = ("documents", "tables", "projects", "entities", "data", "legacy", "api")
+KINDS = ("documents", "tables", "projects", "entities", "data", "legacy", "jsontext", "api")
 
 
 @dataclass
@@ -84,6 +84,8 @@ def _evaluate(kind: str, case: Path, expected: dict):
         return _evaluate_data(case), None
     if kind == "legacy":
         return _evaluate_legacy(case), None
+    if kind == "jsontext":
+        return _evaluate_jsontext(case), None
     project = Project.open(case / "project")
     tables = {}
     for name in project.entity_types:
@@ -129,6 +131,22 @@ def _evaluate_data(case: Path) -> dict:
             result["write"] = {"error": error.code}
         results.append(result)
     return {"results": results}
+
+
+def _evaluate_jsontext(case: Path) -> dict:
+    from . import jsontext
+
+    text = (case / "input.json").read_bytes().decode("utf-8")
+    with open(case / "edits.json", encoding="utf-8") as f:
+        edits = json.load(f)["edits"]
+    for edit in edits:
+        if edit["op"] == "replace":
+            text = jsontext.replace(text, edit["pointer"], edit["value"])
+        elif edit["op"] == "append":
+            text = jsontext.append(text, edit["pointer"], edit["value"])
+        else:
+            text = jsontext.set_member(text, edit["pointer"], edit["key"], edit["value"])
+    return {"output": text}
 
 
 def _evaluate_legacy(case: Path) -> dict:

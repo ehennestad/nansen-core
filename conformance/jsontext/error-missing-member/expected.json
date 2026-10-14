@@ -1,0 +1,4 @@
+{
+  "description": "Replacing a member that is not there.",
+  "error": "json-pointer-not-found"
+}

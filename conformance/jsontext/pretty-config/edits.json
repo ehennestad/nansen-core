@@ -1,0 +1,35 @@
+{
+  "edits": [
+    {
+      "op": "append",
+      "pointer": "/dataLocations/0/filesystemSource/rootStoragePaths",
+      "value": {
+        "identifier": "my-pc",
+        "path": "D:/data/raw",
+        "environment": "my-pc"
+      }
+    },
+    {
+      "op": "replace",
+      "pointer": "/dataLocations/0/filesystemSource/rootStoragePaths/0/path",
+      "value": "/mnt/lab/raw"
+    },
+    {
+      "op": "setMember",
+      "pointer": "/preferences",
+      "key": "environmentIdentifier",
+      "value": "my-pc"
+    },
+    {
+      "op": "setMember",
+      "pointer": "",
+      "key": "description",
+      "value": "Raw data, two machines"
+    },
+    {
+      "op": "append",
+      "pointer": "/dataLocations/0/filesystemSource/entityLayout/0/excludePatterns",
+      "value": "^tmp$"
+    }
+  ]
+}
