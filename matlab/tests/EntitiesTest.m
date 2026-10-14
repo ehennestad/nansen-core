@@ -63,6 +63,8 @@ classdef EntitiesTest < matlab.unittest.TestCase
     methods (Test)
         function largeProjectTimings(testCase)
             % 5,000 sessions of 50 subjects on disk; the times are logged, so CI shows how the join scales.
+            % With NANSEN_PROFILE=1 the scan and entities.list are run once more under the profiler,
+            % and the functions taking the most time are logged too.
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             folder = string(fixture.Folder);
             config = struct("schemaVersion", '0.1.0', ...
@@ -92,20 +94,28 @@ classdef EntitiesTest < matlab.unittest.TestCase
             dataset = project.dataset();
             started = tic; listing = dataset.listing(); times.listing = toc(started);
             started = tic; dsm.walk(dataset.Config, listing, dsm.ExtractorRegistry()); times.walk = toc(started);
-            profile("on");
             started = tic; scan = project.scan(); times.scan = toc(started);
-            profile("off");
-            EntitiesTest.logProfile(testCase, "scan");
+            profiling = getenv("NANSEN_PROFILE") == "1";
+            if profiling
+                profile("on");
+                project.scan();
+                profile("off");
+                EntitiesTest.logProfile(testCase, "scan");
+            end
             started = tic; project.sync("session", scan); times.sync = toc(started);
             started = tic; entities = project.entities("session", scan); times.entities = toc(started);
             testCase.verifyNumElements(entities, 5000);
             api = nansen.Api(Project=project);
-            profile("on");
+            request = '{"id": 1, "method": "entities.list", "params": {"entityType": "session"}}';
             started = tic;
-            response = jsondecode(char(api.handleJson('{"id": 1, "method": "entities.list", "params": {"entityType": "session"}}')));
+            response = jsondecode(char(api.handleJson(request)));
             times.list = toc(started);
-            profile("off");
-            EntitiesTest.logProfile(testCase, "entities.list");
+            if profiling
+                profile("on");
+                api.handleJson(request);
+                profile("off");
+                EntitiesTest.logProfile(testCase, "entities.list");
+            end
             testCase.verifyNumElements(response.result.rows, 5000);
             testCase.log(1, sprintf("5000 sessions: listing %.2f s, walk %.2f s, scan %.2f s, sync %.2f s, join %.2f s, entities.list %.2f s", ...
                 times.listing, times.walk, times.scan, times.sync, times.entities, times.list));

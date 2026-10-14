@@ -60,7 +60,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # R2023a does not support Ubuntu 24.04 (ubuntu-latest), and there its uihtml showed no page.
+          # R2023a does not support Ubuntu 24.04 (ubuntu-latest). On either Ubuntu its uihtml runs no
+          # page in a CI session, not even a minimal one, so the app test is incomplete there (see ApiTest).
           - release: R2023a
             os: ubuntu-22.04
           - release: latest
