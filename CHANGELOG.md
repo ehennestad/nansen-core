@@ -29,7 +29,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - Added the dashboard: one HTML/JS app, shown by `nansen.App` in MATLAB (`uihtml`) and by `nansen app` in Python (local server with Server-Sent Events). It shows the overview, entity tables, the detail drawer, method forms with presets, pipelines, the live task queue, data and the catalog, in light and dark themes.
 - Added `nansen demo` / `nansen.demo.create`: a two-photon demo project, built from the same description in both languages.
 - The dashboard creates projects (optionally from an existing DSM config, with its entity types), the demo, and imports from NANSEN. A project without a dataset gets a form to set one up. Columns can be added to tables that already have rows (`fragments.create`, `fragments.attach`): NANSEN's table variables without code.
-- The MATLAB app is tested end to end in CI: the dashboard loads in a `uihtml` under a virtual display, and its requests reach the API.
+- The MATLAB app is tested end to end in CI: the dashboard loads in a `uihtml` under a virtual display, and its requests reach the API. On R2023a in CI a `uihtml` runs no page at all, so there the test checks that first and is marked incomplete.
 - Data locations can be pointed somewhere else per machine (`setRoot` / `set_root`, `dataset.setRoot`, "Change path" on the Data page). Roots per environment live in the DSM config and the active environment in its `.local.json` overlay.
 - Shared JSON files, such as a DSM config, are edited as text (`nansen.jsontext`, `nansen.internal.JsonText`), so they keep their formatting and MATLAB does not change their arrays. A `jsontext` conformance kind holds both editors to the same bytes.
 
@@ -40,3 +40,4 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 **Tests**
 
 - Added conformance cases for documents, tables, projects, entities, data, legacy import and the app protocol. The MATLAB package (R2023a+) and the Python package (3.9+) both pass every case. The dashboard has browser tests.
+- CI times a 5,000-session project and a 20,000-row table in both languages. CI also runs the DSM reader's own MATLAB suite against the DSM branch nansen-core uses.
