@@ -16,6 +16,7 @@ from .entities import Entity, join
 from .errors import NansenError
 from .methods import Method, MethodContext, run_method
 from .modules import Module, resolve_module
+from .notebook import Notebook
 from .schemas import current_version
 from .tables import Column, EntityTable, TableSpec
 
@@ -141,6 +142,14 @@ class Project:
         for fragment in fragments:
             table.defaults.update(fragment.defaults)
         return table
+
+    def notebook_path(self, entity_type: str) -> Path:
+        return self.folder / "notes" / f"{entity_type}.notebook.nansen.json"
+
+    def notebook(self, entity_type: str) -> Notebook:
+        """The notes on an entity type's entities."""
+        self.entity_type(entity_type)
+        return Notebook(self.notebook_path(entity_type), entity_type, self.table(entity_type).spec.key)
 
     def add_entity_type(
         self,

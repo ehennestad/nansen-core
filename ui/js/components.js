@@ -46,9 +46,10 @@
       N.dialog({
         title, narrow: true,
         content: h("div", { style: { padding: "18px 20px" } }, message),
+        // Resolve before closing: closing runs onClose, and a promise keeps the first value it gets
         buttons: [
-          { label: "Cancel", onClick: (close) => { close(); resolve(false); } },
-          { label, kind, onClick: (close) => { close(); resolve(true); } },
+          { label: "Cancel", onClick: (close) => { resolve(false); close(); } },
+          { label, kind, onClick: (close) => { resolve(true); close(); } },
         ],
         onClose: () => resolve(false),
       });
@@ -62,11 +63,12 @@
         title, narrow: true,
         content: h("div.field", { style: { padding: "18px 20px" } }, h("label.name", label), input),
         buttons: [
-          { label: "Cancel", onClick: (close) => { close(); resolve(null); } },
-          { label: "OK", kind: "primary", onClick: (close) => { close(); resolve(input.value); } },
+          { label: "Cancel", onClick: (close) => { resolve(null); close(); } },
+          { label: "OK", kind: "primary", onClick: (close) => { resolve(input.value); close(); } },
         ],
+        onClose: () => resolve(null),   // Escape or the close button
       });
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") { d.close(); resolve(input.value); } });
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") { resolve(input.value); d.close(); } });
       setTimeout(() => input.focus(), 0);
     });
   };

@@ -15,6 +15,8 @@
     reloadEntities: null,
     onTaskEvent: null,
     onLogEvent: null,
+    onNotesEvent: null,
+    onDrawerNotesEvent: null,
 
     go(hash) { if (location.hash === hash) this.render(); else location.hash = hash; },
     replace(hash) { history.replaceState(null, "", hash); },
@@ -45,6 +47,10 @@
       this.client.on("removed", () => this.refreshTaskCount());
       this.client.on("log", (event) => this.onLogEvent && this.onLogEvent(event));
       this.client.on("entities", (data) => this.entitiesEvent(data));
+      this.client.on("notes", (data) => {   // the page and an entity's drawer can both show notes
+        if (this.onNotesEvent) this.onNotesEvent(data);
+        if (this.onDrawerNotesEvent) this.onDrawerNotesEvent(data);
+      });
       this.client.on("scan", () => this.reloadProject());
       this.client.on("project", () => this.reloadProject().then(() => this.render()));
       await this.reloadProject();
@@ -168,6 +174,7 @@
         h("div.nav-section", "Work"),
         link("#/tasks", "tasks", "Tasks", this.runningTasks || null),
         link("#/data", "database", "Data"),
+        link("#/notes", "note", "Notes"),
         h("div.nav-section", "App"),
         link("#/projects", "folder", "Projects")]);
     },
@@ -190,16 +197,17 @@
       this.viewTimer = null;
       this.onTaskEvent = null;
       this.onLogEvent = null;
+      this.onNotesEvent = null;
       this.currentGrid = null;
       N.drawer.close();
       this.contentEl.className = "content";
       this.renderNav();
       N.clear(this.topActions);
-      const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", projects: "Projects" };
+      const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", notes: "Notes", projects: "Projects" };
       const title = this.route.name === "entities" ? this.typeTitle(arg) : crumbs[this.route.name] || "";
       N.fill(this.crumbsEl, this.project ? h("span.sub", this.project.title) : null, this.project ? h("span.sep", "/") : null, h("span", title));
       if (!this.project && this.route.name !== "projects") { this.go("#/projects"); return; }
-      const view = { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, projects: N.views.projects }[this.route.name];
+      const view = { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, projects: N.views.projects }[this.route.name];
       if (!view) { this.go("#/overview"); return; }
       try {
         await view(this, this.contentEl, arg);

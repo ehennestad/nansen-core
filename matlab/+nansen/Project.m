@@ -324,6 +324,20 @@ classdef Project < handle
             end
         end
 
+        function path = notebookPath(obj, entityType)
+            path = string(fullfile(obj.Folder, "notes", entityType + ".notebook.nansen.json"));
+        end
+
+        function notebook = notebook(obj, entityType)
+            %notebook The notes on an entity type's entities (an nansen.Notebook)
+            arguments
+                obj
+                entityType (1,1) string
+            end
+            obj.entityType(entityType);
+            notebook = nansen.Notebook(obj.notebookPath(entityType), entityType, obj.table(entityType).Key);
+        end
+
         function path = scanPath(obj)
             path = string(fullfile(obj.Folder, "cache", "scan.nansen.json"));
         end

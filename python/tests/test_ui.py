@@ -96,6 +96,41 @@ def test_drawer_shows_locations_and_data(app, page):
     assert "raw" in text and "two_photon_movie" in text and "motion_corrected" in text
 
 
+def test_write_find_and_delete_a_note(app, page):
+    open_sessions(app, page)
+    rows(page).first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open .note-form")
+    page.wait_for_selector(".drawer .note-none")
+    page.click(".drawer .note-form .chip[data-type='todo']")
+    page.fill(".drawer .note-form input", "Check #motion")
+    page.fill(".drawer .note-form textarea", "Drift in the last third, see #zdrift")
+    page.click(".drawer .note-form button[type='submit']")
+    page.wait_for_selector(".drawer li.note[data-type='todo']")
+    note = page.locator(".drawer li.note").first
+    assert "To do" in note.inner_text() and "Check #motion" in note.inner_text()
+    assert note.locator(".tag").all_inner_texts() == ["#motion", "#zdrift"]
+
+    page.goto(app["server"].url + "#/notes")
+    page.wait_for_selector(".content li.note")
+    assert page.locator(".content li.note").count() == 1
+    page.click(".note-filters .chip[data-type='important']")
+    assert "No notes match" in page.locator(".content .note-list").inner_text()
+    page.click(".note-filters .chip[data-type='all']")
+    page.fill(".hero input[type='search']", "#zdrift")
+    assert page.locator(".content li.note").count() == 1
+    page.fill(".hero input[type='search']", "#nothing")
+    assert page.locator(".content li.note").count() == 0
+    page.fill(".hero input[type='search']", "")
+    page.click(".content li.note .note-entity")
+    page.wait_for_selector(".drawer.open li.note")
+
+    page.click(".drawer li.note button[title='Delete this note']")  # the page behind follows the notes event
+    page.click(".dialog-foot button:has-text('Delete')")
+    page.wait_for_selector(".drawer .note-none")
+    page.wait_for_selector(".content .note-list .empty")
+    assert app["api"].handle({"id": 1, "method": "notes.list"})["result"] == []
+
+
 def test_run_method_in_the_queue(app, page):
     open_sessions(app, page)
     rows(page).nth(0).locator("td.sel input").click()

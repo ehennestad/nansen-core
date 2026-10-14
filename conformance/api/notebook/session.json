@@ -1,0 +1,305 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "notes.list",
+        "id": 1
+      },
+      "expect": {
+        "error": "no-project"
+      }
+    },
+    {
+      "request": {
+        "method": "project.open",
+        "id": 2,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "notes.list",
+        "id": 3,
+        "params": {}
+      },
+      "expect": {
+        "result": []
+      }
+    },
+    {
+      "request": {
+        "method": "notes.add",
+        "id": 4,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "title": "Motion #artifact",
+          "text": "Strong #motion in the last third; check #artifact again",
+          "type": "important",
+          "author": "ana"
+        }
+      },
+      "expect": {
+        "result": {
+          "id": 1,
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "author": "ana",
+          "type": "important",
+          "title": "Motion #artifact",
+          "tags": [
+            "artifact",
+            "motion"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "notes.add",
+        "id": 5,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "text": "Re-imaged the next day",
+          "author": "ben"
+        }
+      },
+      "expect": {
+        "result": {
+          "id": 2,
+          "type": "informal",
+          "title": "",
+          "tags": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "notes.add",
+        "id": 6,
+        "params": {
+          "entityType": "subject",
+          "key": {
+            "subject_id": "m110"
+          },
+          "text": "Cranial window looks clear",
+          "type": "todo",
+          "author": "ana"
+        }
+      },
+      "expect": {
+        "result": {
+          "id": 1,
+          "entityType": "subject",
+          "type": "todo"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "notes.list",
+        "id": 7,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": 2,
+            "author": "ben"
+          },
+          {
+            "id": 1,
+            "author": "ana"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "notes.list",
+        "id": 8,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250601-001"
+          }
+        }
+      },
+      "expect": {
+        "result": []
+      }
+    },
+    {
+      "request": {
+        "method": "notes.list",
+        "id": 9,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "notes.add",
+        "id": 10,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "session_id": "m110-20250523-001"
+          },
+          "text": "no subject"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "notes.add",
+        "id": 11,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "text": "x",
+          "type": "urgent"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "notes.add",
+        "id": 12,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "text": "  "
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "notes.add",
+        "id": 13,
+        "params": {
+          "entityType": "probe",
+          "key": {
+            "probe_id": "p1"
+          },
+          "text": "x"
+        }
+      },
+      "expect": {
+        "error": "unknown-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "notes.remove",
+        "id": 14,
+        "params": {
+          "entityType": "session",
+          "id": 1
+        }
+      },
+      "expect": {
+        "result": {
+          "removed": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "notes.remove",
+        "id": 15,
+        "params": {
+          "entityType": "session",
+          "id": 1
+        }
+      },
+      "expect": {
+        "error": "unknown-note"
+      }
+    },
+    {
+      "request": {
+        "method": "notes.add",
+        "id": 16,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "text": "After the removal",
+          "author": "ana"
+        }
+      },
+      "expect": {
+        "result": {
+          "id": 3
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "notes.list",
+        "id": 17,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": 3
+          },
+          {
+            "id": 2
+          }
+        ]
+      }
+    }
+  ]
+}

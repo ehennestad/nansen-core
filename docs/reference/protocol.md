@@ -39,6 +39,7 @@ Events flow from the core to the frontend:
 | `project` | A project was opened or created | `{name}` |
 | `scan` | The stores were scanned | The `project.scan` result |
 | `entities` | Rows changed | `{entityTypes, keys?}` |
+| `notes` | A note was added or removed | `{entityType, key?}` |
 | `task` | A task was queued, started, made progress or finished | The task document |
 | `removed` | A task was removed | `{id}` |
 | `log` | A running task logged a line | `{id, line}` |
@@ -69,6 +70,9 @@ Events flow from the core to the frontend:
 | `entities.update` | `entityType`, `key`, `values` | The updated row; key and computed columns are `read-only-column` |
 | `entities.add` | `entityType`, `key`, `values?` | The new row |
 | `entities.remove` | `entityType`, `key` | `{removed}` |
+| `notes.list` | `entityType?`, `key?` (needs `entityType`) | Notes, newest first, each with its `entityType`: `[{id, entityType, key, createdAt, author, type, title, text, tags}]` |
+| `notes.add` | `entityType`, `key`, `text`, `title?`, `type?` (`informal`, `important`, `todo` or `question`; default `informal`), `author?` (default: the user name) | The note; its `tags` are the `#words` in the title and text |
+| `notes.remove` | `entityType`, `id` | `{removed}` (`unknown-note` if there is no such note) |
 | `fragments.list` | | `[{id, version, title, description, computed, columns}]` |
 | `fragments.create` | `document` (a `nansen.fragment`), `entityType?` | The fragment summary; with `entityType`, it is also added to that entity type (as `fragments.attach`) |
 | `fragments.attach` | `entityType`, `fragmentId` | `{entityType, fragments}`; existing rows get the columns' defaults |

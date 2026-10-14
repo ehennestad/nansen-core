@@ -215,14 +215,116 @@
       } } }, N.icon("plus", 14), "Add to table"));
     }
     actions.push(h("button.btn.small", { on: { click: () => N.views.methodDialog(app, entityType, [detail]) } }, N.icon("play", 14), "Run"));
+    const notesEl = h("div.notes");
     N.drawer.open(N.fmt.key(detail.key), (app.typeTitle(entityType)).replace(/s$/, ""),
       h("div",
         h("div", { style: { margin: "12px 0" } }, statusPill),
         h("div.section-title", "Values"), props,
         h("div.section-title", "Locations"), locations.length ? locations : h("div.muted", "Not found in any data location."),
         data.length ? [h("div.section-title", "Data"), h("ul.list.card", data)] : null,
-        issues.length ? [h("div.section-title", "Issues"), h("ul.list.card", issues)] : null),
+        issues.length ? [h("div.section-title", "Issues"), h("ul.list.card", issues)] : null,
+        h("div.section-title", "Notes"), notesEl),
       actions);
+    N.views.entityNotes(app, notesEl, entityType, detail.key);
+  };
+
+  /* ------------------------------------------------------------------ notes */
+  const NOTE_TYPES = [["informal", "Note", "plain"], ["important", "Important", "warn"], ["todo", "To do", "info"], ["question", "Question", "accent"]];
+  const noteType = (type) => NOTE_TYPES.find(([t]) => t === type) || [type, type, "plain"];
+
+  /** One note: its type, title, who wrote it when, the text and its #tags; optionally the entity it is about. */
+  N.views.noteItem = function (app, note, { showEntity = false, onRemove = null } = {}) {
+    const [, typeTitle, pill] = noteType(note.type);
+    const remove = onRemove ? h("button.btn.ghost.icon.small", { title: "Delete this note", on: { click: async () => {
+      if (!(await N.confirm("Delete this note?", note.title || note.text.slice(0, 80), "Delete"))) return;
+      try {
+        await app.client.request("notes.remove", { entityType: note.entityType, id: note.id });
+        onRemove(note);
+      } catch (error) { N.showError(error); }
+    } } }, N.icon("trash", 14)) : null;
+    return h("li.note", { dataset: { id: String(note.id), type: note.type } },
+      h("div.note-head", h("span.pill." + pill, typeTitle), note.title ? h("span.note-title", note.title) : null,
+        h("span.spacer"), h("span.note-meta", [note.author, N.fmt.time(note.createdAt)].filter(Boolean).join(" · ")), remove),
+      showEntity ? h("a.note-entity", { href: "#/entities/" + note.entityType, on: { click: (event) => {
+        event.preventDefault();
+        N.views.entityDrawer(app, note.entityType, note.key);
+      } } }, N.icon("table", 13), `${app.typeTitle(note.entityType).replace(/s$/, "")} ${N.fmt.key(note.key)}`) : null,
+      note.text ? h("div.note-text", note.text) : null,
+      note.tags.length ? h("div.note-tags", note.tags.map((tag) => h("span.tag", "#" + tag))) : null);
+  };
+
+  /** The form that adds a note to an entity. */
+  N.views.noteForm = function (app, entityType, key, onAdded) {
+    let type = "informal";
+    const chips = h("div.chips");
+    const renderChips = () => N.fill(chips, NOTE_TYPES.map(([t, title]) =>
+      h("button.chip" + (t === type ? ".on" : ""), { type: "button", dataset: { type: t }, on: { click: () => { type = t; renderChips(); } } }, title)));
+    renderChips();
+    const title = h("input.input", { placeholder: "Title (optional)", "aria-label": "Note title" });
+    const text = h("textarea.input", { rows: 3, placeholder: "What did you notice? #tags are picked up", "aria-label": "Note text" });
+    const message = h("div.form-message.hidden");
+    const say = (text) => { message.textContent = text; message.classList.toggle("hidden", !text); };
+    const add = h("button.btn.small.primary", { type: "submit" }, N.icon("plus", 14), "Add note");
+    return h("form.note-form", { on: { submit: async (event) => {
+      event.preventDefault();
+      if (!text.value.trim() && !title.value.trim()) { say("Write a title or some text"); return; }
+      add.disabled = true;
+      try {
+        const note = await app.client.request("notes.add", { entityType, key, type, title: title.value.trim(), text: text.value.trim() });
+        title.value = ""; text.value = ""; say("");
+        onAdded(note);
+      } catch (error) { say(error.message || String(error)); }
+      add.disabled = false;
+    } } }, chips, title, text, h("div.note-form-foot", message, h("span.spacer"), add));
+  };
+
+  /** An entity's notes, newest first, with the form to add one; kept current by notes events. */
+  N.views.entityNotes = async function (app, el, entityType, key) {
+    const listEl = h("ul.list.card.note-list");
+    async function load() {
+      let notes;
+      try { notes = await app.client.request("notes.list", { entityType, key }); } catch (error) { N.showError(error); return; }
+      N.fill(listEl, notes.length ? notes.map((note) => N.views.noteItem(app, note, { onRemove: load }))
+        : h("li.muted.note-none", "No notes yet."));
+    }
+    N.fill(el, N.views.noteForm(app, entityType, key, load), listEl);
+    app.onDrawerNotesEvent = (data) => {
+      if (!el.isConnected) return;
+      if (data.entityType === entityType && (!data.key || N.keyId(data.key) === N.keyId(key))) load();
+    };
+    await load();
+  };
+
+  /** Every note in the project, newest first, filtered by type and by a search over text, tags and keys. */
+  N.views.notes = async function (app, content) {
+    let notes = [];
+    let type = "all";
+    let query = "";
+    const chipsEl = h("div.chips");
+    const listEl = h("ul.list.card.note-list");
+    const search = h("input.input", { type: "search", placeholder: "Search notes, #tags or entities", style: { width: "280px" },
+      on: { input: () => { query = search.value.trim().toLowerCase(); render(); } } });
+    async function load() {
+      try { notes = await app.client.request("notes.list"); } catch (error) { N.showError(error); return; }
+      render();
+    }
+    const matches = (note) => !query || [note.title, note.text, note.author, N.fmt.key(note.key), ...note.tags.map((t) => "#" + t)]
+      .some((text) => String(text || "").toLowerCase().includes(query));
+    function render() {
+      const count = (t) => notes.filter((n) => t === "all" || n.type === t).length;
+      N.fill(chipsEl, [["all", "All"], ...NOTE_TYPES].map(([t, title]) =>
+        h("button.chip" + (t === type ? ".on" : ""), { dataset: { type: t }, on: { click: () => { type = t; render(); } } }, title, h("span.n", String(count(t))))));
+      const shown = notes.filter((n) => (type === "all" || n.type === type) && matches(n));
+      N.fill(listEl, shown.length ? shown.map((note) => N.views.noteItem(app, note, { showEntity: true, onRemove: load }))
+        : h("li.empty", N.icon("note", 36), h("h3", notes.length ? "No notes match" : "No notes yet"),
+          h("div", notes.length ? "Try another type or search." : "Open an entity and write a note in its drawer.")));
+    }
+    N.fill(content,
+      h("div.hero", h("div", h("h1", "Notes"), h("p", "What people noticed about sessions, subjects and other entities. Each entity type's notes are a file in the project's notes folder.")),
+        h("div.spacer"), search),
+      h("div.note-filters", chipsEl), listEl);
+    app.onNotesEvent = () => { if (listEl.isConnected) load(); };
+    await load();
   };
 
   /* ------------------------------------------------------------------ run a method */

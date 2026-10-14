@@ -16,6 +16,7 @@ A project is a folder. Everything about it is in that folder, in files that foll
   pipelines/<name>.pipeline.nansen.json      nansen.pipeline, project-defined pipelines
   modules/<id>/                              optional: modules kept inside the project
   options/<methodId>/<name>.options.nansen.json    nansen.options: method presets
+  notes/<entityType>.notebook.nansen.json    nansen.notebook: notes on the entity type's entities
   tasks/<id>.task.nansen.json                nansen.task, plus <id>.claim/, <id>.cancel and <id>.log while it runs
   cache/scan.nansen.json                     nansen.scan: the last walk of the stores; derived, safe to delete
   exports/                                   files written by export methods

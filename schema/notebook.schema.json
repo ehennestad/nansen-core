@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:notebook",
+  "title": "NANSEN notebook",
+  "description": "Notes on the entities of one entity type, kept at notes/<entityType>.notebook.nansen.json in the project: what dev keeps in each session's and subject's Notebook. A note is about one entity, named by its key. Notes are kept in the order they were written; ids are never reused.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "entityType", "nextId", "notes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.notebook" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "entityType": { "type": "string" },
+    "nextId": { "type": "integer", "minimum": 1, "description": "The id the next note gets." },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "key", "createdAt", "author", "type", "title", "text", "tags"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "minimum": 1 },
+          "key": {
+            "type": "object",
+            "description": "The entity's key: its key columns and their values.",
+            "additionalProperties": { "type": ["string", "integer"] }
+          },
+          "createdAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$" },
+          "author": { "type": "string" },
+          "type": { "enum": ["informal", "important", "todo", "question"] },
+          "title": { "type": "string" },
+          "text": { "type": "string" },
+          "tags": {
+            "type": "array",
+            "description": "The words written as #tag in the title or text, in order, each once.",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

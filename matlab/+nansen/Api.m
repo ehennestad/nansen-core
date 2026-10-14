@@ -33,7 +33,7 @@ classdef Api < handle
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "dataset.setRoot", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
+                "entities.remove", "notes.list", "notes.add", "notes.remove", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -365,6 +365,57 @@ classdef Api < handle
             table.write();
             obj.emit("entities", struct("entityTypes", {{char(params.entityType)}}));
             result = struct("removed", params.key);
+        end
+
+        function result = apiNotesList(obj, params)
+            project = obj.requireProject();
+            if isfield(params, "entityType")
+                types = string(params.entityType);
+            elseif isfield(params, "key")
+                nansen.internal.throwError("invalid-params", "a key needs its entityType")
+            else
+                types = project.EntityTypes;
+            end
+            result = {};
+            for type = reshape(types, 1, [])
+                notes = project.notebook(type).notes(nansen.internal.getField(params, "key", []));
+                for i = 1:numel(notes)
+                    notes{i}.entityType = char(type);
+                end
+                result = [result, notes]; %#ok<AGROW>
+            end
+            if numel(result) > 1   % newest first; sort is stable, so within a type the order stays
+                [~, order] = sort(cellfun(@(n) string(n.createdAt), result), "descend");
+                result = result(order);
+            end
+        end
+
+        function result = apiNotesAdd(obj, params)
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            notebook = project.notebook(entityType);
+            author = [];   % absent or null: the user name
+            if isfield(params, "author") && ~isnumeric(params.author)
+                author = string(params.author);
+            end
+            result = notebook.add(nansen.Api.param(params, "key"), nansen.internal.getField(params, "text", ''), ...
+                Title=nansen.internal.getField(params, "title", ''), Type=nansen.internal.getField(params, "type", 'informal'), ...
+                Author=author);
+            obj.emit("notes", struct("entityType", char(entityType), "key", result.key));
+            result.entityType = char(entityType);
+        end
+
+        function result = apiNotesRemove(obj, params)
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            notebook = project.notebook(entityType);
+            id = nansen.Api.param(params, "id");
+            if ~isnumeric(id) || ~isscalar(id) || id ~= round(id)
+                nansen.internal.throwError("invalid-params", "a note's id is an integer")
+            end
+            notebook.remove(id);
+            obj.emit("notes", struct("entityType", char(entityType)));
+            result = struct("removed", id);
         end
 
         function result = apiFragmentsList(obj, ~)

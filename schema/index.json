@@ -13,6 +13,7 @@
     {"schemaType": "nansen.task", "file": "task.schema.json", "version": "0.1.0", "status": "core"},
     {"schemaType": "nansen.pipeline", "file": "pipeline.schema.json", "version": "0.1.0", "status": "core"},
     {"schemaType": "nansen.catalog", "file": "catalog.schema.json", "version": "0.1.0", "status": "core"},
+    {"schemaType": "nansen.notebook", "file": "notebook.schema.json", "version": "0.1.0", "status": "core"},
     {"schemaType": "nansen.legacyExport", "file": "legacy-export.schema.json", "version": "0.1.0", "status": "draft"}
   ]
 }

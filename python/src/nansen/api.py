@@ -347,6 +347,34 @@ class Api:
         self.emit("entities", {"entityTypes": [params["entityType"]]})
         return {"removed": params["key"]}
 
+    # -- notes ---------------------------------------------------------------------------------
+
+    def notes__list(self, params: dict) -> list:
+        project = self._require_project()
+        types = [params["entityType"]] if "entityType" in params else project.entity_types
+        if "key" in params and "entityType" not in params:
+            raise NansenError("invalid-params", "a key needs its entityType")
+        notes = []
+        for entity_type in types:
+            notes += [dict(n, entityType=entity_type) for n in project.notebook(entity_type).notes(params.get("key"))]
+        notes.sort(key=lambda n: n["createdAt"], reverse=True)  # stable: within a type, newest first already
+        return notes
+
+    def notes__add(self, params: dict) -> dict:
+        notebook = self._require_project().notebook(params["entityType"])
+        note = notebook.add(params["key"], params.get("text", ""), title=params.get("title", ""),
+                            note_type=params.get("type", "informal"), author=params.get("author"))
+        self.emit("notes", {"entityType": params["entityType"], "key": note["key"]})
+        return dict(note, entityType=params["entityType"])
+
+    def notes__remove(self, params: dict) -> dict:
+        notebook = self._require_project().notebook(params["entityType"])
+        if isinstance(params["id"], bool) or not isinstance(params["id"], int):
+            raise NansenError("invalid-params", "a note's id is an integer")
+        notebook.remove(params["id"])
+        self.emit("notes", {"entityType": params["entityType"]})
+        return {"removed": params["id"]}
+
     # -- fragments, data, methods -------------------------------------------------------------
 
     def fragments__list(self, params: dict) -> list:

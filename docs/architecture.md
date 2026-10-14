@@ -46,6 +46,7 @@ Each step was usable without a GUI before the next one started.
 | `MetaTable` of `Session`/`Subject` objects | Entity tables joined with DSM records; one generic entity, so entity types are documents, not classes |
 | Table variables (with update functions) | Fragments; computed fragments for the ones with update functions |
 | Session methods with `OptionsManager` presets | Methods with JSON Schema options and preset documents; MATLAB and/or Python implementations |
+| Notebooks of sessions and subjects (`HasNotes`, note viewer) | Notebooks: dated, typed notes with #tags per entity, in one `nansen.notebook` per entity type; on an entity's drawer and the Notes page |
 | Batch processor with `task_list.mat` | Task queue of `nansen.task` files: claims, cancellation, logs, recovery, retry, dependencies |
 | Pipelines | Pipelines: one chain of tasks per entity |
 | File adapters | File adapters: built-in `json`, `text`, `mat` (and `npy` in Python), others from modules |
@@ -57,7 +58,6 @@ Each step was usable without a GUI before the next one started.
 Not carried over, by choice or not yet:
 
 - **Data cache.** dev keeps an LRU cache of loaded data. Methods here load what they need through `project.load`. A cache can be added inside the file adapter registry without changing the API.
-- **Notebook.** dev has a per-session notebook. `core.notes` holds one description per entity; a notes fragment with entries over time would be the replacement.
 - **Add-on and toolbox management.** Out of scope for the core.
 
 ## Decisions recorded so far
@@ -74,4 +74,4 @@ Not carried over, by choice or not yet:
 
 - **Mixed-language queues.** The project format is shared and each method declares its implementations; a task can name the language that must run it, so a Python app can queue MATLAB work for a MATLAB worker. Whether the dashboard should start that worker is open.
 - **Fragment migrations.** When a fragment's columns change, who migrates existing tables? The likely answer is a migration function shipped by the module that owns the fragment.
-- **Large tables.** Measured on CI runners: 20,000 rows read in 0.6 s (Python) and 0.5 s (MATLAB, column by column, falling back to cell by cell to report the first error in row order). For 5,000 sessions on disk, Python scans in 0.6 s and lists them in 0.25 s; MATLAB scans in 8 s (6.4 s of it DSM's walk) and lists them in 2 s. `EntitiesTest/largeProjectTimings` logs these on every CI run, and with `NANSEN_PROFILE=1` also where the time goes. Hundreds of thousands of entities would also want the scan cached per folder and the dashboard to page through `entities.list`.
+- **Large tables.** Measured on CI runners: 20,000 rows read in 0.6 s (Python) and 0.5 s (MATLAB, column by column, falling back to cell by cell to report the first error in row order). For 5,000 sessions on disk, Python scans in 0.6 s and lists them in 0.25 s; MATLAB scans in 7 s (5 s of it DSM's walk) and lists them in 2 s. `EntitiesTest/largeProjectTimings` logs these on every CI run, and with `NANSEN_PROFILE=1` also where the time goes. Hundreds of thousands of entities would also want the scan cached per folder and the dashboard to page through `entities.list`.
