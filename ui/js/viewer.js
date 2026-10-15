@@ -43,14 +43,20 @@
 
   /** Decode a data.frame result onto a canvas of its own size, in a colormap, with ROIs filled over it.
    * Rejected ROIs are dimmed (or left out with hideRejected); selected ROIs are drawn in full color. */
-  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false, colormap = "gray") {
+  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false, colormap = "gray", outlines = false) {
     canvas.width = frame.width;
     canvas.height = frame.height;
     const ctx = canvas.getContext("2d");
     const bytes = atob(frame.pixels);
     const image = ctx.createImageData(frame.width, frame.height);
     const table = lut(colormap);
+    const bright = frame.brightness ? atob(frame.brightness) : null;   // peakTime: the hue is when, the brightness the peak
     for (let i = 0; i < bytes.length; i++) {
+      if (bright) {
+        const [r, g, b] = hsv(240 * (1 - bytes.charCodeAt(i) / 255), bright.charCodeAt(i) / 255);   // blue early, red late
+        image.data[4 * i] = r; image.data[4 * i + 1] = g; image.data[4 * i + 2] = b; image.data[4 * i + 3] = 255;
+        continue;
+      }
       const v = 3 * bytes.charCodeAt(i);
       image.data[4 * i] = table[v]; image.data[4 * i + 1] = table[v + 1]; image.data[4 * i + 2] = table[v + 2]; image.data[4 * i + 3] = 255;
     }
@@ -59,8 +65,8 @@
         const rejected = roi.classification === "rejected";
         if (rejected && hideRejected) return;
         const [r, g, b] = rejected ? [200, 60, 60] : roiColor(n);
-        const share = selected.has(roi.id) ? 1 : rejected ? 0.25 : 0.5;
-        roi.pixels.forEach(([y, x]) => {
+        const share = selected.has(roi.id) ? 1 : rejected ? 0.25 : outlines ? 0.9 : 0.5;
+        (outlines ? edge(roi) : roi.pixels).forEach(([y, x]) => {
           if (y < 0 || y >= frame.height || x < 0 || x >= frame.width) return;
           const i = 4 * (y * frame.width + x);
           image.data[i] += (r - image.data[i]) * share; image.data[i + 1] += (g - image.data[i + 1]) * share; image.data[i + 2] += (b - image.data[i + 2]) * share;
@@ -68,6 +74,13 @@
       });
     }
     ctx.putImageData(image, 0, 0);
+  }
+
+  /** Red, green and blue (0..255) of a hue (degrees) at full saturation and a value of 0..1. */
+  function hsv(hue, value) {
+    const c = value, x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const [r, g, b] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : hue < 180 ? [0, c, x] : hue < 240 ? [0, x, c] : hue < 300 ? [x, 0, c] : [c, 0, x];
+    return [r, g, b].map((v) => Math.round(v * 255));
   }
 
   function roiColor(n) {
@@ -122,7 +135,7 @@
     let initial = options.select ?? null;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
-      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false };
+      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false };
     const canvas = h("canvas.viewer-canvas");
     const overlay = h("canvas.viewer-overlay");
     const holder = h("div.viewer-holder", canvas, overlay);
@@ -132,7 +145,8 @@
     const playButton = h("button.btn.ghost.icon.small.viewer-play", { title: "Play", on: { click: () => toggle() } }, N.icon("play", 14));
     const mode = h("select.input.viewer-mode", { on: { change: () => { state.mode = mode.value; show(); } } },
       h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "max" }, "Maximum"),
-      h("option", { value: "std" }, "Standard deviation"), h("option", { value: "correlation" }, "Local correlation"));
+      h("option", { value: "min" }, "Minimum"), h("option", { value: "std" }, "Standard deviation"), h("option", { value: "correlation" }, "Local correlation"),
+      h("option", { value: "peakTime" }, "Time of peak (colour)"));
     const colormapPick = h("select.input.viewer-colormap", { title: "Colormap", on: { change: () => { state.colormap = colormapPick.value; redraw(); } } },
       N.colormaps.map((name) => h("option", { value: name }, name)));
     const low = h("input.input.viewer-low", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.low = Number(low.value); show(); } } });
@@ -151,6 +165,11 @@
     // the ruler: drag across the image to measure a distance, as dev's imviewer measurement tool
     const measureButton = h("button.btn.ghost.icon.small.viewer-measure", { title: "Measure a distance: drag across the image", on: { click: () => setTool(state.tool === "measure" ? null : "measure") } }, N.icon("ruler", 14));
     const measurement = h("span.viewer-measurement.mono", "");
+    const gridButton = h("button.btn.ghost.icon.small.viewer-grid", { title: "Show a grid", on: { click: () => {
+      state.grid = !state.grid;
+      gridButton.classList.toggle("active", state.grid);
+      drawOverlay();
+    } } }, N.icon("crosshair", 14));
     // the scalebar, as imviewer's Show Scalebar: a round length of µm at the bottom left, when the files give the pixel size
     const scaleButton = h("button.btn.ghost.icon.small.viewer-scalebar-toggle", { title: "Show scalebar", style: { display: "none" },
       on: { click: () => { state.scalebar = !state.scalebar; drawScalebar(); } } }, N.icon("scalebar", 14));
@@ -273,6 +292,30 @@
         ctx.stroke();
         const dot = 4 * last.width / width;
         [line.from, line.to].forEach(([x, y]) => ctx.fillRect(x - dot / 2, y - dot / 2, dot, dot));
+      }
+      if (state.grid) {   // imviewer's grid: eight squares across the shorter side
+        const step = Math.max(1, Math.min(last.width, last.height) / 8);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+        ctx.lineWidth = last.width / width;
+        ctx.beginPath();
+        for (let x = step; x < last.width; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, last.height); }
+        for (let y = step; y < last.height; y += step) { ctx.moveTo(0, y); ctx.lineTo(last.width, y); }
+        ctx.stroke();
+      }
+      if (state.labels && state.showRois && state.rois) {
+        ctx.font = `${Math.max(6, 11 * last.width / width)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.lineWidth = 2 * last.width / width;
+        visible().forEach((roi) => {
+          if (!roi.pixels.length) return;
+          const y = roi.pixels.reduce((t, p) => t + p[0], 0) / roi.pixels.length + 0.5, x = roi.pixels.reduce((t, p) => t + p[1], 0) / roi.pixels.length + 0.5;
+          ctx.strokeText(String(roi.id), x, y);
+          ctx.fillText(String(roi.id), x, y);
+        });
+        canvas.dataset.labels = String(visible().length);
       }
       if (state.selection.size > 1 && state.showRois && state.rois) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
@@ -407,6 +450,7 @@
     const actions = [
       ["accept", "check", "Accept (a)", () => classify("accepted")],
       ["reject", "x", "Reject (r)", () => classify("rejected")],
+      ["unresolve", "alert", "Unresolved (q): not sure yet, as roiclassifier's", () => classify("unresolved")],
       ["clear", "retry", "Clear (u)", () => classify(null)],
       ["delete", "trash", "Delete (Delete)", () => remove()],
     ].map(([name, icon, title, run]) => h(`button.btn.ghost.icon.small.roi-${name}`, { title, on: { click: run } }, N.icon(icon, 13)));
@@ -473,11 +517,15 @@
     const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of a round ROI (px); Detect looks twice as far",
       on: { change: () => { state.radius = Math.max(1, Math.round(Number(radius.value) || 1)); } } });
     const hide = h("input", { type: "checkbox", on: { change: () => { state.hideRejected = hide.checked; redraw(); renderList(); } } });
+    // roimanager's display options: the ROIs' numbers on the image, and outlines in place of filled ROIs
+    const labelToggle = h("input.viewer-roi-labels", { type: "checkbox", on: { change: () => { state.labels = labelToggle.checked; drawOverlay(); } } });
+    const outlineToggle = h("input.viewer-roi-outlines", { type: "checkbox", on: { change: () => { state.outlines = outlineToggle.checked; redraw(); } } });
     const roiList = h("ul.viewer-roi-list");
     const roiPanel = h("div.viewer-roi-panel",
       h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
       h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, h("div.spacer"), radius),
-      h("label.viewer-hide", hide, "Hide rejected"),
+      h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
+        h("label.viewer-display-option", outlineToggle, "Outlines")),
       roiList);
 
     // The selected ROI's signal under the image: the frame shown is marked, a click on the trace goes to that frame.
@@ -534,7 +582,7 @@
         on: { click: (event) => select(roi.id, several(event)) } },
         h("span.swatch", { style: { background: roi.classification === "rejected" ? "rgb(200,60,60)" : `rgb(${roiColor(state.rois.indexOf(roi)).join(",")})` } }),
         h("span.grow", `ROI ${roi.id}`), h("span.muted", `${roi.pixels.length} px`),
-        roi.classification ? h("span.pill." + (roi.classification === "accepted" ? "good" : "bad"), roi.classification) : null)));
+        roi.classification ? h("span.pill." + ({ accepted: "good", rejected: "bad" }[roi.classification] || "warn"), roi.classification) : null)));
       actions.forEach((b) => { b.disabled = state.selection.size === 0; });
       mergeButton.disabled = state.selection.size < 2;
       growButton.disabled = shrinkButton.disabled = state.selection.size !== 1;
@@ -543,7 +591,7 @@
       galleryButton.disabled = !state.rois || !state.rois.length;
       roiPanel.style.display = state.rois && state.showRois ? "" : "none";
     }
-    function redraw() { if (last) paint(canvas, last, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap); drawOverlay(); }
+    function redraw() { if (last) paint(canvas, last, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap, state.outlines); drawOverlay(); }
     let onSelect = null;   // the gallery, while it is open
     /** Select an ROI (null for none); with add, add it to the selection, or take it out. */
     function select(id, add = false) {
@@ -631,6 +679,7 @@
       else if (event.key === "-") reshape(-1);
       else if (event.key === "a") classify("accepted");
       else if (event.key === "r") classify("rejected");
+      else if (event.key === "q") classify("unresolved");
       else if (event.key === "u") classify(null);
       else if (event.key === "m") merge();
       else if (event.key === "Delete" || event.key === "Backspace") remove();
@@ -750,7 +799,7 @@
       let showOnly = "all";
       const showPick = h("select.input.roi-gallery-show", { title: "Show", on: { change: () => { showOnly = showPick.value; render(); } } },
         h("option", { value: "all" }, "All ROIs"), h("option", { value: "accepted" }, "Accepted"), h("option", { value: "rejected" }, "Rejected"),
-        h("option", { value: "none" }, "Unclassified"));
+        h("option", { value: "unresolved" }, "Unresolved"), h("option", { value: "none" }, "Unclassified"));
       let sortBy = "id";
       const grid = h("div.roi-gallery");
       const sortPick = h("select.input.roi-gallery-sort", { on: { change: async () => {
@@ -781,7 +830,8 @@
           const v = own ? Math.round(own[y * size + x] ?? 0) : value(top + y, left + x), i = 4 * (y * size + x);
           image.data[i] = v; image.data[i + 1] = v; image.data[i + 2] = v; image.data[i + 3] = 255;
         }
-        const [r, g, b] = roi.classification === "rejected" ? [230, 70, 70] : roi.classification === "accepted" ? [70, 200, 110] : [255, 196, 0];
+        const [r, g, b] = roi.classification === "rejected" ? [230, 70, 70] : roi.classification === "accepted" ? [70, 200, 110]
+          : roi.classification === "unresolved" ? [170, 110, 255] : [255, 196, 0];
         edge(roi).forEach(([y, x]) => {
           if (y < top || y >= top + size || x < left || x >= left + size) return;
           const i = 4 * ((y - top) * size + x - left);
@@ -806,6 +856,7 @@
         if (event.key === "Escape") view.close();
         else if (event.key === "a") classify("accepted");
         else if (event.key === "r") classify("rejected");
+        else if (event.key === "q") classify("unresolved");
         else if (event.key === "u") classify(null);
         else if (event.key === "ArrowRight") go(at + 1);
         else if (event.key === "ArrowLeft") go(at - 1);
@@ -818,7 +869,7 @@
       document.addEventListener("keydown", keys, true);
       onSelect = render;
       const view = N.dialog({ title: `ROIs · ${N.fmt.key(key)}`, content: h("div.roi-gallery-body",
-        h("div.roi-gallery-bar", imagePick, sortPick, showPick, h("span.muted", "Click a tile to select it; a, r and u classify it, the arrow keys go through them.")), grid),
+        h("div.roi-gallery-bar", imagePick, sortPick, showPick, h("span.muted", "Click a tile to select it; a, r, q and u accept, reject, mark unresolved and clear it; the arrow keys go through them.")), grid),
         onClose: () => { document.removeEventListener("keydown", keys, true); onSelect = null; } });
       view.el.classList.add("roi-gallery-dialog");
       render();
@@ -860,7 +911,7 @@
         if (state.auto) { state.low = frame.low; state.high = frame.high; low.value = String(frame.low); high.value = String(frame.high); }
         frameLabel.textContent = state.mode === "frame" ? `${state.frame + 1} / ${frame.frames}` : `${frame.frames} frames`;
         showTime();
-        paint(canvas, frame, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap);
+        paint(canvas, frame, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap, state.outlines);
         if (resized) layout(); else { drawOverlay(); drawScalebar(); }
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
@@ -897,7 +948,7 @@
         exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,
-      h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel));
+      h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel, gridButton));
     const dialog = N.dialog({ title: options.file ? options.file.path.split("/").pop() : `${variable} · ${N.fmt.key(key)}`, content, onClose: () => {
       if (options.onClose) options.onClose();
       state.playing = false;

@@ -57,7 +57,7 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
             end
             rois{i} = measure(struct("id", double(id)), inside(round(nansen.internal.roiPixels(items{i})), size_));
             label = nansen.internal.getField(items{i}, "classification", []);   % null decodes as []
-            if ~isempty(label) && any(string(label) == ["accepted", "rejected"])
+            if ~isempty(label) && any(string(label) == ["accepted", "rejected", "unresolved"])
                 rois{i}.classification = char(label);
             end
             ids(i) = double(id);
@@ -71,10 +71,10 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
             if isfield(rois{match}, "classification")
                 rois{match} = rmfield(rois{match}, "classification");
             end
-        elseif any(string(label) == ["accepted", "rejected"])
+        elseif any(string(label) == ["accepted", "rejected", "unresolved"])
             rois{match}.classification = char(label);
         else
-            nansen.internal.throwError("invalid-params", "an ROI is accepted or rejected, not '%s'", string(label))
+            nansen.internal.throwError("invalid-params", "an ROI is accepted, rejected or unresolved, not '%s'", string(label))
         end
     end
     for change = cellOf(pixelChanges)

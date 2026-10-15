@@ -811,7 +811,7 @@ def _mat(path):
     return MatAdapter().read(Path(path))
 
 
-DEV_CLASSIFICATIONS = {1: "accepted", 2: "rejected"}   # dev's roiClassification: 0 unclassified, 3 unresolved
+DEV_CLASSIFICATIONS = {1: "accepted", 2: "rejected", 3: "unresolved"}   # dev's roiClassification: 0 unclassified
 DEV_ROI_FIELDS = ["uid", "shape", "coordinates", "pixelweights", "imagesize", "boundary", "area", "center", "connectedrois",
                   "group", "celltype", "structure", "layer", "tags", "enhancedImage"]
 
@@ -819,7 +819,7 @@ DEV_ROI_FIELDS = ["uid", "shape", "coordinates", "pixelweights", "imagesize", "b
 class NansenRoiArray:
     """dev's ROI file (.mat): a struct array roiArray (or RoiArray, roi_arr) of RoI properties, as dev's
     roimanager and RoiGroup adapter save them, with roiClassification beside it (1 accepted, 2 rejected; 0
-    unclassified and 3 unresolved are left unclassified). Mask and Donut ROIs are their pixels, given as 1-based
+    unclassified; 3 unresolved). Mask and Donut ROIs are their pixels, given as 1-based
     x (column), y (row); IMask ROIs those of weight above 0; Circle ROIs are x, y and a radius, made into pixels as
     dev's RoI does; Polygon ROIs are the pixels whose centre is inside, by the even-odd rule. A file of several
     planes or channels (dev's RoiGroup: cells of them, planes x channels, with PlaneNumber and ChannelNumber) is read
@@ -917,7 +917,7 @@ class NansenRoiArray:
             records[0, k] = (str(uuid.uuid4()), "Mask", coordinates, np.zeros((0, 0)), np.array([height, width], dtype=float),
                              boundary, float(len(pixels)), coordinates.mean(axis=0) if len(pixels) else np.zeros((0, 0)),
                              np.empty((0, 0), dtype=object), np.zeros((0, 0)), "", "na", "", np.empty((0, 1), dtype=object), np.zeros((0, 0)))
-            codes[k, 0] = {"accepted": 1, "rejected": 2}.get(roi.get("classification"), 0)
+            codes[k, 0] = {"accepted": 1, "rejected": 2, "unresolved": 3}.get(roi.get("classification"), 0)
         return records, codes
 
 

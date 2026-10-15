@@ -111,7 +111,7 @@ N.registerPage({
       N.fill(table, state.sessions.length ? h("table.rr-table",
         h("thead", h("tr", h("th", "ROI"), state.sessions.map((s) => h("th", keyText(s.key))))),
         h("tbody", list.map((id) => h("tr" + (id === state.selected ? ".selected" : ""), { dataset: { roi: id }, on: { click: () => select(id) } },
-          h("td.rr-id", `ROI ${id}`, classificationOf(id) ? [" ", h("span.pill." + (classificationOf(id) === "accepted" ? "good" : "bad"), classificationOf(id))] : null),
+          h("td.rr-id", `ROI ${id}`, classificationOf(id) ? [" ", h("span.pill." + ({ accepted: "good", rejected: "bad" }[classificationOf(id)] || "warn"), classificationOf(id))] : null),
           state.sessions.map((s) => {
             const roi = s.rois.find((r) => r.id === id);
             // a double-click edits the ROI in that session's viewer (dev's multi-session editRois); the review reads
@@ -162,6 +162,7 @@ N.registerPage({
       const at = list.indexOf(state.selected);
       if (event.key === "a") classify("accepted");
       else if (event.key === "r") classify("rejected");
+      else if (event.key === "q") classify("unresolved");
       else if (event.key === "u") classify(null);
       else if (event.key === "ArrowDown" || event.key === "j") select(list[Math.min(list.length - 1, at + 1)]);
       else if (event.key === "ArrowUp" || event.key === "k") select(list[Math.max(0, at - 1)]);

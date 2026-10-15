@@ -109,7 +109,7 @@ def roi_group(expected):
     kept = [p for p, w in zip(weighted, weights) if w > 0]
     expected["roiGroup"] = {"imageSize": [HEIGHT, WIDTH],
                             "rois": [dict(roi(1, accepted, "accepted"), plane=1, channel=1), dict(roi(2, kept, "rejected"), plane=1, channel=1),
-                                     dict(roi(3, unresolved), plane=1, channel=1), dict(roi(4, [(17, 20), (17, 21)]), plane=2, channel=1)]}
+                                     dict(roi(3, unresolved, "unresolved"), plane=1, channel=1), dict(roi(4, [(17, 20), (17, 21)]), plane=2, channel=1)]}
 
 
 def dev_binary(expected):

@@ -84,7 +84,7 @@ def test_dev_rois_are_written_as_dev_reads_them(tmp_path):
     adapter("NansenRoiArray").write(tmp_path / "rois.mat", document)
     saved = MatAdapter().read(tmp_path / "rois.mat")
     assert set(saved) >= {"roiArray", "roiClassification", "roiImages", "roiStats"}
-    assert [r.shape for r in saved["roiArray"][0]] == ["Mask"] * 3 and list(saved["roiClassification"][0]) == [1, 2, 0]
+    assert [r.shape for r in saved["roiArray"][0]] == ["Mask"] * 3 and list(saved["roiClassification"][0]) == [1, 2, 3]
     assert saved["roiArray"][1].shape == "Mask" and list(saved["PlaneNumber"]) == [1, 2]   # cells of planes x channels
     assert adapter("NansenRoiArray").read(tmp_path / "rois.mat") == document
     one_plane = {"imageSize": document["imageSize"], "rois": [{k: v for k, v in r.items() if k not in ("plane", "channel")}

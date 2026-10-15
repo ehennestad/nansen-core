@@ -36,7 +36,7 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyTrue(all(isfield(saved, ["roiArray", "roiClassification", "roiImages", "roiStats"])));
             testCase.verifyEqual(size(saved.roiArray), [2, 1]);   % cells of planes x channels
             testCase.verifyEqual(string({saved.roiArray{1}.shape}), ["Mask", "Mask", "Mask"]);
-            testCase.verifyEqual(saved.roiClassification{1}, [1; 2; 0]);
+            testCase.verifyEqual(saved.roiClassification{1}, [1; 2; 3]);
             testCase.verifyEqual([saved.PlaneNumber{:}], [1, 2]);
             testCase.verifyDocument(ophys.NansenRoiArray().read(path), testCase.Expected.roiGroup);
             rois = document.rois(1:3);   % ROIs without places: one roiArray

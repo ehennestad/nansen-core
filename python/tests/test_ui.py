@@ -1397,6 +1397,35 @@ def test_the_roi_gallery_shows_the_classifier_images_and_statistics(empty_app, p
     page.keyboard.press("Escape")
 
 
+def test_viewer_projections_and_roi_display_options(empty_app, page):
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}}),
+        ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": s1, "options": {"threshold": 0.25, "border": 4}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+    page.uncheck(".viewer-rois")
+    page.select_option(".viewer-mode", "peakTime")   # imviewer's temporal colour code: hue is the time of the peak
+    colourful = """() => { const d = document.querySelector('.viewer-canvas').getContext('2d').getImageData(0, 0, 32, 32).data;
+        let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]) > 40) n++; return n; }"""
+    wait_until(lambda: page.evaluate(colourful) > 100)
+    page.select_option(".viewer-mode", "min")
+    wait_until(lambda: page.evaluate(colourful) == 0)
+    page.check(".viewer-rois")
+    page.check(".viewer-roi-labels")   # roimanager's numbers on the ROIs
+    page.wait_for_selector(".viewer-canvas[data-labels='3']")
+    filled = page.evaluate(colourful)
+    page.check(".viewer-roi-outlines")
+    wait_until(lambda: 0 < page.evaluate(colourful) < filled)
+    page.click(".viewer-grid")
+    assert "active" in page.get_attribute(".viewer-grid", "class")
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_view_any_stack_file_from_the_file_tree(empty_app, page):
     ophys_project(empty_app)
     page.goto(empty_app["server"].url + "#/entities/session")

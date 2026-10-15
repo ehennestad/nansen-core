@@ -2,8 +2,7 @@ classdef NansenRoiArray < nansen.FileAdapter
 %NansenRoiArray dev's ROI file (.mat): a struct array roiArray (or RoiArray, roi_arr) of RoI properties
 %
 %   As dev's roimanager and RoiGroup adapter save it, with roiClassification
-%   beside it (1 accepted, 2 rejected; 0 unclassified and 3 unresolved are
-%   left unclassified). Read as the module's ROI document: Mask and Donut
+%   beside it (1 accepted, 2 rejected, 3 unresolved; 0 unclassified). Read as the module's ROI document: Mask and Donut
 %   ROIs are their pixels, given as 1-based x (column), y (row); IMask ROIs
 %   those of weight above 0; Circle ROIs (x, y and a radius) are made into
 %   pixels as dev's RoI does; Polygon ROIs are the pixels whose centre is
@@ -103,6 +102,7 @@ classdef NansenRoiArray < nansen.FileAdapter
             labels = repmat({""}, 1, numel(rois));
             labels(codes == 1) = {"accepted"};
             labels(codes == 2) = {"rejected"};
+            labels(codes == 3) = {"unresolved"};
             imageSize = double(rois(1).imagesize(:))';
             lists = cell(1, numel(rois));
             for k = 1:numel(rois)
@@ -166,6 +166,8 @@ classdef NansenRoiArray < nansen.FileAdapter
                         codes(k) = 1;
                     case "rejected"
                         codes(k) = 2;
+                    case "unresolved"
+                        codes(k) = 3;
                 end
             end
         end

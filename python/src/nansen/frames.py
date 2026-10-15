@@ -36,6 +36,25 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
             peak = stack.frames(start, start + CHUNK).max(axis=2)
             image = peak if image is None else np.maximum(image, peak)
         image, frame = image.astype(np.float64), None
+    elif projection == "min":
+        image = None
+        for start in range(0, frames, CHUNK):
+            low_ = stack.frames(start, start + CHUNK).min(axis=2)
+            image = low_ if image is None else np.minimum(image, low_)
+        image, frame = image.astype(np.float64), None
+    elif projection == "peakTime":   # the frame of each pixel's peak (the first, on a tie); its peak is the brightness
+        peak = when = None
+        for start in range(0, frames, CHUNK):
+            chunk = stack.frames(start, start + CHUNK).astype(np.float64)
+            here, at = chunk.max(axis=2), chunk.argmax(axis=2) + start
+            if peak is None:
+                peak, when = here, at
+            else:
+                later = here > peak
+                peak, when = np.where(later, here, peak), np.where(later, at, when)
+        image, frame = when.astype(np.float64), None
+        if limits is None:
+            limits = [0.0, float(max(frames - 1, 1))]
     elif projection == "std":
         image, frame = _std(stack), None
     elif projection == "correlation":
@@ -45,7 +64,7 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
             raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
         image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
     else:
-        raise NansenError("invalid-params", f"projection is mean, max, std or correlation, not {projection!r}")
+        raise NansenError("invalid-params", f"projection is mean, max, min, std, correlation or peakTime, not {projection!r}")
     if limits is not None:
         low, high = float(limits[0]), float(limits[1])
     else:
@@ -56,9 +75,17 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         with np.errstate(invalid="ignore"):
             values = np.floor((image - low) / (high - low) * 255 + 0.5)
         scaled = np.clip(np.nan_to_num(values, nan=0.0), 0, 255).astype(np.uint8)
-    return {"height": height, "width": width, "frames": frames, "channels": channels, "planes": planes, "frame": frame,
-            "low": _number(low), "high": _number(high),
-            "pixels": base64.b64encode(scaled.tobytes()).decode("ascii")}
+    result = {"height": height, "width": width, "frames": frames, "channels": channels, "planes": planes, "frame": frame,
+              "low": _number(low), "high": _number(high),
+              "pixels": base64.b64encode(scaled.tobytes()).decode("ascii")}
+    if projection == "peakTime":   # the peaks, as 8-bit values from the smallest to the largest
+        finite = peak[np.isfinite(peak)]
+        bottom, top = (float(finite.min()), float(finite.max())) if finite.size else (0.0, 0.0)
+        bright = np.zeros((height, width), dtype=np.uint8)
+        if top > bottom:
+            bright = np.clip(np.nan_to_num(np.floor((peak - bottom) / (top - bottom) * 255 + 0.5), nan=0.0), 0, 255).astype(np.uint8)
+        result["brightness"] = base64.b64encode(bright.tobytes()).decode("ascii")
+    return result
 
 
 CHUNK = 100   # frames read at a time for a projection
@@ -160,7 +187,7 @@ def roi_outlines(value: Any) -> List[Dict[str, Any]]:
     return out
 
 
-CLASSES = ("accepted", "rejected")
+CLASSES = ("accepted", "rejected", "unresolved")
 
 
 def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[list] = None,
@@ -218,7 +245,7 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
         elif label in CLASSES:
             roi["classification"] = label
         else:
-            raise NansenError("invalid-params", f"an ROI is accepted or rejected, not {label!r}")
+            raise NansenError("invalid-params", f"an ROI is accepted, rejected or unresolved, not {label!r}")
     for change in pixels or []:
         roi = find(change.get("id"))
         measure(roi, [(int(p[0]), int(p[1])) for p in change.get("pixels", []) if inside(p)])
