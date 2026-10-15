@@ -3,7 +3,8 @@
   "use strict";
   const N = window.N;
   const { h } = N;
-  const ROW = 36;
+  // A row's height: the stylesheet's --row, which the table text size setting changes
+  const rowHeight = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--row")) || 36;
 
   function statusOf(row) {
     if (row.inStore && row.inTable) return "both";
@@ -264,6 +265,7 @@
       if (this.editing) return;   // the edit's own end renders the rows again
       const height = this.el.clientHeight || 600;
       const top = this.el.scrollTop;
+      const ROW = rowHeight();
       const first = Math.max(0, Math.floor(top / ROW) - 10);
       const last = Math.min(this.view.length, Math.ceil((top + height) / ROW) + 10);
       if (!force && this.rendered && this.rendered[0] === first && this.rendered[1] === last) return;

@@ -316,6 +316,14 @@ table.grid-table { border-collapse: separate; border-spacing: 0; width: max-cont
 .grid-table tbody tr.selected td { background: var(--accent-soft); }
 .grid-table tbody tr.ignored td { color: var(--text-3); }
 .grid-table td.key { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+/* The tables' text size (Settings: dev's table font size), kept in this browser */
+:root[data-table-size="compact"] { --row: 28px; }
+:root[data-table-size="compact"] .grid-table td { font-size: 12px; }
+:root[data-table-size="compact"] .grid-table td.key { font-size: 11.5px; }
+:root[data-table-size="large"] { --row: 44px; }
+:root[data-table-size="large"] .grid-table td { font-size: 16px; }
+:root[data-table-size="large"] .grid-table td.key { font-size: 15px; }
+:root[data-table-size="large"] .grid-table thead th { font-size: 14px; }
 .grid-table td.attribute { color: var(--text-2); }
 .grid-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .grid-table td.editable:hover { box-shadow: inset 0 0 0 1px var(--border-strong); border-radius: 4px; cursor: text; }

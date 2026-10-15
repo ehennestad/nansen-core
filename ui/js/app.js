@@ -32,6 +32,7 @@
 
     async start() {
       applyTheme(loadTheme());
+      N.tableSize.apply(N.tableSize.load());
       N.clear(document.getElementById("app")).appendChild(h("div.empty", { style: { paddingTop: "30vh" } }, "Connecting…"));
       const transport = await N.connect();
       this.client = new N.Client(transport);
@@ -319,6 +320,18 @@
   }
 
   N.theme = { load: loadTheme, save: saveTheme, apply: applyTheme };
+  // The tables' text size: compact, normal or large (dev's table font size), kept in this browser
+  N.tableSize = {
+    load() { try { return localStorage.getItem("nansen.tableSize") || "normal"; } catch (e) { return "normal"; } },
+    apply(size) {
+      if (size === "normal") document.documentElement.removeAttribute("data-table-size");
+      else document.documentElement.setAttribute("data-table-size", size);
+    },
+    save(size) {
+      try { localStorage.setItem("nansen.tableSize", size); } catch (e) { /* not stored; fine */ }
+      N.tableSize.apply(size);
+    },
+  };
   N.app = app;
   window.addEventListener("DOMContentLoaded", () => app.start());
 })();

@@ -946,6 +946,22 @@ def test_settings_page(empty_app, page):
     assert not page.locator(".auto-start input").is_checked()
 
 
+def test_table_text_size(empty_app, page):   # dev's table font size, kept in this browser
+    empty_app["api"].handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody tr[data-id]")
+    height = lambda: page.locator(".grid-table tbody tr[data-id] td").first.bounding_box()["height"]
+    assert height() == 36
+    page.goto(empty_app["server"].url + "#/settings")
+    page.select_option(".table-size-select", "large")
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody tr[data-id]")
+    assert page.evaluate("document.documentElement.dataset.tableSize") == "large" and height() == 44
+    page.reload()
+    page.wait_for_selector(".grid-table tbody tr[data-id]")
+    assert height() == 44
+
+
 def test_a_pipeline_step_run_by_hand(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
