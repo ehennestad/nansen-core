@@ -71,6 +71,11 @@ def motion_correction(entity, options, context):
     else:
         target = stack
     height, width, frames = stack.shape
+    flyback = int(options.get("numFlybackLines", 0))
+    if flyback >= height - 1:
+        raise NansenError("invalid-options", f"{flyback} flyback lines leave too little of a frame of {height} rows")
+    prepare, offsets = scan_preparation(stack, flyback, options.get("bidirectionalCorrection", "none"), int(options.get("maxBidirectionalOffset", 10)))
+    height -= flyback
     subpixel = bool(options.get("subpixel", False))
     patches = int(options.get("patches", 1))
     deviation = int(options.get("maxDeviation", 3))
@@ -80,7 +85,11 @@ def motion_correction(entity, options, context):
     weights = (_axis_weights(row_edges, height), _axis_weights(column_edges, width))
     tapered = subpixel or patches > 1   # whole-pixel rigid alignment works on the frames as they are
     count = min(options["referenceFrames"], frames)
-    reference = stack[:, :, :count].astype(np.float64).mean(axis=2)
+    reference = prepare(stack.frames(0, count), 0).astype(np.float64).mean(axis=2)
+    output_type = options.get("outputType", "same")
+    recast = _recaster(prepare(stack.frames(0, min(CHUNK, frames)), 0), output_type, float(options.get("saturation", 0.5)))
+    shape = (height,) + tuple(target.shape[1:])
+    dtype = target.dtype if output_type == "same" else np.dtype(output_type)
     iterations = options["iterations"]
     for iteration in range(iterations):
         last = iteration == iterations - 1
@@ -89,11 +98,11 @@ def motion_correction(entity, options, context):
         patch_ffts = [[_reference_fft(reference[r0:r1, c0:c1], True) for c0, c1 in zip(column_edges, column_edges[1:])]
                       for r0, r1 in zip(row_edges, row_edges[1:])]
         total = np.zeros((height, width))
-        with (context.project.stack_writer(entity, options["output"], target.shape, target.dtype) if last else _NoWriter()) as out:
+        with (context.project.stack_writer(entity, options["output"], shape, dtype) if last else _NoWriter()) as out:
             for start in range(0, frames, CHUNK):
                 context.check_cancelled()
                 stop = min(start + CHUNK, frames)
-                chunk = stack[:, :, start:stop]
+                chunk = prepare(stack.frames(start, stop), start)
                 if patches == 1:
                     shifts[start:stop, :, 0, 0] = estimate_shifts(chunk, reference_fft, options["maxShift"], subpixel, tapered)
                 else:
@@ -103,10 +112,10 @@ def motion_correction(entity, options, context):
                 align = lambda frames_: align_frames(frames_, shifts[start:stop], weights, subpixel)
                 if last:
                     if target is stack:
-                        out.write(start, align(chunk))
+                        out.write(start, recast(align(chunk)))
                     else:
-                        channels = target.frames(start, stop)
-                        out.write(start, np.stack([align(channels[:, :, c, :]) for c in range(channels.shape[2])], axis=2))
+                        channels = prepare(target.frames(start, stop), start)
+                        out.write(start, recast(np.stack([align(channels[:, :, c, :]) for c in range(channels.shape[2])], axis=2)))
                 else:
                     total += align(chunk).astype(np.float64).sum(axis=2)
                 context.progress((iteration * frames + stop) / (iterations * frames), f"iteration {iteration + 1}: frame {stop}/{frames}")
@@ -124,7 +133,85 @@ def motion_correction(entity, options, context):
     else:
         largest, mean = int(largest), round_to(distance.mean(), 4)
     context.log(f"{_name(entity)}: largest shift {largest} px")
-    return {"frames": frames, "maxShift": largest, "meanShift": mean}
+    result = {"frames": frames, "maxShift": largest, "meanShift": mean}
+    if options.get("bidirectionalCorrection", "none") != "none":
+        result["bidirectionalOffset"] = offsets[0]
+    return result
+
+
+def scan_preparation(stack, flyback, mode, most):
+    """What is done to each chunk of frames (starting at frame start) before it is aligned: the first flyback
+    rows are left out, and the lines scanned back (rows 1, 3, ...) are moved by the column offset between them
+    and the lines scanned forth, as resonant scanners need. With mode "constant" the offset is found once, in
+    the first chunk; with "continuous" in each chunk. Returns the function and the offsets found, by chunk."""
+    offsets = {}
+
+    def offset_for(start):
+        key = 0 if mode == "constant" else start
+        if key not in offsets:
+            first = stack.frames(key, min(key + CHUNK, stack.shape[-1]))[flyback:]
+            offsets[key] = bidirectional_offset(first.astype(np.float64).reshape(first.shape[0], first.shape[1], -1).mean(axis=2), most)
+        return offsets[key]
+
+    def prepare(chunk, start):
+        chunk = chunk[flyback:]
+        if mode == "none":
+            return chunk
+        return shift_alternate_rows(chunk, offset_for(start))
+
+    if mode not in ("none", "constant", "continuous"):
+        raise NansenError("invalid-options", f"bidirectionalCorrection is none, constant or continuous, not {mode!r}")
+    return prepare, offsets
+
+
+def bidirectional_offset(image, most):
+    """The column offset k of the lines scanned back (rows 1, 3, ...) from those scanned forth (rows 0, 2, ...):
+    the k within most whose shift makes the two sets of lines correlate best (Pearson, over the columns both
+    cover); of equal ones, the smallest, then the negative."""
+    forth, back = image[0::2], image[1::2]
+    rows = min(forth.shape[0], back.shape[0])
+    forth, back = forth[:rows], back[:rows]
+    width = image.shape[1]
+    best, offset = -np.inf, 0
+    for k in sorted(range(-most, most + 1), key=lambda k: (abs(k), k)):
+        first, stop = max(0, -k), min(width, width - k)
+        if stop - first < 2:
+            continue
+        score = _pearson(forth[:, first:stop], back[:, first + k:stop + k])
+        if score > best:
+            best, offset = score, k
+    return offset
+
+
+def shift_alternate_rows(chunk, k):
+    """Rows 1, 3, ... moved by -k columns: out[r, c] = chunk[r, c + k] on those rows, 0 outside the frame."""
+    if not k:
+        return chunk
+    out = np.array(chunk, copy=True)
+    width = chunk.shape[1]
+    out[1::2] = 0
+    first, stop = max(0, -k), min(width, width - k)
+    out[1::2, first:stop] = chunk[1::2, first + k:stop + k]
+    return out
+
+
+def _recaster(sample, output_type, saturation):
+    """The aligned frames as output_type: the same, or uint8 or uint16 scaled from the saturation and 100 -
+    saturation percentiles of a sample of frames to the type's full range, rounded half up."""
+    if output_type == "same":
+        return lambda frames: frames
+    if output_type not in ("uint8", "uint16"):
+        raise NansenError("invalid-options", f"outputType is same, uint8 or uint16, not {output_type!r}")
+    values = sample.astype(np.float64).reshape(-1, 1)
+    low, high = float(_percentile(values, saturation)[0]), float(_percentile(values, 100 - saturation)[0])
+    top = float(np.iinfo(output_type).max)
+
+    def recast(frames):
+        if not high > low:
+            return np.zeros(frames.shape, dtype=output_type)
+        scaled = np.floor((frames.astype(np.float64) - low) / (high - low) * top + 0.5)
+        return np.clip(scaled, 0, top).astype(output_type)
+    return recast
 
 
 class _NoWriter:

@@ -6,7 +6,7 @@
   "title": "Correct motion",
   "category": "Two-photon/Motion correction",
   "entityType": "*",
-  "description": "Aligns every frame to a reference image by the shift that maximises their phase correlation, and saves the aligned stack and the shifts. Rigid and in whole pixels by default. With subpixel, shifts are found to a twentieth of a pixel (the correlation upsampled around its peak, as NoRMCorre does) and frames are moved by bilinear interpolation. With patches above 1, each frame is cut into patches x patches patches that find their own shifts near the frame's, and every pixel is moved by the shift interpolated between the patch centres (piecewise rigid, as NoRMCorre). Both weight the frames by a taper before the correlation, so their edges do not count. The reference is the average of the first frames; each further iteration uses the average of the frames aligned in the one before. Pixels shifted in from outside the frame are 0. In a stack with channels, the shifts are found in one channel and every channel is aligned by them; in one with planes, one plane is aligned (as height x width x channels x frames).",
+  "description": "Aligns every frame to a reference image by the shift that maximises their phase correlation, and saves the aligned stack and the shifts. Rigid and in whole pixels by default. With subpixel, shifts are found to a twentieth of a pixel (the correlation upsampled around its peak, as NoRMCorre does) and frames are moved by bilinear interpolation. With patches above 1, each frame is cut into patches x patches patches that find their own shifts near the frame's, and every pixel is moved by the shift interpolated between the patch centres (piecewise rigid, as NoRMCorre). Both weight the frames by a taper before the correlation, so their edges do not count. Before alignment, flyback rows can be left out and the lines a resonant scanner scans back moved by their offset (bidirectional correction); the aligned stack can be written as uint8 or uint16. The reference is the average of the first frames; each further iteration uses the average of the frames aligned in the one before. Pixels shifted in from outside the frame are 0. In a stack with channels, the shifts are found in one channel and every channel is aligned by them; in one with planes, one plane is aligned (as height x width x channels x frames).",
   "implementations": {
     "python": "ophys_methods:motion_correction",
     "matlab": "ophys.motionCorrection"
@@ -71,6 +71,49 @@
         "minimum": 0,
         "title": "Largest patch deviation (px)",
         "description": "How far a patch's shift may be from its frame's whole-pixel shift."
+      },
+      "numFlybackLines": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Flyback lines",
+        "description": "Rows at the top of each frame to leave out (written while the scanner flies back)."
+      },
+      "bidirectionalCorrection": {
+        "type": "string",
+        "enum": [
+          "none",
+          "constant",
+          "continuous"
+        ],
+        "default": "none",
+        "title": "Bidirectional correction",
+        "description": "For a resonant scanner: move the lines scanned back (rows 1, 3, ...) by their column offset from the lines scanned forth, found once in the first frames (constant) or in every chunk of frames (continuous)."
+      },
+      "maxBidirectionalOffset": {
+        "type": "integer",
+        "default": 10,
+        "minimum": 0,
+        "title": "Largest line offset (px)"
+      },
+      "outputType": {
+        "type": "string",
+        "enum": [
+          "same",
+          "uint8",
+          "uint16"
+        ],
+        "default": "same",
+        "title": "Output type",
+        "description": "Write the aligned stack as it is, or as uint8 or uint16 scaled from the saturation percentiles of the first frames to the type's full range."
+      },
+      "saturation": {
+        "type": "number",
+        "default": 0.5,
+        "minimum": 0,
+        "maximum": 49,
+        "title": "Saturation (%)",
+        "description": "With an output type: the share of values cut at either end when scaling."
       },
       "channel": {
         "type": "integer",

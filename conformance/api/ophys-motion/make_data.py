@@ -13,6 +13,9 @@ computed here directly, not with either reader's ophys code:
   of the quadrant's own, of a pixel at most; 2 x 2 patches find each quadrant's shift.
 - s3, s4: a smooth scene, and the same scene turned by 3 degrees about the image centre after a move of
   (2, -1), drawn from its formula. Aligning s4 to s3 finds both, and moves s3's ROIs there.
+- s6: a resonant-scanner recording: two flyback rows of noise on top, and the lines scanned back (rows 1, 3,
+  ... below them) 3 columns to the right of where they belong, in every frame, which moves by known whole
+  pixels; motion correction leaves the flyback rows out, finds the offset and aligns the frames.
 - s5: four ring-shaped somata (a dark nucleus in a bright ring) that are never active, on a background
   with fixed noise; Quicky finds them by their shape alone, each with its centre where it was drawn.
 """
@@ -31,6 +34,7 @@ S2 = {"subject_id": "m1", "session_id": "s2"}
 S3 = {"subject_id": "m1", "session_id": "s3"}
 S4 = {"subject_id": "m1", "session_id": "s4"}
 S5 = {"subject_id": "m1", "session_id": "s5"}
+S6 = {"subject_id": "m1", "session_id": "s6"}
 
 
 def round_to(value, digits):
@@ -97,6 +101,30 @@ def somata():
     return {"rois": len(SOMATA), "shapeRois": len(SOMATA)}
 
 
+BIDIRECTIONAL, FLYBACK = 3, 2
+
+
+def resonant():
+    """s6: 42 x 48 x 30, uint16; rows 0-1 flyback noise, then a texture moved by whole pixels whose rows 1, 3, ...
+    are drawn BIDIRECTIONAL columns to the right (0 where nothing is drawn)."""
+    height, width, frames, pad = 40, 48, 30, 6
+    rng = np.random.default_rng(15)
+    texture = rng.normal(0, 1, (height + 2 * pad, width + 2 * pad))
+    texture = np.round(1000 + 150 * (texture + np.roll(texture, 1, 0) + np.roll(texture, 1, 1)))
+    shifts = rng.integers(-3, 4, (frames, 2))
+    shifts[0] = 0
+    stack = np.zeros((FLYBACK + height, width, frames))
+    for t, (dy, dx) in enumerate(shifts):
+        frame = texture[pad - dy:pad - dy + height, pad - dx:pad - dx + width].copy()
+        frame[1::2, BIDIRECTIONAL:] = frame[1::2, :-BIDIRECTIONAL].copy()   # back lines land further right
+        frame[1::2, :BIDIRECTIONAL] = 0
+        stack[FLYBACK:, :, t] = frame
+        stack[:FLYBACK, :, t] = rng.uniform(0, 4000, (FLYBACK, width))
+    save("s6", np.clip(stack, 0, 65535).astype(np.uint16))
+    lengths = np.sqrt((shifts ** 2).sum(axis=1))
+    return {"frames": frames, "maxShift": int(np.abs(shifts).max()), "meanShift": round_to(lengths.mean(), 4), "bidirectionalOffset": BIDIRECTIONAL}
+
+
 ANGLE, MOVE = 3.0, (2, -1)
 
 
@@ -147,6 +175,7 @@ def main():
     first, second = subpixel(), piecewise()
     rois, moved = rotated()
     shaped = somata()
+    scanned = resonant()
     # s3's ROIs, as the ophys methods write them (ophys/roi_array.json in the processed data)
     folder = HERE / "project" / "data" / "processed" / "sub-m1" / "ses-s3" / "ophys"
     folder.mkdir(parents=True)
@@ -156,8 +185,8 @@ def main():
         "methodId": method, "entityType": "session", "keys": keys, "options": options}}}
     steps = [
         {"request": {"method": "project.open", "id": 1, "params": {"path": "${project}"}}, "expect": {"result": {"name": "OphysMotion"}}},
-        {"request": {"method": "project.scan", "id": 2, "params": {}}, "expect": {"result": {"records": {"subject": 1, "session": 5}, "unmatched": 0}}},
-        {"request": {"method": "project.sync", "id": 3, "params": {}}, "expect": {"result": {"added": {"session": [S1, S2, S3, S4, S5]}}}},
+        {"request": {"method": "project.scan", "id": 2, "params": {}}, "expect": {"result": {"records": {"subject": 1, "session": 6}, "unmatched": 0}}},
+        {"request": {"method": "project.sync", "id": 3, "params": {}}, "expect": {"result": {"added": {"session": [S1, S2, S3, S4, S5, S6]}}}},
         {"request": {"method": "tools.run", "id": 4, "params": {"methodId": "ophys.setup_variables", "options": {
             "rawFilePattern": "recording", "rawFileAdapter": "npy", "addColumns": False}}},
          "expect": {"result": {"result": {"existing": []}}}},
@@ -177,6 +206,15 @@ def main():
         {**run(11, "ophys.quicky", [S5], {"stack": "TwoPhotonSeries_Original", "roiDiameter": 10}), "expect": {"result": {"results": [shaped]}}},
         {**run(12, "ophys.quicky", [S5], {"stack": "TwoPhotonSeries_Original", "roiDiameter": 10, "useShapeDetection": False}),
          "expect": {"result": {"results": [{"rois": 0, "areas": []}]}}},
+        # a resonant-scanner recording: flyback rows left out, the back lines' offset found once, the frames aligned,
+        # and written as uint8; then with the offset found in every chunk
+        {**run(13, "ophys.motion_correction", [S6], {"numFlybackLines": FLYBACK, "bidirectionalCorrection": "constant", "referenceFrames": 1,
+                                                      "maxShift": 6, "iterations": 1, "outputType": "uint8"}), "expect": {"result": {"results": [scanned]}}},
+        {"request": {"method": "data.frame", "id": 14, "params": {"entityType": "session", "key": S6, "variable": "TwoPhotonSeries_Corrected", "frame": 0}},
+         "expect": {"result": {"height": 40, "width": 48, "frames": 30}}},
+        {**run(15, "ophys.motion_correction", [S6], {"numFlybackLines": FLYBACK, "bidirectionalCorrection": "continuous", "referenceFrames": 1,
+                                                      "maxShift": 6, "iterations": 1}), "expect": {"result": {"results": [scanned]}}},
+        {**run(16, "ophys.motion_correction", [S6], {"bidirectionalCorrection": "sometimes"}), "expect": {"error": "invalid-options"}},
     ]
     (HERE / "session.json").write_text(json.dumps({"steps": steps}, indent=2) + "\n", encoding="utf-8")
     expected = {"description": "Motion correction finer than whole pixels: subpixel shifts on a texture moved by half pixels, piecewise rigid "

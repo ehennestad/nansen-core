@@ -24,6 +24,13 @@ function result = motionCorrection(entity, options, context)
         target = [];   % the stack itself
     end
     [height, width, frames] = size(stack);
+    flyback = double(nansen.internal.getField(options, "numFlybackLines", 0));
+    if flyback >= height - 1
+        nansen.internal.throwError("invalid-options", "%d flyback lines leave too little of a frame of %d rows", flyback, height)
+    end
+    preparation = ophys.internal.ScanPreparation(stack, flyback, string(nansen.internal.getField(options, "bidirectionalCorrection", "none")), ...
+        double(nansen.internal.getField(options, "maxBidirectionalOffset", 10)));
+    height = height - flyback;
     subpixel = logical(nansen.internal.getField(options, "subpixel", false));
     patches = double(nansen.internal.getField(options, "patches", 1));
     deviation = double(nansen.internal.getField(options, "maxDeviation", 3));
@@ -35,7 +42,19 @@ function result = motionCorrection(entity, options, context)
     weights = {ophys.internal.axisWeights(rowEdges, height), ophys.internal.axisWeights(columnEdges, width)};
     tapered = subpixel || patches > 1;   % whole-pixel rigid alignment works on the frames as they are
     count = min(options.referenceFrames, frames);
-    reference = mean(double(stack.frames(1, count)), 3);
+    reference = mean(double(preparation.prepare(stack.frames(1, count), 1)), 3);
+    outputType = string(nansen.internal.getField(options, "outputType", "same"));
+    if ~ismember(outputType, ["same", "uint8", "uint16"])
+        nansen.internal.throwError("invalid-options", "outputType is same, uint8 or uint16, not '%s'", outputType)
+    end
+    low = 0;
+    high = 0;
+    if outputType ~= "same"
+        sample = double(preparation.prepare(stack.frames(1, min(ophys.internal.chunk(), frames)), 1));
+        saturation = double(nansen.internal.getField(options, "saturation", 0.5));
+        low = ophys.internal.percentileOf(sample(:), saturation);
+        high = ophys.internal.percentileOf(sample(:), 100 - saturation);
+    end
     iterations = options.iterations;
     for iteration = 1:iterations
         last = iteration == iterations;
@@ -50,15 +69,15 @@ function result = motionCorrection(entity, options, context)
         total = zeros(height, width);
         if last
             if isempty(target)
-                writer = context.Project.stackWriter(entity, options.output, [height, width, frames], stack.ClassName);
+                writer = context.Project.stackWriter(entity, options.output, [height, width, frames], outputClass(outputType, stack.ClassName));
             else
-                writer = context.Project.stackWriter(entity, options.output, size(target), target.ClassName);
+                writer = context.Project.stackWriter(entity, options.output, [height, target.Size(2:end)], outputClass(outputType, target.ClassName));
             end
         end
         for start = 1:ophys.internal.chunk():frames
             context.checkCancelled();
             stop = min(start + ophys.internal.chunk() - 1, frames);
-            chunk = stack.frames(start, stop);
+            chunk = preparation.prepare(stack.frames(start, stop), start);
             if patches == 1
                 shifts(start:stop, :, 1, 1) = ophys.internal.estimateShifts(chunk, referenceFft, options.maxShift, subpixel, tapered);
             else
@@ -69,15 +88,15 @@ function result = motionCorrection(entity, options, context)
             here = shifts(start:stop, :, :, :);
             if last
                 if isempty(target)
-                    writer.write(start, ophys.internal.alignFrames(chunk, here, weights, subpixel));
+                    writer.write(start, ophys.internal.recastFrames(ophys.internal.alignFrames(chunk, here, weights, subpixel), outputType, low, high));
                 else
-                    channels = target.frames(start, stop);
+                    channels = preparation.prepare(target.frames(start, stop), start);
                     aligned = zeros(size(channels, 1:4), "like", channels);
                     for c = 1:size(channels, 3)
                         aligned(:, :, c, :) = reshape(ophys.internal.alignFrames(reshape(channels(:, :, c, :), height, width, []), ...
                             here, weights, subpixel), height, width, 1, []);
                     end
-                    writer.write(start, aligned);
+                    writer.write(start, ophys.internal.recastFrames(aligned, outputType, low, high));
                 end
             else
                 total = total + sum(double(ophys.internal.alignFrames(chunk, here, weights, subpixel)), 3);
@@ -114,4 +133,13 @@ function result = motionCorrection(entity, options, context)
     end
     context.log("%s: largest shift %g px", ophys.internal.entityName(entity), largest);
     result = struct("frames", frames, "maxShift", largest, "meanShift", meanShift);
+    if preparation.Mode ~= "none"
+        result.bidirectionalOffset = preparation.offset(1);
+    end
+end
+
+function className = outputClass(outputType, className)
+    if outputType ~= "same"
+        className = outputType;
+    end
 end

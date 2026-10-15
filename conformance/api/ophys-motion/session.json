@@ -24,7 +24,7 @@
         "result": {
           "records": {
             "subject": 1,
-            "session": 5
+            "session": 6
           },
           "unmatched": 0
         }
@@ -59,6 +59,10 @@
               {
                 "subject_id": "m1",
                 "session_id": "s5"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "s6"
               }
             ]
           }
@@ -588,6 +592,121 @@
             }
           ]
         }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 13,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s6"
+            }
+          ],
+          "options": {
+            "numFlybackLines": 2,
+            "bidirectionalCorrection": "constant",
+            "referenceFrames": 1,
+            "maxShift": 6,
+            "iterations": 1,
+            "outputType": "uint8"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 30,
+              "maxShift": 3,
+              "meanShift": 2.9585,
+              "bidirectionalOffset": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 14,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s6"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "frame": 0
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 40,
+          "width": 48,
+          "frames": 30
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 15,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s6"
+            }
+          ],
+          "options": {
+            "numFlybackLines": 2,
+            "bidirectionalCorrection": "continuous",
+            "referenceFrames": 1,
+            "maxShift": 6,
+            "iterations": 1
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 30,
+              "maxShift": 3,
+              "meanShift": 2.9585,
+              "bidirectionalOffset": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 16,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s6"
+            }
+          ],
+          "options": {
+            "bidirectionalCorrection": "sometimes"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
       }
     }
   ]
