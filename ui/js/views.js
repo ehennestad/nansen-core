@@ -1111,6 +1111,24 @@
         h("div.muted", { style: { marginTop: "10px" } }, "Each selected entity gets its own chain of tasks; a step waits for the one before and is skipped if it fails."));
     }
 
+    // dev's per-session options: each selected entity's options edited before it runs, starting from those in the form
+    let eachEntity = false;
+    const askOptions = (method, key, n, total, values) => new Promise((resolve) => {
+      const own = N.schemaForm(method.options || {}, values);
+      let answer = null;
+      N.dialog({
+        title: `${method.title} · ${N.fmt.key(key)} (${n} of ${total})`,
+        content: h("div.entity-options", own.el),
+        onClose: () => resolve(answer),
+        buttons: [{ label: "Stop" }, { label: n < total ? "Next" : "Done", kind: "primary", onClick: (close) => {
+          const problems = own.validate();
+          if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
+          answer = own.getValue();
+          close();
+        } }],
+      });
+    });
+
     let selection = 0;
     async function select(method, presetName) {
       const token = ++selection;
@@ -1154,6 +1172,9 @@
             app.client.request("methods.edit", { methodId: method.id }).then((r) => N.toast("Opened", r.path), (error) => N.showError(error, "Could not open the code")) } },
             N.icon("edit", 13), "Edit code") : null),
         h("div.preset-row", h("label.name", { style: { fontWeight: 600 } }, "Preset"), presetSelect, save, remove),
+        rows.length > 1 && method.batchMode !== "batch" ? h("label.each-entity", { title: "Edit the options of each selected entity before it runs, starting from these" },
+          h("input", { type: "checkbox", checked: eachEntity, on: { change: (event) => { eachEntity = event.target.checked; } } }),
+          ` Options for each of the ${rows.length}`) : null,
         form.el);
     }
 
@@ -1174,6 +1195,28 @@
       if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
       const params = { methodId: current.id, entityType, options: form.getValue() };
       if (rows.length) params.keys = rows.map((r) => r.key);
+      if (eachEntity && rows.length > 1 && current.batchMode !== "batch") {
+        const method = current;
+        close();
+        const chosen = [];
+        for (let i = 0; i < rows.length; i++) {
+          const values = await askOptions(method, rows[i].key, i + 1, rows.length, params.options);
+          if (!values) return;   // stopped: nothing runs
+          chosen.push(values);
+        }
+        try {
+          const tasks = [];
+          for (let i = 0; i < rows.length; i++) {
+            const own = { methodId: method.id, entityType, keys: [rows[i].key], options: chosen[i] };
+            if (queued) tasks.push(await app.client.request("tasks.submit", own));
+            else await app.client.request("methods.run", own);
+          }
+          N.toast(queued ? "Queued" : "Done", `${method.title} on ${target}, each with its own options`, "success");
+          if (queued) app.go("#/tasks");
+          else if (app.reloadEntities) app.reloadEntities();
+        } catch (error) { N.showError(error, `${method.title} failed`); }
+        return;
+      }
       try {
         if (queued) {
           const task = await app.client.request("tasks.submit", params);

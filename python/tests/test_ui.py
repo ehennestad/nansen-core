@@ -946,6 +946,31 @@ def test_settings_page(empty_app, page):
     assert not page.locator(".auto-start input").is_checked()
 
 
+def test_options_for_each_entity(empty_app, page):   # dev's per-session options: each entity's own, edited before it runs
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody tr[data-id]")
+    rows(page).nth(0).locator("td.sel input").click()
+    rows(page).nth(1).locator("td.sel input").click()
+    page.click(".selection-bar button:has-text('Run method')")
+    page.click(".method-item:has-text('Wait')")
+    page.wait_for_selector(".method-detail:has(h3:text-is('Wait')) .preset-row")
+    page.fill(".method-detail .field:has-text('Seconds') input", "0")
+    page.check(".each-entity input")
+    page.click(".dialog-foot button:has-text('Add to queue')")
+    page.wait_for_selector(".dialog-head h2:has-text('(1 of 2)')")
+    assert page.locator(".entity-options .field:has-text('Seconds') input").input_value() == "0"   # from the form
+    page.click(".dialog-foot button:has-text('Next')")
+    page.wait_for_selector(".dialog-head h2:has-text('(2 of 2)')")
+    page.fill(".entity-options .field:has-text('Seconds') input", "1")
+    page.click(".dialog-foot button:has-text('Done')")
+    page.wait_for_url("**#/tasks")
+    tasks = api.handle({"id": 2, "method": "tasks.list", "params": {}})["result"]
+    assert [(len(t["entities"]), t["options"]["values"]["seconds"]) for t in tasks] == [(1, 0), (1, 1)]
+    assert tasks[0]["entities"][0]["key"] != tasks[1]["entities"][0]["key"]
+
+
 def test_table_text_size(empty_app, page):   # dev's table font size, kept in this browser
     empty_app["api"].handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
     page.goto(empty_app["server"].url + "#/entities/session")
