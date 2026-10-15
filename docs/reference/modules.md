@@ -22,6 +22,8 @@ A project lists its modules in `project.nansen.json` (`modules: [{id, path?}]`).
 The built-in **`core`** module provides:
 
 - `core.notes`: `ignore` and `description` for any entity;
+- `core.subject`: date of birth, sex (a choice) and species, for subjects;
+- `core.pipeline`: the pipeline an entity is assigned;
 - `core.file_stats`: file count and size, computed by `core.file_stats`;
 - the methods `core.export_keys` (batch) and `core.wait` (for trying the queue);
 - the pipeline `core.inspect`.
@@ -105,6 +107,10 @@ A Python implementation is a class with `read(path)` and `write(path, data)`. A 
 ## Pipelines
 
 A pipeline (`nansen.pipeline`) is an ordered list of method steps, each with an optional preset and options. Queueing it makes one chain of tasks per entity. Each step waits for the step before it, and is cancelled if that step fails or is cancelled.
+
+An entity can also be assigned a pipeline, as in dev: the `pipeline` column of the `core.pipeline` fragment (`pipelines.assign`). Every method run that completes, in the queue or in the foreground, appends a line per entity to `runs/<entityType>.runs.jsonl`; a step is done for an entity once its method has completed on it. That gives each entity's progress (a column in the table, the steps in its drawer), and `pipelines.queueNext` queues the steps from the first not done on. Entities whose steps are queued or running already are left alone.
+
+A project's own pipelines are in `pipelines/` and can be made and changed in the dashboard (`pipelines.save`, `pipelines.delete`). One with the id of a module's pipeline is used instead of it.
 
 ## Tasks
 
