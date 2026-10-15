@@ -25,7 +25,7 @@ from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
 from .autodetect import autodetect_roi
-from .frames import NEUROPIL_DEFAULTS, _pick as pick_channel, alignment_entry, image_frame, import_rois_at, mirror_rois_at, roi_neuropil, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
+from .frames import NEUROPIL_DEFAULTS, _pick as pick_channel, alignment_entry, filter_image, image_frame, import_rois_at, mirror_rois_at, roi_neuropil, roi_outlines, roi_signal, rois_at, shown_image, signal_traces, update_rois_at
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -105,6 +105,15 @@ def _entity_metadata(metadata: dict, entity: Any) -> dict:
         if key not in out and usable(value):
             out[key] = [rounded(value), rounded(value)] if key == "pixelSize" else rounded(value)
     return out
+
+
+def _detect_image(stack, params: dict):
+    """The image detection modes 0 and 3-5 work on: the one the viewer shows (frame, projection, bin and filter as
+    data.frame takes them; dev's imviewer image), or None for the stack's mean when none is given."""
+    if "frame" not in params and not params.get("projection"):
+        return None
+    image = shown_image(stack, int(params.get("frame", 0)), params.get("projection") or None, None, _bin_of(params))[0]
+    return filter_image(image, params["filter"]) if params.get("filter") else image
 
 
 def _bin_of(params: dict) -> Optional[dict]:
@@ -1051,7 +1060,7 @@ class Api:
             raise NansenError("invalid-params", "point is [row, column]")
         stack, _ = self.viewables.stack(viewable, params.get("adapter"))
         stack, _, _ = pick_channel(stack, int(params.get("channel", 0)), int(params.get("plane", 0)))
-        return {"pixels": autodetect_roi(stack, point, int(params.get("radius", 6)), params.get("mode", 1))}
+        return {"pixels": autodetect_roi(stack, point, int(params.get("radius", 6)), params.get("mode", 1), _detect_image(stack, params))}
 
     def view__methods(self, params: dict) -> list:
         """Summaries of the built-in methods view.run runs on a registered stack."""
@@ -1462,7 +1471,7 @@ class Api:
         if not isinstance(point, list) or len(point) != 2:
             raise NansenError("invalid-params", "point is [row, column]")
         stack, _, _ = pick_channel(project.open_stack(entity, params["variable"]), int(params.get("channel", 0)), int(params.get("plane", 0)))
-        return {"pixels": autodetect_roi(stack, point, int(params.get("radius", 6)), params.get("mode", 1))}
+        return {"pixels": autodetect_roi(stack, point, int(params.get("radius", 6)), params.get("mode", 1), _detect_image(stack, params))}
 
     def rois__neuropil(self, params: dict) -> dict:
         """An ROI's neuropil, as ophys.extract_signals takes it (nansen.frames.neuropil_masks), among the ROIs of its

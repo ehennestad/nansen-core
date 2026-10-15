@@ -16,7 +16,8 @@ the tool's circle (dev's default 6), and the point is a pixel: x = column + 1, y
 4. as 3, in a box of r + the extended radius (dev's default 11).
 5. the image's box of r + 5, then findSomaMaskByEdgeDetection.
 
-dev's modes 3-5 work on the image shown in imviewer; here that is the image the caller gives (the stack's mean).
+dev's modes 3-5 work on the image shown in imviewer; here that is the image the caller gives (rois.detect: the viewer's
+frame or projection, as data.frame takes it; the stack's mean when none is given).
 Mode 0 is not dev's: the threshold of nansen.frames.detect_roi, which looks within r of the point.
 MATLAB's nansen.internal.autodetectRoi finds the same: every step is written out in the same order in both, with no
 toolbox function (imresize, imgaussfilt, poly2mask, medfilt2, bwareaopen, imfill and prctile are written here).

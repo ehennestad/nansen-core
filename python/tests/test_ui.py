@@ -2545,7 +2545,8 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     wait_until(lambda: [r["id"] for r in rois()] == [1, 2, 3, 4] and pixels(rois()[3]) == grown)
 
     # improve (i, dev's improveRois): ROI 1, shrunk, found again around its middle as the Detect tool finds one, in its mode
-    # (5, picked with the tool on) and the radius of a circle of the ROI's area; its id and class kept
+    # (5, picked with the tool on), on the image shown (the local correlation, as dev's imviewer image) and the radius of a
+    # circle of the ROI's area; its id and class kept
     page.click(".viewer-detect")
     page.keyboard.press("5")
     wait_until(lambda: page.locator(".viewer-detect-mode").inner_text() == "Mode 5")
@@ -2560,7 +2561,7 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     middle = [math.floor(sum(p[i] for p in small) / len(small) + 0.5) for i in (0, 1)]
     radius = max(1, math.floor(math.sqrt(len(small) / math.pi) + 0.5))
     found = api.handle({"id": 9, "method": "rois.detect", "params": {"entityType": "session", "key": s1[0], "variable": "TwoPhotonSeries_Corrected",
-                                                                    "point": middle, "radius": radius, "mode": 5}})["result"]["pixels"]
+                                                                    "point": middle, "radius": radius, "mode": 5, "projection": "correlation"}})["result"]["pixels"]
     assert found and sorted(map(tuple, found)) != small
     page.keyboard.press("i")
     wait_until(lambda: pixels(rois()[0]) == sorted(map(tuple, found)))

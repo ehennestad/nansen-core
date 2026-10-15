@@ -729,7 +729,7 @@
         status.textContent = "Detecting…";
         const where = viewable ? { viewable: viewable.id, ...(state.adapter ? { adapter: state.adapter } : {}) } : { entityType, key, variable };
         // dev's autodetection in the mode picked with keys 1-5, in the tool's circle (the round ROI's radius)
-        const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, point: [y, x], radius: state.radius,
+        const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, ...shownImage(), point: [y, x], radius: state.radius,
           mode: state.detectMode, channel: state.channel, plane: state.plane });
         if (found.pixels.length) edit({ add: [{ pixels: found.pixels }] });
         else status.textContent = "No cell found there: click on its bright middle, or draw it";
@@ -1106,6 +1106,16 @@
     }
     /** dev's improveRois (i): each selected ROI found again around its middle (rois.detect, as the Detect tool, in its mode, with the
      * radius of a circle of its area), the shape replaced and its id, class and links kept; one undo puts them all back. */
+    /** What the viewer shows (a frame, binned or not, or a projection, and its filter): the image dev's modes 0 and 3-5
+     * detect on, as in imviewer; the time of peak is a colour code, so the stack's mean is taken for it. */
+    function shownImage() {
+      const filter = state.filter ? { filter: state.filter } : {};
+      if (state.mode === "frame") {
+        const bin = state.bin ? { bin: { method: state.bin.split(":")[0], size: Number(state.bin.split(":")[1]) } } : {};
+        return { frame: state.frame, ...bin, ...filter };
+      }
+      return state.mode === "peakTime" ? {} : { projection: state.mode, ...filter };
+    }
     async function improve() {
       if (!state.selection.size || !last) return;
       const where = viewable ? { viewable: viewable.id, ...(state.adapter ? { adapter: state.adapter } : {}) } : { entityType, key, variable };
@@ -1117,7 +1127,7 @@
           if (!roi || !roi.pixels.length) continue;
           const middle = [0, 1].map((i) => Math.round(roi.pixels.reduce((sum, p) => sum + p[i], 0) / roi.pixels.length));
           const radius = Math.max(1, Math.round(Math.sqrt(roi.pixels.length / Math.PI)));
-          const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, point: middle, radius, mode: state.detectMode,
+          const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, ...shownImage(), point: middle, radius, mode: state.detectMode,
             channel: state.channel, plane: state.plane });
           if (found.pixels.length) changed.push({ id, pixels: found.pixels });
         }

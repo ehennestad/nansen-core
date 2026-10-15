@@ -1077,7 +1077,7 @@ classdef Api < handle
             stack = nansen.internal.pickChannel(stack, double(nansen.internal.getField(params, "channel", 0)), ...
                 double(nansen.internal.getField(params, "plane", 0)));
             pixels = nansen.internal.autodetectRoi(stack, point, double(nansen.internal.getField(params, "radius", 6)), ...
-                nansen.internal.getField(params, "mode", 1));
+                nansen.internal.getField(params, "mode", 1), nansen.Api.detectImage(stack, params));
             result = struct("pixels", {num2cell(pixels, 2)'});
         end
 
@@ -1775,7 +1775,7 @@ classdef Api < handle
             stack = nansen.internal.pickChannel(project.openStack(entity, string(nansen.Api.param(params, "variable"))), ...
                 double(nansen.internal.getField(params, "channel", 0)), double(nansen.internal.getField(params, "plane", 0)));
             pixels = nansen.internal.autodetectRoi(stack, point, double(nansen.internal.getField(params, "radius", 6)), ...
-                nansen.internal.getField(params, "mode", 1));
+                nansen.internal.getField(params, "mode", 1), nansen.Api.detectImage(stack, params));
             result = struct("pixels", {num2cell(pixels, 2)'});
         end
 
@@ -2618,6 +2618,22 @@ classdef Api < handle
     end
 
     methods (Static, Access = private)
+        function image = detectImage(stack, params)
+            % The image detection modes 0 and 3-5 work on: the one the viewer shows (frame, projection, bin and filter as
+            % data.frame takes them; dev's imviewer image), or [] for the stack's mean when none is given
+            image = [];
+            projection = string(nansen.internal.getField(params, "projection", ""));
+            if ~isfield(params, "frame") && projection == ""
+                return
+            end
+            image = nansen.internal.shownImage(stack, double(nansen.internal.getField(params, "frame", 0)), projection, [], ...
+                nansen.Api.binOf(params));
+            filter = string(nansen.internal.getField(params, "filter", ""));
+            if filter ~= ""
+                image = nansen.internal.filterImage(image, filter);
+            end
+        end
+
         function result = markedHidden(project, found)
             % Method summaries, those left out of the run menus with hidden: true
             hidden = project.hiddenMethods();

@@ -5262,7 +5262,7 @@
     {
       "request": {
         "method": "rois.detect",
-        "id": 9701,
+        "id": 9721,
         "params": {
           "entityType": "session",
           "key": {
@@ -5371,7 +5371,7 @@
     {
       "request": {
         "method": "rois.detect",
-        "id": 9702,
+        "id": 9722,
         "params": {
           "entityType": "session",
           "key": {
@@ -5597,7 +5597,7 @@
     {
       "request": {
         "method": "rois.detect",
-        "id": 9703,
+        "id": 9723,
         "params": {
           "entityType": "session",
           "key": {
@@ -5819,7 +5819,7 @@
     {
       "request": {
         "method": "rois.detect",
-        "id": 9704,
+        "id": 9724,
         "params": {
           "entityType": "session",
           "key": {
@@ -6677,7 +6677,7 @@
     {
       "request": {
         "method": "rois.detect",
-        "id": 9705,
+        "id": 9725,
         "params": {
           "entityType": "session",
           "key": {
@@ -6727,6 +6727,499 @@
             [
               21,
               11
+            ],
+            [
+              22,
+              7
+            ],
+            [
+              22,
+              8
+            ],
+            [
+              22,
+              9
+            ],
+            [
+              22,
+              10
+            ],
+            [
+              22,
+              11
+            ],
+            [
+              23,
+              7
+            ],
+            [
+              23,
+              8
+            ],
+            [
+              23,
+              9
+            ],
+            [
+              23,
+              10
+            ],
+            [
+              23,
+              11
+            ],
+            [
+              24,
+              8
+            ],
+            [
+              24,
+              9
+            ],
+            [
+              24,
+              10
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.detect",
+        "id": 9710,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "point": [
+            10,
+            12
+          ],
+          "radius": 3,
+          "mode": 3,
+          "projection": "mean"
+        }
+      },
+      "expect": {
+        "result": {
+          "pixels": [
+            [
+              4,
+              12
+            ],
+            [
+              4,
+              13
+            ],
+            [
+              4,
+              14
+            ],
+            [
+              4,
+              15
+            ],
+            [
+              4,
+              16
+            ],
+            [
+              5,
+              11
+            ],
+            [
+              5,
+              12
+            ],
+            [
+              5,
+              13
+            ],
+            [
+              5,
+              14
+            ],
+            [
+              5,
+              15
+            ],
+            [
+              5,
+              16
+            ],
+            [
+              5,
+              17
+            ],
+            [
+              5,
+              18
+            ],
+            [
+              6,
+              12
+            ],
+            [
+              6,
+              13
+            ],
+            [
+              6,
+              14
+            ],
+            [
+              6,
+              15
+            ],
+            [
+              6,
+              16
+            ],
+            [
+              6,
+              17
+            ],
+            [
+              6,
+              18
+            ],
+            [
+              7,
+              12
+            ],
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              14
+            ],
+            [
+              7,
+              15
+            ],
+            [
+              7,
+              16
+            ],
+            [
+              7,
+              17
+            ],
+            [
+              7,
+              18
+            ],
+            [
+              8,
+              11
+            ],
+            [
+              8,
+              12
+            ],
+            [
+              8,
+              13
+            ],
+            [
+              8,
+              14
+            ],
+            [
+              8,
+              15
+            ],
+            [
+              8,
+              16
+            ],
+            [
+              8,
+              17
+            ],
+            [
+              8,
+              18
+            ],
+            [
+              9,
+              11
+            ],
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              9,
+              14
+            ],
+            [
+              9,
+              15
+            ],
+            [
+              9,
+              16
+            ],
+            [
+              9,
+              17
+            ],
+            [
+              10,
+              11
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              10,
+              13
+            ],
+            [
+              10,
+              14
+            ],
+            [
+              10,
+              15
+            ],
+            [
+              11,
+              13
+            ],
+            [
+              11,
+              14
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.detect",
+        "id": 9711,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "point": [
+            22,
+            9
+          ],
+          "radius": 3,
+          "mode": 5,
+          "projection": "max"
+        }
+      },
+      "expect": {
+        "result": {
+          "pixels": [
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              9
+            ],
+            [
+              21,
+              10
+            ],
+            [
+              22,
+              8
+            ],
+            [
+              22,
+              9
+            ],
+            [
+              22,
+              10
+            ],
+            [
+              23,
+              8
+            ],
+            [
+              23,
+              9
+            ],
+            [
+              23,
+              10
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.detect",
+        "id": 9712,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "point": [
+            22,
+            9
+          ],
+          "radius": 3,
+          "mode": 5,
+          "frame": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "pixels": [
+            [
+              20,
+              8
+            ],
+            [
+              20,
+              9
+            ],
+            [
+              20,
+              10
+            ],
+            [
+              21,
+              7
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              9
+            ],
+            [
+              21,
+              10
+            ],
+            [
+              21,
+              11
+            ],
+            [
+              22,
+              7
+            ],
+            [
+              22,
+              8
+            ],
+            [
+              22,
+              9
+            ],
+            [
+              22,
+              10
+            ],
+            [
+              22,
+              11
+            ],
+            [
+              23,
+              7
+            ],
+            [
+              23,
+              8
+            ],
+            [
+              23,
+              9
+            ],
+            [
+              23,
+              10
+            ],
+            [
+              23,
+              11
+            ],
+            [
+              24,
+              8
+            ],
+            [
+              24,
+              9
+            ],
+            [
+              24,
+              10
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.detect",
+        "id": 9713,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "point": [
+            22,
+            9
+          ],
+          "radius": 3,
+          "mode": 5,
+          "frame": 5,
+          "bin": {
+            "size": 5,
+            "method": "mean"
+          },
+          "filter": "smooth"
+        }
+      },
+      "expect": {
+        "result": {
+          "pixels": [
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              9
+            ],
+            [
+              21,
+              10
             ],
             [
               22,

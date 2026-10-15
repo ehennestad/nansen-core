@@ -13,22 +13,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from .errors import NansenError
 
 
-def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optional[str] = None,
-                limits: Optional[List[float]] = None, plane: int = 0, filter: Optional[str] = None,
-                bin: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """A frame of a height x width (x frames), height x width x channels x frames or height x width x channels x
-    planes x frames array or stack (nansen.stacks.Stack, read a chunk of frames at a time), as 8-bit values.
+def shown_image(stack: Any, frame: int = 0, projection: Optional[str] = None, limits: Optional[List[float]] = None,
+                bin: Optional[Dict[str, Any]] = None):
+    """The image the viewer shows of one channel and plane of a stack, as floats: a frame, a frame binned with those
+    around it, or a projection. Also the frame (None for a projection), the limits (peakTime's own when none are
+    given), the frames binned ([first, stop)) and peakTime's peaks."""
+    import numpy as np
 
-    Values from low to high are scaled to 0..255 as floor((v - low) / (high - low) * 255 + 0.5), cut at
-    both ends; NaN is 0. low and high are the limits given, or else the smallest and largest finite value
-    of the frame. pixels is base64 of the bytes, row after row.
-    """
-    try:
-        import numpy as np
-    except ImportError:
-        raise NansenError("adapter-unavailable", 'viewing arrays needs NumPy: pip install "nansen-core[npy]"') from None
-    stack, channels, planes = _pick(data, channel, plane)
-    height, width, frames = stack.shape
+    frames = stack.shape[2]
+    binned = peak = None
     if projection == "mean":
         image, frame = _mean(stack), None
     elif projection == "max":
@@ -77,6 +70,26 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
     else:
         raise NansenError("invalid-params", f"projection is mean, max, min, std, correlation, globalCorrelation, meanClahe or peakTime, not {projection!r}")
+    return image, frame, limits, binned, peak
+
+
+def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optional[str] = None,
+                limits: Optional[List[float]] = None, plane: int = 0, filter: Optional[str] = None,
+                bin: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """A frame of a height x width (x frames), height x width x channels x frames or height x width x channels x
+    planes x frames array or stack (nansen.stacks.Stack, read a chunk of frames at a time), as 8-bit values.
+
+    Values from low to high are scaled to 0..255 as floor((v - low) / (high - low) * 255 + 0.5), cut at
+    both ends; NaN is 0. low and high are the limits given, or else the smallest and largest finite value
+    of the frame. pixels is base64 of the bytes, row after row.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        raise NansenError("adapter-unavailable", 'viewing arrays needs NumPy: pip install "nansen-core[npy]"') from None
+    stack, channels, planes = _pick(data, channel, plane)
+    height, width, frames = stack.shape
+    image, frame, limits, binned, peak = shown_image(stack, frame, projection, limits, bin)
     if filter:
         image = filter_image(image, filter)
     if limits is not None:
