@@ -486,7 +486,13 @@ def test_add_edit_and_delete_a_data_variable(empty_app, page):
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
     names = lambda: [v["name"] for v in api.handle({"id": 2, "method": "dataVariables.list"})["result"]]
     assert "config" not in names()
+    project = api.project
+    project.data_cache.get_or_load("x", 1, lambda: b"12345678")
     page.goto(empty_app["server"].url + "#/data")
+    page.wait_for_selector(".cache-info:has-text('In memory: 1 file, 8 B')")   # the data cache, emptied from here
+    page.click(".data-variables .clear-cache")
+    page.wait_for_selector(".cache-info:has-text('In memory: 0 files')")
+    assert project.data_cache.stats()["entries"] == 0
     page.click(".data-variables .add-variable")
     page.wait_for_selector(".dialog .variable-location option", state="attached")
     page.click(".dialog-foot button:has-text('Add data variable')")  # no name, no file: refused
@@ -791,6 +797,32 @@ def test_review_and_ignore_what_a_scan_did_not_match(empty_app, page):
     assert api.handle({"id": 4, "method": "project.scan"})["result"]["unmatched"] == 0
 
 
+def test_keep_one_of_two_folders_of_a_session(empty_app, page):
+    import shutil
+    from pathlib import Path
+
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    raw = Path(api.handle({"id": 2, "method": "files.resolve", "params": {"dataLocation": "raw", "path": ""}})["result"]["path"])
+    original = raw / "2025_06_11" / "2025_06_11_17_28_00_m112-20250611-001"
+    shutil.copytree(original, original.with_name("2025_06_11_18_00_00_m112-20250611-001"))   # a copy: the same session twice
+    api.handle({"id": 3, "method": "project.scan"})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]", has_text="m112-20250611-001").locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open .loc-head .pill:has-text('2 folders')")
+    page.locator(".drawer.open .path-list li", has_text="18_00_00").locator(".exclude-folder").click()
+    page.click(".dialog .btn.primary:has-text('Leave it out')")
+    page.wait_for_selector(".toast:has-text('Left out')")
+    page.wait_for_selector(".drawer.open .loc-head .pill:has-text('2 folders')", state="detached")
+    assert page.locator(".drawer.open .path-list li").count() == 1
+    assert "18_00_00" in (folder / "dataset.dsm.json").read_text()
+    entity = api.handle({"id": 4, "method": "entities.get", "params": {"entityType": "session",
+                                                                       "key": {"subject_id": "m112", "session_id": "m112-20250611-001"}}})["result"]
+    assert "duplicate-entity" not in [i["code"] for i in entity["issueDetails"]]
+
+
 def test_open_files_send_data_and_edit_code_from_the_app(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
@@ -825,8 +857,15 @@ def test_settings_page(empty_app, page):
     page.goto(empty_app["server"].url + "#/settings")
     page.wait_for_selector(".hero h1:has-text('Settings')")
     assert page.locator(".auto-start input").is_checked()
-    page.locator(".auto-start span").click()
-    wait_until(lambda: api.handle({"id": 1, "method": "settings.get"})["result"]["queue"]["autoStart"] is False)
+    saved = lambda response: "/api" in response.url and "settings.save" in (response.request.post_data or "")
+    with page.expect_response(saved) as answer:   # each answered before the next, and before the page reloads
+        page.locator(".auto-start span").click()
+    answer.value.finished()
+    assert api.handle({"id": 1, "method": "settings.get"})["result"]["queue"]["autoStart"] is False
+    with page.expect_response(saved) as answer:
+        page.select_option(".worker-select", "process")
+    answer.value.finished()
+    assert api.handle({"id": 1, "method": "settings.get"})["result"]["queue"]["worker"] == "process"
     page.select_option(".theme-select", "dark")
     assert page.evaluate("document.documentElement.dataset.theme") == "dark"
     page.reload()
@@ -1229,7 +1268,8 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     run = lambda method, options=None: ("methods.run", {"methodId": method, "entityType": "session", "keys": s1, "options": options or {}})
     ophys_project(empty_app, [run("ophys.motion_correction", {"referenceFrames": 1}), run("ophys.detect_rois", {"threshold": 0.25, "border": 4}),
-                              run("ophys.extract_signals"), run("ophys.compute_dff")])
+                              run("ophys.extract_signals"), run("ophys.compute_dff"),
+                              ("entities.update", {"entityType": "session", "key": s1[0], "values": {"frame_rate": 20}})])
     page.goto(empty_app["server"].url + "#/entities/session")
     page.wait_for_selector(".grid-table tbody td.key")
     page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
@@ -1238,7 +1278,7 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     page.click(".drawer li[data-variable='RoiSignals_Dff'] .plot-data")
     page.wait_for_selector(".traces-dialog .trace-roi-list li:has-text('ROI 3')")   # columns named by the ROIs
     assert page.locator(".trace-roi-list li").all_inner_texts() == ["ROI 1", "ROI 2", "ROI 3"]
-    assert "40 frames" in page.locator(".trace-status").inner_text()
+    assert "40 frames at 20 Hz" in page.locator(".trace-status").inner_text()   # the session's frame_rate: seconds along the bottom
     page.click(".trace-roi-list li[data-column='2']", modifiers=["Control"])   # two ROIs at once
     wait_until(lambda: page.locator(".trace-roi-list li.selected").count() == 2)
     page.click(".trace-variable:has-text('RoiSignals_MeanF') input")   # a second panel
@@ -1249,6 +1289,7 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     wait_until(lambda: page.locator(".trace-roi-list li.selected").all_inner_texts() == ["ROI 2"])
     box = page.locator(".traces-dialog .trace-canvas").bounding_box()
     page.mouse.move(box["x"] + 100, box["y"] + 60)   # drag across to zoom
+    wait_until(lambda: " s (frame " in page.locator(".traces-dialog .trace-readout").inner_text())
     page.mouse.down()
     page.mouse.move(box["x"] + 300, box["y"] + 60, steps=5)
     page.mouse.up()

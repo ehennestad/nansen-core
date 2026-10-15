@@ -25,7 +25,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     app.add_argument("--port", type=int, default=8765)
     app.add_argument("--catalog", default=None, help="project catalog file (default: the user's)")
     app.add_argument("--no-browser", action="store_true")
-    app.add_argument("--executor", choices=["thread", "process"], default="thread")
+    app.add_argument("--executor", choices=["thread", "process"], default=None,
+                     help="how queued tasks run (default: the user's setting, queue.worker)")
     demo = commands.add_parser("demo", help="create a demo project with a small dataset")
     demo.add_argument("folder")
     legacy = commands.add_parser("import-legacy", help="make a project from a NANSEN dev export (nansen.legacyExport)")

@@ -162,6 +162,31 @@ classdef ApiTest < matlab.unittest.TestCase
             response = api.handle(struct("id", 4, "method", "settings.save", "params", struct("settings", struct("other", struct()))));
             testCase.verifyEqual(string(response.error.code), "invalid-params");
             testCase.verifyFalse(api.StartQueue);   % a plain Api never starts a worker; nansen.App sets it from the setting
+            testCase.verifyEqual(string(settings.queue.worker), "thread");
+            settings = api.handle(struct("id", 5, "method", "settings.save", "params", ...
+                struct("settings", struct("queue", struct("worker", "process"))))).result;
+            testCase.verifyEqual(string(settings.queue.worker), "process");
+            response = api.handle(struct("id", 6, "method", "settings.save", "params", ...
+                struct("settings", struct("queue", struct("worker", "fork")))));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+        end
+
+        function theWorkerSettingChoosesThePool(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            catalog = nansen.Catalog(fullfile(fixture.Folder, "catalog.json"));
+            catalog.saveSettings(struct("queue", struct("worker", "process")));
+            project = nansen.Project.create(fullfile(fixture.Folder, "p"), "P");
+            api = nansen.Api(Catalog=catalog, Project=project);
+            status = api.handle(struct("id", 1, "method", "queue.status")).result;
+            testCase.verifyEqual(string(status.worker), "process");
+            testCase.verifyEqual(string(status.executor), "matlab");
+            if ~nansen.TaskQueue.hasProcessPools()
+                response = api.handle(struct("id", 2, "method", "queue.start"));
+                testCase.verifyEqual(string(response.error.code), "dependency-missing");
+            end
+            api.handle(struct("id", 3, "method", "settings.save", "params", struct("settings", struct("queue", struct("worker", "thread")))));
+            status = api.handle(struct("id", 4, "method", "queue.status")).result;
+            testCase.verifyEqual(string(status.worker), "thread");
         end
 
         function aMovedProjectIsLocatedAgain(testCase)

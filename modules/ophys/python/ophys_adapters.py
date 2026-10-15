@@ -105,6 +105,68 @@ class BinaryStack:
         Path(path).with_suffix(".ini").write_text(f"Size = {size}\nClass = {name}\n")
 
 
+class Suite2pBinary:
+    """suite2p's registered recording, data.bin: int16 frames, each Ly x Lx in C order, one after the other, with
+    Ly and Lx in the ops.npy beside it. Read a chunk of frames at a time. ops.npy is a pickled dict: its Ly and Lx
+    are found in the pickle's bytes (suite2p keeps them as plain integers), and nothing in it is unpickled, so a
+    file cannot run code. Read only; frames past the last whole one are left out."""
+
+    extensions = [".bin"]
+
+    @staticmethod
+    def frame_size(path):
+        """(Ly, Lx) from the ops.npy beside a data.bin."""
+        ops = Path(path).with_name("ops.npy")
+        if not ops.is_file():
+            raise NansenError("invalid-data", f"{path}: there is no ops.npy beside it, which has the frame size")
+        data = ops.read_bytes()
+        return tuple(_pickled_int(data, key, ops) for key in ("Ly", "Lx"))
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import from_array, join, natural_order
+        parts = []
+        for path in natural_order(paths):
+            ly, lx = self.frame_size(path)
+            frames = Path(path).stat().st_size // (2 * ly * lx)
+            if frames == 0:
+                raise NansenError("invalid-data", f"{path} holds no whole {ly} x {lx} frame of int16")
+            stored = np.memmap(path, dtype="<i2", mode="r", shape=(frames, ly, lx))
+            parts.append(from_array(np.moveaxis(stored, 0, 2)))
+        return join(parts)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "suite2p's files are written by suite2p; save stacks in another format")
+
+
+def _pickled_int(data, key, path):
+    """The plain integer stored under a string key of a pickled dict, read from the pickle's opcodes: the key as
+    SHORT_BINUNICODE (protocol 4 and up) or BINUNICODE (protocols 1 to 3), an optional memo opcode, then BININT1,
+    BININT2, BININT or LONG1."""
+    name = key.encode()
+    for prefix in (b"\x8c" + bytes([len(name)]), b"X" + len(name).to_bytes(4, "little")):
+        at = data.find(prefix + name)
+        if at < 0:
+            continue
+        i = at + len(prefix) + len(name)
+        skip = {0x94: 1, ord("q"): 2, ord("r"): 5}   # MEMOIZE, BINPUT, LONG_BINPUT
+        if data[i] in skip:
+            i += skip[data[i]]
+        code = data[i]
+        if code == ord("K"):
+            return data[i + 1]
+        if code == ord("M"):
+            return int.from_bytes(data[i + 1:i + 3], "little")
+        if code == ord("J"):
+            return int.from_bytes(data[i + 1:i + 5], "little", signed=True)
+        if code == 0x8A:   # LONG1
+            return int.from_bytes(data[i + 2:i + 2 + data[i + 1]], "little", signed=True)
+        raise NansenError("invalid-data", f"{path}: {key} is not a plain integer")
+    raise NansenError("invalid-data", f"{path} has no {key}")
+
+
 class SciScanRaw:
     """A SciScan .raw file with the .ini file of the same name beside it.
 

@@ -89,6 +89,26 @@ classdef TasksTest < matlab.unittest.TestCase
             testCase.verifyEmpty(testCase.Queue.runNext());
         end
 
+        function theBackgroundWorkerRunsQueuedTasks(testCase)
+            % start(): tasks run on backgroundPool, polled by a timer, while MATLAB is free
+            task = testCase.Queue.submit("core.wait", testCase.sessions(), Options=struct("seconds", 0));
+            testCase.Queue.start(0.1);
+            stopper = onCleanup(@() testCase.Queue.stop());
+            testCase.verifyTrue(testCase.Queue.isRunning());
+            deadline = tic;
+            while ~ismember(string(testCase.Queue.get(string(task.id)).status), ["completed", "failed"]) && toc(deadline) < 120
+                pause(0.2);   % the timer runs while MATLAB waits
+            end
+            done = testCase.Queue.get(string(task.id));
+            testCase.verifyEqual(string(done.status), "completed", jsonencode(nansen.internal.getField(done, "error", struct())));
+            testCase.Queue.stop();
+            testCase.verifyFalse(testCase.Queue.isRunning());
+            testCase.Queue.Worker = "process";
+            if ~nansen.TaskQueue.hasProcessPools()
+                testCase.verifyError(@() testCase.Queue.start(), "nansen:DependencyMissing");
+            end
+        end
+
         function failureIsRecordedAndRetryMakesANewTask(testCase)
             sessions = testCase.sessions();
             task = testCase.Queue.submit("core.wait", sessions(1), Options=struct("seconds", 0, "steps", 1, "fail", true));

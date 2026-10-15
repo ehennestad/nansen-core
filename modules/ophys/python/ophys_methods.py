@@ -946,16 +946,37 @@ def dilate(mask, distance):
 
 
 def compute_dff(entity, options, context):
-    """(F - F0) / F0, with F the signal less a share of the neuropil and F0 a running or overall percentile."""
+    """ΔF/F of each ROI, by one of dev's methods, with F0 a running or overall percentile:
+
+    subtract: F = signal - k neuropil, ΔF/F = (F - F0) / F0. chen2013 (Chen et al. 2013, as dev's dffChenEtAl2013): the
+    neuropil's own baseline added back, F = signal - k neuropil + N0. dffMinusNeuropil (dev's dffRoiMinusDffNpil, without
+    its smoothing): the signal's ΔF/F less k times the neuropil's. A correctionWindow > 0 then subtracts a running
+    correctionPercentile of ΔF/F over that many frames, as dev's correctBaseline."""
     signals = _as_traces(context.project.load(entity, options["signals"]))
+    method = options.get("method", "subtract")
+    k, p, window = options["neuropilFactor"], options["baselinePercentile"], options["baselineWindow"]
+    neuropil = None
     if options["neuropil"]:
         neuropil = _as_traces(context.project.load(entity, options["neuropil"]))
         if neuropil.shape != signals.shape:
             raise NansenError("invalid-data", f"the neuropil signals are {neuropil.shape}, the signals {signals.shape}")
-        signals = signals - options["neuropilFactor"] * np.nan_to_num(neuropil, nan=0.0)
-    baseline = moving_percentile(signals, options["baselinePercentile"], options["baselineWindow"])
+        neuropil = np.nan_to_num(neuropil, nan=0.0)
+    elif method == "dffMinusNeuropil":
+        raise NansenError("invalid-options", "dffMinusNeuropil needs the neuropil signals")
     with np.errstate(divide="ignore", invalid="ignore"):
-        dff = (signals - baseline) / baseline
+        if method == "dffMinusNeuropil":
+            baseline = moving_percentile(signals, p, window)
+            neuropil_baseline = moving_percentile(neuropil, p, window)
+            dff = (signals - baseline) / baseline - k * (neuropil - neuropil_baseline) / neuropil_baseline
+        else:
+            if neuropil is not None:
+                signals = signals - k * neuropil
+                if method == "chen2013":
+                    signals = signals + moving_percentile(neuropil, p, window)
+            baseline = moving_percentile(signals, p, window)
+            dff = (signals - baseline) / baseline
+    if options.get("correctionWindow", 0) > 0:
+        dff = dff - moving_percentile(dff, options.get("correctionPercentile", 25), options["correctionWindow"])
     _save(entity, options["output"], dff, context)
     frames, rois = signals.shape
     context.log(f"{_name(entity)}: ΔF/F of {rois} ROIs")

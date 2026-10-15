@@ -1,7 +1,8 @@
 /* Signal traces: a plot of frames x ROIs signal variables (data.traces), one panel per variable.
  *
- * N.tracePlot draws traces on a canvas: one panel per variable, the frames along the bottom, the value under
- * the pointer at the top. Dragging across a panel zooms to those frames; a double click goes back to all.
+ * N.tracePlot draws traces on a canvas: one panel per variable, the time along the bottom (seconds when data.traces
+ * gives the frame rate, the entity's frame_rate), the value under the pointer at the top. Dragging across a panel
+ * zooms to those frames; a double click goes back to all.
  * N.views.traces is the dialog the drawer opens for a signal variable: pick ROIs (columns) and variables.
  * The stack viewer shows the selected ROI's trace under the image with the same plot.
  */
@@ -103,13 +104,13 @@
           ctx.stroke();
         });
       });
-      // the frame axis
+      // the time axis: seconds when the frame rate is known, else frames
       ctx.fillStyle = text;
       ctx.textAlign = "center";
       const ticks = 6;
       for (let t = 0; t <= ticks; t++) {
         const frame = Math.round(data.start + t / ticks * (lastFrame() - data.start));
-        ctx.fillText(String(frame), xOf(frame, width), total - 6);
+        ctx.fillText(timeLabel(frame), xOf(frame, width), total - 6);
       }
       if (drag && drag.to !== null) {
         ctx.fillStyle = "rgba(61, 90, 254, 0.12)";
@@ -125,6 +126,13 @@
       }
     }
 
+    /** A frame as the axis shows it: its time in seconds (frame 0 at 0 s), with as many decimals as the span shown needs. */
+    function timeLabel(frame) {
+      if (!data.frameRate) return String(frame);
+      const span = (lastFrame() - data.start) / data.frameRate;
+      return `${(frame / data.frameRate).toFixed(span < 2 ? 2 : span < 20 ? 1 : 0)} s`;
+    }
+
     function read(frame) {
       if (!data) return "";
       const i = Math.round((frame - data.start) / data.step);
@@ -134,7 +142,8 @@
         const v = c.values[i];
         parts.push(`${labels[k] || "column " + c.column} ${trace.variable}: ${v === null ? "—" : N.fmt.number(v)}`);
       }));
-      return `frame ${frameOf(i)} · ` + parts.join(" · ");
+      const at = frameOf(i);
+      return (data.frameRate ? `${N.fmt.number(at / data.frameRate)} s (frame ${at}) · ` : `frame ${at} · `) + parts.join(" · ");
     }
 
     canvas.addEventListener("mousedown", (event) => {
@@ -224,7 +233,7 @@
         if (result.rois) state.rois = result.rois;
         state.count = Math.min(...result.traces.map((t) => t.count));
         plot.draw(result, state.columns.map(labelOf));
-        status.textContent = `${result.frames} frames` + (start !== null ? ` · showing ${result.start}–${result.start + (result.points - 1) * result.step} (double-click for all)` : " · drag across a plot to zoom") +
+        status.textContent = `${result.frames} frames` + (result.frameRate ? ` at ${N.fmt.number(result.frameRate)} Hz` : "") + (start !== null ? ` · showing ${result.start}–${result.start + (result.points - 1) * result.step} (double-click for all)` : " · drag across a plot to zoom") +
           (result.step > 1 ? ` · every ${result.step}th frame` : "");
         renderList();
       } catch (error) { status.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error)); }

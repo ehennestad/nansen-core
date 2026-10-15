@@ -485,6 +485,110 @@
     },
     {
       "request": {
+        "method": "methods.run",
+        "id": 1701,
+        "params": {
+          "methodId": "ophys.compute_dff",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "method": "chen2013",
+            "output": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "baseline": [
+                238.8054,
+                265.9603,
+                278.6939
+              ],
+              "maxDff": [
+                2.2703,
+                2.0986,
+                1.896
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 1702,
+        "params": {
+          "methodId": "ophys.compute_dff",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "method": "dffMinusNeuropil",
+            "correctionWindow": 10,
+            "output": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "baseline": [
+                184.6615,
+                209.8,
+                216.7692
+              ],
+              "maxDff": [
+                2.836,
+                2.6392,
+                2.1149
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 1703,
+        "params": {
+          "methodId": "ophys.compute_dff",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "method": "dffMinusNeuropil",
+            "neuropil": ""
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
         "method": "data.traces",
         "id": 18,
         "params": {
@@ -561,7 +665,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "frameRate": null
         }
       }
     },
@@ -4112,6 +4217,162 @@
       },
       "expect": {
         "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9002,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "RoiSignals_Dff"
+          ],
+          "maxPoints": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 40,
+          "frameRate": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 9003,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "values": {
+            "frame_rate": 31.25
+          }
+        }
+      },
+      "expect": {
+        "result": {}
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9004,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "RoiSignals_Dff"
+          ],
+          "maxPoints": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 40,
+          "frameRate": 31.25
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9005,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "RoiSignals_Dff"
+          ],
+          "maxPoints": 2,
+          "frameRate": 15
+        }
+      },
+      "expect": {
+        "result": {
+          "frameRate": 15
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9006,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "RoiSignals_Dff"
+          ],
+          "maxPoints": 2,
+          "frameRate": 0
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "data.clearCache",
+        "id": 9101,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "entries": 0,
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9102,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "RoiSignals_Dff"
+          ],
+          "maxPoints": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 40
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.cache",
+        "id": 9103,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "entries": 1
+        }
       }
     }
   ]

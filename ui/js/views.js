@@ -629,12 +629,34 @@
         if (shown && shown.classList.contains("file-tree")) { shown.remove(); return; }
         li().after(tree(p));
       } } }, N.icon("list", 13));
+      // Several folders are this entity (dev's duplicate sessions): any but one can be left out of scans, by name
+      const paths = loc.paths || [];
+      const duplicate = paths.length > 1 && loc.fileSystemType !== "file";
+      const nameOf = (p) => p.split("/").filter(Boolean).pop();
+      const exclude = (p) => {
+        const shared = paths.filter((other) => nameOf(other) === nameOf(p)).length > 1;
+        return h("button.btn.small.exclude-folder", {
+          disabled: shared,
+          title: shared ? "Another of these folders has the same name: leaving one out by name would leave out both. Rename one, or edit the locations"
+            : "Leave this folder out of scans (an exclude pattern for its name), keeping the others",
+          on: { click: async () => {
+            if (!(await N.confirm("Leave this folder out?", `Scans skip ${p} from now on: its name becomes an exclude pattern of ${loc.dataLocationIdentifier}. Nothing is deleted.`, "Leave it out"))) return;
+            try {
+              await app.client.request("dataset.exclude", { dataLocation: loc.dataLocationIdentifier, path: p });
+              await app.client.request("project.scan");
+              N.toast("Left out", p, "success");
+              if (app.reloadEntities) app.reloadEntities();
+              N.views.entityDrawer(app, entityType, detail.key);
+            } catch (error) { N.showError(error, "Could not leave it out"); }
+          } } }, "Exclude");
+      };
       return h("div.loc",
         h("div.loc-head", N.icon("folder", 14), loc.dataLocationIdentifier, h("span.muted", { style: { fontWeight: 400 } }, "· " + loc.rootStoragePathIdentifier),
-          loc.isComplete === false ? h("span.pill.warn", "incomplete") : null),
-        h("ul.path-list", (loc.paths || []).map((p) => {
+          loc.isComplete === false ? h("span.pill.warn", "incomplete") : null,
+          duplicate ? h("span.pill.warn", { title: "More than one folder is this entity: keep one by excluding the others" }, `${paths.length} folders`) : null),
+        h("ul.path-list", paths.map((p) => {
           let li = null;
-          li = h("li", h("span.path-text", p), browse(p, () => li), pathActions(p));
+          li = h("li", h("span.path-text", p), browse(p, () => li), pathActions(p), duplicate ? exclude(p) : null);
           return li;
         })),
         files.length ? h("dl.props", { style: { marginTop: "8px" } }, files.map(([name, paths]) => [h("dt", name),
@@ -1347,6 +1369,14 @@
       app.client.request("methods.list").catch(() => []),
     ]);
     const dataset = project.dataset;
+    // the data cache: what loading keeps in memory (dev's DataCache), and a button to empty it
+    const cacheInfo = h("span.muted.cache-info", { title: "Data loaded from files is kept in memory until its file changes" }, "");
+    const showCache = (stats) => { cacheInfo.textContent = `In memory: ${stats.entries} ${stats.entries === 1 ? "file" : "files"}, ${N.fmt.bytes(stats.bytes)}`; };
+    app.client.request("data.cache").then(showCache, () => {});
+    const clearCache = h("button.btn.small.ghost.clear-cache", { title: "Empty the cache: the next load of each variable reads its file", on: { click: async () => {
+      try { showCache(await app.client.request("data.clearCache")); N.toast("Cache emptied", "", "success", 2000); }
+      catch (error) { N.showError(error, "Could not empty the cache"); }
+    } } }, N.icon("trash", 14), "Clear cache");
     N.fill(content, 
       h("div.hero", h("div", h("h1", "Data"), h("p", "Where the data is, how it is named, and what the project adds to it."))),
       h("div.grid",
@@ -1371,7 +1401,7 @@
                   } catch (error) { N.showError(error, "Could not change the path"); }
                 } } }, "Change path")));
             }))) : h("div.card-body.muted", "No dataset.")),
-        h("div.card.data-variables", h("div.card-head", N.icon("file"), h("h3", "Data variables"), h("div.spacer"),
+        h("div.card.data-variables", h("div.card-head", N.icon("file"), h("h3", "Data variables"), h("div.spacer"), cacheInfo, clearCache,
           h("button.btn.small.ghost.new-adapter", { title: "Start a file adapter of the project, for a file format NANSEN cannot read yet", on: { click: () => newAdapterDialog(app) } }, N.icon("file"), "New file adapter"),
           dataset && project.entityTypes.length ? h("button.btn.small.add-variable", { on: { click: () => dataVariableDialog(app) } }, N.icon("plus"), "Add data variable") : null),
           variables.length ? h("table.simple", h("thead", h("tr", ["Name", "Entity", "Location", "File", "Adapter", ""].map((t) => h("th", t)))),
@@ -1402,7 +1432,7 @@
 
   /* ------------------------------------------------------------------ settings */
   N.views.settings = async function (app, content) {
-    let settings = await app.client.request("settings.get").catch(() => ({ queue: { autoStart: true } }));
+    let settings = await app.client.request("settings.get").catch(() => ({ queue: { autoStart: true, worker: "thread" } }));
     const save = async (changes) => {
       try {
         settings = await app.client.request("settings.save", { settings: changes });
@@ -1450,7 +1480,10 @@
       h("div.grid",
         h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Tasks")),
           h("ul.list", row("Start the worker when a project opens", "Queued tasks then run on their own; otherwise start it on the Tasks page. Takes effect the next time the app starts.",
-            toggle("auto-start", settings.queue.autoStart, (on) => save({ queue: { autoStart: on } }))))),
+            toggle("auto-start", settings.queue.autoStart, (on) => save({ queue: { autoStart: on } }))),
+            row("Run tasks in", "A thread of the app, or each task in a process of its own (in MATLAB, a process pool of the Parallel Computing Toolbox), for methods that cannot run on a thread, such as MEX files and most toolboxes",
+              h("select.input.worker-select", { style: { width: "180px" }, on: { change: (event) => save({ queue: { worker: event.target.value } }) } },
+                [["thread", "A thread"], ["process", "Processes"]].map(([v, label]) => h("option", { value: v, selected: (settings.queue.worker || "thread") === v }, label)))))),
         h("div.card", h("div.card-head", N.icon("eye"), h("h3", "Dashboard")),
           h("ul.list",
             row("Theme", "Light, dark, or as the system is set", theme),

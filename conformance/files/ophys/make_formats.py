@@ -118,6 +118,20 @@ def dev_binary(expected):
                              "frame2row8": [int(v) for v in stack[8, :, 2]], "sum": int(stack.astype(np.int64).sum())}
 
 
+def suite2p_binary(expected):
+    """suite2p's data.bin: int16 frames of Ly x Lx in C order, after one another, and an ops.npy (a pickled dict, as
+    suite2p saves it) with Ly and Lx among other entries. 9 x 7 x 5, values below 0 too."""
+    rng = np.random.default_rng(17)
+    stack = rng.integers(-500, 4000, (9, 7, 5)).astype(np.int16)
+    folder = HERE / "suite2p" / "plane0"
+    folder.mkdir(parents=True, exist_ok=True)
+    np.moveaxis(stack, 2, 0).astype("<i2").tofile(folder / "data.bin")   # frames x Ly x Lx, C order
+    np.save(folder / "ops.npy", {"nframes": 5, "Ly": 9, "Lx": 7, "fs": 30.0, "meanImg": stack.mean(axis=2).astype(np.float32),
+                                 "save_path": "plane0", "nchannels": 1})
+    expected["suite2pBinary"] = {"size": [9, 7, 5], "pixel": {"at": [4, 6, 3], "value": int(stack[4, 6, 3])},
+                                 "frame2row8": [int(v) for v in stack[8, :, 2]], "sum": int(stack.astype(np.int64).sum())}
+
+
 def suite2p_rois(expected):
     """suite2p's Fall.mat: stat (a cell array of structs with 0-based ypix, xpix), iscell and ops (Ly, Lx)."""
     cells = [([2, 2, 3, 3], [7, 8, 7, 8], 1), ([10, 11, 11, 12, 12, 12], [3, 3, 4, 3, 4, 5], 0), ([17, 18], [20, 21], 1)]
@@ -247,6 +261,7 @@ def main():
     nansen_rois(expected)
     roi_group(expected)
     dev_binary(expected)
+    suite2p_binary(expected)
     suite2p_rois(expected)
     caiman_rois(expected)
     extract_rois(expected)

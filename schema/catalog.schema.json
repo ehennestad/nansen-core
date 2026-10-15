@@ -33,7 +33,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "autoStart": { "type": "boolean", "default": true, "description": "Start the background worker when the app opens a project, so queued tasks run without pressing Start." }
+            "autoStart": { "type": "boolean", "default": true, "description": "Start the background worker when the app opens a project, so queued tasks run without pressing Start." },
+            "worker": { "enum": ["thread", "process"], "default": "thread", "description": "How the background worker runs tasks. thread: on a thread of the app's process (in MATLAB, backgroundPool). process: each task in a process of its own (in MATLAB, on a process pool of the Parallel Computing Toolbox, as dev ran tasks), for methods that cannot run on a thread, such as MEX files and most toolboxes." }
           }
         },
         "addons": {

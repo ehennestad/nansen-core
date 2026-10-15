@@ -45,6 +45,7 @@
     "adapters/prairie_tseries.fileAdapter.nansen.json",
     "adapters/scanimage_tiff.fileAdapter.nansen.json",
     "adapters/sciscan_raw.fileAdapter.nansen.json",
+    "adapters/suite2p_binary.fileAdapter.nansen.json",
     "adapters/suite2p_rois.fileAdapter.nansen.json",
     "adapters/tiff_stack.fileAdapter.nansen.json"
   ],

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import keyword
+import math
 import re
 import threading
 import traceback
@@ -73,13 +74,27 @@ def open_in_file_browser(folder: Path) -> None:
 
 FILES_LIST_LIMIT = 500  # entries files.list gives at most, unless asked for more
 
+def _frame_rate(params: dict, entity: Any) -> Optional[float]:
+    """data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive number."""
+    rate = params.get("frameRate")
+    if rate is not None:
+        if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
+            raise NansenError("invalid-params", "frameRate is a positive number of frames per second")
+        return float(rate)
+    rate = entity.get("frame_rate")
+    if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
+        return None
+    return float(rate)
+
+
 class Api:
     def __init__(self, catalog: Optional[Catalog] = None, project: Optional[Project] = None,
-                 executor: str = "thread", start_queue: bool = True):
+                 executor: Optional[str] = None, start_queue: bool = True):
         self.catalog = catalog
         self.project: Optional[Project] = None
         self.queue: Optional[TaskQueue] = None
-        self.executor = executor
+        # how queued tasks run: "thread" or "process"; without one given, the user's setting (queue.worker)
+        self.executor = executor or (catalog.settings()["queue"]["worker"] if catalog is not None else "thread")
         self.start_queue = start_queue
         self._listeners: List[Listener] = []
         # Opens a folder in the system's file browser; tests put their own here
@@ -270,7 +285,11 @@ class Api:
     def settings__save(self, params: dict) -> dict:
         if self.catalog is None:
             raise NansenError("no-catalog", "this app has no project catalog to keep settings in")
-        return self.catalog.save_settings(params["settings"])
+        settings = self.catalog.save_settings(params["settings"])
+        self.executor = settings["queue"]["worker"]
+        if self.queue is not None:
+            self.queue.executor = self.executor   # from the next task on
+        return settings
 
     # -- add-ons -----------------------------------------------------------------------------------
 
@@ -875,10 +894,21 @@ class Api:
             raise NansenError("invalid-params", "columns is a list of 0-based column numbers")
         values = {name: project.load(entity, name) for name in names}
         result = signal_traces(values, columns, params.get("start", 0), params.get("stop"), params.get("maxPoints", 2000))
+        result["frameRate"] = _frame_rate(params, entity)
         if params.get("rois"):
             result["rois"] = [{"id": r["id"], "classification": r["classification"]}
                               for r in roi_outlines(project.load(entity, params["rois"]))]
         return result
+
+    def data__cache(self, params: dict) -> dict:
+        """The project's data cache: what load keeps in memory (dev's DataCache)."""
+        return self._require_project().data_cache.stats()
+
+    def data__clearCache(self, params: dict) -> dict:
+        """Empty the project's data cache; the next load of each variable reads its file."""
+        cache = self._require_project().data_cache
+        cache.clear()
+        return cache.stats()
 
     def rois__update(self, params: dict) -> dict:
         """Classify, remove and add ROIs in an ROI variable of an entity, and save it."""
@@ -1106,7 +1136,7 @@ class Api:
         counts: Dict[str, int] = {}
         for task in queue.list():
             counts[task["status"]] = counts.get(task["status"], 0) + 1
-        return {"running": queue.running, "executor": queue.executor, "counts": counts}
+        return {"running": queue.running, "executor": "python", "worker": queue.executor, "counts": counts}
 
     def queue__start(self, params: dict) -> dict:
         self._queue().start()

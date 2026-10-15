@@ -7,11 +7,15 @@ classdef TaskQueue < handle
 %   file; anyone else asks it to stop by creating tasks/<id>.cancel.
 %
 %   OnEvent(kind, data) is called with kind "task" (a task changed) or "log".
-%   runNext/runAll run tasks in this session; start() runs them on
-%   backgroundPool, polled by a timer, until stop().
+%   runNext/runAll run tasks in this session; start() runs them on a
+%   worker, polled by a timer, until stop(): Worker "thread" is
+%   backgroundPool, "process" a process pool of the Parallel Computing
+%   Toolbox (the current one, or a new one), for methods that cannot run on
+%   a thread, as dev ran tasks.
 
     properties
         OnEvent = []
+        Worker (1,1) string {mustBeMember(Worker, ["thread", "process"])} = "thread"   % from the next task on
     end
 
     properties (SetAccess = private)
@@ -31,10 +35,12 @@ classdef TaskQueue < handle
             arguments
                 project
                 options.OnEvent = []
+                options.Worker (1,1) string = "thread"
             end
             obj.Project = project;
             obj.Folder = string(fullfile(project.Folder, "tasks"));
             obj.OnEvent = options.OnEvent;
+            obj.Worker = options.Worker;
         end
 
         function delete(obj)
@@ -491,13 +497,17 @@ classdef TaskQueue < handle
         end
 
         function start(obj, period)
-            %start Run queued tasks one at a time on backgroundPool, polled by a timer
+            %start Run queued tasks one at a time on the worker, polled by a timer
             arguments
                 obj
                 period (1,1) double = 0.5
             end
             if ~isempty(obj.Timer) && isvalid(obj.Timer)
                 return
+            end
+            if obj.Worker == "process" && ~nansen.TaskQueue.hasProcessPools()
+                nansen.internal.throwError("dependency-missing", ...
+                    "running tasks in processes needs the Parallel Computing Toolbox; set the worker to thread")
             end
             obj.recover();
             obj.Timer = timer(ExecutionMode="fixedSpacing", Period=period, BusyMode="drop", ...
@@ -541,8 +551,37 @@ classdef TaskQueue < handle
             if isempty(task)
                 return
             end
+            try
+                pool = obj.pool();
+            catch err   % no process pool could start: the task fails, saying why
+                task.status = 'failed';
+                task.finishedAt = char(nansen.internal.timestamp());
+                task.error = struct("message", char("could not start the worker: " + err.message));
+                obj.save(task)
+                obj.release(string(task.id));
+                return
+            end
             obj.FutureTaskId = string(task.id);
-            obj.Future = parfeval(backgroundPool, @nansen.runTask, 1, obj.Project.Folder, string(task.id));
+            obj.Future = parfeval(pool, @nansen.runTask, 1, obj.Project.Folder, string(task.id));
+        end
+
+        function pool = pool(obj)
+            % backgroundPool, or for Worker "process" the current process pool, else a new one
+            if obj.Worker == "thread"
+                pool = backgroundPool;
+                return
+            end
+            pool = gcp("nocreate");
+            if isempty(pool) || ~isa(pool, "parallel.ProcessPool")
+                pool = parpool("Processes");
+            end
+        end
+    end
+
+    methods (Static)
+        function tf = hasProcessPools()
+            %hasProcessPools Whether this MATLAB has the Parallel Computing Toolbox, licensed
+            tf = ~isempty(ver("parallel")) && license("test", "Distrib_Computing_Toolbox");
         end
     end
 

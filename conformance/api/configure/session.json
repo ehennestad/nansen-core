@@ -546,7 +546,8 @@
       "expect": {
         "result": {
           "queue": {
-            "autoStart": true
+            "autoStart": true,
+            "worker": "thread"
           }
         }
       }

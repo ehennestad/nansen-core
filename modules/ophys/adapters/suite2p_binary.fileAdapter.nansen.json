@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.suite2p_binary",
+  "version": "1.0.0",
+  "title": "suite2p binary",
+  "description": "suite2p's registered recording, data.bin: int16 frames of Ly x Lx in C order, one after the other, with Ly and Lx read from the ops.npy beside it (found in its bytes, never unpickled). Read a chunk of frames at a time, as height x width x frames. Read only.",
+  "extensions": [
+    ".bin"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:Suite2pBinary",
+    "matlab": "ophys.Suite2pBinary"
+  }
+}

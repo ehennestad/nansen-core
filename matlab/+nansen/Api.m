@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "rois.update", "rois.detect", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -199,6 +199,9 @@ classdef Api < handle
                 nansen.internal.throwError("no-catalog", "this app has no project catalog to keep settings in")
             end
             result = obj.Catalog.saveSettings(nansen.Api.param(params, "settings"));
+            if ~isempty(obj.Queue)
+                obj.Queue.Worker = result.queue.worker;   % from the next task on
+            end
         end
 
         function result = apiCatalogRelocate(obj, params)
@@ -1067,11 +1070,24 @@ classdef Api < handle
             end
             result = nansen.internal.signalTraces(names, arrays, reshape(columns, 1, []), nansen.internal.getField(params, "start", 0), ...
                 nansen.internal.getField(params, "stop", []), nansen.internal.getField(params, "maxPoints", 2000));
+            result.frameRate = nansen.Api.frameRate(params, entity);
             rois = string(nansen.internal.getField(params, "rois", ""));
             if rois ~= ""
                 outlines = nansen.internal.roiOutlines(project.load(entity, rois));
                 result.rois = cellfun(@(r) struct("id", r.id, "classification", r.classification), outlines, UniformOutput=false);
             end
+        end
+
+        function result = apiDataCache(obj, ~)
+            % The project's data cache: what load keeps in memory (dev's DataCache)
+            result = obj.requireProject().DataCache.stats();
+        end
+
+        function result = apiDataClearCache(obj, ~)
+            % Empty the project's data cache; the next load of each variable reads its file
+            cache = obj.requireProject().DataCache;
+            cache.removeAll();
+            result = cache.stats();
         end
 
         function result = apiRoisUpdate(obj, params)
@@ -1418,7 +1434,7 @@ classdef Api < handle
                 status = string(task{1}.status);
                 counts.(status) = nansen.internal.getField(counts, status, 0) + 1;
             end
-            result = struct("running", queue.isRunning(), "executor", 'matlab', "counts", counts);
+            result = struct("running", queue.isRunning(), "executor", 'matlab', "worker", char(queue.Worker), "counts", counts);
         end
 
         function result = apiQueueStart(obj, ~)
@@ -1442,7 +1458,11 @@ classdef Api < handle
                 obj.Queue.stop();
             end
             obj.Project = project;
-            obj.Queue = nansen.TaskQueue(project, OnEvent=@(kind, data) obj.emit(kind, data));
+            worker = "thread";   % the user's setting (queue.worker) when there is a catalog
+            if ~isempty(obj.Catalog)
+                worker = string(obj.Catalog.settings().queue.worker);
+            end
+            obj.Queue = nansen.TaskQueue(project, OnEvent=@(kind, data) obj.emit(kind, data), Worker=worker);
             if ~isempty(obj.Catalog)
                 obj.Catalog.add(project);
             end
@@ -1650,6 +1670,24 @@ classdef Api < handle
             if isKey(progress, id)
                 state = progress(id);
                 value = state.done / state.total;
+            end
+        end
+
+        function rate = frameRate(params, entity)
+            % data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive number; [] (null) when neither
+            given = nansen.internal.getField(params, "frameRate", []);
+            if ~isempty(given)
+                if ~(isnumeric(given) && isscalar(given) && isfinite(given) && given > 0)
+                    nansen.internal.throwError("invalid-params", "frameRate is a positive number of frames per second")
+                end
+                rate = double(given);
+                return
+            end
+            rate = entity.get("frame_rate", []);
+            if ~(isnumeric(rate) && isscalar(rate) && isfinite(rate) && rate > 0)
+                rate = [];
+            else
+                rate = double(rate);
             end
         end
     end

@@ -259,7 +259,7 @@ def test_the_worker_starts_as_the_settings_say(tmp_path):
 
     catalog = Catalog(tmp_path / "catalog.json")
     project = create_demo(tmp_path / "demo")
-    assert catalog.settings() == {"queue": {"autoStart": True}, "addons": {"folder": ""}}
+    assert catalog.settings() == {"queue": {"autoStart": True, "worker": "thread"}, "addons": {"folder": ""}}
     server = open_app(project, catalog=catalog, open_browser=False)
     try:
         assert server.api.queue.running
@@ -273,6 +273,25 @@ def test_the_worker_starts_as_the_settings_say(tmp_path):
     finally:
         server.shutdown()
         server.api.close()
+
+
+def test_the_worker_runs_tasks_as_the_settings_say(tmp_path):
+    from nansen.demo import create_demo
+
+    catalog = Catalog(tmp_path / "catalog.json")
+    catalog.save_settings({"queue": {"worker": "process"}})
+    api = Api(catalog=catalog, project=create_demo(tmp_path / "demo"), start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    try:
+        assert api.queue.executor == "process"
+        assert call("queue.status")["result"]["worker"] == "process"
+        assert call("settings.save", settings={"queue": {"worker": "thread"}})["result"]["queue"]["worker"] == "thread"
+        assert api.queue.executor == "thread" and call("queue.status")["result"] | {"counts": None} == \
+            {"running": False, "executor": "python", "worker": "thread", "counts": None}
+        assert call("settings.save", settings={"queue": {"worker": "fork"}})["error"]["code"] == "invalid-params"
+        assert Api(catalog=catalog, executor="process", start_queue=False).executor == "process"   # given, not the setting
+    finally:
+        api.close()
 
 
 def test_a_moved_project_is_located_again(tmp_path):

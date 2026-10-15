@@ -39,6 +39,19 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyDocument(ophys.NansenRoiArray().read(path), testCase.Expected.roiGroup);
         end
 
+        function readsSuite2pBinaries(testCase)
+            stack = ophys.Suite2pBinary().open(fullfile(testCase.Files, "suite2p", "plane0", "data.bin"));
+            expected = testCase.Expected.suite2pBinary;
+            testCase.verifyEqual(size(stack), expected.size');
+            testCase.verifyEqual(stack.ClassName, "int16");
+            at = expected.pixel.at' + 1;
+            frame = stack.frames(at(3), at(3));
+            testCase.verifyEqual(double(frame(at(1), at(2))), expected.pixel.value);
+            frame = stack.frames(3, 3);
+            testCase.verifyEqual(double(frame(9, :))', expected.frame2row8);
+            testCase.verifyEqual(sum(double(stack.all()), "all"), expected.sum);
+        end
+
         function readsAndWritesDevBinaryStacks(testCase)
             raw = fullfile(testCase.Files, "binary", "stack.raw");
             stack = ophys.BinaryStack().open(raw);

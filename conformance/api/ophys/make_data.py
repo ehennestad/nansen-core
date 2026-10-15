@@ -222,6 +222,21 @@ def main():
         {"variable": "RoiSignals_MeanF", "count": len(disks), "columns": [{"column": c, "values": [four(signals[t, c]) for t in picked]} for c in (0, 2)]},
         {"variable": "RoiSignals_Dff", "count": len(disks), "columns": [{"column": c, "values": [four(dff[t, c]) for t in picked]} for c in (0, 2)]}]}
     expected["frame0"] = {"height": HEIGHT, "width": WIDTH, "frames": FRAMES, "frame": 0, **frame_bytes(aligned[:, :, 0])}
+    # compute_dff's other methods. chen2013: the neuropil's 20th percentile added back to F
+    columns = range(len(disks))
+    whole = lambda a, q: np.array([percentile(a[:, i], q) for i in columns])
+    fc = signals - 0.7 * neuropil + whole(neuropil, 20)
+    fc0 = whole(fc, 20)
+    chen = (fc - fc0) / fc0
+    expected["dffChen"] = {"rois": len(disks), "frames": FRAMES, "baseline": [round_to(v, 4) for v in fc0],
+                           "maxDff": [round_to(v, 4) for v in chen.max(axis=0)]}
+    # dffMinusNeuropil, then a running 25th percentile over 10 frames (rows t - 5 to t + 4) subtracted
+    s0, n0 = whole(signals, 20), whole(neuropil, 20)
+    minus = (signals - s0) / s0 - 0.7 * (neuropil - n0) / n0
+    drift = np.array([[percentile(minus[max(0, t - 5):min(FRAMES, t + 5), i], 25) for i in columns] for t in range(FRAMES)])
+    corrected = minus - drift
+    expected["dffMinusNeuropil"] = {"rois": len(disks), "frames": FRAMES, "baseline": [round_to(v, 4) for v in s0],
+                                    "maxDff": [round_to(v, 4) for v in corrected.max(axis=0)]}
     expected["frame3"] = {"frame": 3, **frame_bytes(aligned[:, :, 3], (0, 1000))}
     # export_tiff of frames 3..7 (from 1), read back through a data variable: its frame 2 (from 0) is frame 4 (from 0)
     expected["exported"] = {"height": HEIGHT, "width": WIDTH, "frames": 5, "frame": 2, **frame_bytes(aligned[:, :, 4], (0, 1000))}

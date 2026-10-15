@@ -6,7 +6,7 @@
   "title": "Compute ΔF/F",
   "category": "Two-photon/Signal extraction",
   "entityType": "*",
-  "description": "ΔF/F of each ROI: F is the signal less neuropilFactor times its neuropil signal, F0 a percentile of F over the whole trace or over a window of frames centred on each frame, and ΔF/F = (F - F0) / F0. Percentiles interpolate linearly between the sorted values, as NumPy's do.",
+  "description": "ΔF/F of each ROI, by one of dev's methods. subtract: F is the signal less neuropilFactor times its neuropil signal, and ΔF/F = (F - F0) / F0. chen2013 (Chen et al. 2013): as subtract, with the neuropil's baseline added back to F. dffMinusNeuropil: the signal's ΔF/F less neuropilFactor times the neuropil's ΔF/F. A baseline (F0, N0) is a percentile over the whole trace or over a window of frames centred on each frame. A correction window then subtracts a running percentile of ΔF/F, to take out slow drift. Percentiles interpolate linearly between the sorted values, as NumPy's do.",
   "implementations": {
     "python": "ophys_methods:compute_dff",
     "matlab": "ophys.computeDff"
@@ -32,6 +32,17 @@
         "title": "ΔF/F",
         "description": "Variable the result is saved to."
       },
+      "method": {
+        "type": "string",
+        "enum": [
+          "subtract",
+          "chen2013",
+          "dffMinusNeuropil"
+        ],
+        "default": "subtract",
+        "title": "Method",
+        "description": "subtract: (F - k·neuropil - F0) / F0. chen2013: the neuropil's baseline added back (Chen et al. 2013). dffMinusNeuropil: ΔF/F of the signal less k times the neuropil's ΔF/F."
+      },
       "neuropilFactor": {
         "type": "number",
         "default": 0.7,
@@ -52,6 +63,20 @@
         "minimum": 0,
         "title": "Baseline window (frames)",
         "description": "0 for one baseline over the whole trace"
+      },
+      "correctionWindow": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Correction window (frames)",
+        "description": "0 for none; else a running percentile of ΔF/F over this many frames is subtracted (dev's correctBaseline used 500)."
+      },
+      "correctionPercentile": {
+        "type": "number",
+        "default": 25,
+        "minimum": 0,
+        "maximum": 100,
+        "title": "Correction percentile"
       }
     }
   }

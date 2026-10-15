@@ -154,7 +154,7 @@ classdef Catalog
 
     methods (Static)
         function settings = defaultSettings()
-            settings = struct("queue", struct("autoStart", true), "addons", struct("folder", ""));
+            settings = struct("queue", struct("autoStart", true, "worker", 'thread'), "addons", struct("folder", ""));
         end
 
         function path = defaultPath()

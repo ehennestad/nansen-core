@@ -86,6 +86,30 @@ def test_dev_rois_are_written_as_dev_reads_them(tmp_path):
     assert adapter("NansenRoiArray").read(tmp_path / "rois.mat") == document
 
 
+def test_a_suite2p_binary_reads_with_the_size_from_ops(tmp_path):
+    import pickle
+    path = FILES / "suite2p" / "plane0" / "data.bin"
+    stack = adapter("Suite2pBinary").open([path])
+    expected = EXPECTED["suite2pBinary"]
+    assert list(stack.shape) == expected["size"] and stack.dtype == np.int16
+    data = np.asarray(stack)
+    assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]
+    assert stack.frames(2, 3)[8, :, 0].tolist() == expected["frame2row8"] and int(data.astype(np.int64).sum()) == expected["sum"]
+    # ops pickled by other protocols, with large and negative values; nothing is unpickled
+    read_int = load_object("ophys_adapters:_pickled_int", ROOT / "modules" / "ophys" / "python")
+    for protocol in (2, 3, 4, 5):
+        data = pickle.dumps({"Ly": 512, "Lx": 70000, "neg": -3, "huge": 2 ** 40, "name": "x"}, protocol=protocol)
+        assert [read_int(data, k, "ops") for k in ("Ly", "Lx", "neg", "huge")] == [512, 70000, -3, 2 ** 40]
+    with pytest.raises(NansenError):
+        read_int(data, "name", "ops")
+    with pytest.raises(NansenError):
+        read_int(data, "missing", "ops")
+    (tmp_path / "data.bin").write_bytes(b"\0" * 10)
+    with pytest.raises(NansenError) as error:
+        adapter("Suite2pBinary").open([tmp_path / "data.bin"])
+    assert error.value.code == "invalid-data"
+
+
 def test_a_dev_binary_stack_reads_and_writes(tmp_path):
     stack = adapter("BinaryStack").open([FILES / "binary" / "stack.raw"])
     expected = EXPECTED["devBinary"]
