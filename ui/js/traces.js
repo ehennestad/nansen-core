@@ -113,7 +113,8 @@
       const ticks = 6;
       for (let t = 0; t <= ticks; t++) {
         const frame = Math.round(data.start + t / ticks * (lastFrame() - data.start));
-        ctx.fillText(timeLabel(frame), xOf(frame, width), total - 6);
+        ctx.textAlign = t === 0 ? "left" : t === ticks ? "right" : "center";   // the ends inside the plot
+        ctx.fillText(timeLabel(frame), xOf(frame, width) + (t === 0 ? -2 : t === ticks ? 2 : 0), total - 6);
       }
       if (drag && drag.to !== null) {
         ctx.fillStyle = "rgba(61, 90, 254, 0.12)";
