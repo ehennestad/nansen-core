@@ -44,7 +44,7 @@ classdef Api < handle
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
-                "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
+                "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
             for name = names
@@ -1531,6 +1531,7 @@ classdef Api < handle
         function result = apiMethodsRun(obj, params)
             project = obj.requireProject();
             method = project.method(string(nansen.Api.param(params, "methodId")));
+            params.preset = char(obj.presetOf(params));
             if ~isempty(method.Languages) && ~any(method.Languages == "matlab")
                 result = obj.runInWorker(method, params);
                 return
@@ -1586,7 +1587,34 @@ classdef Api < handle
         end
 
         function result = apiPresetsList(obj, params)
-            result = obj.requireProject().presets(string(nansen.Api.param(params, "methodId")));
+            project = obj.requireProject();
+            methodId = string(nansen.Api.param(params, "methodId"));
+            result = project.presets(methodId);
+            preferred = project.preferredPreset(methodId);
+            for i = 1:numel(result)
+                if preferred ~= "" && string(result{i}.name) == preferred
+                    result{i}.preferred = true;
+                end
+            end
+        end
+
+        function result = apiPresetsSetDefault(obj, params)
+            % Make a preset the one the method runs with when a run gives neither a preset nor options (null: its defaults)
+            name = nansen.internal.getField(params, "name", "");
+            if isempty(name)
+                name = "";
+            end
+            obj.requireProject().setPreferredPreset(string(nansen.Api.param(params, "methodId")), string(name));
+            result = obj.apiPresetsList(params);
+        end
+
+        function preset = presetOf(obj, params)
+            % The run's preset: the one given, or, when neither a preset nor options are, the method's preferred one
+            preset = string(nansen.internal.getField(params, "preset", ""));
+            options = nansen.internal.getField(params, "options", []);
+            if preset == "" && (isempty(options) || (isstruct(options) && isempty(fieldnames(options))))
+                preset = obj.requireProject().preferredPreset(string(nansen.Api.param(params, "methodId")));
+            end
         end
 
         function result = apiPresetsSave(obj, params)
@@ -1797,7 +1825,7 @@ classdef Api < handle
 
         function result = apiTasksSubmit(obj, params)
             result = obj.queue().submit(string(nansen.Api.param(params, "methodId")), obj.entities(params), ...
-                Options=obj.optionsOf(params), Preset=string(nansen.internal.getField(params, "preset", "")), ...
+                Options=obj.optionsOf(params), Preset=obj.presetOf(params), ...
                 Language=string(nansen.internal.getField(params, "language", "")));
         end
 

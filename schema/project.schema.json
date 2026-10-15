@@ -4,19 +4,37 @@
   "title": "NANSEN project",
   "description": "The project file, project.nansen.json, at the root of a project folder. It names the project and declares its entity types. Paths are relative to the project folder.",
   "type": "object",
-  "required": ["schemaType", "schemaVersion", "name", "entityTypes"],
+  "required": [
+    "schemaType",
+    "schemaVersion",
+    "name",
+    "entityTypes"
+  ],
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string", "description": "Optional pointer for editors. Readers ignore it." },
-    "schemaType": { "const": "nansen.project" },
-    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "$schema": {
+      "type": "string",
+      "description": "Optional pointer for editors. Readers ignore it."
+    },
+    "schemaType": {
+      "const": "nansen.project"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^0\\.1\\.\\d+$"
+    },
     "name": {
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
       "description": "Short identifier of the project. Unlike the dev branch, it does not name a MATLAB package, so renaming a project does not break code."
     },
-    "title": { "type": "string", "description": "Display name." },
-    "description": { "type": "string" },
+    "title": {
+      "type": "string",
+      "description": "Display name."
+    },
+    "description": {
+      "type": "string"
+    },
     "dataset": {
       "type": "string",
       "description": "Path to the project's Dataset Structure Model config, relative to the project folder. The config's entity types define identity; a table's key is the identity of the entity's ancestors and its own. Root paths in the config that are not absolute are relative to the config's folder."
@@ -26,24 +44,57 @@
       "description": "Modules the project uses, in order of precedence. A module without a path is looked up in the project's modules/ folder, then among the modules that ship with NANSEN.",
       "items": {
         "type": "object",
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" },
-          "path": { "type": "string", "description": "Module folder, absolute or relative to the project folder." }
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+          },
+          "path": {
+            "type": "string",
+            "description": "Module folder, absolute or relative to the project folder."
+          }
         }
       }
     },
     "entityTypes": {
       "type": "array",
       "description": "The entity types this project keeps tables for. Each one has a table at tables/<name>.table.nansen.json.",
-      "items": { "$ref": "#/definitions/entityType" }
+      "items": {
+        "$ref": "#/definitions/entityType"
+      }
+    },
+    "preferredPresets": {
+      "type": "array",
+      "description": "The preset a method runs with when a run gives neither a preset nor options (dev's preferred options, its Default run mode).",
+      "items": {
+        "type": "object",
+        "required": [
+          "method",
+          "preset"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "preset": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   },
   "definitions": {
     "entityType": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false,
       "properties": {
         "name": {
@@ -51,12 +102,17 @@
           "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
           "description": "Name of the entity type. Once a DSM config is attached, it must match an entity type there; the DSM entity type defines identity."
         },
-        "title": { "type": "string" },
+        "title": {
+          "type": "string"
+        },
         "fragments": {
           "type": "array",
           "uniqueItems": true,
           "description": "Fragments (column groups) this entity type carries, by id. A fragment with id 'a.b' is defined in fragments/a.b.fragment.nansen.json, or by one of the project's modules.",
-          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" }
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+          }
         }
       }
     }

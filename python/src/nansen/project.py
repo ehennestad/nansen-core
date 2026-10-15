@@ -1335,6 +1335,26 @@ class Project:
                     entry.pop("title", None)
         self._check_and_save()
 
+    def preferred_preset(self, method_id: str) -> Optional[str]:
+        """The preset the method runs with when a run gives neither a preset nor options, if one is set and still there."""
+        name = next((p["preset"] for p in self.document.get("preferredPresets", []) if p["method"] == method_id), None)
+        if name and any(p["name"] == name for p in self.presets(method_id)):
+            return name
+        return None
+
+    def set_preferred_preset(self, method_id: str, name: Optional[str]) -> None:
+        """Make a preset the method's own default (dev's preferred options); None or 'default' goes back to the defaults."""
+        self.method(method_id)  # unknown-method
+        preferred = [p for p in self.document.get("preferredPresets", []) if p["method"] != method_id]
+        if name not in (None, "", "default"):
+            self.preset(method_id, name)  # unknown-preset
+            preferred.append({"method": method_id, "preset": name})
+        if preferred:
+            self.document["preferredPresets"] = preferred
+        else:
+            self.document.pop("preferredPresets", None)
+        self._check_and_save()
+
     def _check_and_save(self) -> None:
         self.document = check_document(self.document, "nansen.project")
         write_json(self.folder / PROJECT_FILE, self.document)

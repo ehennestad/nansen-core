@@ -1171,11 +1171,22 @@
       const loaded = await app.client.request("presets.list", { methodId: method.id }).catch(() => []);
       if (token !== selection) return; // a later choice won while the presets loaded
       presets = loaded;
-      const preset = presets.find((p) => p.name === (presetName || "default")) || presets[0];
+      const preferred = (presets.find((p) => p.preferred) || {}).name;   // the method's own default (dev's preferred options)
+      const preset = presets.find((p) => p.name === (presetName || preferred || "default")) || presets[0];
       form = N.schemaForm(method.options || {}, preset ? preset.values : {});
       const presetSelect = h("select.input", { style: { width: "200px" }, on: { change: (e) => select(method, e.target.value) } },
         presets.map((p) => h("option", { value: p.name, selected: preset && p.name === preset.name },
-          p.source === "module" ? `${p.name} (from ${p.module})` : p.name)));
+          (p.source === "module" ? `${p.name} (from ${p.module})` : p.name) + (p.preferred ? " ★" : ""))));
+      const isPreferred = preset && (preset.preferred || (!preferred && preset.name === "default"));
+      const star = h("button.btn.ghost.icon.preset-default" + (isPreferred ? ".active" : ""), {
+        title: isPreferred ? "Runs with this preset when no options are given" : "Run with this preset when no options are given (the method's default)",
+        disabled: isPreferred, on: { click: async () => {
+          try {
+            await app.client.request("presets.setDefault", { methodId: method.id, name: preset.name === "default" ? null : preset.name });
+            N.toast("Default preset", `${method.title}: ${preset.name}`, "success");
+            select(method, preset.name);
+          } catch (error) { N.showError(error, "Could not set the default preset"); }
+        } } }, "★");
       const save = h("button.btn", { on: { click: async () => {
         const name = await N.prompt("Save preset", "Preset name", "");
         if (!name) return;
@@ -1204,7 +1215,7 @@
           method.module === "project" ? h("button.btn.small.ghost.edit-code", { title: "Open the method's code in an editor", on: { click: () =>
             app.client.request("methods.edit", { methodId: method.id }).then((r) => N.toast("Opened", r.path), (error) => N.showError(error, "Could not open the code")) } },
             N.icon("edit", 13), "Edit code") : null),
-        h("div.preset-row", h("label.name", { style: { fontWeight: 600 } }, "Preset"), presetSelect, save, remove),
+        h("div.preset-row", h("label.name", { style: { fontWeight: 600 } }, "Preset"), presetSelect, star, save, remove),
         rows.length > 1 && method.batchMode !== "batch" ? h("label.each-entity", { title: "Edit the options of each selected entity before it runs, starting from these" },
           h("input", { type: "checkbox", checked: eachEntity, on: { change: (event) => { eachEntity = event.target.checked; } } }),
           ` Options for each of the ${rows.length}`) : null,

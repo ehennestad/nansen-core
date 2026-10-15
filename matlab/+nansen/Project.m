@@ -264,6 +264,43 @@ classdef Project < handle
             obj.writeDocument(document)
         end
 
+        function name = preferredPreset(obj, methodId)
+            %preferredPreset The preset the method runs with when a run gives neither a preset nor options ("" for none), if it is still there
+            name = "";
+            for entry = nansen.internal.asCellOfStructs(nansen.internal.getField(obj.Document, "preferredPresets", {}))
+                if string(entry{1}.method) == string(methodId)
+                    name = string(entry{1}.preset);
+                end
+            end
+            if name ~= "" && ~any(cellfun(@(p) string(p.name) == name, obj.presets(methodId)))
+                name = "";
+            end
+        end
+
+        function setPreferredPreset(obj, methodId, name)
+            %setPreferredPreset Make a preset the method's own default (dev's preferred options); "" or "default" goes back to the defaults
+            obj.method(methodId);   % unknown-method
+            kept = {};
+            for entry = nansen.internal.asCellOfStructs(nansen.internal.getField(obj.Document, "preferredPresets", {}))
+                if string(entry{1}.method) ~= string(methodId)
+                    kept{end + 1} = struct("method", char(entry{1}.method), "preset", char(entry{1}.preset)); %#ok<AGROW>
+                end
+            end
+            if ~ismember(string(name), ["", "default"])
+                obj.preset(methodId, name);   % unknown-preset
+                kept{end + 1} = struct("method", char(methodId), "preset", char(name));
+            end
+            document = obj.Document;
+            if isempty(kept)
+                if isfield(document, "preferredPresets")
+                    document = rmfield(document, "preferredPresets");
+                end
+            else
+                document.preferredPresets = kept;
+            end
+            obj.writeDocument(document)
+        end
+
         function result = excludeFromScan(obj, dataLocation, path)
             %excludeFromScan Have scans skip an entry the last scan did not match
             %

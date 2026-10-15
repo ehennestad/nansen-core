@@ -616,6 +616,119 @@
       "expect": {
         "error": "invalid-params"
       }
+    },
+    {
+      "request": {
+        "method": "presets.setDefault",
+        "id": 28,
+        "params": {
+          "methodId": "core.wait",
+          "name": "quick"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "default"
+          },
+          {
+            "name": "quick",
+            "preferred": true
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "id": 29,
+        "params": {
+          "methodId": "core.wait",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "status": "queued",
+          "options": {
+            "preset": "quick",
+            "values": {
+              "seconds": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "id": 30,
+        "params": {
+          "methodId": "core.wait",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "options": {
+            "seconds": 0,
+            "steps": 2
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "status": "queued",
+          "options": {
+            "values": {
+              "seconds": 0,
+              "steps": 2,
+              "message": "waiting"
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "presets.setDefault",
+        "id": 31,
+        "params": {
+          "methodId": "core.wait",
+          "name": "nope"
+        }
+      },
+      "expect": {
+        "error": "unknown-preset"
+      }
+    },
+    {
+      "request": {
+        "method": "presets.setDefault",
+        "id": 32,
+        "params": {
+          "methodId": "core.wait",
+          "name": null
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "default"
+          },
+          {
+            "name": "quick"
+          }
+        ]
+      }
     }
   ]
 }

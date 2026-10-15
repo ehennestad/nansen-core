@@ -1282,7 +1282,21 @@ class Api:
         return dict(method.summary(), files=files)
 
     def presets__list(self, params: dict) -> list:
-        return self._require_project().presets(params["methodId"])
+        project = self._require_project()
+        preferred = project.preferred_preset(params["methodId"])
+        return [dict(p, preferred=True) if p["name"] == preferred else p for p in project.presets(params["methodId"])]
+
+    def presets__setDefault(self, params: dict) -> list:
+        """Make a preset the one the method runs with when a run gives neither a preset nor options (null: its defaults)."""
+        project = self._require_project()
+        project.set_preferred_preset(params["methodId"], params.get("name"))
+        return self.presets__list(params)
+
+    def _preset_of(self, params: dict):
+        """The run's preset: the one given, or, when neither a preset nor options are, the method's preferred one."""
+        if params.get("preset") is not None or params.get("options"):
+            return params.get("preset")
+        return self._require_project().preferred_preset(params["methodId"])
 
     def presets__save(self, params: dict) -> list:
         project = self._require_project()
@@ -1298,6 +1312,7 @@ class Api:
         """Run a method now and wait for it (for quick methods); long ones go through tasks.submit."""
         project = self._require_project()
         method = project.method(params["methodId"])
+        params = dict(params, preset=self._preset_of(params))
         if method.languages and "python" not in method.languages:
             return self._run_in_worker(method, params)
         results = project.run(params["methodId"], self._entities(params), params.get("options"), params.get("preset"))
@@ -1345,7 +1360,7 @@ class Api:
 
     def tasks__submit(self, params: dict) -> dict:
         return self._queue().submit(params["methodId"], self._entities(params), params.get("options"),
-                                    params.get("preset"), params.get("language"))
+                                    self._preset_of(params), params.get("language"))
 
     def pipelines__list(self, params: dict) -> list:
         project = self._require_project()

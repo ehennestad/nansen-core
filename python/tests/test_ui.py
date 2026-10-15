@@ -990,6 +990,27 @@ def test_settings_page(empty_app, page):
     assert not page.locator(".auto-start input").is_checked()
 
 
+def test_a_preset_made_the_methods_default(empty_app, page):   # dev's preferred options
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    api.handle({"id": 2, "method": "presets.save", "params": {"methodId": "core.wait", "name": "quick", "values": {"seconds": 0}}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody tr[data-id]")
+    rows(page).nth(0).locator("td.sel input").click()
+    page.click(".selection-bar button:has-text('Run method')")
+    page.click(".method-item:has-text('Wait')")
+    page.wait_for_selector(".method-detail:has(h3:text-is('Wait')) .preset-row")
+    page.locator(".method-detail .preset-row select").select_option("quick")
+    page.click(".method-detail .preset-default")
+    page.wait_for_selector(".method-detail .preset-default.active")
+    assert api.handle({"id": 3, "method": "presets.list", "params": {"methodId": "core.wait"}})["result"][1].get("preferred") is True
+    page.click(".dialog-head button[title='Close']")
+    page.click(".selection-bar button:has-text('Run method')")
+    page.click(".method-item:has-text('Wait')")
+    page.wait_for_selector(".method-detail:has(h3:text-is('Wait')) .preset-default.active")   # opens on it
+    assert page.locator(".method-detail .preset-row select").input_value() == "quick"
+
+
 def test_options_for_each_entity(empty_app, page):   # dev's per-session options: each entity's own, edited before it runs
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
