@@ -450,6 +450,49 @@
     {
       "request": {
         "method": "methods.run",
+        "id": 1601,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "excludeOverlaps": true,
+            "neuropilMethod": "expansion",
+            "neuropilSeparation": 1,
+            "output": "",
+            "neuropilOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "meanSignal": [
+                354.3,
+                343.3,
+                352.0442
+              ],
+              "meanNeuropil": [
+                176.519,
+                185.4969,
+                205.667
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
         "id": 17,
         "params": {
           "methodId": "ophys.compute_dff",

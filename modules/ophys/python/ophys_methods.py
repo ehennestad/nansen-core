@@ -877,8 +877,14 @@ def overlap(a, b):
 
 
 def extract_signals(entity, options, context):
-    """Average of each ROI's pixels per frame, and of a ring of neuropil around it outside every ROI.
-    Reads the stack a chunk at a time."""
+    """Average of each ROI's pixels per frame, and of neuropil around it outside every ROI. Reads the stack a chunk
+    at a time.
+
+    With excludeOverlaps (dev's excludeRoiOverlaps), pixels in more than one ROI are left out of the ROIs' signals.
+    The neuropil is a ring (neuropilGap pixels from the ROI, neuropilWidth wide), or with neuropilMethod "expansion"
+    dev's: grown from the ROI until it covers neuropilExpansionFactor times the ROI's area outside every ROI (and
+    neuropilSeparation pixels around them), by dilations that alternate between the four sides and the four
+    diagonals, as FISSA does."""
     stack = _open_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     document = context.project.load(entity, options["rois"])
@@ -887,16 +893,24 @@ def extract_signals(entity, options, context):
     signals = np.full((frames, len(masks)), np.nan)
     neuropil = np.full((frames, len(masks)), np.nan)
     union = np.zeros((height, width), dtype=bool)
+    covered = np.zeros((height, width), dtype=np.int64)
     for mask in masks:
         union |= mask
-    inside = [np.flatnonzero(mask) for mask in masks]
-    rings = [np.flatnonzero(neuropil_ring(mask, union, options["neuropilGap"], options["neuropilWidth"])) for mask in masks]
+        covered += mask
+    own = [mask & (covered == 1) for mask in masks] if options.get("excludeOverlaps", False) else masks
+    inside = [np.flatnonzero(mask) for mask in own]
+    if options.get("neuropilMethod", "ring") == "expansion":
+        around = expansion_neuropil(masks, union, options.get("neuropilExpansionFactor", 4), options.get("neuropilSeparation", 0))
+    else:
+        around = [neuropil_ring(mask, union, options["neuropilGap"], options["neuropilWidth"]) for mask in masks]
+    rings = [np.flatnonzero(ring) for ring in around]
     for start in range(0, frames, CHUNK):
         context.check_cancelled()
         stop = min(start + CHUNK, frames)
         flat = stack[:, :, start:stop].reshape(height * width, stop - start)
         for i in range(len(masks)):
-            signals[start:stop, i] = flat[inside[i]].astype(np.float64).mean(axis=0)
+            if inside[i].size:
+                signals[start:stop, i] = flat[inside[i]].astype(np.float64).mean(axis=0)
             if rings[i].size:
                 neuropil[start:stop, i] = flat[rings[i]].astype(np.float64).mean(axis=0)
         context.progress(stop / frames, f"frame {stop}/{frames}")
@@ -925,6 +939,39 @@ def roi_masks(document, height, width):
 def neuropil_ring(mask, union, gap, width):
     """Pixels at square distance gap+1 .. gap+width from the ROI that are in no ROI."""
     return dilate(mask, gap + width) & ~dilate(mask, gap) & ~union
+
+
+def expansion_neuropil(masks, union, factor, separation):
+    """dev's neuropil masks (estimateNeuropilMasks): each ROI's mask dilated, alternately by its four sides (even
+    steps) and its four diagonals (odd steps), less the ROI, until the part outside the ignored pixels covers
+    factor times the ROI's area (at most the rest of the image), or after 101 steps; the ignored pixels (every ROI,
+    dilated separation times, from a diagonal step) are then taken out."""
+    ignored = union.copy()
+    for step in range(1, separation + 1):
+        ignored = _dilate_odd_even(ignored, step)
+    out = []
+    for mask in masks:
+        area = int(mask.sum())
+        target = min(mask.size - area, factor * area)
+        grown, covered, step = mask.copy(), 0, 0
+        while covered < target and step <= 100:
+            grown = _dilate_odd_even(grown, step)
+            grown &= ~mask
+            covered = int((grown & ~ignored).sum())
+            step += 1
+        out.append(grown & ~ignored)
+    return out
+
+
+def _dilate_odd_even(mask, step):
+    """One dilation by the four sides (step even) or the four diagonals (step odd), nothing past the edges."""
+    out = mask.copy()
+    offsets = [(1, 0), (-1, 0), (0, 1), (0, -1)] if step % 2 == 0 else [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+    height, width = mask.shape
+    for dy, dx in offsets:
+        out[max(dy, 0):height + min(dy, 0), max(dx, 0):width + min(dx, 0)] |= \
+            mask[max(-dy, 0):height + min(-dy, 0), max(-dx, 0):width + min(-dx, 0)]
+    return out
 
 
 def dilate(mask, distance):

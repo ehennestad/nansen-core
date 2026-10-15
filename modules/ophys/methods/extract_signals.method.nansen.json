@@ -6,7 +6,7 @@
   "title": "Extract signals",
   "category": "Two-photon/Signal extraction",
   "entityType": "*",
-  "description": "The average of each ROI's pixels in every frame (frames x ROIs, in the order of the ROI file, without rejected ROIs), and of a ring of surrounding pixels outside every ROI, for neuropil correction. The ring starts neuropilGap pixels from the ROI and is neuropilWidth pixels wide (square distance).",
+  "description": "The average of each ROI's pixels in every frame (frames x ROIs, in the order of the ROI file, without rejected ROIs), and of surrounding pixels outside every ROI, for neuropil correction. With excludeOverlaps, pixels in more than one ROI are left out of the ROIs' signals, as dev does. The neuropil is a ring that starts neuropilGap pixels from the ROI and is neuropilWidth pixels wide (square distance), or with neuropilMethod expansion, dev's: the ROI grown until the neuropil outside every ROI (and neuropilSeparation pixels around them) covers neuropilExpansionFactor times the ROI's area.",
   "implementations": {
     "python": "ophys_methods:extract_signals",
     "matlab": "ophys.extractSignals"
@@ -38,6 +38,22 @@
         "title": "Neuropil signals",
         "description": "Variable the neuropil signals are saved to. Leave empty to not save it."
       },
+      "excludeOverlaps": {
+        "type": "boolean",
+        "default": false,
+        "title": "Leave out overlapping pixels",
+        "description": "Pixels in more than one ROI are left out of the ROIs' signals (dev's default)."
+      },
+      "neuropilMethod": {
+        "type": "string",
+        "enum": [
+          "ring",
+          "expansion"
+        ],
+        "default": "ring",
+        "title": "Neuropil",
+        "description": "ring: a ring at a fixed distance. expansion: dev's, grown to a multiple of the ROI's area."
+      },
       "neuropilGap": {
         "type": "integer",
         "default": 1,
@@ -49,6 +65,20 @@
         "default": 3,
         "minimum": 1,
         "title": "Neuropil ring width (px)"
+      },
+      "neuropilExpansionFactor": {
+        "type": "number",
+        "default": 4,
+        "exclusiveMinimum": 0,
+        "title": "Neuropil area (x ROI area)",
+        "description": "For expansion: the neuropil's area as a multiple of the ROI's."
+      },
+      "neuropilSeparation": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Separation (pixels)",
+        "description": "For expansion: pixels around every ROI that no neuropil takes."
       },
       "includeRejected": {
         "type": "boolean",

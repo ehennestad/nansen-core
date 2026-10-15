@@ -61,6 +61,20 @@ def test_dilate_by_square_distance_and_the_neuropil_ring():
     assert ring.sum() == 16 - 1 and not ring[3, 5] and not ring[3, 4]
 
 
+def test_dev_neuropil_grows_around_the_roi_outside_every_roi():
+    # two 2 x 2 ROIs that share a pixel; neuropil twice their area, one pixel apart from every ROI (as OphysTest)
+    a = np.zeros((9, 9), bool)
+    a[2:4, 2:4] = True
+    b = np.zeros((9, 9), bool)
+    b[3:5, 3:5] = True
+    pixels = lambda m: [[int(y), int(x)] for y, x in zip(*np.nonzero(m))]
+    first, second = ophys["expansion_neuropil"]([a, b], a | b, 2, 1)
+    assert pixels(first) == [[0, 1], [0, 2], [0, 3], [0, 4], [1, 0], [1, 5], [2, 0], [3, 0], [4, 0], [5, 1]]
+    assert pixels(second) == [[1, 5], [2, 6], [3, 6], [4, 6], [5, 1], [5, 6], [6, 2], [6, 3], [6, 4], [6, 5]]
+    first, _ = ophys["expansion_neuropil"]([a, b], a | b, 2, 0)
+    assert len(pixels(first)) == 22 and not (first & (a | b)).any()
+
+
 def test_percentiles_match_numpy_and_the_window_is_centred():
     rng = np.random.default_rng(0)
     values = rng.normal(size=(31, 3))

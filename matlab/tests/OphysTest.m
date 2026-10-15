@@ -58,6 +58,20 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(nnz(ring), 15);
         end
 
+        function devNeuropilGrowsAroundTheRoiOutsideEveryRoi(testCase)
+            % two 2 x 2 ROIs that share a pixel; neuropil twice their area, one pixel apart from every ROI (as test_ophys.py)
+            a = false(9, 9);
+            a(3:4, 3:4) = true;
+            b = false(9, 9);
+            b(4:5, 4:5) = true;
+            out = ophys.internal.expansionNeuropil({a, b}, a | b, 2, 1);
+            testCase.verifyEqual(OphysTest.pixelsOf(out{1}), [0 1; 0 2; 0 3; 0 4; 1 0; 1 5; 2 0; 3 0; 4 0; 5 1]);
+            testCase.verifyEqual(OphysTest.pixelsOf(out{2}), [1 5; 2 6; 3 6; 4 6; 5 1; 5 6; 6 2; 6 3; 6 4; 6 5]);
+            out = ophys.internal.expansionNeuropil({a, b}, a | b, 2, 0);
+            testCase.verifyEqual(nnz(out{1}), 22);
+            testCase.verifyFalse(any(out{1} & (a | b), "all"));
+        end
+
         function percentilesInterpolateAsNumpy(testCase)
             values = (1:10)';
             testCase.verifyEqual(ophys.internal.percentileOf(values, 20), 2.8, AbsTol=1e-12);
@@ -223,6 +237,14 @@ classdef OphysTest < matlab.unittest.TestCase
             if ~exist("imviewer", "file")
                 testCase.verifyError(@() ophys.openInImviewer(struct(), struct(), []), "nansen:DependencyMissing");
             end
+        end
+    end
+
+    methods (Static)
+        function pixels = pixelsOf(mask)
+            % [row, column] (0-based) of a mask's pixels, in row-major order as NumPy lists them
+            [rows, columns] = find(mask);
+            pixels = sortrows([rows, columns] - 1);
         end
     end
 end

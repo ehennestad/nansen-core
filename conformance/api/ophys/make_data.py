@@ -237,6 +237,23 @@ def main():
     corrected = minus - drift
     expected["dffMinusNeuropil"] = {"rois": len(disks), "frames": FRAMES, "baseline": [round_to(v, 4) for v in s0],
                                     "maxDff": [round_to(v, 4) for v in corrected.max(axis=0)]}
+    # extract_signals with dev's neuropil (neuropilMethod expansion, factor 4, separation 1), from its definition with
+    # SciPy's dilation: grown by the four sides and the four diagonals in turn, less the ROI, until it covers 4 times
+    # the ROI's area outside every ROI dilated once by the diagonals
+    from scipy import ndimage as nd
+    sides, diagonals = nd.generate_binary_structure(2, 1), np.array([[1, 0, 1], [0, 1, 0], [1, 0, 1]], bool)
+    ignored = nd.binary_dilation(union, diagonals)
+    expanded = []
+    for d in disks:
+        grown, covered, step, target = d.copy(), 0, 0, min(d.size - d.sum(), 4 * d.sum())
+        while covered < target and step <= 100:
+            grown = nd.binary_dilation(grown, sides if step % 2 == 0 else diagonals) & ~d
+            covered = (grown & ~ignored).sum()
+            step += 1
+        expanded.append(aligned[grown & ~ignored].mean(axis=0))
+    expected["signalsExpansion"] = {"rois": len(disks), "frames": FRAMES,
+                                    "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
+                                    "meanNeuropil": [round_to(v, 4) for v in np.stack(expanded, axis=1).mean(axis=0)]}
     expected["frame3"] = {"frame": 3, **frame_bytes(aligned[:, :, 3], (0, 1000))}
     # export_tiff of frames 3..7 (from 1), read back through a data variable: its frame 2 (from 0) is frame 4 (from 0)
     expected["exported"] = {"height": HEIGHT, "width": WIDTH, "frames": 5, "frame": 2, **frame_bytes(aligned[:, :, 4], (0, 1000))}

@@ -1,7 +1,11 @@
 function result = extractSignals(entity, options, context)
-%extractSignals Average of each ROI's pixels per frame (frames x ROIs), and of a ring of neuropil around it outside every ROI
+%extractSignals Average of each ROI's pixels per frame (frames x ROIs), and of neuropil around it outside every ROI
 %
-%   Reads the stack a chunk at a time.
+%   Reads the stack a chunk at a time. With excludeOverlaps (dev's
+%   excludeRoiOverlaps), pixels in more than one ROI are left out of the
+%   ROIs' signals. The neuropil is a ring (neuropilGap pixels from the ROI,
+%   neuropilWidth wide), or with neuropilMethod "expansion" dev's (see
+%   ophys.internal.expansionNeuropil). As Python's ophys_methods.extract_signals.
     stack = ophys.internal.openStack(context, entity, options.stack, options);
     [height, width, frames] = size(stack);
     document = context.Project.load(entity, options.rois);
@@ -18,20 +22,33 @@ function result = extractSignals(entity, options, context)
     signals = nan(frames, count);
     neuropil = nan(frames, count);
     union = false(height, width);
+    covered = zeros(height, width);
     for i = 1:count
         union = union | masks{i};
+        covered = covered + masks{i};
     end
-    rings = cell(1, count);
-    for i = 1:count
-        rings{i} = ophys.internal.dilate(masks{i}, options.neuropilGap + options.neuropilWidth) ...
-            & ~ophys.internal.dilate(masks{i}, options.neuropilGap) & ~union;
+    own = masks;
+    if nansen.internal.getField(options, "excludeOverlaps", false)
+        own = cellfun(@(m) m & covered == 1, masks, UniformOutput=false);
+    end
+    if string(nansen.internal.getField(options, "neuropilMethod", "ring")) == "expansion"
+        rings = ophys.internal.expansionNeuropil(masks, union, nansen.internal.getField(options, "neuropilExpansionFactor", 4), ...
+            nansen.internal.getField(options, "neuropilSeparation", 0));
+    else
+        rings = cell(1, count);
+        for i = 1:count
+            rings{i} = ophys.internal.dilate(masks{i}, options.neuropilGap + options.neuropilWidth) ...
+                & ~ophys.internal.dilate(masks{i}, options.neuropilGap) & ~union;
+        end
     end
     for start = 1:ophys.internal.chunk():frames
         context.checkCancelled();
         stop = min(start + ophys.internal.chunk() - 1, frames);
         flat = reshape(stack.frames(start, stop), height * width, stop - start + 1);
         for i = 1:count
-            signals(start:stop, i) = mean(double(flat(masks{i}(:), :)), 1)';
+            if any(own{i}, "all")
+                signals(start:stop, i) = mean(double(flat(own{i}(:), :)), 1)';
+            end
             if any(rings{i}, "all")
                 neuropil(start:stop, i) = mean(double(flat(rings{i}(:), :)), 1)';
             end
