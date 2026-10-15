@@ -237,6 +237,9 @@ classdef OphysTest < matlab.unittest.TestCase
             if ~exist("imviewer", "file")
                 testCase.verifyError(@() ophys.openInImviewer(struct(), struct(), []), "nansen:DependencyMissing");
             end
+            if exist("NwbFile", "class") ~= 8
+                testCase.verifyError(@() ophys.exportNwb(struct(), struct(), []), "nansen:DependencyMissing");
+            end
         end
     end
 

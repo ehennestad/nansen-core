@@ -1,0 +1,28 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.export_nwb",
+  "version": "1.0.0",
+  "title": "Export to NWB",
+  "category": "Two-photon/Export",
+  "entityType": "*",
+  "description": "Writes the recording, its ROIs and their signals to an NWB file, as dev's NWBExporter wrote the stack: a TwoPhotonSeries in acquisition (written a chunk at a time, data as frames x columns x rows), the ROIs as a PlaneSegmentation of pixel masks with their ids and classification, and the signals as RoiResponseSeries in Fluorescence and DfOverF, linked to their ROIs. A variable left empty, or with no file, is left out. Needs pynwb in Python and matnwb in MATLAB.",
+  "implementations": {
+    "python": "ophys_methods:export_nwb",
+    "matlab": "ophys.exportNwb"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": { "type": "string", "default": "TwoPhotonSeries_Corrected", "title": "Stack" },
+      "rois": { "type": "string", "default": "RoiArray", "title": "ROIs" },
+      "signals": { "type": "string", "default": "RoiSignals_MeanF", "title": "Signals", "description": "Written as Fluorescence." },
+      "dff": { "type": "string", "default": "RoiSignals_Dff", "title": "ΔF/F", "description": "Written as DfOverF." },
+      "path": { "type": "string", "default": "exports/{subject_id}_{session_id}.nwb", "title": "File", "description": "Where the NWB file is written; relative to the project's folder unless absolute." },
+      "frameRate": { "type": "number", "default": 0, "minimum": 0, "title": "Frame rate (Hz)", "description": "0 for the entity's frame_rate." },
+      "sessionDescription": { "type": "string", "default": "", "title": "Session description", "description": "Empty for the entity's key." },
+      "channel": { "type": "integer", "default": 1, "minimum": 1, "title": "Channel" },
+      "plane": { "type": "integer", "default": 1, "minimum": 1, "title": "Plane" }
+    }
+  }
+}

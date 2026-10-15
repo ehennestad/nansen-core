@@ -123,3 +123,32 @@ def test_caiman_deconvolution(api):
     assert found.shape == (FRAMES, 3)
     for i in range(3):  # the inferred spikes follow the true ones
         assert np.corrcoef(found[:, i], spikes[:, i])[0, 1] > 0.5
+
+
+def test_export_nwb(api, tmp_path):
+    pynwb = need("pynwb")
+    run(api, "ophys.motion_correction", {"stack": "TwoPhotonSeries_Original", "referenceFrames": 20})
+    run(api, "ophys.detect_rois", {})
+    rois = load(api, "RoiArray")["rois"]
+    api.handle({"id": 3, "method": "rois.update", "params": {"entityType": "session", "key": SESSION, "variable": "RoiArray",
+                                                             "classify": [{"id": rois[0]["id"], "classification": "rejected"}]}})
+    run(api, "ophys.extract_signals", {})   # the rejected ROI left out of the signals
+    run(api, "ophys.compute_dff", {})
+    path = tmp_path / "out.nwb"
+    result = run(api, "ophys.export_nwb", {"path": str(path), "frameRate": 30, "sessionDescription": "test"})
+    assert result["frames"] == FRAMES and result["rois"] == len(rois)
+    assert result["signals"] == ["RoiSignals_MeanF", "RoiSignals_Dff"]
+    corrected, signals = load(api, "TwoPhotonSeries_Corrected"), load(api, "RoiSignals_MeanF")
+    with pynwb.NWBHDF5IO(str(path), "r") as io:   # as MATLAB's ophys.exportNwb writes it, which OphysNwbTest reads
+        nwb = io.read()
+        series = nwb.acquisition["TwoPhotonSeries"]
+        assert series.data.shape == (FRAMES, SIZE, SIZE) and series.rate == 30
+        assert (series.data[7] == corrected[:, :, 7].T).all()   # frames x columns x rows
+        table = nwb.processing["ophys"]["ImageSegmentation"]["PlaneSegmentation"]
+        assert list(table.id[:]) == [r["id"] for r in rois]
+        assert list(table["classification"][:])[:2] == ["rejected", ""]
+        assert sorted((int(y), int(x)) for x, y, _ in table["pixel_mask"][1]) == sorted(map(tuple, rois[1]["pixels"]))
+        fluorescence = nwb.processing["ophys"]["Fluorescence"]["RoiResponseSeries"]
+        assert np.allclose(fluorescence.data[:], signals) and list(fluorescence.rois.data[:]) == list(range(1, len(rois)))
+        assert nwb.processing["ophys"]["DfOverF"]["Dff"].data.shape == signals.shape
+        assert nwb.subject.subject_id == "m1" and nwb.session_description == "test"

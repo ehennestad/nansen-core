@@ -163,6 +163,17 @@ def test_deep_interpolation_says_what_is_missing():
     assert error.value.code == "dependency-missing"
 
 
+def test_export_nwb_says_what_is_missing():
+    try:
+        import pynwb  # noqa: F401
+        pytest.skip("pynwb is installed")
+    except ImportError:
+        pass
+    with pytest.raises(NansenError) as error:
+        ophys["export_nwb"](None, {}, None)
+    assert error.value.code == "dependency-missing"
+
+
 def test_suite2p_says_what_is_missing():
     try:
         import suite2p  # noqa: F401

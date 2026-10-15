@@ -1,7 +1,7 @@
 function results = runExternalToolTests(toolsFolder)
 %runExternalToolTests Run the ophys wrappers against the real tools, cloned into toolsFolder
 %
-%   Puts NoRMCorre, CaImAn-MATLAB, EXTRACT-public and flow_registration
+%   Puts NoRMCorre, CaImAn-MATLAB, EXTRACT-public, matnwb and flow_registration
 %   (compiling its solver) on the path, and NANSEN dev's apps and code and the
 %   Widgets Toolbox after this package (for imviewer), runs matlab/externaltests and fails unless every
 %   test passed: a missing tool is a failure here, not a skip.
@@ -15,6 +15,14 @@ function results = runExternalToolTests(toolsFolder)
     addpath(dsm);
     for name = ["NoRMCorre", "CaImAn-MATLAB", "EXTRACT-public"]
         addpath(genpath(fullfile(toolsFolder, name)));
+    end
+    matnwb = fullfile(toolsFolder, "matnwb");
+    addpath(matnwb);
+    if exist("types.core.NWBFile", "class") ~= 8 && exist("matnwb.types.core.NWBFile", "class") ~= 8
+        here = pwd;
+        cd(matnwb);
+        generateCore();   % the NWB core types, when the clone has none generated
+        cd(here);
     end
     flowreg = fullfile(toolsFolder, "flow_registration");
     addpath(fullfile(flowreg, "core"), fullfile(flowreg, "util"), fullfile(flowreg, "util", "io"));

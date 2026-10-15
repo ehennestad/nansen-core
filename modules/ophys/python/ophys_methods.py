@@ -1262,6 +1262,117 @@ def export_tiff(entity, options, context):
     return {"frames": last - first + 1, "path": str(path)}
 
 
+def export_nwb(entity, options, context):
+    """The recording, its ROIs and their signals in an NWB file (pynwb), as dev's NWBExporter wrote the stack.
+
+    The stack is a TwoPhotonSeries in acquisition, written a chunk at a time, data (frames, x, y) with x the
+    column; the ROIs a PlaneSegmentation of pixel masks (x, y, weight 1) with their ids and classification; the
+    signals RoiResponseSeries in Fluorescence and DfOverF, linked to the ROIs their columns are. An empty name, or
+    a variable with no file, is left out. A relative path is in the project's folder; {field} tokens are the
+    entity's values. MATLAB's ophys.exportNwb writes the same with matnwb."""
+    try:
+        from hdmf.data_utils import DataChunkIterator
+        from pynwb import NWBHDF5IO, NWBFile
+        from pynwb.file import Subject
+        from pynwb.ophys import (DfOverF, Fluorescence, ImageSegmentation, OpticalChannel, RoiResponseSeries,
+                                 TwoPhotonSeries)
+    except ImportError:
+        raise NansenError("dependency-missing", "exporting to NWB needs pynwb: pip install pynwb") from None
+    rate = float(options.get("frameRate") or entity.get("frame_rate") or 0)
+    if rate <= 0:
+        raise NansenError("invalid-options", "give frameRate, or fill in the entity's frame_rate")
+    path = Path(_fill(str(options["path"]), entity))
+    if not path.is_absolute():
+        path = Path(context.project.folder) / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def read(name, reader):
+        """What reader gives for the variable, or None when the name is empty or the entity has no file of it."""
+        if not name:
+            return None
+        try:
+            return reader(name)
+        except NansenError as error:
+            if error.code == "data-not-found":
+                return None
+            raise
+
+    values = {**getattr(entity, "values", {}), **entity.key}
+    start = _session_start(values)
+    nwb = NWBFile(session_description=options.get("sessionDescription") or _name(entity),
+                  identifier="_".join(str(v) for v in entity.key.values()), session_start_time=start,
+                  session_id=str(values.get("session_id", "")) or None)
+    if values.get("subject_id"):
+        nwb.subject = Subject(subject_id=str(values["subject_id"]))
+    device = nwb.create_device(name="Microscope", description="two-photon microscope")
+    channel = OpticalChannel(name="OpticalChannel", description="channel %d" % options.get("channel", 1), emission_lambda=float("nan"))
+    plane = nwb.create_imaging_plane(name="ImagingPlane", optical_channel=channel, description="imaging plane",
+                                     device=device, excitation_lambda=float("nan"), imaging_rate=rate,
+                                     indicator=str(values.get("indicator") or "unknown"), location="unknown")
+    result = {"frames": 0, "rois": 0, "signals": []}
+    stack = read(options["stack"], lambda name: _open_stack(entity, name, context, options))
+    if stack is not None:
+        height, width, frames = stack.shape
+
+        def frames_in_chunks():
+            for first in range(0, frames, CHUNK):
+                context.check_cancelled()
+                last = min(first + CHUNK, frames)
+                chunk = np.asarray(stack.frames(first, last))
+                for t in range(last - first):
+                    yield chunk[:, :, t].T   # (x, y): x the column
+                context.progress(last / frames * 0.9, f"frame {last}/{frames}")
+
+        data = DataChunkIterator(data=frames_in_chunks(), maxshape=(frames, width, height), dtype=np.dtype(stack.dtype),
+                                 buffer_size=CHUNK)
+        nwb.add_acquisition(TwoPhotonSeries(name="TwoPhotonSeries", data=data, imaging_plane=plane, rate=rate,
+                                            starting_time=0.0, unit="n.a."))
+        result["frames"] = frames
+    document = read(options["rois"], lambda name: context.project.load(entity, name))
+    if document is not None:
+        rois = document.get("rois", [])
+        module = nwb.create_processing_module(name="ophys", description="ROIs and their signals")
+        segmentation = ImageSegmentation(name="ImageSegmentation")
+        module.add(segmentation)
+        table = segmentation.create_plane_segmentation(name="PlaneSegmentation", description="ROIs", imaging_plane=plane)
+        table.add_column(name="classification", description="accepted, rejected, or empty when not classified")
+        for n, roi in enumerate(rois):
+            table.add_roi(id=int(roi.get("id", n + 1)), classification=str(roi.get("classification") or ""),
+                          pixel_mask=[(int(x), int(y), 1.0) for y, x in roi["pixels"]])
+        result["rois"] = len(rois)
+        kept = [n for n, roi in enumerate(rois) if roi.get("classification") != "rejected"]
+        containers = {}
+        for key, container_type, name in (("signals", Fluorescence, "RoiResponseSeries"), ("dff", DfOverF, "Dff")):
+            signals = read(options.get(key, ""), lambda name: _as_traces(context.project.load(entity, name)))
+            if signals is None:
+                continue
+            columns = list(range(len(rois))) if signals.shape[1] == len(rois) else kept if signals.shape[1] == len(kept) else None
+            if columns is None:
+                raise NansenError("invalid-data", f"{options[key]} has {signals.shape[1]} columns for {len(rois)} ROIs")
+            if container_type not in containers:   # in the file before its series, so they can link to the ROIs
+                containers[container_type] = container_type(name=container_type.__name__)
+                module.add(containers[container_type])
+            region = table.create_roi_table_region(region=columns, description="the ROIs of the columns")
+            containers[container_type].add_roi_response_series(
+                RoiResponseSeries(name=name, data=signals, rois=region, unit="n.a.", rate=rate, starting_time=0.0))
+            result["signals"].append(options[key])
+    with NWBHDF5IO(str(path), "w") as io:
+        io.write(nwb)
+    context.log(f"{_name(entity)}: {result['frames']} frames, {result['rois']} ROIs and {len(result['signals'])} signals written to {path}")
+    return dict(result, path=str(path))
+
+
+def _session_start(values):
+    """The session's start: its session_date (and session_time), else now; in UTC when no time zone is given."""
+    import datetime as dt
+    text = str(values.get("session_date") or "")
+    try:
+        start = dt.datetime.fromisoformat(text[:10] + ("T" + str(values["session_time"]) if values.get("session_time") else ""))
+    except (ValueError, TypeError):
+        start = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    return start if start.tzinfo else start.replace(tzinfo=dt.timezone.utc)
+
+
 def _fill(template, entity):
     """A path with {field} tokens filled from the entity's key and values."""
     values = {**getattr(entity, "values", {}), **entity.key}

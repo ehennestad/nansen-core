@@ -23,6 +23,7 @@
     "methods/denoise.method.nansen.json",
     "methods/detect_rois.method.nansen.json",
     "methods/downsample.method.nansen.json",
+    "methods/export_nwb.method.nansen.json",
     "methods/export_tiff.method.nansen.json",
     "methods/extract.method.nansen.json",
     "methods/extract_signals.method.nansen.json",

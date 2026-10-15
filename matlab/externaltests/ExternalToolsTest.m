@@ -75,6 +75,35 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function exportNwbWritesTheStackRoisAndSignals(testCase)
+            % ophys.exportNwb with matnwb, read back with nwbRead (Python's test_external_tools reads its own with pynwb)
+            project = testCase.Project;
+            project.run("ophys.detect_rois", {testCase.Session});
+            document = project.load(testCase.Session, "RoiArray");
+            rois = ophys.internal.roiList(document);
+            rois{1}.classification = 'rejected';
+            document.rois = rois;
+            project.save(testCase.Session, "RoiArray", document);
+            project.run("ophys.extract_signals", {testCase.Session});   % the rejected ROI left out of the signals
+            project.run("ophys.compute_dff", {testCase.Session});
+            path = fullfile(project.Folder, "out.nwb");
+            result = project.run("ophys.export_nwb", {testCase.Session}, Options=struct("path", path, "frameRate", 30));
+            result = result{1};
+            testCase.verifyEqual([result.frames, result.rois], [300, numel(rois)]);
+            testCase.verifyEqual(string(result.signals), ["RoiSignals_MeanF", "RoiSignals_Dff"]);
+            nwb = nwbRead(char(path), "ignorecache");
+            data = nwb.acquisition.get("TwoPhotonSeries").data.load();
+            testCase.verifyEqual(size(data), [128, 128, 300]);   % (frames, x, y) in the file
+            testCase.verifyEqual(data, testCase.Clean);
+            module = nwb.processing.get("ophys");
+            segmentation = module.nwbdatainterface.get("ImageSegmentation").planesegmentation.get("PlaneSegmentation");
+            ids = cellfun(@(r) double(r.id), rois);
+            testCase.verifyEqual(double(segmentation.id.data.load()), ids(:));
+            signals = module.nwbdatainterface.get("Fluorescence").roiresponseseries.get("RoiResponseSeries");
+            testCase.verifyEqual(signals.data.load(), project.load(testCase.Session, "RoiSignals_MeanF")', AbsTol=1e-9);
+            testCase.verifyEqual(double(signals.rois.data.load()), (1:numel(rois) - 1)');
+        end
+
         function normcorreRecoversTheShifts(testCase)
             result = testCase.Project.run("ophys.normcorre", {testCase.Session}, ...
                 Options=struct("stack", "TwoPhotonSeries_Original", "maxShift", 8));
