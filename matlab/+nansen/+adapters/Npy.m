@@ -9,51 +9,70 @@ classdef Npy < nansen.FileAdapter
 
     methods
         function data = read(~, path)
-            fid = fopen(path, "r", "ieee-le");
-            if fid < 0
-                nansen.internal.throwError("cannot-open", "cannot open %s", path)
-            end
+            [precision, byteOrder, shape, fortran, offset, logicalValues] = nansen.adapters.Npy.header(path);
+            fid = fopen(path, "r", char(byteOrder));
             closer = onCleanup(@() fclose(fid));
-            magic = fread(fid, 6, "*uint8")';
-            if ~isequal(magic, uint8([147, 'NUMPY']))
-                nansen.internal.throwError("invalid-data", "%s is not a .npy file", path)
-            end
-            version = fread(fid, 2, "*uint8")';
-            if version(1) == 1
-                headerLength = double(fread(fid, 1, "uint16"));
-            else
-                headerLength = double(fread(fid, 1, "uint32"));
-            end
-            header = char(fread(fid, headerLength, "*uint8")');
-            descr = regexp(header, "'descr'\s*:\s*'([^']*)'", "tokens", "once");
-            fortran = regexp(header, "'fortran_order'\s*:\s*(True|False)", "tokens", "once");
-            shapeText = regexp(header, "'shape'\s*:\s*\(([^)]*)\)", "tokens", "once");
-            if isempty(descr) || isempty(fortran) || isempty(shapeText)
-                nansen.internal.throwError("invalid-data", "%s has a .npy header this reader does not understand", path)
-            end
-            shape = str2double(strtrim(split(string(shapeText{1}), ",")))';
-            shape = shape(~isnan(shape));
-            [precision, byteOrder] = nansen.adapters.Npy.precisionOf(descr{1}, path);
+            fseek(fid, offset, "bof");
             count = prod(shape);
             if isempty(shape)
                 count = 1;
             end
-            values = fread(fid, count, char("*" + precision), 0, char(byteOrder));
+            values = fread(fid, count, char("*" + precision));
             if numel(values) ~= count
                 nansen.internal.throwError("invalid-data", "%s holds fewer values than its shape says", path)
             end
-            if precision == "uint8" && startsWith(descr{1}, ["|b1", "<b1", ">b1"])
+            if logicalValues
                 values = logical(values);
             end
             if numel(shape) <= 1
                 data = values;   % a scalar, or a 1-D array as a column
                 return
             end
-            if fortran{1} == "True"
+            if fortran
                 data = reshape(values, shape);
             else
                 data = permute(reshape(values, fliplr(shape)), numel(shape):-1:1);
             end
+        end
+
+        function stack = open(obj, paths)
+            %open The arrays as one nansen.Stack read a chunk of frames at a time; several files are joined
+            paths = nansen.internal.naturalOrder(paths);
+            parts = cell(1, numel(paths));
+            for i = 1:numel(paths)
+                [precision, byteOrder, shape, fortran, offset, logicalValues] = nansen.adapters.Npy.header(paths(i));
+                if numel(shape) <= 1
+                    parts{i} = nansen.Stack.fromArray(obj.read(paths(i)));
+                    continue
+                end
+                className = precision;
+                if logicalValues
+                    className = "logical";
+                end
+                path = paths(i);
+                parts{i} = nansen.Stack(shape, className, @(first, last) nansen.adapters.Npy.readFrames( ...
+                    path, precision, byteOrder, shape, fortran, offset, logicalValues, first, last));
+            end
+            stack = nansen.Stack.join(parts);
+        end
+
+        function writer = create(~, path, dimensions, className)
+            %create A writer of a new array, a chunk of frames at a time, straight into the file. Frames are kept
+            %together (Fortran order), so a chunk of frames is one stretch of the file to read or write.
+            if className == "logical"
+                descr = "|b1";
+            else
+                descr = nansen.adapters.Npy.descrOf(cast(0, char(className)));
+            end
+            shapeText = "(" + strjoin(string(dimensions), ", ") + ")";
+            if isscalar(dimensions)
+                shapeText = "(" + dimensions + ",)";
+            end
+            text = "{'descr': '" + descr + "', 'fortran_order': True, 'shape': " + shapeText + ", }";
+            total = 10 + strlength(text) + 1;
+            text = text + string(repmat(' ', 1, mod(64 - mod(total, 64), 64))) + newline;
+            header = [uint8([147, 'NUMPY', 1, 0]), typecast(uint16(strlength(text)), "uint8"), uint8(char(text))];
+            writer = nansen.StackWriter(dimensions, className, Path=path, Header=header);
         end
 
         function write(~, path, data)
@@ -90,7 +109,69 @@ classdef Npy < nansen.FileAdapter
         end
     end
 
+    methods (Static)
+        function [precision, byteOrder, shape, fortran, offset, logicalValues] = header(path)
+            %header What a .npy file's header says: the values' class and byte order, the shape, whether in
+            %Fortran order, where the values begin, and whether they are booleans
+            fid = fopen(path, "r", "ieee-le");
+            if fid < 0
+                nansen.internal.throwError("cannot-open", "cannot open %s", path)
+            end
+            closer = onCleanup(@() fclose(fid));
+            magic = fread(fid, 6, "*uint8")';
+            if ~isequal(magic, uint8([147, 'NUMPY']))
+                nansen.internal.throwError("invalid-data", "%s is not a .npy file", path)
+            end
+            version = fread(fid, 2, "*uint8")';
+            if version(1) == 1
+                headerLength = double(fread(fid, 1, "uint16"));
+                offset = 10 + headerLength;
+            else
+                headerLength = double(fread(fid, 1, "uint32"));
+                offset = 12 + headerLength;
+            end
+            text = char(fread(fid, headerLength, "*uint8")');
+            descr = regexp(text, "'descr'\s*:\s*'([^']*)'", "tokens", "once");
+            fortranText = regexp(text, "'fortran_order'\s*:\s*(True|False)", "tokens", "once");
+            shapeText = regexp(text, "'shape'\s*:\s*\(([^)]*)\)", "tokens", "once");
+            if isempty(descr) || isempty(fortranText) || isempty(shapeText)
+                nansen.internal.throwError("invalid-data", "%s has a .npy header this reader does not understand", path)
+            end
+            shape = str2double(strtrim(split(string(shapeText{1}), ",")))';
+            shape = shape(~isnan(shape));
+            [precision, byteOrder] = nansen.adapters.Npy.precisionOf(descr{1}, path);
+            fortran = fortranText{1} == "True";
+            logicalValues = precision == "uint8" && startsWith(descr{1}, ["|b1", "<b1", ">b1"]);
+        end
+    end
+
     methods (Static, Access = private)
+        function data = readFrames(path, precision, byteOrder, shape, fortran, offset, logicalValues, first, last)
+            %readFrames Frames first..last of an array of the shape, frames last: one stretch of the file in Fortran
+            %order; in C order a run of values for each pixel, the rest skipped
+            fid = fopen(path, "r", char(byteOrder));
+            if fid < 0
+                nansen.internal.throwError("cannot-open", "cannot open %s", path)
+            end
+            closer = onCleanup(@() fclose(fid));
+            bytes = nansen.StackWriter.bytesOf(precision);
+            frameSize = shape(1:end - 1);
+            perFrame = prod(frameSize);
+            count = last - first + 1;
+            if fortran
+                fseek(fid, offset + (first - 1) * perFrame * bytes, "bof");
+                values = fread(fid, perFrame * count, char("*" + precision));
+                data = reshape(values, [frameSize, count]);
+            else
+                fseek(fid, offset + (first - 1) * bytes, "bof");
+                values = fread(fid, perFrame * count, char(count + "*" + precision + "=>" + precision), (shape(end) - count) * bytes);
+                data = permute(reshape(values, [count, fliplr(frameSize)]), numel(shape):-1:1);
+            end
+            if logicalValues
+                data = logical(data);
+            end
+        end
+
         function [precision, byteOrder] = precisionOf(descr, path)
             byteOrder = "ieee-le";
             if startsWith(descr, ">")

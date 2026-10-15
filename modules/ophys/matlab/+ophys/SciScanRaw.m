@@ -11,46 +11,18 @@ classdef SciScanRaw < nansen.FileAdapter
 %   reads and writes the same files.
 
     methods
-        function data = read(~, path)
-            path = string(path);
-            [folder, name] = fileparts(path);
-            ini = fullfile(folder, name + ".ini");
-            if ~isfile(ini)
-                nansen.internal.throwError("invalid-data", "%s has no %s.ini beside it", path, name)
+        function data = read(obj, path)
+            data = all(obj.open(path));
+        end
+
+        function stack = open(~, paths)
+            %open The recording as a nansen.Stack read frame by frame from the file; several files are joined
+            paths = nansen.internal.naturalOrder(paths);
+            parts = cell(1, numel(paths));
+            for i = 1:numel(paths)
+                parts{i} = ophys.SciScanRaw.openOne(paths(i));
             end
-            values = ophys.SciScanRaw.readIni(ini);
-            width = ophys.SciScanRaw.number(values, "x.pixels", ini);
-            height = ophys.SciScanRaw.number(values, "y.pixels", ini);
-            channels = 1;
-            if isKey(values, "no.of.channels")
-                channels = ophys.SciScanRaw.number(values, "no.of.channels", ini);
-            end
-            kind = ophys.SciScanRaw.number(values, "file.format", ini);
-            if kind == 0
-                precision = "uint16";
-                bytes = 2;
-            elseif kind == 1
-                precision = "single";
-                bytes = 4;
-            else
-                nansen.internal.throwError("invalid-data", "%s has file.format %d; 0 (16-bit) and 1 (32-bit float) are read", ini, kind)
-            end
-            perFrame = width * height * channels;
-            info = dir(path);
-            frames = floor(info.bytes / (perFrame * bytes));
-            if isKey(values, "no.of.frames.acquired")
-                frames = min(frames, ophys.SciScanRaw.number(values, "no.of.frames.acquired", ini));
-            end
-            fid = fopen(path, "r", "ieee-be");
-            if fid < 0
-                nansen.internal.throwError("cannot-open", "cannot open %s", path)
-            end
-            closer = onCleanup(@() fclose(fid));
-            data = fread(fid, frames * perFrame, char("*" + precision));
-            data = permute(reshape(data, width, height, channels, frames), [2, 1, 3, 4]);
-            if channels == 1
-                data = reshape(data, height, width, frames);
-            end
+            stack = nansen.Stack.join(parts);
         end
 
         function write(~, path, data)
@@ -98,6 +70,60 @@ classdef SciScanRaw < nansen.FileAdapter
     end
 
     methods (Static, Access = private)
+        function stack = openOne(path)
+            [folder, name] = fileparts(path);
+            ini = fullfile(folder, name + ".ini");
+            if ~isfile(ini)
+                nansen.internal.throwError("invalid-data", "%s has no %s.ini beside it", path, name)
+            end
+            values = ophys.SciScanRaw.readIni(ini);
+            width = ophys.SciScanRaw.number(values, "x.pixels", ini);
+            height = ophys.SciScanRaw.number(values, "y.pixels", ini);
+            channels = 1;
+            if isKey(values, "no.of.channels")
+                channels = ophys.SciScanRaw.number(values, "no.of.channels", ini);
+            end
+            kind = ophys.SciScanRaw.number(values, "file.format", ini);
+            if kind == 0
+                precision = "uint16";
+                bytes = 2;
+            elseif kind == 1
+                precision = "single";
+                bytes = 4;
+            else
+                nansen.internal.throwError("invalid-data", "%s has file.format %d; 0 (16-bit) and 1 (32-bit float) are read", ini, kind)
+            end
+            perFrame = width * height * channels;
+            info = dir(path);
+            frames = floor(info.bytes / (perFrame * bytes));
+            if isKey(values, "no.of.frames.acquired")
+                frames = min(frames, ophys.SciScanRaw.number(values, "no.of.frames.acquired", ini));
+            end
+            if channels == 1
+                dimensions = [height, width, frames];
+            else
+                dimensions = [height, width, channels, frames];
+            end
+            stack = nansen.Stack(dimensions, precision, @(first, last) ophys.SciScanRaw.readFrames( ...
+                path, precision, width, height, channels, first, last));
+        end
+
+        function data = readFrames(path, precision, width, height, channels, first, last)
+            fid = fopen(path, "r", "ieee-be");
+            if fid < 0
+                nansen.internal.throwError("cannot-open", "cannot open %s", path)
+            end
+            closer = onCleanup(@() fclose(fid));
+            perFrame = width * height * channels;
+            fseek(fid, (first - 1) * perFrame * nansen.StackWriter.bytesOf(precision), "bof");
+            count = last - first + 1;
+            data = fread(fid, count * perFrame, char("*" + precision));
+            data = permute(reshape(data, width, height, channels, count), [2, 1, 3, 4]);
+            if channels == 1
+                data = reshape(data, height, width, count);
+            end
+        end
+
         function value = number(values, name, path)
             value = NaN;
             if isKey(values, name)

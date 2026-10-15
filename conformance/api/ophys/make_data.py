@@ -122,9 +122,11 @@ def write_scanimage(path, rng):
         {"name": "A", "scanfields": {"pixelResolutionXY": [32, 16]}},
         {"name": "B", "scanfields": {"pixelResolutionXY": [32, 16]}}]}}})
     path.parent.mkdir(parents=True, exist_ok=True)
-    # the tags go on the first page, which is where the readers look
-    tifffile.imwrite(path, np.stack(pages), photometric="minisblack", software=software,
-                     extratags=[(315, "s", 0, artist, False)], metadata=None)
+    # two files, as ScanImage splits a recording: the second volume begins in the first file and ends in the
+    # second. The tags go on each file's first page, which is where the readers look
+    for part, chunk in enumerate([pages[:7], pages[7:]], start=1):
+        tifffile.imwrite(path.with_name(f"rec_{part:05d}.tif"), np.stack(chunk), photometric="minisblack", software=software,
+                         extratags=[(315, "s", 0, artist, False)], metadata=None)
     return np.concatenate([strips[0], strips[1]], axis=1)
 
 
@@ -141,9 +143,13 @@ def main():
     write_sciscan(HERE / "project/data/raw/sub-m1/ses-s1/rec.raw", recording)
     second = scene(2)[0]
     import tifffile
-    tif = HERE / "project/data/raw/sub-m1/ses-s2/rec.tif"
-    tif.parent.mkdir(parents=True, exist_ok=True)
-    tifffile.imwrite(tif, np.moveaxis(second, 2, 0), photometric="minisblack")
+    # session 2: a TIFF recording in two files, part2 before part10 in natural order
+    folder = HERE / "project/data/raw/sub-m1/ses-s2"
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob("*.tif"):
+        old.unlink()
+    tifffile.imwrite(folder / "rec_part2.tif", np.moveaxis(second[:, :, :15], 2, 0), photometric="minisblack")
+    tifffile.imwrite(folder / "rec_part10.tif", np.moveaxis(second[:, :, 15:], 2, 0), photometric="minisblack")
 
     # session 3: the scene of session 1, displaced as a whole by (2, -3), without motion within the recording
     whole = movie[PAD - 2:PAD - 2 + HEIGHT, PAD + 3:PAD + 3 + WIDTH, :]

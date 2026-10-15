@@ -64,6 +64,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - Data locations can be pointed somewhere else per machine (`setRoot` / `set_root`, `dataset.setRoot`, "Change path" on the Data page). Roots per environment live in the DSM config and the active environment in its `.local.json` overlay. The whole DSM config can be edited as text from the Data page (`dataset.get`, `dataset.save`): it is written as given, but only once DSM accepts it and the tables' keys still match it.
 - Shared JSON files, such as a DSM config, are edited as text (`nansen.jsontext`, `nansen.internal.JsonText`), so they keep their formatting and MATLAB does not change their arrays. A `jsontext` conformance kind holds both editors to the same bytes.
 - The dashboard fits narrow windows (a phone, a small `uihtml` figure): below 860 px the sidebar slides in from a menu button, and long paths and descriptions are cut with an ellipsis instead of widening the page.
+- Image stacks larger than memory, and recordings kept in several files: file adapters can `open` a recording as a stack read a chunk of frames at a time, joining its files in natural order (npy, SciScan, TIFF and ScanImage, whose volumes may cross files), and `create` a writer of one chunk at a time. Image statistics, motion correction, signal extraction, downsampling and the viewer read recordings in chunks and never whole (`Project.open_stack` / `openStack`, `stack_writer` / `stackWriter`). The ophys conformance case keeps a TIFF and a ScanImage recording in two files each.
 
 **Import**
 

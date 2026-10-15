@@ -188,10 +188,15 @@ def test_scanimage_metadata_numbers():
 
 def test_scanimage_reads_channels_planes_and_rois():
     folder = Path(__file__).resolve().parents[2] / "conformance" / "api" / "ophys" / "project" / "data" / "raw" / "sub-m1"
-    data = adapter("ScanImageTiff").read(folder / "ses-s4" / "rec_00001.tif")
+    files = [folder / "ses-s4" / "rec_00002.tif", folder / "ses-s4" / "rec_00001.tif"]
+    stack = adapter("ScanImageTiff").open(files)   # joined in natural order, whatever order they come in
+    data = np.asarray(stack)
     assert data.shape == (16, 64, 2, 2, 3) and not (data == 9999).any()  # no flyback lines
+    first = adapter("ScanImageTiff").read(files[1])   # 7 pages: one whole volume of 2 channels x 2 planes
+    assert first.shape == (16, 64, 2, 2, 1) and (first == data[..., :1]).all()
+    assert (stack[:, :, :, :, 1:2] == data[..., 1:2]).all()   # the volume that begins in one file and ends in the next
     with pytest.raises(NansenError) as error:
-        adapter("ScanImageTiff").read(folder / "ses-s2" / "rec.tif")
+        adapter("ScanImageTiff").read(folder / "ses-s2" / "rec_part2.tif")
     assert error.value.code == "invalid-data"
 
 

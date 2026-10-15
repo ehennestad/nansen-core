@@ -2,7 +2,8 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
 %imageFrame A frame of an image or stack, as 8-bit values for the dashboard's viewer
 %
 %   data is height x width (x frames), height x width x channels x frames,
-%   or height x width x channels x planes x frames. frame, channel and
+%   or height x width x channels x planes x frames: an array, or a
+%   nansen.Stack read a chunk of frames at a time. frame, channel and
 %   plane are 0-based; projection is "", "mean" or
 %   "max"; limits is [] or [low, high]. Values from low to high are scaled
 %   to 0..255 as floor((v - low) / (high - low) * 255 + 0.5), cut at both
@@ -12,36 +13,63 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
     if nargin < 6
         plane = 0;
     end
-    if ~(isnumeric(data) || islogical(data)) || ~isreal(data) || ndims(data) > 5
+    if isa(data, "nansen.Stack")
+        stack = data;
+        if ndims(stack) == 2
+            stack.MaxFrames = Inf;   % an image's columns are not frames
+            stack = nansen.Stack.fromArray(stack.all(), 3);   % an image: one frame
+        end
+    else
+        if ~(isnumeric(data) || islogical(data)) || ~isreal(data) || ndims(data) > 5 || isscalar(data)
+            nansen.internal.throwError("invalid-data", "the data is not an image or a stack of images")
+        end
+        stack = nansen.Stack.fromArray(data, max(3, ndims(data)));
+    end
+    if ndims(stack) > 5 || ~ismember(stack.ClassName, ["logical", "uint8", "int8", "uint16", "int16", ...
+            "uint32", "int32", "uint64", "int64", "single", "double"])
         nansen.internal.throwError("invalid-data", "the data is not an image or a stack of images")
     end
-    if ndims(data) == 5
-        if plane < 0 || plane >= size(data, 4)
-            nansen.internal.throwError("invalid-params", "there are %d planes; plane %d is not one", size(data, 4), plane)
+    if ndims(stack) == 5
+        if plane < 0 || plane >= size(stack, 4)
+            nansen.internal.throwError("invalid-params", "there are %d planes; plane %d is not one", size(stack, 4), plane)
         end
-        data = reshape(data(:, :, :, plane + 1, :), size(data, 1), size(data, 2), size(data, 3), []);
+        stack = stack.select(4, plane + 1);
     elseif plane ~= 0
         nansen.internal.throwError("invalid-params", "there is 1 plane; plane %d is not one", plane)
     end
-    if ndims(data) == 4
-        if channel < 0 || channel >= size(data, 3)
-            nansen.internal.throwError("invalid-params", "there are %d channels; channel %d is not one", size(data, 3), channel)
+    if ndims(stack) == 4
+        if channel < 0 || channel >= size(stack, 3)
+            nansen.internal.throwError("invalid-params", "there are %d channels; channel %d is not one", size(stack, 3), channel)
         end
-        data = reshape(data(:, :, channel + 1, :), size(data, 1), size(data, 2), []);
+        stack = stack.select(3, channel + 1);
     end
-    [height, width, frames] = size(data);
+    [height, width, frames] = size(stack);
+    chunk = 100;   % frames read at a time for a projection
     switch projection
         case "mean"
-            image = mean(double(data), 3);
+            total = zeros(height, width);
+            for start = 1:chunk:frames
+                total = total + sum(double(stack.frames(start, start + chunk - 1)), 3);
+            end
+            image = total / frames;
             frame = [];
         case "max"
-            image = double(max(data, [], 3));
+            image = [];
+            for start = 1:chunk:frames
+                peak = max(stack.frames(start, start + chunk - 1), [], 3);
+                if isempty(image)
+                    image = peak;
+                else
+                    image = max(image, peak);
+                end
+            end
+            image = double(image);
             frame = [];
         case ""
             if frame < 0 || frame >= frames || frame ~= round(frame)
                 nansen.internal.throwError("invalid-params", "there are %d frames; frame %d is not one", frames, frame)
             end
-            image = double(data(:, :, frame + 1));
+            image = double(stack.frames(frame + 1, frame + 1));
         otherwise
             nansen.internal.throwError("invalid-params", "projection is mean or max, not '%s'", projection)
     end

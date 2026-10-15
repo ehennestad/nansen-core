@@ -13,27 +13,18 @@ classdef ScanImageTiff < nansen.FileAdapter
 %   are left out. Python's ophys_adapters.ScanImageTiff reads the same.
 
     methods
-        function data = read(~, path)
-            warning("off", "imageio:tiffmexutils:libtiffWarning");
-            warning("off", "MATLAB:imagesci:tiffmexutils:libtiffWarning");
-            try
-                file = Tiff(char(path), "r");
-            catch error
-                nansen.internal.throwError("invalid-data", "%s is not a TIFF file: %s", path, error.message)
-            end
-            closer = onCleanup(@() close(file));
-            text = ophys.ScanImageTiff.tag(file, "Software") + newline + ophys.ScanImageTiff.tag(file, "ImageDescription");
-            artist = ophys.ScanImageTiff.tag(file, "Artist");
-            pages = {};
-            while true
-                pages{end + 1} = file.read(); %#ok<AGROW>
-                if file.lastDirectory()
-                    break
-                end
-                file.nextDirectory();
-            end
+        function data = read(obj, path)
+            data = all(obj.open(path));
+        end
+
+        function stack = open(~, paths)
+            %open The recording as a nansen.Stack read volume by volume; ScanImage's files of one recording are
+            %joined, their pages one sequence (a volume may begin in one file and end in the next)
+            paths = nansen.internal.naturalOrder(paths);
+            [count, reader, first] = ophys.internal.tiffPages(paths);
+            text = first.Software + newline + first.ImageDescription;
             if ~contains(text, "SI.")
-                nansen.internal.throwError("invalid-data", "%s is not a ScanImage TIFF file (no SI. metadata)", path)
+                nansen.internal.throwError("invalid-data", "%s is not a ScanImage TIFF file (no SI. metadata)", paths(1))
             end
             channels = max(1, numel(ophys.ScanImageTiff.siNumbers(text, "hChannels.channelSave")));
             planes = ophys.ScanImageTiff.siNumbers(text, "hStackManager.actualNumSlices");
@@ -44,19 +35,22 @@ classdef ScanImageTiff < nansen.FileAdapter
                 planes = 1;
             end
             planes = planes(1);
-            stack = cat(3, pages{:});
-            volumes = floor(size(stack, 3) / (channels * planes));
-            data = reshape(stack(:, :, 1:volumes * channels * planes), size(stack, 1), size(stack, 2), channels, planes, volumes);
             mroi = ophys.ScanImageTiff.siNumbers(text, "hRoiManager.mroiEnable");
-            if ~isempty(mroi) && mroi(1) ~= 0 && strlength(artist) > 0
-                data = ophys.ScanImageTiff.mosaic(data, artist, path);
+            mosaic = ~isempty(mroi) && mroi(1) ~= 0 && strlength(first.Artist) > 0;
+            volumes = floor(count / (channels * planes));   % pages after the last whole volume are left out
+            read = @(a, b) ophys.ScanImageTiff.volumes(reader, size(first.Page), channels, planes, mosaic, first.Artist, paths(1), a, b);
+            if volumes > 0
+                probe = read(1, 1);
+            else
+                probe = zeros([size(first.Page), 0], "like", first.Page);
             end
-            if planes == 1
-                data = reshape(data, size(data, 1), size(data, 2), channels, volumes);
-                if channels == 1
-                    data = reshape(data, size(data, 1), size(data, 2), volumes);
-                end
+            dimensions = size(probe, 1:2);
+            if planes > 1
+                dimensions = [dimensions, channels, planes];
+            elseif channels > 1
+                dimensions = [dimensions, channels];
             end
+            stack = nansen.Stack([dimensions, volumes], class(first.Page), read);
         end
 
         function write(~, ~, ~)
@@ -114,11 +108,19 @@ classdef ScanImageTiff < nansen.FileAdapter
     end
 
     methods (Static, Access = private)
-        function value = tag(file, name)
-            try
-                value = string(file.getTag(char(name)));
-            catch
-                value = "";
+        function data = volumes(reader, pageSize, channels, planes, mosaic, artist, path, a, b)
+            %volumes Volumes a..b as height x width (x channels (x planes)) x n
+            count = b - a + 1;
+            pages = reader((a - 1) * channels * planes + 1, b * channels * planes);
+            data = reshape(pages, pageSize(1), pageSize(2), channels, planes, count);
+            if mosaic
+                data = ophys.ScanImageTiff.mosaic(data, artist, path);
+            end
+            if planes == 1
+                data = reshape(data, size(data, 1), size(data, 2), channels, count);
+                if channels == 1
+                    data = reshape(data, size(data, 1), size(data, 2), count);
+                end
             end
         end
     end

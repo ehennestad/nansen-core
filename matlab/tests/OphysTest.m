@@ -103,8 +103,10 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyClass(raw, "uint16");
             testCase.verifyEqual(size(raw), [32, 32, 40]);
             testCase.verifyEqual(ophys.internal.roundTo(mean(double(raw), "all"), 4), 202.9881);
-            tiff = ophys.TiffStack().read(fullfile(folder, "ses-s2", "rec.tif"));
+            parts = fullfile(folder, "ses-s2", ["rec_part10.tif", "rec_part2.tif"]);
+            tiff = all(ophys.TiffStack().open(parts));   % one recording, joined in natural order
             testCase.verifyEqual(size(tiff), [32, 32, 40]);
+            testCase.verifyEqual(tiff(:, :, 1:15), ophys.TiffStack().read(parts(2)));
             testCase.verifyEqual(ophys.internal.roundTo(mean(double(tiff), "all"), 4), 201.0274);
         end
 
@@ -142,10 +144,16 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(ophys.ScanImageTiff.siNumbers(text, "hRoiManager.mroiEnable"), 1);
             testCase.verifyEmpty(ophys.ScanImageTiff.siNumbers(text, "hFastZ.enable"));
             folder = fullfile(nansen.internal.repoRoot(), "conformance", "api", "ophys", "project", "data", "raw", "sub-m1");
-            data = ophys.ScanImageTiff().read(fullfile(folder, "ses-s4", "rec_00001.tif"));
+            files = fullfile(folder, "ses-s4", ["rec_00002.tif", "rec_00001.tif"]);
+            stack = ophys.ScanImageTiff().open(files);   % joined in natural order, whatever order they come in
+            data = stack.all();
             testCase.verifyEqual(size(data), [16, 64, 2, 2, 3]);
             testCase.verifyFalse(any(data == 9999, "all"));   % no flyback lines
-            testCase.verifyError(@() ophys.ScanImageTiff().read(fullfile(folder, "ses-s2", "rec.tif")), "nansen:InvalidData");
+            first = ophys.ScanImageTiff().read(files(2));   % 7 pages: one whole volume of 2 channels x 2 planes
+            testCase.verifyEqual(size(first, 1:5), [16, 64, 2, 2, 1]);
+            testCase.verifyEqual(first, data(:, :, :, :, 1));
+            testCase.verifyEqual(stack.frames(2, 2), data(:, :, :, :, 2));   % begins in one file and ends in the next
+            testCase.verifyError(@() ophys.ScanImageTiff().read(fullfile(folder, "ses-s2", "rec_part2.tif")), "nansen:InvalidData");
         end
 
         function updatesRois(testCase)

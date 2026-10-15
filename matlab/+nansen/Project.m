@@ -14,6 +14,12 @@ classdef Project < handle
         DataCache
     end
 
+    properties
+        % The most frames a stack from openStack gives in one read (Inf: no limit); a test sets it to show
+        % that a method reads a recording in chunks
+        StackFrameLimit (1,1) double = Inf
+    end
+
     properties (Access = private)
         DatasetCache = []
         AdapterCache = []
@@ -1646,10 +1652,13 @@ classdef Project < handle
         end
 
         function data = load(obj, entity, name, options)
-            %load Read the variable for the entity with its file adapter (the first file when several match)
+            %load Read the variable for the entity with its file adapter
             %
-            %   What was read is kept in obj.DataCache and given again until the
-            %   file changes; load(..., Cached=false) reads the file and keeps nothing.
+            %   When a file pattern matches several files, an adapter that can
+            %   open stacks (open) reads them as one recording, joined along the
+            %   frames in natural order; any other reads the first. What was read
+            %   is kept in obj.DataCache and given again until a file changes;
+            %   load(..., Cached=false) reads the files and keeps nothing.
             arguments
                 obj
                 entity
@@ -1662,14 +1671,74 @@ classdef Project < handle
                 nansen.internal.throwError("data-not-found", "%s has no '%s'", entity.EntityType, name)
             end
             adapter = obj.adapters().get(variable.FileAdapter);
-            path = paths(1);
+            if numel(paths) > 1 && ismethod(adapter, "open")
+                paths = nansen.internal.naturalOrder(paths);
+                reader = @() all(adapter.open(paths));
+            else
+                paths = paths(1);
+                reader = @() adapter.read(paths(1));
+            end
             if ~options.Cached
-                data = adapter.read(path);
+                data = reader();
                 return
             end
-            info = dir(path);
-            data = obj.DataCache.getOrLoad(nansen.Project.cacheKey(variable.FileAdapter, path), ...
-                [info.datenum, info.bytes], @() adapter.read(path));
+            stamps = zeros(numel(paths), 2);
+            for i = 1:numel(paths)
+                info = dir(paths(i));
+                stamps(i, :) = [info.datenum, info.bytes];
+            end
+            data = obj.DataCache.getOrLoad(nansen.Project.cacheKey(variable.FileAdapter, strjoin(paths, "|")), ...
+                reshape(stamps.', 1, []), reader);
+        end
+
+        function stack = openStack(obj, entity, name)
+            %openStack The variable as a nansen.Stack read a few frames at a time
+            %
+            %   An adapter with open reads only the frames asked for, and joins a
+            %   recording kept in several files; for any other, the whole value is
+            %   read (load) and given as a stack.
+            variable = obj.dataVariable(name);
+            paths = obj.existingFiles(entity, name);
+            if isempty(paths)
+                nansen.internal.throwError("data-not-found", "%s has no '%s'", entity.EntityType, name)
+            end
+            adapter = obj.adapters().get(variable.FileAdapter);
+            if ismethod(adapter, "open")
+                stack = adapter.open(nansen.internal.naturalOrder(paths));
+                if ~isa(stack, "nansen.Stack")
+                    stack = nansen.Stack.fromArray(stack);
+                end
+            else
+                stack = nansen.Stack.fromArray(obj.load(entity, name));
+            end
+            stack.MaxFrames = obj.StackFrameLimit;
+        end
+
+        function writer = stackWriter(obj, entity, name, dimensions, className)
+            %stackWriter A nansen.StackWriter of the variable as a stack of the given size, a chunk of frames at a time
+            %
+            %   An adapter with create writes each chunk to the file as it comes;
+            %   for any other, the stack is kept in memory and written with write
+            %   when the writer closes. An empty name writes nothing.
+            if strlength(string(name)) == 0
+                writer = nansen.StackWriter(dimensions, className);
+                return
+            end
+            variable = obj.dataVariable(name);
+            path = obj.writePath(entity, name);
+            folder = fileparts(path);
+            if ~isfolder(folder)
+                mkdir(folder);
+            end
+            adapter = obj.adapters().get(variable.FileAdapter);
+            obj.DataCache.remove(nansen.Project.cacheKey(variable.FileAdapter, path));
+            if ismethod(adapter, "create")
+                writer = adapter.create(path, dimensions, className);
+            else
+                cache = obj.DataCache;
+                key = nansen.Project.cacheKey(variable.FileAdapter, path);
+                writer = nansen.StackWriter(dimensions, className, Finish=@(data) nansen.Project.writeAndForget(adapter, path, data, cache, key));
+            end
         end
 
         function path = save(obj, entity, name, data)
@@ -1912,6 +1981,11 @@ classdef Project < handle
     end
 
     methods (Static, Access = private)
+        function writeAndForget(adapter, path, data, cache, key)
+            adapter.write(path, data);
+            cache.remove(key);
+        end
+
         function key = cacheKey(adapterId, path)
             % One entry per file and file adapter
             key = string(adapterId) + "|" + string(path);

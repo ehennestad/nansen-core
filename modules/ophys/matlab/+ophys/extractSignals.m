@@ -1,6 +1,8 @@
 function result = extractSignals(entity, options, context)
 %extractSignals Average of each ROI's pixels per frame (frames x ROIs), and of a ring of neuropil around it outside every ROI
-    stack = ophys.internal.loadStack(context, entity, options.stack);
+%
+%   Reads the stack a chunk at a time.
+    stack = ophys.internal.openStack(context, entity, options.stack);
     [height, width, frames] = size(stack);
     document = context.Project.load(entity, options.rois);
     rois = ophys.internal.roiList(document);
@@ -12,7 +14,6 @@ function result = extractSignals(entity, options, context)
     end
     document.rois = rois;
     masks = ophys.internal.roiMasks(document, height, width);
-    flat = reshape(stack, height * width, frames);
     count = numel(masks);
     signals = nan(frames, count);
     neuropil = nan(frames, count);
@@ -20,15 +21,22 @@ function result = extractSignals(entity, options, context)
     for i = 1:count
         union = union | masks{i};
     end
+    rings = cell(1, count);
     for i = 1:count
-        context.checkCancelled();
-        signals(:, i) = mean(double(flat(masks{i}(:), :)), 1)';
-        ring = ophys.internal.dilate(masks{i}, options.neuropilGap + options.neuropilWidth) ...
+        rings{i} = ophys.internal.dilate(masks{i}, options.neuropilGap + options.neuropilWidth) ...
             & ~ophys.internal.dilate(masks{i}, options.neuropilGap) & ~union;
-        if any(ring, "all")
-            neuropil(:, i) = mean(double(flat(ring(:), :)), 1)';
+    end
+    for start = 1:ophys.internal.chunk():frames
+        context.checkCancelled();
+        stop = min(start + ophys.internal.chunk() - 1, frames);
+        flat = reshape(stack.frames(start, stop), height * width, stop - start + 1);
+        for i = 1:count
+            signals(start:stop, i) = mean(double(flat(masks{i}(:), :)), 1)';
+            if any(rings{i}, "all")
+                neuropil(start:stop, i) = mean(double(flat(rings{i}(:), :)), 1)';
+            end
         end
-        context.progress(i / count, sprintf("ROI %d/%d", i, count));
+        context.progress(stop / frames, sprintf("frame %d/%d", stop, frames));
     end
     ophys.internal.saveIf(context, entity, options.output, signals);
     ophys.internal.saveIf(context, entity, options.neuropilOutput, neuropil);

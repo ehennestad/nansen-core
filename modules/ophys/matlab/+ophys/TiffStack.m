@@ -7,27 +7,14 @@ classdef TiffStack < nansen.FileAdapter
 %   files with tifffile.
 
     methods
-        function data = read(~, path)
-            warning("off", "imageio:tiffmexutils:libtiffWarning");
-            warning("off", "MATLAB:imagesci:tiffmexutils:libtiffWarning");
-            try
-                file = Tiff(char(path), "r");
-            catch error
-                nansen.internal.throwError("invalid-data", "%s is not a TIFF file: %s", path, error.message)
-            end
-            closer = onCleanup(@() close(file));
-            frames = {};
-            while true
-                frames{end + 1} = file.read(); %#ok<AGROW>
-                if file.lastDirectory()
-                    break
-                end
-                file.nextDirectory();
-            end
-            if ~ismatrix(frames{1})
-                nansen.internal.throwError("invalid-data", "%s does not hold grayscale frames", path)
-            end
-            data = cat(3, frames{:});
+        function data = read(obj, path)
+            data = all(obj.open(path));
+        end
+
+        function stack = open(~, paths)
+            %open The pages of the files, in natural order, as one nansen.Stack read page by page
+            [count, reader, first] = ophys.internal.tiffPages(nansen.internal.naturalOrder(paths));
+            stack = nansen.Stack([size(first.Page), count], class(first.Page), reader);
         end
 
         function write(~, path, data)

@@ -153,6 +153,16 @@ A file adapter reads a file into a value and writes a value to a file. The built
 
 A Python implementation is a class with `read(path)` and `write(path, data)`. A MATLAB one is a subclass of `nansen.FileAdapter`. Data variables name the adapter by id. See [entities](entities.md) for how a data variable finds its file.
 
+### Image stacks larger than memory, and recordings in several files
+
+An adapter of image stacks can also have `open(paths)`, which returns a stack read a chunk of frames at a time (`nansen.stacks.Stack` in Python, `nansen.Stack` in MATLAB): height x width (x channels (x planes)) x frames, with `frames(start, stop)` reading only those frames. Several files are one recording, joined along the frames in natural order (`part2` before `part10`), so a file pattern with `"cardinality": "many"` can match each file a microscope wrote. `npy`, `ophys.sciscan_raw`, `ophys.tiff_stack` and `ophys.scanimage_tiff` have it. A ScanImage volume may begin in one file and end in the next.
+
+- `project.open_stack(entity, name)` (`openStack` in MATLAB) gives a variable as a stack: lazily through `open` where the adapter has it, else the whole value read by `load`.
+- `project.load` reads a recording in several files as one array, through `open`; with an adapter without `open`, it reads the first file.
+- `project.stack_writer(entity, name, shape, dtype)` (`stackWriter(entity, name, size, className)`) writes a stack a chunk of frames at a time. An adapter's `create(path, shape, dtype)` writes each chunk to the file as it comes (`npy` does, in Fortran order so a chunk of frames is one stretch of the file); otherwise the stack is kept in memory and written with `write` when the writer closes.
+
+The ophys methods that handle whole recordings read them this way and never whole: image statistics, motion correction (which also writes the aligned stack in chunks), signal extraction and downsampling, and the viewer's frames and projections (`data.frame`). The others (ROI detection, Quicky, denoising and the external tools) read the stack whole. Setting `project.stack_frame_limit` (`StackFrameLimit`) makes any read of more frames than that fail; the tests use it to show which methods read in chunks.
+
 ## Pipelines
 
 A pipeline (`nansen.pipeline`) is an ordered list of method steps, each with an optional preset and options. Queueing it makes one chain of tasks per entity. Each step waits for the step before it, and is cancelled if that step fails or is cancelled.

@@ -27,8 +27,8 @@ def round_to(value, digits):
 
 
 def image_stats(entity, options, context):
-    """Size and intensity of the stack; saves its average and maximum projections."""
-    stack = _load_stack(entity, options["stack"], context)
+    """Size and intensity of the stack; saves its average and maximum projections. Reads a chunk at a time."""
+    stack = _open_stack(entity, options["stack"], context)
     height, width, frames = stack.shape
     total = 0.0
     maximum = None
@@ -48,27 +48,46 @@ def image_stats(entity, options, context):
 
 
 def motion_correction(entity, options, context):
-    """Align each frame to a reference by the whole-pixel shift of largest (smoothed) phase correlation."""
-    stack = _load_stack(entity, options["stack"], context)
+    """Align each frame to a reference by the whole-pixel shift of largest (smoothed) phase correlation.
+
+    The stack is read a chunk at a time and the aligned stack written the same way, so a recording need not
+    fit in memory. Each iteration but the last makes the next reference: the average of the frames aligned.
+    """
+    stack = _open_stack(entity, options["stack"], context)
     height, width, frames = stack.shape
     count = min(options["referenceFrames"], frames)
     reference = stack[:, :, :count].astype(np.float64).mean(axis=2)
     iterations = options["iterations"]
     for iteration in range(iterations):
+        last = iteration == iterations - 1
         shifts = np.zeros((frames, 2), dtype=np.int32)
         reference_fft = np.conj(np.fft.fft2(reference)) * _smoothing(height, width)
-        for start in range(0, frames, CHUNK):
-            context.check_cancelled()
-            stop = min(start + CHUNK, frames)
-            shifts[start:stop] = estimate_shifts(stack[:, :, start:stop], reference_fft, options["maxShift"])
-            context.progress((iteration * frames + stop) / (iterations * frames), f"iteration {iteration + 1}: frame {stop}/{frames}")
-        aligned = apply_shifts(stack, shifts)
-        reference = aligned.astype(np.float64).mean(axis=2)
-    _save(entity, options["output"], aligned, context)
+        total = np.zeros((height, width))
+        with (context.project.stack_writer(entity, options["output"], stack.shape, stack.dtype) if last else _NoWriter()) as out:
+            for start in range(0, frames, CHUNK):
+                context.check_cancelled()
+                stop = min(start + CHUNK, frames)
+                chunk = stack[:, :, start:stop]
+                shifts[start:stop] = estimate_shifts(chunk, reference_fft, options["maxShift"])
+                aligned = apply_shifts(chunk, shifts[start:stop])
+                if last:
+                    out.write(start, aligned)
+                else:
+                    total += aligned.astype(np.float64).sum(axis=2)
+                context.progress((iteration * frames + stop) / (iterations * frames), f"iteration {iteration + 1}: frame {stop}/{frames}")
+        reference = total / frames
     _save(entity, options["shiftsOutput"], shifts, context)
     distance = np.sqrt((shifts.astype(np.float64) ** 2).sum(axis=1))
     context.log(f"{_name(entity)}: largest shift {int(np.abs(shifts).max(initial=0))} px")
     return {"frames": frames, "maxShift": int(np.abs(shifts).max(initial=0)), "meanShift": round_to(distance.mean(), 4)}
+
+
+class _NoWriter:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 def estimate_shifts(frames, reference_fft, max_shift):
@@ -385,25 +404,29 @@ def overlap(a, b):
 
 
 def extract_signals(entity, options, context):
-    """Average of each ROI's pixels per frame, and of a ring of neuropil around it outside every ROI."""
-    stack = _load_stack(entity, options["stack"], context)
+    """Average of each ROI's pixels per frame, and of a ring of neuropil around it outside every ROI.
+    Reads the stack a chunk at a time."""
+    stack = _open_stack(entity, options["stack"], context)
     height, width, frames = stack.shape
     document = context.project.load(entity, options["rois"])
     kept = [roi for roi in document.get("rois", []) if options["includeRejected"] or roi.get("classification") != "rejected"]
     masks = roi_masks(dict(document, rois=kept), height, width)
-    flat = stack.reshape(height * width, frames)
     signals = np.full((frames, len(masks)), np.nan)
     neuropil = np.full((frames, len(masks)), np.nan)
     union = np.zeros((height, width), dtype=bool)
     for mask in masks:
         union |= mask
-    for i, mask in enumerate(masks):
+    inside = [np.flatnonzero(mask) for mask in masks]
+    rings = [np.flatnonzero(neuropil_ring(mask, union, options["neuropilGap"], options["neuropilWidth"])) for mask in masks]
+    for start in range(0, frames, CHUNK):
         context.check_cancelled()
-        signals[:, i] = flat[np.flatnonzero(mask)].astype(np.float64).mean(axis=0)
-        ring = neuropil_ring(mask, union, options["neuropilGap"], options["neuropilWidth"])
-        if ring.any():
-            neuropil[:, i] = flat[np.flatnonzero(ring)].astype(np.float64).mean(axis=0)
-        context.progress((i + 1) / len(masks), f"ROI {i + 1}/{len(masks)}")
+        stop = min(start + CHUNK, frames)
+        flat = stack[:, :, start:stop].reshape(height * width, stop - start)
+        for i in range(len(masks)):
+            signals[start:stop, i] = flat[inside[i]].astype(np.float64).mean(axis=0)
+            if rings[i].size:
+                neuropil[start:stop, i] = flat[rings[i]].astype(np.float64).mean(axis=0)
+        context.progress(stop / frames, f"frame {stop}/{frames}")
     _save(entity, options["output"], signals, context)
     _save(entity, options["neuropilOutput"], neuropil, context)
     context.log(f"{_name(entity)}: signals of {len(masks)} ROIs in {frames} frames")
@@ -499,8 +522,8 @@ def _percentile(values, percentile):
 
 
 def downsample(entity, options, context):
-    """Bin the stack: mean (single precision) or maximum of each bin of frames and of pixels."""
-    stack = _load_stack(entity, options["stack"], context)
+    """Bin the stack: mean (single precision) or maximum of each bin of frames and of pixels. Reads a chunk at a time."""
+    stack = _open_stack(entity, options["stack"], context)
     factor, side = options["temporalFactor"], options["spatialFactor"]
     height, width = stack.shape[0] // side, stack.shape[1] // side
     frames = stack.shape[2] // factor
@@ -879,13 +902,22 @@ def suite2p(entity, options, context):
     _save(entity, options["spikesOutput"], np.load(plane / "spks.npy")[keep].T.astype(np.float64), context)
     return {"rois": len(rois), "frames": frames}
 
-def _load_stack(entity, name, context):
-    stack = np.asarray(context.project.load(entity, name))
+def _open_stack(entity, name, context):
+    """The variable as a height x width x frames stack read a chunk at a time (an image is one frame)."""
+    from nansen.stacks import from_array
+    stack = context.project.open_stack(entity, name)
     if stack.ndim == 2:
-        stack = stack[:, :, None]
+        limit, stack.max_frames = stack.max_frames, None   # an image's columns are not frames
+        stack = from_array(np.asarray(stack)[:, :, None])
+        stack.max_frames = limit
     if stack.ndim != 3:
         raise NansenError("invalid-data", f"{name} is {stack.shape}; ophys methods take one channel, height x width x frames")
     return stack
+
+
+def _load_stack(entity, name, context):
+    """The variable as a height x width x frames array, read whole (for methods that need every frame at once)."""
+    return np.asarray(_open_stack(entity, name, context))
 
 
 def _as_traces(data):

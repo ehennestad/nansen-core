@@ -79,6 +79,20 @@ class NpyAdapter:
         numpy = _optional("numpy", "npy")
         numpy.save(str(path), numpy.asarray(data), allow_pickle=False)
 
+    def open(self, paths: List[Path]) -> Any:
+        """The arrays as one stack, memory-mapped: frames are read when asked for. Several files are joined."""
+        numpy = _optional("numpy", "npy")
+        from .stacks import from_array, join, natural_order
+        return join([from_array(numpy.load(str(p), mmap_mode="r", allow_pickle=False)) for p in natural_order(paths)])
+
+    def create(self, path: Path, shape: Any, dtype: Any) -> Any:
+        """A writer of a new array, a chunk of frames at a time, straight into the file. Frames are kept
+        together (Fortran order), so a chunk of frames is one stretch of the file to read or write."""
+        numpy = _optional("numpy", "npy")
+        from .stacks import StackWriter
+        target = numpy.lib.format.open_memmap(str(path), mode="w+", dtype=numpy.dtype(dtype), shape=tuple(shape), fortran_order=True)
+        return StackWriter(shape, dtype, target=target)
+
 
 def _optional(module: str, adapter: str):
     try:

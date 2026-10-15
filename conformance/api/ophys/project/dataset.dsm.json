@@ -29,8 +29,8 @@
             "filePatterns": [
               { "name": "recording", "pattern": "\\.raw$", "cardinality": "one" },
               { "name": "recording_ini", "pattern": "\\.ini$", "cardinality": "one" },
-              { "name": "tiff", "pattern": "\\.tif$", "cardinality": "one" },
-              { "name": "scanimage", "pattern": "_\\d{5}\\.tif$", "cardinality": "one" }
+              { "name": "tiff", "pattern": "\\.tif$", "cardinality": "many" },
+              { "name": "scanimage", "pattern": "_\\d{5}\\.tif$", "cardinality": "many" }
             ]
           }
         ],

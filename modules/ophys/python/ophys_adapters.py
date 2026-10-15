@@ -37,7 +37,15 @@ class SciScanRaw:
     """
 
     def read(self, path):
-        path = Path(path)
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        """The recording as a stack read frame by frame from the file (a memory map); several files are joined."""
+        from nansen.stacks import join, natural_order
+        return join([self._open_one(Path(p)) for p in natural_order(paths)])
+
+    def _open_one(self, path):
+        from nansen.stacks import Stack
         ini = path.with_suffix(".ini")
         if not ini.is_file():
             raise NansenError("invalid-data", f"{path} has no {ini.name} beside it")
@@ -53,9 +61,15 @@ class SciScanRaw:
         frames = path.stat().st_size // (per_frame * dtype.itemsize)
         if "no.of.frames.acquired" in values:
             frames = min(frames, int(ini_number(values, "no.of.frames.acquired", ini)))
-        data = np.fromfile(path, dtype=dtype, count=frames * per_frame).astype(dtype.newbyteorder("="))
-        data = data.reshape(frames, channels, height, width).transpose(2, 3, 1, 0)
-        return np.ascontiguousarray(data[:, :, 0, :] if channels == 1 else data)
+        mapped = np.memmap(path, dtype=dtype, mode="r", shape=(frames, channels, height, width)) if frames else None
+        native = dtype.newbyteorder("=")
+
+        def read(start, stop):
+            data = np.asarray(mapped[start:stop]).astype(native).transpose(2, 3, 1, 0)
+            return data[:, :, 0, :] if channels == 1 else data
+
+        shape = (height, width, frames) if channels == 1 else (height, width, channels, frames)
+        return Stack(shape, native, read)
 
     def write(self, path, data):
         data = np.asarray(data)
@@ -84,13 +98,20 @@ class TiffStack:
     """A multi-page grayscale TIFF file, as height x width x frames (needs tifffile)."""
 
     def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        """The pages of the files, in natural order, as one stack read page by page."""
+        from nansen.stacks import Stack, natural_order, pages
         tifffile = _tifffile()
-        data = np.asarray(tifffile.imread(str(path)))
-        if data.ndim == 2:
-            return data[:, :, None]
-        if data.ndim != 3:
-            raise NansenError("invalid-data", f"{path} holds {data.shape}; a TIFF stack of grayscale frames is read")
-        return np.ascontiguousarray(np.moveaxis(data, 0, 2))
+        paths = [str(p) for p in natural_order(paths)]
+        with tifffile.TiffFile(paths[0]) as tif:
+            first = tif.pages[0]
+            if len(first.shape) != 2:
+                raise NansenError("invalid-data", f"{paths[0]} holds pages of {first.shape}; a TIFF stack of grayscale frames is read")
+            frame_shape, dtype = tuple(first.shape), first.dtype
+        count, read_pages = pages(paths, _page_count, _read_pages, frame_shape, dtype)
+        return Stack(frame_shape + (count,), dtype, lambda start, stop: np.moveaxis(read_pages(start, stop), 0, 2))
 
     def write(self, path, data):
         tifffile = _tifffile()
@@ -114,26 +135,41 @@ class ScanImageTiff:
     """
 
     def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        """The recording as a stack read volume by volume; ScanImage's files of one recording are joined, their
+        pages one sequence (a volume may begin in one file and end in the next)."""
+        from nansen.stacks import Stack, natural_order, pages
         tifffile = _tifffile()
-        with tifffile.TiffFile(str(path)) as tif:
+        paths = [str(p) for p in natural_order(paths)]
+        with tifffile.TiffFile(paths[0]) as tif:
             first = tif.pages[0]
             text = "\n".join(str(first.tags[name].value) for name in ("Software", "ImageDescription") if name in first.tags)
             artist = str(first.tags["Artist"].value) if "Artist" in first.tags else ""
-            pages = np.stack([page.asarray() for page in tif.pages], axis=0)
+            height, width = first.shape[:2]
+            dtype = first.dtype
         if "SI." not in text:
-            raise NansenError("invalid-data", f"{path} is not a ScanImage TIFF file (no SI. metadata)")
+            raise NansenError("invalid-data", f"{paths[0]} is not a ScanImage TIFF file (no SI. metadata)")
         channels = len(si_numbers(text, "hChannels.channelSave")) or 1
         planes = int((si_numbers(text, "hStackManager.actualNumSlices") or si_numbers(text, "hStackManager.numSlices") or [1])[0])
-        volumes = pages.shape[0] // (channels * planes)
-        height, width = pages.shape[1:3]
-        data = pages[:volumes * channels * planes].reshape(volumes, planes, channels, height, width).transpose(3, 4, 2, 1, 0)
-        if (si_numbers(text, "hRoiManager.mroiEnable") or [0])[0] and artist:
-            data = mroi_mosaic(data, artist, path)
-        if planes == 1:
-            data = data[:, :, :, 0, :]
-            if channels == 1:
-                data = data[:, :, 0, :]
-        return np.ascontiguousarray(data)
+        mosaic = bool((si_numbers(text, "hRoiManager.mroiEnable") or [0])[0] and artist)
+        count, read_pages = pages(paths, _page_count, _read_pages, (height, width), dtype)
+        volumes = count // (channels * planes)   # pages after the last whole volume are left out
+
+        def read(start, stop):
+            data = read_pages(start * channels * planes, stop * channels * planes)
+            data = data.reshape(stop - start, planes, channels, height, width).transpose(3, 4, 2, 1, 0)
+            if mosaic:
+                data = mroi_mosaic(data, artist, paths[0])
+            if planes == 1:
+                data = data[:, :, :, 0, :]
+                if channels == 1:
+                    data = data[:, :, 0, :]
+            return data
+
+        probe = read(0, 1) if volumes else read(0, 0)
+        return Stack(probe.shape[:-1] + (volumes,), dtype, read)
 
     def write(self, path, data):
         raise NansenError("invalid-params", "ScanImage files are written by ScanImage; save a stack with npy or ophys.tiff_stack")
@@ -171,6 +207,16 @@ def mroi_mosaic(data, artist, path):
         top += h + gap
         left += w
     return out
+
+
+def _page_count(path):
+    with _tifffile().TiffFile(str(path)) as tif:
+        return len(tif.pages)
+
+
+def _read_pages(path, start, stop):
+    with _tifffile().TiffFile(str(path)) as tif:
+        return np.stack([tif.pages[i].asarray() for i in range(start, stop)], axis=0)
 
 
 def _tifffile():

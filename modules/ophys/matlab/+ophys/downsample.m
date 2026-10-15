@@ -1,6 +1,6 @@
 function result = downsample(entity, options, context)
-%downsample Bin the stack: mean (single precision) or maximum of each bin of frames and of pixels
-    stack = ophys.internal.loadStack(context, entity, options.stack);
+%downsample Bin the stack: mean (single precision) or maximum of each bin of frames and of pixels. Reads a chunk at a time.
+    stack = ophys.internal.openStack(context, entity, options.stack);
     factor = options.temporalFactor;
     side = options.spatialFactor;
     height = floor(size(stack, 1) / side);
@@ -13,14 +13,14 @@ function result = downsample(entity, options, context)
     if byMean
         out = zeros(height, width, frames, "single");
     else
-        out = zeros(height, width, frames, "like", stack);
+        out = zeros(height, width, frames, stack.ClassName);
     end
     step = max(1, floor(ophys.internal.chunk() / factor));
     for first = 0:step:frames - 1
         context.checkCancelled();
         last = min(first + step, frames);
-        bins = reshape(stack(1:height * side, 1:width * side, first * factor + 1:last * factor), ...
-            side, height, side, width, factor, last - first);
+        part = stack.frames(first * factor + 1, last * factor);
+        bins = reshape(part(1:height * side, 1:width * side, :), side, height, side, width, factor, last - first);
         if byMean
             out(:, :, first + 1:last) = single(reshape(mean(double(bins), [1, 3, 5]), height, width, last - first));
         else

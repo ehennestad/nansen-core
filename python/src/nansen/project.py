@@ -21,6 +21,7 @@ from .notebook import Notebook
 from .views import Views
 from . import runs
 from .schemas import current_version
+from .stacks import Stack, StackWriter, as_stack, natural_order
 from .tables import Column, EntityTable, TableSpec
 
 PROJECT_FILE = "project.nansen.json"
@@ -61,6 +62,9 @@ class Project:
         self._modules: Optional[List[Module]] = None
         # Data read by load, kept until its file changes; dev's DataCache, but this project's own
         self.data_cache = DataCache()
+        # the most frames a stack from open_stack gives in one read (None: no limit); a test sets it to show
+        # that a method reads a recording in chunks
+        self.stack_frame_limit: Optional[int] = None
 
     # -- creating and opening -------------------------------------------------------------
 
@@ -1019,22 +1023,63 @@ class Project:
         return existing
 
     def load(self, entity: Entity, name: str, cached: bool = True) -> Any:
-        """Read the variable for the entity with its file adapter (the first file, when a pattern matches several).
+        """Read the variable for the entity with its file adapter.
 
-        What was read is kept in ``data_cache`` and given again until the file changes; ``cached=False``
-        reads the file and keeps nothing.
+        When a file pattern matches several files, an adapter that can open stacks (``open``) reads them
+        as one recording, joined along the frames in natural order; any other reads the first.
+        What was read is kept in ``data_cache`` and given again until a file changes; ``cached=False``
+        reads the files and keeps nothing.
         """
         variable = self.data_variable(name)
         existing = self.existing_files(entity, name)
         if not existing:
             raise NansenError("data-not-found", f"{entity.entity_type} {entity.key} has no {name!r}")
         adapter = self.adapters.get(variable.file_adapter)
-        path = existing[0]
+        if len(existing) > 1 and hasattr(adapter, "open"):
+            paths = natural_order(existing)
+            read = lambda: _numpy_array(adapter.open(paths))
+        else:
+            paths = existing[:1]
+            read = lambda: adapter.read(paths[0])
         if not cached:
-            return adapter.read(path)
-        stat = path.stat()
-        return self.data_cache.get_or_load((variable.file_adapter, str(path.resolve())), (stat.st_mtime_ns, stat.st_size),
-                                           lambda: adapter.read(path))
+            return read()
+        stamps = tuple((p.stat().st_mtime_ns, p.stat().st_size) for p in paths)
+        key = (variable.file_adapter, *(str(p.resolve()) for p in paths))
+        return self.data_cache.get_or_load(key if len(paths) > 1 else key[:2], stamps if len(paths) > 1 else stamps[0], read)
+
+    def open_stack(self, entity: Entity, name: str) -> Stack:
+        """The variable as a stack read a few frames at a time (nansen.stacks.Stack).
+
+        An adapter with ``open`` reads only the frames asked for, and joins a recording kept in several
+        files; for any other, the whole value is read (``load``) and given as a stack.
+        """
+        variable = self.data_variable(name)
+        existing = self.existing_files(entity, name)
+        if not existing:
+            raise NansenError("data-not-found", f"{entity.entity_type} {entity.key} has no {name!r}")
+        adapter = self.adapters.get(variable.file_adapter)
+        stack = as_stack(adapter.open(natural_order(existing)) if hasattr(adapter, "open") else self.load(entity, name))
+        stack.max_frames = self.stack_frame_limit
+        return stack
+
+    def stack_writer(self, entity: Entity, name: str, shape: Any, dtype: Any) -> StackWriter:
+        """A writer of the variable as a stack of the given shape, a chunk of frames at a time.
+
+        An adapter with ``create`` writes each chunk to the file as it comes; for any other, the stack is
+        kept in memory and written with ``write`` when the writer closes. An empty name writes nothing.
+        """
+        if not name:
+            return StackWriter(shape, dtype)
+        variable = self.data_variable(name)
+        path = self.write_path(entity, name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        adapter = self.adapters.get(variable.file_adapter)
+        forget = lambda: self.data_cache.remove((variable.file_adapter, str(path.resolve())))
+        if hasattr(adapter, "create"):
+            writer = adapter.create(path, shape, dtype)
+            forget()
+            return writer
+        return StackWriter(shape, dtype, finish=lambda data: (adapter.write(path, data), forget()))
 
     def save(self, entity: Entity, name: str, data: Any) -> Path:
         """Write the variable for the entity, creating folders as needed. Returns the path written."""
@@ -1233,3 +1278,10 @@ def check_fragments(spec: TableSpec, fragments: Sequence[Fragment]) -> None:
         expected = [(c.name, c.data_type) for c in fragment.columns]
         if actual != expected:
             raise NansenError("fragment-mismatch", f"table columns for {fragment.id} are {actual}, the definition has {expected}")
+
+
+def _numpy_array(value: Any) -> Any:
+    """A stack read whole into an array."""
+    import numpy
+    return numpy.asarray(value)
+

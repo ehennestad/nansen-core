@@ -16,7 +16,7 @@ from .errors import NansenError
 def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optional[str] = None,
                 limits: Optional[List[float]] = None, plane: int = 0) -> Dict[str, Any]:
     """A frame of a height x width (x frames), height x width x channels x frames or height x width x channels x
-    planes x frames array, as 8-bit values.
+    planes x frames array or stack (nansen.stacks.Stack, read a chunk of frames at a time), as 8-bit values.
 
     Values from low to high are scaled to 0..255 as floor((v - low) / (high - low) * 255 + 0.5), cut at
     both ends; NaN is 0. low and high are the limits given, or else the smallest and largest finite value
@@ -26,30 +26,45 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         import numpy as np
     except ImportError:
         raise NansenError("adapter-unavailable", 'viewing arrays needs NumPy: pip install "nansen-core[npy]"') from None
-    array = np.asarray(data)
-    if array.dtype.kind not in "biuf" or not 2 <= array.ndim <= 5:
+    from .stacks import Stack, from_array
+    stack = data if isinstance(data, Stack) else None
+    if stack is None:
+        array = np.asarray(data)
+        if array.dtype.kind not in "biuf" or not 2 <= array.ndim <= 5:
+            raise NansenError("invalid-data", "the data is not an image or a stack of images")
+        stack = from_array(array[:, :, None] if array.ndim == 2 else array)
+    elif stack.ndim == 2:
+        stack.max_frames = None   # an image's columns are not frames
+        stack = from_array(np.asarray(stack)[:, :, None])
+    if stack.dtype.kind not in "biuf" or not 3 <= stack.ndim <= 5:
         raise NansenError("invalid-data", "the data is not an image or a stack of images")
-    if array.ndim == 5:
-        if not 0 <= plane < array.shape[3]:
-            raise NansenError("invalid-params", f"there are {array.shape[3]} planes; plane {plane} is not one")
-        array = array[:, :, :, plane, :]
+    if stack.ndim == 5:
+        if not 0 <= plane < stack.shape[3]:
+            raise NansenError("invalid-params", f"there are {stack.shape[3]} planes; plane {plane} is not one")
+        stack = stack.select(slice(None), slice(None), slice(None), plane)
     elif plane != 0:
         raise NansenError("invalid-params", f"there is 1 plane; plane {plane} is not one")
-    if array.ndim == 4:
-        if not 0 <= channel < array.shape[2]:
-            raise NansenError("invalid-params", f"there are {array.shape[2]} channels; channel {channel} is not one")
-        array = array[:, :, channel, :]
-    if array.ndim == 2:
-        array = array[:, :, None]
-    height, width, frames = array.shape
+    if stack.ndim == 4:
+        if not 0 <= channel < stack.shape[2]:
+            raise NansenError("invalid-params", f"there are {stack.shape[2]} channels; channel {channel} is not one")
+        stack = stack.select(slice(None), slice(None), channel)
+    height, width, frames = stack.shape
+    chunk = 100   # frames read at a time for a projection
     if projection == "mean":
-        image, frame = array.astype(np.float64).mean(axis=2), None
+        total = np.zeros((height, width))
+        for start in range(0, frames, chunk):
+            total += stack.frames(start, start + chunk).astype(np.float64).sum(axis=2)
+        image, frame = total / frames, None
     elif projection == "max":
-        image, frame = array.max(axis=2).astype(np.float64), None
+        image = None
+        for start in range(0, frames, chunk):
+            peak = stack.frames(start, start + chunk).max(axis=2)
+            image = peak if image is None else np.maximum(image, peak)
+        image, frame = image.astype(np.float64), None
     elif projection is None:
         if not 0 <= frame < frames:
             raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
-        image = array[:, :, frame].astype(np.float64)
+        image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
     else:
         raise NansenError("invalid-params", f"projection is mean or max, not {projection!r}")
     if limits is not None:
