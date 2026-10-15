@@ -56,6 +56,8 @@ Each step was usable without a GUI before the next one started.
 | `nansen.cache.DataCache`, one per MATLAB session | A data cache per project (`project.data_cache`, `project.DataCache`): the same 2 GiB least-recently-used budget, and an entry is read again when its file changes on disk |
 | Modules (`module.nansen.json`) | Modules listing fragments, methods, adapters and pipelines by path; code for either language; added and removed from the overview |
 | `nansen.App` on the Java Widgets Toolbox | One HTML/JS dashboard for MATLAB (`uihtml`) and Python (browser) |
+| Apps in `+nansen/apps` (imviewer, roimanager, roiclassifier, fovmanager) | Dashboard pages: the viewer (frames, projections, ROIs, curation) in the core, and pages that modules add (`dashboard` scripts): the ophys module's FOV map and ROI review. They use only the protocol, so they work with either backend |
+| `ophys.twophoton` module: session methods, file adapters, toolbox wrappers | The `ophys` module: motion correction, ROI detection, signals, ΔF/F, deconvolution, denoising, downsampling and session alignment native in both languages with the same results; SciScan, TIFF and ScanImage readers; suite2p, CaImAn, NoRMCorre, EXTRACT, Flow-Registration, DeepInterpolation and imviewer where installed |
 | MATLAB only | MATLAB R2023a+ and Python 3.9+, held to the same behaviour by shared conformance cases |
 | ~360 unit tests with a throwaway user session | Unit tests in both languages, conformance cases shared by both, browser tests for the dashboard |
 
