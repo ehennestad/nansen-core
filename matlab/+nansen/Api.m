@@ -39,7 +39,7 @@ classdef Api < handle
             end
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
-            names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
+            names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.send", "rois.update", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
@@ -50,6 +50,9 @@ classdef Api < handle
                 % "entities.list" -> apiEntitiesList
                 handler = "api" + join(arrayfun(@(p) upper(extractBefore(p, 2)) + extractAfter(p, 1), split(name, ".")'), "");
                 obj.Methods(char(name)) = char(handler);
+            end
+            if ~isempty(obj.Catalog)
+                nansen.Addons.addToPath(obj.addonsFolder());   % the add-ons downloaded before
             end
             if ~isempty(options.Project)
                 obj.setProject(options.Project);
@@ -160,6 +163,27 @@ classdef Api < handle
             if ~isempty(obj.Catalog)
                 result = obj.Catalog.projects();
             end
+        end
+
+        function result = apiAddonsList(obj, ~)
+            % The add-ons the project's modules declare (the built-in modules' with no project open), and their state
+            folder = obj.addonsFolder();
+            result = struct("folder", char(folder), "language", "matlab", ...
+                "addons", {cellfun(@(a) nansen.Addons.status(a, folder), obj.declaredAddons(), UniformOutput=false)});
+        end
+
+        function result = apiAddonsInstall(obj, params)
+            folder = obj.addonsFolder();
+            addon = nansen.Addons.find(obj.declaredAddons(), string(nansen.Api.param(params, "id")));
+            nansen.Addons.install(addon, folder, string(nansen.internal.getField(params, "archive", "")));
+            result = nansen.Addons.status(addon, folder);
+        end
+
+        function result = apiAddonsRemove(obj, params)
+            folder = obj.addonsFolder();
+            addon = nansen.Addons.find(obj.declaredAddons(), string(nansen.Api.param(params, "id")));
+            nansen.Addons.remove(addon, folder);
+            result = nansen.Addons.status(addon, folder);
         end
 
         function result = apiSettingsGet(obj, ~)
@@ -1387,6 +1411,22 @@ classdef Api < handle
                 nansen.internal.throwError("invalid-params", "'%s' is not a name for module data", name)
             end
             path = fullfile(project.Folder, "module-data", module, name + ".json");
+        end
+
+        function addons = declaredAddons(obj)
+            if isempty(obj.Project)
+                addons = nansen.Addons.declared(nansen.Module.available(""));
+            else
+                addons = nansen.Addons.declared(obj.Project.modules());
+            end
+        end
+
+        function folder = addonsFolder(obj)
+            settings = obj.apiSettingsGet(struct());
+            folder = string(nansen.internal.getField(nansen.internal.getField(settings, "addons", struct()), "folder", ""));
+            if folder == ""
+                folder = nansen.Addons.defaultFolder();
+            end
         end
 
         function project = requireProject(obj)

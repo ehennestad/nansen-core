@@ -67,6 +67,10 @@ In the dashboard, an entity's image variables (data type `Image` or `ImageStack`
 
 A module can add pages to the dashboard: scripts listed under `dashboard` in `module.nansen.json`. When a project that uses the module is open, the dashboard runs each one with `N` (its toolkit: `N.h` to build elements, `N.icon`, `N.dialog`, …) and `module` (the module's id). A script calls `N.registerPage({id, title, icon, render(app, el)})`; the page is listed under Modules in the sidebar, and `render` fills `el`, asking the backend for what it needs with `app.client.request(method, params)`. Files of the module, such as data a page draws, are read with `modules.resource`. Data a page keeps in the project, such as the FOV map's injection sites, is read and saved with `modules.data` and `modules.saveData` (JSON text with a revision, so two windows do not overwrite each other). A page works the same with either backend, since it only uses the protocol.
 
+## Add-ons
+
+A module lists the toolboxes and packages its methods use under `addons` in `module.nansen.json`, as dev's AddonManager kept its list: each with an `id`, `title`, `language` (`matlab` or `python`), `source` (`github`: owner/repository, `pip`: a requirement, or `conda`: a conda-forge package), and `check` (a function or module that is there once it is installed); optionally `url`, `pathOrder` (`end` keeps a MATLAB add-on behind NANSEN's own functions) and `setup` (a MATLAB script run in its folder after a download, to compile for example). The Add-ons card on the Settings page (`addons.list`, `addons.install`, `addons.remove`) shows whether each is installed and installs it: a GitHub add-on is downloaded into the add-ons folder (`~/.nansen/addons`, or the `addons.folder` setting), which MATLAB puts on its path whenever an app or API starts; a pip package is installed into the running Python; a conda package is not installed by NANSEN, which says how to.
+
 ## Methods
 
 A method is declared by a `nansen.method` document and implemented in either or both languages:

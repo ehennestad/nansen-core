@@ -1071,3 +1071,28 @@ def test_review_rois_across_sessions(empty_app, page):
     for key in (s1, s3):
         document = api.project.load(api.project.entity("session", key), "RoiArray", cached=False)
         assert [r.get("classification") for r in document["rois"]] == [None, "rejected", None]
+
+
+def test_install_and_remove_add_ons_from_the_settings_page(empty_app, page, monkeypatch):
+    import io
+    import zipfile
+
+    from nansen import addons
+
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, "w") as z:
+        z.writestr("NoRMCorre-master/normcorre.m", "function M = normcorre(Y, o)\nM = Y;\nend\n")
+    monkeypatch.setattr(addons, "_download", lambda url: data.getvalue())
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "addons"
+    api.handle({"id": 1, "method": "settings.save", "params": {"settings": {"addons": {"folder": str(folder)}}}})
+    page.goto(empty_app["server"].url + "#/settings")
+    page.wait_for_selector(".addon-list li[data-addon='normcorre']")
+    assert page.locator(".addon-list li[data-addon='caiman'] .install-addon").count() == 0   # conda: install it yourself
+    page.click(".addon-list li[data-addon='normcorre'] .install-addon")
+    page.wait_for_selector(".addon-list li[data-addon='normcorre'] .remove-addon")
+    assert (folder / "normcorre" / "normcorre.m").is_file()
+    page.click(".addon-list li[data-addon='normcorre'] .remove-addon")
+    page.click(".dialog-foot button:has-text('Remove')")
+    page.wait_for_selector(".addon-list li[data-addon='normcorre'] .install-addon")
+    assert not (folder / "normcorre").exists()

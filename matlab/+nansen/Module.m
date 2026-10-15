@@ -95,9 +95,14 @@ classdef Module
             %available The modules a project could list: in <project>/modules/, then the built-in ones, by id
             %
             %   This is for choosing a module to add; a listed module is still found only as resolve says.
+            %   With projectFolder "", only the built-in ones.
             modules = {};
             ids = strings(1, 0);
-            for root = [string(fullfile(projectFolder, "modules")), nansen.Module.builtInFolder()]
+            roots = string(nansen.Module.builtInFolder());
+            if strlength(string(projectFolder)) > 0
+                roots = [string(fullfile(projectFolder, "modules")), roots];
+            end
+            for root = roots
                 if ~isfolder(root)
                     continue
                 end

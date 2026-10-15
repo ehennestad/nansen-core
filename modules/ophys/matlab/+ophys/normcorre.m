@@ -15,8 +15,9 @@ function result = normcorre(entity, options, context)
     else
         grid = [options.gridSize, options.gridSize];
     end
-    parameters = NoRMCorreSetParms("d1", height, "d2", width, "grid_size", grid, ...
-        "max_shift", options.maxShift, "us_fac", options.upsampling, "print_msg", false);
+    % NoRMCorreSetParms takes char names (not strings)
+    parameters = NoRMCorreSetParms('d1', height, 'd2', width, 'grid_size', grid, ...
+        'max_shift', double(options.maxShift), 'us_fac', double(options.upsampling), 'print_msg', false);
     context.log("%s: running NoRMCorre on %d frames", ophys.internal.entityName(entity), frames);
     [aligned, found] = feval("normcorre", single(stack), parameters);
     shifts = zeros(frames, 2);

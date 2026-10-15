@@ -37,6 +37,13 @@
         "minimum": 1,
         "title": "Cell radius (px)"
       },
+      "minSnr": {
+        "type": "number",
+        "default": 7,
+        "exclusiveMinimum": 0,
+        "title": "Smallest trace SNR",
+        "description": "EXTRACT's thresholds.T_min_snr: cells with weaker traces are left out"
+      },
       "threshold": {
         "type": "number",
         "default": 0.2,

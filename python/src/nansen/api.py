@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import dsm
 
-from . import __version__
+from . import __version__, addons
 from .catalog import Catalog
 from .dataset import Dataset
 from .documents import check_document, read_document, write_json
@@ -271,6 +271,34 @@ class Api:
         if self.catalog is None:
             raise NansenError("no-catalog", "this app has no project catalog to keep settings in")
         return self.catalog.save_settings(params["settings"])
+
+    # -- add-ons -----------------------------------------------------------------------------------
+
+    def addons__list(self, params: dict) -> dict:
+        """The add-ons the project's modules declare (the built-in modules' with no project open), and their state."""
+        folder = self._addons_folder()
+        return {"folder": str(folder), "language": "python", "addons": [addons.status(a, folder) for a in self._declared_addons()]}
+
+    def addons__install(self, params: dict) -> dict:
+        folder = self._addons_folder()
+        addon = addons.find(self._declared_addons(), params["id"])
+        addons.install(addon, folder, params.get("archive"))
+        return addons.status(addon, folder)
+
+    def addons__remove(self, params: dict) -> dict:
+        folder = self._addons_folder()
+        addon = addons.find(self._declared_addons(), params["id"])
+        addons.remove(addon, folder)
+        return addons.status(addon, folder)
+
+    def _declared_addons(self) -> list:
+        from .modules import available_modules
+
+        return addons.declared(self.project.modules if self.project is not None else available_modules(None))
+
+    def _addons_folder(self) -> Path:
+        folder = self.settings__get({}).get("addons", {}).get("folder") or ""
+        return Path(folder).expanduser() if folder else addons.default_folder()
 
     def catalog__relocate(self, params: dict) -> list:
         """A project was moved: point its entry at the new folder."""

@@ -35,6 +35,13 @@
           "properties": {
             "autoStart": { "type": "boolean", "default": true, "description": "Start the background worker when the app opens a project, so queued tasks run without pressing Start." }
           }
+        },
+        "addons": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "folder": { "type": "string", "default": "", "description": "Where add-ons from GitHub are downloaded; empty for ~/.nansen/addons. MATLAB puts the add-ons there on its path when an app or API starts." }
+          }
         }
       }
     }

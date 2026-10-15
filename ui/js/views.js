@@ -1354,6 +1354,33 @@
       [["auto", "Follow the system"], ["light", "Light"], ["dark", "Dark"]].map(([v, label]) => h("option", { value: v, selected: N.theme.load() === v }, label)));
     let locked = false;
     try { locked = JSON.parse(localStorage.getItem("nansen.locked") || "false") === true; } catch (e) { /* fine */ }
+    const addonList = h("ul.list.addon-list", h("li.muted", "Loading…"));
+    const folderNote = h("div.sub.mono", "");
+    const drawAddons = async () => {
+      let listing;
+      try { listing = await app.client.request("addons.list"); } catch (error) { N.fill(addonList, h("li.muted", error.message || String(error))); return; }
+      folderNote.textContent = `Downloaded into ${listing.folder}`;
+      const state = (a) => a.installed === true ? h("span.pill.good", "installed") : a.installed === false ? h("span.pill.warn", "not installed")
+        : h("span.pill.plain", a.language === listing.language ? "not downloaded" : `for ${a.language === "matlab" ? "MATLAB" : "Python"}`);
+      N.fill(addonList, listing.addons.length ? listing.addons.map((a) => h("li", { dataset: { addon: a.id } },
+        h("div.grow", h("div.title", a.title, " ", h("span.muted", { style: { fontWeight: 400 } }, `· ${a.module} · ${a.language === "matlab" ? "MATLAB" : "Python"}`)),
+          h("div.sub", a.description || ""), h("div.sub.muted", a.installable ? a.how : `Install it yourself: ${a.how}`)),
+        state(a),
+        a.url ? h("a.btn.ghost.icon.small", { href: a.url, target: "_blank", rel: "noopener", title: "Its page" }, N.icon("compass", 13)) : null,
+        a.removable ? h("button.btn.small.remove-addon", { on: { click: async () => {
+          if (!(await N.confirm(`Remove ${a.title}?`, `Deletes ${a.location}.`, "Remove", "danger"))) return;
+          try { await app.client.request("addons.remove", { id: a.id }); N.toast("Removed", a.title, "success"); drawAddons(); }
+          catch (error) { N.showError(error, "Could not remove it"); }
+        } } }, "Remove") : null,
+        a.installable && a.installed !== true ? h("button.btn.small.primary.install-addon", { on: { click: async (event) => {
+          const button = event.currentTarget;
+          button.disabled = true;
+          button.textContent = "Installing…";
+          try { await app.client.request("addons.install", { id: a.id }); N.toast("Installed", a.title, "success"); }
+          catch (error) { N.showError(error, `Could not install ${a.title}`); }
+          drawAddons();
+        } } }, "Install") : null)) : h("li.muted", "The modules in use declare no add-ons"));
+    };
     N.fill(content,
       h("div.hero", h("div", h("h1", "Settings"), h("p", "How the app behaves for you. Worker settings are kept with your project list; how the dashboard looks is kept in this browser."))),
       h("div.grid",
@@ -1365,7 +1392,12 @@
             row("Theme", "Light, dark, or as the system is set", theme),
             row("Lock editing", "Values cannot be changed in the tables until this is off (also the lock in each table's toolbar)",
               toggle("lock-setting", locked, (on) => { try { localStorage.setItem("nansen.locked", JSON.stringify(on)); } catch (e) { /* fine */ } })),
-            row("Keyboard shortcuts", "Press ? anywhere, or the keyboard button at the top", h("button.btn.small", { on: { click: () => N.showShortcuts() } }, N.icon("keyboard", 14), "Show"))))));
+            row("Keyboard shortcuts", "Press ? anywhere, or the keyboard button at the top", h("button.btn.small", { on: { click: () => N.showShortcuts() } }, N.icon("keyboard", 14), "Show"))))),
+      h("div.card.addons-card", { style: { marginTop: "16px" } },
+        h("div.card-head", N.icon("puzzle"), h("h3", "Add-ons"), h("div.spacer"), folderNote),
+        h("p.muted", { style: { margin: "10px 16px 0" } }, "Toolboxes and packages the modules' methods use. MATLAB toolboxes are downloaded from GitHub into the add-ons folder and put on MATLAB's path; Python packages are installed into this Python with pip."),
+        addonList));
+    drawAddons();
   };
 
   /* ------------------------------------------------------------------ projects */

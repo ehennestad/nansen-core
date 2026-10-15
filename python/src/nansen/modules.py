@@ -104,13 +104,14 @@ def resolve_module(entry: dict, project_folder: Path) -> Module:
     raise NansenError("unknown-module", f"module {entry['id']!r} not found (looked in {', '.join(map(str, candidates))})")
 
 
-def available_modules(project_folder: Path) -> List[Module]:
-    """The modules a project could list: those in <project>/modules/, then the built-in ones, by id.
+def available_modules(project_folder: Optional[Path]) -> List[Module]:
+    """The modules a project could list: those in <project>/modules/, then the built-in ones, by id
+    (only the built-in ones without a project folder).
 
     This is for choosing a module to add; a listed module is still found only as resolve_module says.
     """
     found: Dict[str, Module] = {}
-    roots = [Path(project_folder) / "modules"]
+    roots = [Path(project_folder) / "modules"] if project_folder is not None else []
     built_in = built_in_modules_dir()
     if built_in is not None:
         roots.append(built_in)

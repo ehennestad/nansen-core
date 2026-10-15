@@ -24,7 +24,7 @@ def default_catalog_path() -> Path:
     return base / "nansen" / "catalog.nansen.json"
 
 
-DEFAULT_SETTINGS = {"queue": {"autoStart": True}}
+DEFAULT_SETTINGS = {"queue": {"autoStart": True}, "addons": {"folder": ""}}
 
 
 class Catalog:

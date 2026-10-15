@@ -93,7 +93,7 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
 
         function extractFindsTheCells(testCase)
             result = testCase.Project.run("ophys.extract", {testCase.Session}, ...
-                Options=struct("stack", "TwoPhotonSeries_Corrected", "cellRadius", 4));
+                Options=struct("stack", "TwoPhotonSeries_Corrected", "cellRadius", 4, "minSnr", 3));
             testCase.verifyGreaterThanOrEqual(result{1}.rois, 8);
             rois = ophys.internal.roiList(testCase.Project.load(testCase.Session, "RoiArray", Cached=false));
             centersFound = cell2mat(cellfun(@(r) reshape(double(r.center), 1, 2) + 1, rois(:), UniformOutput=false));

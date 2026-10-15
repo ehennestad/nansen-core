@@ -12,7 +12,9 @@ function result = caimanDeconvolution(entity, options, context)
     for i = 1:rois
         context.checkCancelled();
         if ~any(isnan(traces(:, i)))
-            [c, s] = feval("deconvolveCa", traces(:, i), char(model));   % constrained foopsi, kernel and noise estimated
+            % foopsi, with the kernel estimated: CaImAn-MATLAB's constrained solver (constrained_oasisAR1)
+            % does not parse in current MATLAB releases
+            [c, s] = feval("deconvolveCa", traces(:, i), char(model), 'foopsi', 'lambda', double(options.lambda));
             calcium(:, i) = c(:);
             spikes(:, i) = s(:);
         end

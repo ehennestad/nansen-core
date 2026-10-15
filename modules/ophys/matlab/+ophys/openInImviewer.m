@@ -1,6 +1,6 @@
 function result = openInImviewer(entity, options, context)
 %openInImviewer Open the stack in NANSEN's imviewer, when it is on the path
-    if ~exist("imviewer", "file")
+    if isempty(which("imviewer"))   % exist misses it: NANSEN dev also has an imviewer package
         nansen.internal.throwError("dependency-missing", ...
             "ophys.open_in_imviewer needs imviewer from NANSEN on the MATLAB path")
     end

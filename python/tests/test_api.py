@@ -259,7 +259,7 @@ def test_the_worker_starts_as_the_settings_say(tmp_path):
 
     catalog = Catalog(tmp_path / "catalog.json")
     project = create_demo(tmp_path / "demo")
-    assert catalog.settings() == {"queue": {"autoStart": True}}
+    assert catalog.settings() == {"queue": {"autoStart": True}, "addons": {"folder": ""}}
     server = open_app(project, catalog=catalog, open_browser=False)
     try:
         assert server.api.queue.running

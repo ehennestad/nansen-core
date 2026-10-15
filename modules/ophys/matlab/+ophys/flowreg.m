@@ -11,9 +11,10 @@ function result = flowreg(entity, options, context)
     cleanup = onCleanup(@() rmdir(folder, "s"));
     input = fullfile(folder, "input.tif");
     ophys.TiffStack().write(input, stack);
-    settings = feval("OF_options", "input_file", char(input), "output_path", char(fullfile(folder, "out")), ...
-        "output_format", "TIFF", "alpha", options.alpha, "quality_setting", char(options.quality), ...
-        "reference_frames", 1:min(options.referenceFrames, frames));
+    % char throughout: Flow-Registration builds file names with ['compensated.' output_format]
+    settings = feval("OF_options", 'input_file', char(input), 'output_path', char(fullfile(folder, "out")), ...
+        'output_format', 'TIFF', 'alpha', double(options.alpha), 'quality_setting', char(options.quality), ...
+        'reference_frames', 1:min(options.referenceFrames, frames));
     context.log("%s: running Flow-Registration on %d frames", ophys.internal.entityName(entity), frames);
     feval("compensate_recording", settings);
     written = [dir(fullfile(folder, "out", "**", "*.tif")); dir(fullfile(folder, "out", "**", "*.TIFF")); dir(fullfile(folder, "out", "**", "*.tiff"))];

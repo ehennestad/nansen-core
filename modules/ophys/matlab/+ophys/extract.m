@@ -6,11 +6,13 @@ function result = extract(entity, options, context)
     end
     stack = ophys.internal.loadStack(context, entity, options.stack);
     [height, width, frames] = size(stack);
-    config = struct("avg_cell_radius", options.cellRadius, "use_sparse_arrays", 0, "verbose", 0, ...
-        "num_partitions_x", 1, "num_partitions_y", 1, "use_gpu", ophys.internal.extractGpu());
+    config = struct("avg_cell_radius", options.cellRadius, "use_sparse_arrays", 0, "verbose", 1, ...
+        "num_partitions_x", 1, "num_partitions_y", 1, "use_gpu", ophys.internal.extractGpu(), ...
+        "thresholds", struct("T_min_snr", double(options.minSnr)));
     config = feval("get_defaults", config);
     context.log("%s: running EXTRACT on %d frames", ophys.internal.entityName(entity), frames);
     output = feval("extractor", single(stack), config);
+    context.log("%s: EXTRACT kept %d cells", ophys.internal.entityName(entity), size(output.spatial_weights, 3));
     weights = full(double(output.spatial_weights));
     rois = {};
     for i = 1:size(weights, 3)
