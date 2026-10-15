@@ -35,6 +35,7 @@ def page(app):
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
+    page.console_errors = errors  # a test that makes an error on purpose takes it out
     yield page
     page.close()
     assert errors == []
@@ -470,3 +471,64 @@ def test_filters_and_saved_views(empty_app, page):
     page.reload()  # the view shown last is shown again
     page.wait_for_selector(".grid-table tbody td.key")
     page.wait_for_function("() => document.querySelectorAll('.grid-table tbody tr[data-id]').length === 2")
+
+
+def test_add_edit_and_delete_a_data_variable(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    names = lambda: [v["name"] for v in api.handle({"id": 2, "method": "dataVariables.list"})["result"]]
+    assert "config" not in names()
+    page.goto(empty_app["server"].url + "#/data")
+    page.click(".data-variables .add-variable")
+    page.wait_for_selector(".dialog .variable-location option", state="attached")
+    page.click(".dialog-foot button:has-text('Add data variable')")  # no name, no file: refused
+    assert "Give a file pattern or a file name" in page.locator(".dialog .form-message").inner_text()
+    page.fill(".dialog .variable-name", "config")
+    page.select_option(".dialog .variable-entity", "session")
+    page.wait_for_selector(".dialog .variable-pattern option[value='two_photon_movie']", state="attached")
+    page.select_option(".dialog .variable-location", "raw")
+    assert page.locator(".dialog .variable-pattern option").all_inner_texts()[1:] == ["acquisition_config", "two_photon_movie"]
+    page.select_option(".dialog .variable-pattern", "acquisition_config")
+    page.select_option(".dialog .variable-adapter", "json")
+    page.click(".dialog-foot button:has-text('Add data variable')")
+    page.wait_for_selector(".data-variables tr[data-variable='config']")
+    variable = next(v for v in api.handle({"id": 3, "method": "dataVariables.list"})["result"] if v["name"] == "config")
+    assert (variable["dataLocation"], variable["filePattern"], variable["fileAdapter"]) == ("raw", "acquisition_config", "json")
+
+    page.click(".data-variables tr[data-variable='config'] .edit-variable")
+    page.wait_for_selector(".dialog .variable-pattern option[value='acquisition_config']", state="attached")
+    assert page.locator(".dialog .variable-name").is_disabled()
+    assert page.locator(".dialog .variable-location").input_value() == "raw"
+    page.fill(".dialog .variable-title", "Acquisition config")
+    page.click(".dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".data-variables tr[data-variable='config']:has-text('Acquisition config')")
+
+    page.click(".data-variables tr[data-variable='config'] .delete-variable")
+    page.click(".dialog-foot button:has-text('Delete')")
+    page.wait_for_selector(".data-variables tr[data-variable='config']", state="detached")
+    assert "config" not in names()
+
+
+def test_add_and_remove_modules(empty_app, page):
+    import json
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    (folder / "modules" / "lab").mkdir(parents=True)
+    (folder / "modules" / "lab" / "module.nansen.json").write_text(json.dumps({
+        "schemaType": "nansen.module", "schemaVersion": "0.1.0", "id": "lab", "version": "1.0.0", "title": "Lab tools"}))
+    listed = lambda: [m["id"] for m in api.handle({"id": 2, "method": "project.info"})["result"]["modules"]]
+    page.goto(empty_app["server"].url + "#/overview")
+    page.click(".modules .manage-modules")
+    page.wait_for_selector(".dialog li[data-module='lab'] .add-module")
+    page.click(".dialog li[data-module='core'] .remove-module")  # the demo uses core's fragments
+    page.wait_for_selector(".toast:has-text('module-in-use')")
+    page.console_errors[:] = [e for e in page.console_errors if "module-in-use" not in e and "is used by" not in e]
+    page.click(".dialog li[data-module='lab'] .add-module")
+    page.wait_for_selector(".dialog li[data-module='lab'] .remove-module")
+    assert listed() == ["core", "lab"]
+    page.click(".dialog li[data-module='lab'] .remove-module")
+    page.wait_for_selector(".dialog li[data-module='lab'] .add-module")
+    assert listed() == ["core"]
+    page.click(".dialog-foot button:has-text('Close')")
+    page.wait_for_selector(".modules li:has-text('NANSEN core')")

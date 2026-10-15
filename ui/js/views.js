@@ -73,7 +73,8 @@
         h("div.grid",
           h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Recent tasks"), h("div.spacer"),
             h("a", { href: "#/tasks" }, "All tasks")), taskList),
-          h("div.card", h("div.card-head", N.icon("layers"), h("h3", "Modules")), modules))));
+          h("div.card.modules", h("div.card-head", N.icon("layers"), h("h3", "Modules"), h("div.spacer"),
+            h("button.btn.small.manage-modules", { on: { click: () => modulesDialog(app) } }, N.icon("settings"), "Manage")), modules))));
   };
 
   /* ------------------------------------------------------------------ entities */
@@ -1011,11 +1012,25 @@
                   } catch (error) { N.showError(error, "Could not change the path"); }
                 } } }, "Change path")));
             }))) : h("div.card-body.muted", "No dataset.")),
-        h("div.card", h("div.card-head", N.icon("file"), h("h3", "Data variables")),
-          variables.length ? h("table.simple", h("thead", h("tr", ["Name", "Entity", "Location", "File", "Adapter"].map((t) => h("th", t)))),
-            h("tbody", variables.map((v) => h("tr", h("td", h("b", v.name)), h("td", v.entityType), h("td", v.dataLocation),
-              h("td.mono", [v.subfolder ? v.subfolder + "/" : "", v.fileName || `pattern ${v.filePattern}`].join("")), h("td", v.fileAdapter))))) :
-            h("div.card-body.muted", "No data variables.")),
+        h("div.card.data-variables", h("div.card-head", N.icon("file"), h("h3", "Data variables"), h("div.spacer"),
+          dataset && project.entityTypes.length ? h("button.btn.small.add-variable", { on: { click: () => dataVariableDialog(app) } }, N.icon("plus"), "Add data variable") : null),
+          variables.length ? h("table.simple", h("thead", h("tr", ["Name", "Entity", "Location", "File", "Adapter", ""].map((t) => h("th", t)))),
+            h("tbody", variables.map((v) => h("tr", { dataset: { variable: v.name } }, h("td", h("b", v.title || v.name), v.title ? h("div.muted.mono", v.name) : null),
+              h("td", v.entityType), h("td", v.dataLocation),
+              h("td.mono", [v.subfolder ? v.subfolder + "/" : "", v.fileName || `pattern ${v.filePattern}`].join(""),
+                v.fileName && v.filePattern ? h("div.muted", `found by pattern ${v.filePattern}`) : null),
+              h("td", v.fileAdapter),
+              h("td.row-actions",
+                h("button.btn.ghost.icon.small.edit-variable", { title: "Edit", on: { click: () => dataVariableDialog(app, v) } }, N.icon("edit", 14)),
+                h("button.btn.ghost.icon.small.delete-variable", { title: "Delete", on: { click: async () => {
+                  if (!await N.confirm("Delete the data variable?", `${v.name} is taken out of the project. Its files are not touched.`, "Delete", "danger")) return;
+                  try {
+                    await app.client.request("dataVariables.delete", { name: v.name });
+                    app.render();
+                    N.toast("Data variable deleted", v.name, "success");
+                  } catch (error) { N.showError(error, "Could not delete the data variable"); }
+                } } }, N.icon("trash", 14))))))) :
+            h("div.card-body.muted", dataset ? "No data variables. A data variable names a file of each entity, so methods can load and save it." : "No data variables.")),
         h("div.grid.two",
           h("div.card", h("div.card-head", N.icon("columns"), h("h3", "Fragments")),
             h("ul.list", fragments.map((f) => h("li", h("div.grow", h("div.title", f.title, f.computed ? h("span.pill.accent", { style: { marginLeft: "8px" } }, "computed") : null),
@@ -1102,6 +1117,123 @@
         N.toast("Column added", values.title || values.name, "success");
       },
     });
+  }
+
+  /* Add or edit a data variable: which file of each entity it is, and the file adapter that reads it. */
+  function dataVariableDialog(app, existing) {
+    const v = existing || {};
+    const types = app.project.entityTypes.map((t) => t.name);
+    const select = (name, options, value) => h(`select.input.${name}`, options.map(([id, label]) =>
+      h("option", { value: id, selected: id === value }, label)));
+    const field = (label, input, help) => h("div.field", h("label.name", label), input, help ? h("div.help", help) : null);
+    const name = h("input.input.variable-name", { value: v.name || "", disabled: !!existing, placeholder: "roi_signals" });
+    const title = h("input.input.variable-title", { value: v.title || "" });
+    const entityType = select("variable-entity", types.map((t) => [t, t]), v.entityType || types[0]);
+    const location = h("select.input.variable-location");
+    const pattern = h("select.input.variable-pattern");
+    const subfolder = h("input.input.variable-subfolder", { value: v.subfolder || "", placeholder: "for example roi" });
+    const fileName = h("input.input.variable-file", { value: v.fileName || "", placeholder: "{session_id}_roi_signals.mat" });
+    const adapter = h("select.input.variable-adapter");
+    const description = h("input.input.variable-description", { value: v.description || "" });
+    const message = h("div.form-message.hidden");
+    let options = { locations: [], fileAdapters: [] };
+
+    const fillPatterns = (chosen) => {
+      const loc = options.locations.find((l) => l.id === location.value);
+      const names = loc ? loc.filePatterns : [];
+      N.fill(pattern, h("option", { value: "" }, names.length ? "(none: use the file name)" : "(this level has no file patterns)"),
+        names.map((p) => h("option", { value: p, selected: p === chosen }, p)));
+    };
+    const loadOptions = async (keep) => {
+      try {
+        options = await app.client.request("dataVariables.options", { entityType: entityType.value });
+      } catch (error) { N.showError(error, "Could not read the data locations"); return; }
+      const wanted = keep ? v.dataLocation : location.value;
+      N.fill(location, options.locations.map((l) => h("option", { value: l.id, selected: l.id === wanted },
+        `${l.title}${l.access === "readwrite" ? "" : " (read only)"}`)));
+      fillPatterns(keep ? v.filePattern : pattern.value);
+      const adapterWanted = keep ? v.fileAdapter : adapter.value;
+      N.fill(adapter, options.fileAdapters.map((a) => h("option", { value: a, selected: a === adapterWanted }, a)));
+    };
+    entityType.addEventListener("change", () => loadOptions(false));
+    location.addEventListener("change", () => fillPatterns(""));
+
+    N.dialog({
+      title: existing ? `Edit ${v.name}` : "Add a data variable",
+      content: h("div.variable-form", { style: { padding: "16px 20px" } },
+        h("p.muted", { style: { marginTop: 0 } }, "A data variable is one file of each entity. It is found by a file pattern of the dataset, or at the file name below in the entity's folder; saving writes it at the file name."),
+        field("Name", name, "A letter, then letters, digits or _"), field("Title", title),
+        h("div.field-row", field("Entity type", entityType), field("Data location", location)),
+        field("File pattern", pattern, "A pattern of the dataset at the entity type's level; reading uses the files the scan matched to it"),
+        h("div.field-row", field("Subfolder", subfolder), field("File name", fileName, "{field} is filled from the entity's values")),
+        field("File adapter", adapter, "Reads and writes the file"), field("Description", description), message),
+      buttons: [
+        { label: "Cancel" },
+        { label: existing ? "Save" : "Add data variable", kind: "primary", onClick: async (close) => {
+          const document = { schemaType: "nansen.dataVariable", schemaVersion: "0.1.0", name: name.value.trim(),
+            entityType: entityType.value, dataLocation: location.value, fileAdapter: adapter.value };
+          for (const [key, input] of [["title", title], ["filePattern", pattern], ["subfolder", subfolder], ["fileName", fileName], ["description", description]]) {
+            if (input.value.trim()) document[key] = input.value.trim();
+          }
+          if (existing && v.dataType) document.dataType = v.dataType;
+          const problems = [];
+          if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(document.name)) problems.push("Name: a letter, then letters, digits or _");
+          if (!document.filePattern && !document.fileName) problems.push("Give a file pattern or a file name");
+          if (!document.dataLocation) problems.push("Choose a data location");
+          if (problems.length) {
+            message.textContent = problems.join(" · ");
+            message.classList.remove("hidden");
+            return;
+          }
+          try {
+            await app.client.request("dataVariables.save", { document });
+            close();
+            app.render();
+            N.toast(existing ? "Data variable saved" : "Data variable added", document.name, "success");
+          } catch (error) {
+            message.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error));
+            message.classList.remove("hidden");
+          }
+        } },
+      ],
+    });
+    loadOptions(true);
+  }
+
+  /* The modules the project can list: those in its modules folder and the built-in ones. */
+  async function modulesDialog(app) {
+    const body = h("div.modules-list", { style: { padding: "8px 0" } });
+    const draw = async () => {
+      let modules;
+      try { modules = await app.client.request("modules.list"); } catch (error) { N.showError(error, "Could not list the modules"); return; }
+      N.fill(body, modules.length ? h("ul.list", modules.map((m) => h("li", { dataset: { module: m.id } }, N.icon("puzzle"),
+        h("div.grow", h("div.title", m.title || m.id, h("span.muted.mono", { style: { marginLeft: "8px" } }, `${m.id} ${m.version}`)),
+          h("div.sub", m.description || "")),
+        m.listed ? h("button.btn.small.remove-module", { on: { click: async () => {
+          try {
+            app.project = await app.client.request("modules.remove", { id: m.id });
+            await app.reloadProject();
+            N.toast("Module removed", m.title || m.id, "success");
+            draw();
+          } catch (error) { N.showError(error, "Could not remove the module"); }
+        } } }, "Remove") : h("button.btn.small.primary.add-module", { on: { click: async () => {
+          try {
+            app.project = await app.client.request("modules.add", { id: m.id });
+            await app.reloadProject();
+            N.toast("Module added", m.title || m.id, "success");
+            draw();
+          } catch (error) { N.showError(error, "Could not add the module"); }
+        } } }, "Add")))) : h("div.card-body.muted", "No modules found."));
+    };
+    N.dialog({
+      title: "Modules",
+      content: h("div", h("p.muted", { style: { margin: "14px 20px 0" } },
+        "A module brings fragments, methods, file adapters and pipelines. Modules are found in the project's ",
+        h("span.mono", "modules"), " folder and among those that come with NANSEN. A module cannot be removed while the project uses what it provides."), body),
+      buttons: [{ label: "Close", onClick: (close) => { close(); app.render(); } }],
+      onClose: () => app.render(),
+    });
+    draw();
   }
 
   function datasetDialog(app) {

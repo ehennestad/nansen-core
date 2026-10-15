@@ -368,6 +368,10 @@ dl.props dd { margin: 0; word-break: break-word; }
 .method-detail .meta { display: flex; gap: 6px; margin: 8px 0 14px; flex-wrap: wrap; }
 
 .form-grid { display: grid; gap: 14px; }
+.variable-form .field { margin-bottom: 12px; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .field-row { grid-template-columns: 1fr; } }
+td.row-actions { white-space: nowrap; text-align: right; }
 .field label.name { display: block; font-weight: 600; margin-bottom: 5px; }
 .field .help { font-size: 12px; color: var(--text-3); margin-top: 4px; }
 .field .input { width: 100%; }

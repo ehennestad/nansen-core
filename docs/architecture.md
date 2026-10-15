@@ -42,7 +42,7 @@ Each step was usable without a GUI before the next one started.
 | `ProjectManager` singleton, `nansen.getCurrentProject()` | `Project.open(folder)`, passed explicitly; `nansen.catalog` lists known projects for the app |
 | `project.nansen.json` + `.mat` catalogs | Versioned JSON documents and CSV tables, each with a schema |
 | `DataLocationModel` (root paths, subfolder structure, metadata rules) | A DSM config: locations, roots per environment, folder levels, extraction rules; the same file is read by DSM's own tools |
-| `VariableModel` (file path settings) | Data variables: DSM file pattern or file name template + file adapter |
+| `VariableModel` (file path settings) | Data variables: DSM file pattern or file name template + file adapter; added, edited and deleted on the Data page |
 | `MetaTable` of `Session`/`Subject` objects | Entity tables joined with DSM records; one generic entity, so entity types are documents, not classes |
 | Table variables (with update functions) | Fragments; computed fragments for the ones with update functions |
 | Session methods with `OptionsManager` presets | Methods with JSON Schema options and preset documents; MATLAB and/or Python implementations |
@@ -51,7 +51,7 @@ Each step was usable without a GUI before the next one started.
 | Pipelines | Pipelines: one chain of tasks per entity |
 | File adapters | File adapters: built-in `json`, `text`, `mat` (and `npy` in Python), others from modules |
 | `nansen.cache.DataCache`, one per MATLAB session | A data cache per project (`project.data_cache`, `project.DataCache`): the same 2 GiB least-recently-used budget, and an entry is read again when its file changes on disk |
-| Modules (`module.nansen.json`) | Modules listing fragments, methods, adapters and pipelines by path; code for either language |
+| Modules (`module.nansen.json`) | Modules listing fragments, methods, adapters and pipelines by path; code for either language; added and removed from the overview |
 | `nansen.App` on the Java Widgets Toolbox | One HTML/JS dashboard for MATLAB (`uihtml`) and Python (browser) |
 | MATLAB only | MATLAB R2023a+ and Python 3.9+, held to the same behaviour by shared conformance cases |
 | ~360 unit tests with a throwaway user session | Unit tests in both languages, conformance cases shared by both, browser tests for the dashboard |
