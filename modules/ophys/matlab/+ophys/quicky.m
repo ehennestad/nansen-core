@@ -48,6 +48,7 @@ function result = quicky(entity, options, context)
         rois = [reshape(shaped, 1, []), reshape(rois(keep), 1, [])];
         rois = rois(1:min(numel(rois), options.maxRois));
     end
+    rois = reshape(rois, 1, []);   % 1 x 0 when none were found, as num2cell(1:0) is
     document = struct("imageSize", [height, width], "rois", {cellfun(@(p, n) ophys.internal.makeRoi(n, p), ...
         rois, num2cell(1:numel(rois)), UniformOutput=false)});
     ophys.internal.saveIf(context, entity, options.output, document);
