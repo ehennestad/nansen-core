@@ -47,7 +47,8 @@
     "adapters/sciscan_raw.fileAdapter.nansen.json",
     "adapters/suite2p_binary.fileAdapter.nansen.json",
     "adapters/suite2p_rois.fileAdapter.nansen.json",
-    "adapters/tiff_stack.fileAdapter.nansen.json"
+    "adapters/tiff_stack.fileAdapter.nansen.json",
+    "adapters/video_file.fileAdapter.nansen.json"
   ],
   "pipelines": [
     "pipelines/preprocess.pipeline.nansen.json"

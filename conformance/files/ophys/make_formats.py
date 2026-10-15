@@ -132,6 +132,28 @@ def suite2p_binary(expected):
                                  "frame2row8": [int(v) for v in stack[8, :, 2]], "sum": int(stack.astype(np.int64).sum())}
 
 
+def video(expected):
+    """Videos as uncompressed AVI (raw BGR, which every decoder reads to the same bytes), written with imageio's ffmpeg:
+    rgb.avi in colour, 12 x 16 x 4 frames, and gray.avi whose red, green and blue are equal, read as grayscale."""
+    import imageio.v2 as iio
+    rng = np.random.default_rng(18)
+    folder = HERE / "video"
+    folder.mkdir(exist_ok=True)
+    colour = rng.integers(0, 256, (4, 12, 16, 3)).astype(np.uint8)   # frames x height x width x rgb
+    gray = np.repeat(rng.integers(0, 256, (3, 12, 16, 1)).astype(np.uint8), 3, axis=3)
+    for name, frames in (("rgb.avi", colour), ("gray.avi", gray)):
+        writer = iio.get_writer(folder / name, format="ffmpeg", codec="rawvideo", pixelformat="bgr24", fps=10,
+                                macro_block_size=1, output_params=["-f", "avi"])
+        for frame in frames:
+            writer.append_data(frame)
+        writer.close()
+    expected["video"] = {
+        "rgb": {"size": [12, 16, 3, 4], "pixel": {"at": [5, 7, 2, 2], "value": int(colour[2, 5, 7, 2])},
+                "sum": int(colour.astype(np.int64).sum())},
+        "gray": {"size": [12, 16, 3], "pixel": {"at": [11, 15, 1], "value": int(gray[1, 11, 15, 0])},
+                 "sum": int(gray[..., 0].astype(np.int64).sum())}}
+
+
 def suite2p_rois(expected):
     """suite2p's Fall.mat: stat (a cell array of structs with 0-based ypix, xpix), iscell and ops (Ly, Lx)."""
     cells = [([2, 2, 3, 3], [7, 8, 7, 8], 1), ([10, 11, 11, 12, 12, 12], [3, 3, 4, 3, 4, 5], 0), ([17, 18], [20, 21], 1)]
@@ -262,6 +284,7 @@ def main():
     roi_group(expected)
     dev_binary(expected)
     suite2p_binary(expected)
+    video(expected)
     suite2p_rois(expected)
     caiman_rois(expected)
     extract_rois(expected)

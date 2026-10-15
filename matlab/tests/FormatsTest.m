@@ -52,6 +52,21 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyEqual(sum(double(stack.all()), "all"), expected.sum);
         end
 
+        function readsVideosInColourOrGray(testCase)
+            for name = ["rgb", "gray"]
+                expected = testCase.Expected.video.(name);
+                stack = ophys.VideoFile().open(fullfile(testCase.Files, "video", name + ".avi"));
+                testCase.verifyEqual(size(stack), expected.size', name);
+                testCase.verifyEqual(stack.ClassName, "uint8", name);
+                data = stack.all();
+                at = num2cell(expected.pixel.at' + 1);
+                testCase.verifyEqual(double(data(at{:})), expected.pixel.value, name);
+                testCase.verifyEqual(sum(double(data), "all"), expected.sum, name);
+                index = repmat({':'}, 1, ndims(data) - 1);
+                testCase.verifyEqual(stack.frames(2, 3), data(index{:}, 2:3), name);   % a chunk reads the same
+            end
+        end
+
         function readsAndWritesDevBinaryStacks(testCase)
             raw = fullfile(testCase.Files, "binary", "stack.raw");
             stack = ophys.BinaryStack().open(raw);

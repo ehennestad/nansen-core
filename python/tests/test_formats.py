@@ -110,6 +110,19 @@ def test_a_suite2p_binary_reads_with_the_size_from_ops(tmp_path):
     assert error.value.code == "invalid-data"
 
 
+def test_videos_read_in_colour_or_gray():
+    pytest.importorskip("imageio")
+    pytest.importorskip("imageio_ffmpeg")
+    for name in ("rgb", "gray"):
+        expected = EXPECTED["video"][name]
+        stack = adapter("VideoFile").open([FILES / "video" / f"{name}.avi"])
+        assert list(stack.shape) == expected["size"] and stack.dtype == np.uint8, name
+        data = np.asarray(stack)
+        assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"], name
+        assert int(data.astype(np.int64).sum()) == expected["sum"], name
+        assert (stack.frames(1, 3) == data[..., 1:3]).all(), name   # a chunk reads the same
+
+
 def test_a_dev_binary_stack_reads_and_writes(tmp_path):
     stack = adapter("BinaryStack").open([FILES / "binary" / "stack.raw"])
     expected = EXPECTED["devBinary"]

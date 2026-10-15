@@ -1,0 +1,20 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.video_file",
+  "version": "1.0.0",
+  "title": "Video",
+  "description": "A video file (AVI, MP4, MOV, MKV, Motion JPEG 2000), as dev's Video stack: uint8 frames, height x width x frames, or height x width x 3 x frames with colour (red, green and blue as channels; a video whose first frame has the same red, green and blue is grayscale). Read a chunk of frames at a time, with VideoReader in MATLAB and imageio's ffmpeg in Python (the video extra). Read only.",
+  "extensions": [
+    ".avi",
+    ".mp4",
+    ".mov",
+    ".mkv",
+    ".mj2"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:VideoFile",
+    "matlab": "ophys.VideoFile"
+  }
+}

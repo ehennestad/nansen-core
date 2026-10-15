@@ -167,6 +167,55 @@ def _pickled_int(data, key, path):
     raise NansenError("invalid-data", f"{path} has no {key}")
 
 
+class VideoFile:
+    """A video file, as dev's Video stack reads one: uint8 frames, height x width x frames, or height x width x 3 x
+    frames (red, green, blue as channels) when it has colour. A video whose first frame has the same red, green
+    and blue is read as grayscale, so the two languages' decoders agree (ffmpeg always gives colour). Read a chunk
+    of frames at a time with imageio and its ffmpeg (the video extra); read only."""
+
+    extensions = [".avi", ".mp4", ".mov", ".mkv", ".mj2"]
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import Stack, join, natural_order
+        iio = _imageio()
+        parts = []
+        for path in natural_order(paths):
+            path = str(path)
+            with iio.get_reader(path, format="ffmpeg") as reader:
+                count = reader.count_frames()
+                first = np.asarray(reader.get_data(0))
+            if first.ndim == 2:
+                first = first[:, :, None]
+            gray = first.shape[2] == 1 or bool((first[:, :, 0] == first[:, :, 1]).all() and (first[:, :, 1] == first[:, :, 2]).all())
+            height, width = first.shape[:2]
+
+            def frames(start, stop, path=path, gray=gray):
+                with iio.get_reader(path, format="ffmpeg") as reader:
+                    chunk = np.stack([np.asarray(reader.get_data(i)) for i in range(start, stop)], axis=-1) if stop > start else \
+                        np.zeros((height, width, 3, 0), np.uint8)
+                if chunk.ndim == 3:   # one channel decoded
+                    chunk = chunk[:, :, None, :]
+                return chunk[:, :, 0, :] if gray else chunk[:, :, :3, :]
+
+            parts.append(Stack((height, width, count) if gray else (height, width, 3, count), np.uint8, frames))
+        return join(parts)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "video files are read only; save stacks as TIFF or another format")
+
+
+def _imageio():
+    try:
+        import imageio.v2 as iio
+        import imageio_ffmpeg  # noqa: F401
+    except ImportError:
+        raise NansenError("adapter-unavailable", 'video files need imageio and imageio-ffmpeg: pip install "nansen-core[video]"') from None
+    return iio
+
+
 class SciScanRaw:
     """A SciScan .raw file with the .ini file of the same name beside it.
 
