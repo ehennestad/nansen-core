@@ -645,7 +645,13 @@
       h("span.pill.plain", d.files.length ? `${d.files.length} file(s)` : "not written"),
       N.isImageVariable(d) ? h("button.btn.ghost.icon.small.view-data", {
         title: "View", on: { click: () => N.views.stackViewer(app, entityType, detail.key, d.name,
-          (detail.data || []).filter((r) => r.dataType === "RoiArray" && r.files.length).map((r) => r.name)) } }, N.icon("image", 13)) : null,
+          (detail.data || []).filter((r) => r.dataType === "RoiArray" && r.files.length).map((r) => r.name),
+          (detail.data || []).filter(N.isSignalVariable).map((r) => r.name)) } }, N.icon("image", 13)) : null,
+      N.isSignalVariable(d) ? h("button.btn.ghost.icon.small.plot-data", {
+        title: "Plot the signals", on: { click: () => N.views.traces(app, entityType, detail.key,
+          (detail.data || []).filter(N.isSignalVariable).map((r) => r.name),
+          { variable: d.name, roiVariable: ((detail.data || []).find((r) => r.dataType === "RoiArray" && r.files.length) || {}).name || null }) } },
+        N.icon("activity", 13)) : null,
       d.files.length && app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-data", {
         title: "Load it into the workspace", on: { click: async () => {
           const name = await N.prompt(`Load ${d.name} into the workspace`, "Variable name", d.name);

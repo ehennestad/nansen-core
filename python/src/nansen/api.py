@@ -23,7 +23,7 @@ from .dataset import Dataset
 from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
-from .frames import image_frame, roi_outlines, update_rois
+from .frames import image_frame, roi_outlines, signal_traces, update_rois
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -861,6 +861,23 @@ class Api:
                              int(params.get("channel", 0)), params.get("projection"), limits, int(params.get("plane", 0)))
         if params.get("rois"):
             result["rois"] = roi_outlines(project.load(entity, params["rois"]))
+        return result
+
+    def data__traces(self, params: dict) -> dict:
+        """Columns of signal variables (frames x ROIs) of an entity, a frame range thinned to maxPoints."""
+        project = self._require_project()
+        entity = self._entity(params)
+        names = params.get("variables")
+        if not isinstance(names, list) or not names:
+            raise NansenError("invalid-params", "variables is a list of data variable names")
+        columns = params.get("columns", [0])
+        if not isinstance(columns, list) or not all(isinstance(c, int) and not isinstance(c, bool) for c in columns):
+            raise NansenError("invalid-params", "columns is a list of 0-based column numbers")
+        values = {name: project.load(entity, name) for name in names}
+        result = signal_traces(values, columns, params.get("start", 0), params.get("stop"), params.get("maxPoints", 2000))
+        if params.get("rois"):
+            result["rois"] = [{"id": r["id"], "classification": r["classification"]}
+                              for r in roi_outlines(project.load(entity, params["rois"]))]
         return result
 
     def rois__update(self, params: dict) -> dict:

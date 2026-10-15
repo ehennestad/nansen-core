@@ -23,7 +23,9 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             folder = fullfile(fixture.Folder, "project");
             copyfile(fullfile(nansen.internal.repoRoot(), "conformance", "api", "ophys", "project"), folder);
             [moving, clean, centers, shifts] = ExternalToolsTest.recording();
-            ophys.TiffStack().write(fullfile(folder, "data", "raw", "sub-m1", "ses-s2", "rec.tif"), moving);
+            session = fullfile(folder, "data", "raw", "sub-m1", "ses-s2");
+            delete(fullfile(session, "*.tif"));   % the case's recording, in two files: replaced by this one
+            ophys.TiffStack().write(fullfile(session, "rec.tif"), moving);
             project = nansen.Project.open(folder);
             project.scan();
             project.sync("subject");

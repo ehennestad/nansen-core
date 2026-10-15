@@ -64,6 +64,12 @@ classdef StackTest < matlab.unittest.TestCase
             testCase.verifyEqual(squeeze(sum(adapter.read(fullfile(testCase.Folder, "gaps.npy")), [1, 2]))', single([0, 0, 0, 4, 0]));
         end
 
+        function filesOfOneRecordingMustAgree(testCase)
+            ophys.TiffStack().write(fullfile(testCase.Folder, "a_1.tif"), zeros(8, 8, 2, "uint16"));
+            ophys.TiffStack().write(fullfile(testCase.Folder, "a_2.tif"), zeros(6, 8, 2, "uint16"));
+            testCase.verifyError(@() ophys.TiffStack().open(fullfile(testCase.Folder, ["a_1.tif", "a_2.tif"])), "nansen:InvalidData");
+        end
+
         function aRecordingInSeveralFilesIsOneVariable(testCase)
             project = testCase.ophysProject();
             entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));

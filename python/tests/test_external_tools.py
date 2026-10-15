@@ -51,7 +51,10 @@ def api(tmp_path):
     folder = tmp_path / "project"
     shutil.copytree(CASE, folder)
     stack, centers = recording()
-    tifffile.imwrite(folder / "data" / "raw" / "sub-m1" / "ses-s2" / "rec.tif", np.moveaxis(stack, 2, 0), photometric="minisblack")
+    session = folder / "data" / "raw" / "sub-m1" / "ses-s2"
+    for part in session.glob("*.tif"):   # the case's recording, in two files: replaced by this one
+        part.unlink()
+    tifffile.imwrite(session / "rec.tif", np.moveaxis(stack, 2, 0), photometric="minisblack")
     api = Api(start_queue=False)
     api.centers = centers
     api.stack = stack

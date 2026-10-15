@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.send", "rois.update", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "rois.update", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -1045,6 +1045,32 @@ classdef Api < handle
             rois = string(nansen.internal.getField(params, "rois", ""));
             if rois ~= ""
                 result.rois = nansen.internal.roiOutlines(project.load(entity, rois));
+            end
+        end
+
+        function result = apiDataTraces(obj, params)
+            % Columns of signal variables (frames x ROIs) of an entity, a frame range thinned to maxPoints
+            project = obj.requireProject();
+            entity = obj.entity(params);
+            names = nansen.internal.getField(params, "variables", {});
+            if ischar(names) || isempty(names) || ~(iscell(names) || isstring(names))
+                nansen.internal.throwError("invalid-params", "variables is a list of data variable names")
+            end
+            names = cellstr(string(names));
+            columns = nansen.internal.getField(params, "columns", 0);
+            if ~isnumeric(columns) || any(columns ~= round(columns))
+                nansen.internal.throwError("invalid-params", "columns is a list of 0-based column numbers")
+            end
+            arrays = cell(1, numel(names));
+            for i = 1:numel(names)
+                arrays{i} = project.load(entity, string(names{i}));
+            end
+            result = nansen.internal.signalTraces(names, arrays, reshape(columns, 1, []), nansen.internal.getField(params, "start", 0), ...
+                nansen.internal.getField(params, "stop", []), nansen.internal.getField(params, "maxPoints", 2000));
+            rois = string(nansen.internal.getField(params, "rois", ""));
+            if rois ~= ""
+                outlines = nansen.internal.roiOutlines(project.load(entity, rois));
+                result.rois = cellfun(@(r) struct("id", r.id, "classification", r.classification), outlines, UniformOutput=false);
             end
         end
 

@@ -51,7 +51,7 @@
   /**
    * Open the viewer on a variable of an entity. roiVariables are the entity's variables that hold ROIs.
    */
-  N.views.stackViewer = function (app, entityType, key, variable, roiVariables = []) {
+  N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = []) {
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, adding: false, radius: 3, hideRejected: false };
     const canvas = h("canvas.viewer-canvas");
@@ -117,6 +117,38 @@
       h("label.viewer-hide", hide, "Hide rejected"),
       roiList);
 
+    // The selected ROI's signal under the image: the frame shown is marked, a click on the trace goes to that frame
+    const signal = { variable: signalVariables.includes("RoiSignals_Dff") ? "RoiSignals_Dff" : signalVariables[0], counts: {}, range: [null, null] };
+    const tracePlot = signalVariables.length ? N.tracePlot({
+      height: 90,
+      onPick: (frame) => { if (state.mode !== "frame") { state.mode = "frame"; mode.value = "frame"; } state.frame = frame; slider.value = String(frame); show(); },
+      onRange: (start, stop) => { signal.range = [start, stop]; showSignal(); },
+    }) : null;
+    const signalPick = signalVariables.length > 1 ? h("select.input.viewer-signal", { on: { change: () => { signal.variable = signalPick.value; showSignal(); } } },
+      signalVariables.map((v) => h("option", { value: v, selected: v === signal.variable }, v))) : null;
+    const signalHint = h("span.muted.viewer-signal-hint", "Select an ROI to see its signal");
+    const signalPanel = tracePlot ? h("div.viewer-signal", h("div.viewer-signal-bar", signalPick || h("span.muted", signal.variable), signalHint), tracePlot.el) : null;
+    async function showSignal() {
+      if (!tracePlot) return;
+      if (state.selected === null || !state.rois) { signalHint.textContent = "Select an ROI to see its signal"; tracePlot.el.style.display = "none"; return; }
+      try {
+        if (signal.counts[signal.variable] === undefined) {
+          const probe = await app.client.request("data.traces", { entityType, key, variables: [signal.variable], columns: [] });
+          signal.counts[signal.variable] = probe.traces[0].count;
+        }
+        const map = N.roiColumns(state.rois, signal.counts[signal.variable]);
+        const column = map ? map.get(state.selected) : undefined;
+        if (column === undefined) { signalHint.textContent = `${signal.variable} has no column for ROI ${state.selected}`; tracePlot.el.style.display = "none"; return; }
+        const params = { entityType, key, variables: [signal.variable], columns: [column], maxPoints: 1200 };
+        if (signal.range[0] !== null) { params.start = signal.range[0]; params.stop = signal.range[1]; }
+        const result = await app.client.request("data.traces", params);
+        tracePlot.el.style.display = "";
+        tracePlot.draw(result, [`ROI ${state.selected}`]);
+        tracePlot.cursor(state.mode === "frame" ? state.frame : null);
+        signalHint.textContent = `ROI ${state.selected}` + (signal.range[0] !== null ? " · double-click for all frames" : " · drag to zoom, click to go to a frame");
+      } catch (error) { signalHint.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error)); }
+    }
+
     function renderList() {
       const rois = (state.rois || []).filter((r) => !(state.hideRejected && r.classification === "rejected"));
       N.fill(roiList, rois.map((roi) => h("li" + (roi.id === state.selected ? ".selected" : ""), { dataset: { roi: roi.id },
@@ -132,6 +164,7 @@
       state.selected = id;
       redraw();
       renderList();
+      showSignal();
       const item = roiList.querySelector(`li[data-roi="${id}"]`);
       if (item) item.scrollIntoView({ block: "nearest" });
     }
@@ -143,6 +176,7 @@
         if (!state.rois.some((r) => r.id === state.selected)) state.selected = null;
         redraw();
         renderList();
+        showSignal();
       } catch (error) { N.showError(error, "Could not change the ROIs"); }
     }
     function classify(label) { if (state.selected !== null) edit({ classify: [{ id: state.selected, classification: label }] }); }
@@ -182,6 +216,7 @@
         frameLabel.textContent = state.mode === "frame" ? `${state.frame + 1} / ${frame.frames}` : `${frame.frames} frames`;
         paint(canvas, frame, state.rois, state.showRois, state.selected, state.hideRejected);
         renderList();
+        if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
         status.textContent = `${frame.height} × ${frame.width}` + (state.rois && state.showRois ? ` · ${state.rois.length} ROIs` : "");
       } catch (error) {
         state.playing = false;
@@ -207,12 +242,13 @@
       if (state.playing) step();
     }
 
-    const content = h("div.viewer",
+    const content = h("div.viewer" + (signalPanel ? ".with-signal" : ""),
       h("div.viewer-bar",
         playButton, slider, frameLabel, mode,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
         roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick),
       h("div.viewer-main", h("div.viewer-stage", canvas), roiVariables.length ? roiPanel : null),
+      signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where));
     const dialog = N.dialog({ title: `${variable} · ${N.fmt.key(key)}`, content, onClose: () => { state.playing = false; document.removeEventListener("keydown", onKey); } });
     dialog.el.classList.add("viewer-dialog");

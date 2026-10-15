@@ -146,3 +146,45 @@ def _round2(value: float) -> float:
 
 def _number(value: float):
     return int(value) if math.isfinite(value) and value == int(value) else value
+
+
+def signal_traces(values: Dict[str, Any], columns: List[int], start: int = 0, stop: Optional[int] = None,
+                  max_points: int = 2000) -> Dict[str, Any]:
+    """Columns of frames x N signal arrays (a 1-D array is one column), for the dashboard's trace plot.
+
+    values maps variable names to arrays. Frames start..stop-1 (cut to the longest array) are taken every
+    step-th, step the smallest that keeps it to max_points. Values are rounded to 4 decimals as
+    floor(v * 10000 + 0.5) / 10000; NaN, infinities and frames past an array's end are null. MATLAB's
+    nansen.internal.signalTraces gives the same.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        raise NansenError("adapter-unavailable", 'plotting arrays needs NumPy: pip install "nansen-core[npy]"') from None
+    arrays = {}
+    for name, data in values.items():
+        array = np.asarray(data)
+        if array.dtype.kind not in "biuf" or array.ndim not in (1, 2):
+            raise NansenError("invalid-data", f"{name} is not a frames x signals array")
+        arrays[name] = array.astype(np.float64).reshape(array.shape[0], -1)
+    frames = max((a.shape[0] for a in arrays.values()), default=0)
+    start = min(max(0, int(start)), frames)
+    stop = frames if stop is None else min(max(start, int(stop)), frames)
+    max_points = max(1, int(max_points))
+    step = max(1, math.ceil((stop - start) / max_points))
+    picked = list(range(start, stop, step))
+    traces = []
+    for name, array in arrays.items():
+        out = []
+        for column in columns:
+            column = int(column)
+            if not 0 <= column < array.shape[1]:
+                raise NansenError("invalid-params", f"{name} has {array.shape[1]} columns; column {column} is not one")
+            out.append({"column": column, "values": [_rounded(array[t, column]) if t < array.shape[0] else None for t in picked]})
+        traces.append({"variable": name, "columns": out, "count": int(array.shape[1])})
+    return {"frames": frames, "start": start, "step": step, "points": len(picked), "traces": traces}
+
+
+def _rounded(value: float) -> Optional[float]:
+    value = float(value)
+    return math.floor(value * 10000 + 0.5) / 10000 if math.isfinite(value) else None

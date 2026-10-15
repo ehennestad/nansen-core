@@ -14,6 +14,13 @@ function [count, reader, first] = tiffPages(paths)
         if i == 1
             first = struct("Software", tag(file, "Software"), "ImageDescription", tag(file, "ImageDescription"), ...
                 "Artist", tag(file, "Artist"), "Page", file.read());
+        else
+            page = file.read();
+            if ~isequal(size(page), size(first.Page)) || ~strcmp(class(page), class(first.Page))
+                close(file);
+                nansen.internal.throwError("invalid-data", "the files of a recording differ: %s has %s %s pages, %s %s %s", ...
+                    paths(1), mat2str(size(first.Page)), class(first.Page), paths(i), mat2str(size(page)), class(page))
+            end
         end
         n = 1;
         while ~file.lastDirectory()

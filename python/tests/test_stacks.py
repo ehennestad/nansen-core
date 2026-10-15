@@ -89,6 +89,16 @@ def test_a_recording_in_several_files_is_one_variable(api):
     assert stack.shape == whole.shape and (stack[:, :, 13:17] == whole[:, :, 13:17]).all()   # across the two files
 
 
+def test_files_of_one_recording_must_agree(tmp_path):
+    from nansen.adapters import load_object
+    tiff = load_object("ophys_adapters:TiffStack", CASE.parents[3] / "modules" / "ophys" / "python")()
+    tifffile.imwrite(tmp_path / "a_1.tif", np.zeros((2, 8, 8), np.uint16))
+    tifffile.imwrite(tmp_path / "a_2.tif", np.zeros((2, 6, 8), np.uint16))
+    with pytest.raises(NansenError) as error:
+        tiff.open([tmp_path / "a_1.tif", tmp_path / "a_2.tif"])   # refused when opened, not at the first read
+    assert error.value.code == "invalid-data"
+
+
 def test_a_writer_without_chunks_writes_when_it_closes(api):
     project = api.project
     entity = project.entity("session", S2)

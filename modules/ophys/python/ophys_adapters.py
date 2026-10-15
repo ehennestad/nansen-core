@@ -110,7 +110,7 @@ class TiffStack:
             if len(first.shape) != 2:
                 raise NansenError("invalid-data", f"{paths[0]} holds pages of {first.shape}; a TIFF stack of grayscale frames is read")
             frame_shape, dtype = tuple(first.shape), first.dtype
-        count, read_pages = pages(paths, _page_count, _read_pages, frame_shape, dtype)
+        count, read_pages = pages(paths, _page_info, _read_pages, frame_shape, dtype)
         return Stack(frame_shape + (count,), dtype, lambda start, stop: np.moveaxis(read_pages(start, stop), 0, 2))
 
     def write(self, path, data):
@@ -154,7 +154,7 @@ class ScanImageTiff:
         channels = len(si_numbers(text, "hChannels.channelSave")) or 1
         planes = int((si_numbers(text, "hStackManager.actualNumSlices") or si_numbers(text, "hStackManager.numSlices") or [1])[0])
         mosaic = bool((si_numbers(text, "hRoiManager.mroiEnable") or [0])[0] and artist)
-        count, read_pages = pages(paths, _page_count, _read_pages, (height, width), dtype)
+        count, read_pages = pages(paths, _page_info, _read_pages, (height, width), dtype)
         volumes = count // (channels * planes)   # pages after the last whole volume are left out
 
         def read(start, stop):
@@ -209,9 +209,10 @@ def mroi_mosaic(data, artist, path):
     return out
 
 
-def _page_count(path):
+def _page_info(path):
+    """A TIFF file's page count, and its first page's shape and type."""
     with _tifffile().TiffFile(str(path)) as tif:
-        return len(tif.pages)
+        return len(tif.pages), tuple(tif.pages[0].shape), tif.pages[0].dtype
 
 
 def _read_pages(path, start, stop):

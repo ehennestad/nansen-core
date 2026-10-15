@@ -1033,6 +1033,47 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     assert [(r["id"], r.get("classification")) for r in document["rois"]] == [(1, None), (2, "rejected"), (3, None)]
 
 
+def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    run = lambda method, options=None: ("methods.run", {"methodId": method, "entityType": "session", "keys": s1, "options": options or {}})
+    ophys_project(empty_app, [run("ophys.motion_correction", {"referenceFrames": 1}), run("ophys.detect_rois", {"threshold": 0.25, "border": 4}),
+                              run("ophys.extract_signals"), run("ophys.compute_dff")])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='RoiSignals_Dff'] .plot-data")
+    assert page.locator(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .plot-data").count() == 0
+    page.click(".drawer li[data-variable='RoiSignals_Dff'] .plot-data")
+    page.wait_for_selector(".traces-dialog .trace-roi-list li:has-text('ROI 3')")   # columns named by the ROIs
+    assert page.locator(".trace-roi-list li").all_inner_texts() == ["ROI 1", "ROI 2", "ROI 3"]
+    assert "40 frames" in page.locator(".trace-status").inner_text()
+    page.click(".trace-roi-list li[data-column='2']", modifiers=["Control"])   # two ROIs at once
+    wait_until(lambda: page.locator(".trace-roi-list li.selected").count() == 2)
+    page.click(".trace-variable:has-text('RoiSignals_MeanF') input")   # a second panel
+    wait_until(lambda: page.evaluate("document.querySelector('.traces-dialog .trace-canvas').style.height") == f"{2 * 150 + 22}px")
+    page.click(".trace-roi-list li[data-column='0']")   # one ROI again; then the arrow keys move
+    wait_until(lambda: page.locator(".trace-roi-list li.selected").all_inner_texts() == ["ROI 1"])
+    page.keyboard.press("ArrowDown")
+    wait_until(lambda: page.locator(".trace-roi-list li.selected").all_inner_texts() == ["ROI 2"])
+    box = page.locator(".traces-dialog .trace-canvas").bounding_box()
+    page.mouse.move(box["x"] + 100, box["y"] + 60)   # drag across to zoom
+    page.mouse.down()
+    page.mouse.move(box["x"] + 300, box["y"] + 60, steps=5)
+    page.mouse.up()
+    page.wait_for_selector(".trace-status:has-text('double-click for all')")
+    page.locator(".traces-dialog .dialog-head button[title='Close']").click()
+
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+    page.wait_for_selector(".viewer-signal-hint:has-text('Select an ROI')")
+    page.click(".viewer-roi-list li[data-roi='2']")
+    page.wait_for_selector(".viewer-signal-hint:has-text('ROI 2')")
+    box = page.locator(".viewer-signal .trace-canvas").bounding_box()
+    page.mouse.click(box["x"] + box["width"] - 13, box["y"] + 40)   # the end of the trace: the last frame
+    page.wait_for_selector(".viewer-frame:text-is('40 / 40')")
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     api = ophys_project(empty_app)
     page.goto(empty_app["server"].url + "#/overview")

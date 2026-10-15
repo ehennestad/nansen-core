@@ -565,6 +565,30 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .viewer-roi-list .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .viewer-roi-list .grow { flex: 1; }
 .viewer-canvas { image-rendering: pixelated; width: min(640px, 100%); max-height: 62vh; object-fit: contain; aspect-ratio: auto; cursor: crosshair; border-radius: 4px; }
+.viewer-signal { border-top: 1px solid var(--border); padding: 6px 12px 8px; }
+.viewer.with-signal .viewer-canvas { max-height: 44vh; }
+.viewer.with-signal .viewer-roi-list { max-height: 34vh; }
+.viewer-signal-bar { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 4px; }
+.viewer-signal-bar .input { width: auto; padding: 3px 6px; }
+.trace-plot { position: relative; }
+.trace-canvas { width: 100%; display: block; cursor: crosshair; }
+.trace-readout { min-height: 16px; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dialog.traces-dialog { width: 1080px; }
+.traces { display: flex; flex-direction: column; }
+.trace-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; font-size: 13px; }
+.trace-bar .spacer { flex: 1; }
+.trace-variable { display: inline-flex; align-items: center; gap: 5px; }
+.trace-status { font-size: 12px; }
+.trace-main { display: flex; min-height: 340px; }
+.trace-side { width: 200px; border-right: 1px solid var(--border); background: var(--surface-2); display: flex; flex-direction: column; }
+.trace-hint { font-size: 11.5px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.trace-roi-list { list-style: none; margin: 0; padding: 4px; overflow: auto; max-height: 60vh; flex: 1; }
+.trace-roi-list li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.trace-roi-list li:hover { background: var(--hover, rgba(127,127,127,.12)); }
+.trace-roi-list li.selected { background: var(--accent-soft); }
+.trace-roi-list .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.trace-roi-list .swatch.unpicked { border: 1px solid var(--border-strong, var(--border)); }
+.trace-stage { flex: 1; min-width: 0; padding: 10px 16px; }
 .viewer-foot { display: flex; align-items: center; gap: 10px; padding: 8px 16px; font-size: 12px; border-top: 1px solid var(--border); }
 .viewer-foot .spacer { flex: 1; }
 

@@ -157,14 +157,21 @@ def join(stacks: Sequence[Any]) -> Stack:
     return Stack(first.shape[:-1] + (offsets[-1],), first.dtype, read)
 
 
-def pages(path_list: Sequence[Path], page_count: Callable[[Path], int], read_pages: Callable[[Path, int, int], Any],
-          frame_shape: Tuple[int, ...], dtype: Any) -> Tuple[int, Callable[[int, int], Any]]:
-    """For page-based files (TIFF): the pages of several files as one sequence, and a reader of pages a..b-1."""
-    counts = [page_count(p) for p in path_list]
+def pages(path_list: Sequence[Path], page_info: Callable[[Path], Tuple[int, Tuple[int, ...], Any]],
+          read_pages: Callable[[Path, int, int], Any], frame_shape: Tuple[int, ...], dtype: Any) -> Tuple[int, Callable[[int, int], Any]]:
+    """For page-based files (TIFF): the pages of several files as one sequence, and a reader of pages a..b-1.
+    page_info gives a file's page count and its pages' shape and type, which must be the same in every file."""
+    np = _numpy()
+    counts = []
+    for path in path_list:
+        count, shape, kind = page_info(path)
+        if tuple(shape) != tuple(frame_shape) or np.dtype(kind) != np.dtype(dtype):
+            raise NansenError("invalid-data", f"the files of a recording differ: {path_list[0]} has {tuple(frame_shape)} "
+                                              f"{np.dtype(dtype)} pages, {path} {tuple(shape)} {np.dtype(kind)}")
+        counts.append(count)
     offsets = [0]
     for n in counts:
         offsets.append(offsets[-1] + n)
-    np = _numpy()
 
     def read(start, stop):
         pieces = []
