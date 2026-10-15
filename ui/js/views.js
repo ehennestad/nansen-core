@@ -1689,9 +1689,38 @@
             } catch (error) { N.showError(error, "Could not use that folder"); }
           } } }, N.icon("search", 14), "Locate…"),
           h("button.btn.small" + (p.available ? ".primary" : ""), { disabled: !p.available, on: { click: () => open(p.path) } }, "Open"),
-          h("button.btn.small.ghost.icon", { title: "Forget", on: { click: async () => { await app.client.request("catalog.remove", { path: p.path }).catch(N.showError); N.views.projects(app, content); } } }, N.icon("x", 14))))) :
+          h("button.btn.small.ghost.icon.project-menu", { title: "Rename, move, forget or delete", on: { click: (event) => projectMenu(event.currentTarget, p) } }, N.icon("menu", 14))))) :
           h("div.empty", N.icon("folder", 40), h("h3", "No projects yet"), h("div", "Create one above, or open a project folder.")))));
     path.addEventListener("keydown", (e) => { if (e.key === "Enter") open(path.value); });
+
+    // dev's project manager: rename a project, move its folder, forget it, or delete it with its folder
+    function projectMenu(anchor, p) {
+      const name = p.title || p.name;
+      const redo = () => N.views.projects(app, content);
+      const isOpen = app.project && app.project.folder && app.project.folder.replace(/[\\/]+$/, "") === p.path;
+      N.menu(anchor, [
+        { label: "Rename…", icon: "edit", onClick: async () => {
+          const newName = await N.prompt(`Rename ${name}`, "Name (a letter, then letters, digits or _)", p.name);
+          if (!newName || newName === p.name) return;
+          try { await app.client.request("catalog.rename", { path: p.path, name: newName }); N.toast("Project renamed", newName, "success"); redo(); }
+          catch (error) { N.showError(error, "Could not rename it"); }
+        } },
+        { label: "Move…", icon: "folder", onClick: async () => {
+          if (isOpen) { N.toast("It is open", "Open another project to move this one", "error"); return; }
+          const newPath = await N.prompt(`Move ${name}`, "New folder (it must not exist)", p.path);
+          if (!newPath || newPath === p.path) return;
+          try { await app.client.request("catalog.move", { path: p.path, newPath }); N.toast("Project moved", newPath, "success"); redo(); }
+          catch (error) { N.showError(error, "Could not move it"); }
+        } },
+        { label: "Forget", icon: "x", onClick: async () => { await app.client.request("catalog.remove", { path: p.path }).catch(N.showError); redo(); } },
+        { label: "Delete with its folder…", icon: "trash", onClick: async () => {
+          if (isOpen) { N.toast("It is open", "Open another project to delete this one", "error"); return; }
+          if (!(await N.confirm(`Delete ${name}?`, `The folder ${p.path} and everything in it are deleted. The data locations' files elsewhere are not.`, "Delete", "danger"))) return;
+          try { await app.client.request("catalog.remove", { path: p.path, deleteFolder: true }); N.toast("Project deleted", p.path, "success"); redo(); }
+          catch (error) { N.showError(error, "Could not delete it"); }
+        } },
+      ]);
+    }
   };
 
   function addColumnDialog(app, entityType) {

@@ -354,10 +354,57 @@ class Api:
         return self.catalog.projects()
 
     def catalog__remove(self, params: dict) -> list:
+        """Forget a project; with deleteFolder, delete its folder too (dev's project manager's Delete), which must hold
+        the project, and not be the project open."""
+        import shutil
+
         if self.catalog is None:
             raise NansenError("no-catalog", "this app has no project catalog")
-        self.catalog.remove(params["path"])
+        folder = Path(params["path"]).resolve()
+        if params.get("deleteFolder"):
+            self._not_open(folder)
+            if not (folder / "project.nansen.json").is_file():
+                raise NansenError("invalid-params", f"{folder} holds no project, so it is not deleted")
+        self.catalog.remove(folder)
+        if params.get("deleteFolder"):
+            shutil.rmtree(folder)
         return self.catalog.projects()
+
+    def catalog__rename(self, params: dict) -> list:
+        """Give a project another name (dev's project manager's Rename): in its project.nansen.json and the catalog."""
+        if self.catalog is None:
+            raise NansenError("no-catalog", "this app has no project catalog")
+        folder = Path(params["path"]).resolve()
+        self.catalog.rename(folder, params["name"])
+        if self.project is not None and Path(self.project.folder).resolve() == folder:   # the open one: read it again
+            self._set_project(Project.open(folder, environment=self.project.environment))
+            self.emit("project", {"name": self.project.name})
+        return self.catalog.projects()
+
+    def catalog__move(self, params: dict) -> list:
+        """Move a project's folder (dev's project manager's Move): to newPath, which must not exist, and point the
+        catalog there. Not the project open."""
+        import shutil
+
+        if self.catalog is None:
+            raise NansenError("no-catalog", "this app has no project catalog")
+        folder = Path(params["path"]).resolve()
+        target = Path(params["newPath"]).expanduser().resolve()
+        self._not_open(folder)
+        if not folder.is_dir():
+            raise NansenError("file-not-found", f"{folder} does not exist")
+        if target.exists():
+            raise NansenError("folder-not-empty", f"{target} exists already")
+        if target == folder or folder in target.parents:
+            raise NansenError("invalid-params", f"{target} is inside {folder}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(folder), str(target))
+        self.catalog.relocate(folder, target)
+        return self.catalog.projects()
+
+    def _not_open(self, folder: Path) -> None:
+        if self.project is not None and Path(self.project.folder).resolve() == folder:
+            raise NansenError("invalid-params", "that is the project open: open another one first")
 
     # -- projects ----------------------------------------------------------------------------
 

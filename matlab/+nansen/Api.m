@@ -39,7 +39,7 @@ classdef Api < handle
             end
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
-            names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
+            names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
@@ -242,11 +242,74 @@ classdef Api < handle
         end
 
         function result = apiCatalogRemove(obj, params)
+            % Forget a project; with deleteFolder, delete its folder too (dev's project manager's Delete), which must
+            % hold the project, and not be the project open
             if isempty(obj.Catalog)
                 nansen.internal.throwError("no-catalog", "this app has no project catalog")
             end
-            obj.Catalog.remove(nansen.Api.param(params, "path"));
+            folder = nansen.Catalog.absolute(string(nansen.Api.param(params, "path")));
+            deleteFolder = logical(nansen.internal.getField(params, "deleteFolder", false));
+            if deleteFolder
+                obj.notOpen(folder);
+                if ~isfile(fullfile(folder, "project.nansen.json"))
+                    nansen.internal.throwError("invalid-params", "%s holds no project, so it is not deleted", folder)
+                end
+            end
+            obj.Catalog.remove(folder);
+            if deleteFolder
+                rmdir(folder, "s");
+            end
             result = obj.Catalog.projects();
+        end
+
+        function result = apiCatalogRename(obj, params)
+            % Give a project another name (dev's project manager's Rename): in its project.nansen.json and the catalog
+            if isempty(obj.Catalog)
+                nansen.internal.throwError("no-catalog", "this app has no project catalog")
+            end
+            folder = nansen.Catalog.absolute(string(nansen.Api.param(params, "path")));
+            obj.Catalog.rename(folder, nansen.Api.param(params, "name"));
+            if ~isempty(obj.Project) && nansen.Catalog.absolute(obj.Project.Folder) == folder   % the open one: read it again
+                obj.setProject(nansen.Project.open(folder, Environment=obj.Project.Environment));
+                obj.emit("project", struct("name", char(obj.Project.Name)));
+            end
+            result = obj.Catalog.projects();
+        end
+
+        function result = apiCatalogMove(obj, params)
+            % Move a project's folder (dev's project manager's Move): to newPath, which must not exist, and point the
+            % catalog there. Not the project open
+            if isempty(obj.Catalog)
+                nansen.internal.throwError("no-catalog", "this app has no project catalog")
+            end
+            folder = nansen.Catalog.absolute(string(nansen.Api.param(params, "path")));
+            target = nansen.Catalog.absolute(string(nansen.Api.param(params, "newPath")));
+            obj.notOpen(folder);
+            if ~isfolder(folder)
+                nansen.internal.throwError("file-not-found", "%s does not exist", folder)
+            end
+            if isfolder(target) || isfile(target)
+                nansen.internal.throwError("folder-not-empty", "%s exists already", target)
+            end
+            if target == folder || startsWith(target, folder + filesep)
+                nansen.internal.throwError("invalid-params", "%s is inside %s", target, folder)
+            end
+            parent = fileparts(target);
+            if ~isfolder(parent)
+                mkdir(parent);
+            end
+            [ok, message] = movefile(folder, target);
+            if ~ok
+                nansen.internal.throwError("invalid-params", "could not move %s: %s", folder, message)
+            end
+            obj.Catalog.relocate(folder, target);
+            result = obj.Catalog.projects();
+        end
+
+        function notOpen(obj, folder)
+            if ~isempty(obj.Project) && nansen.Catalog.absolute(obj.Project.Folder) == folder
+                nansen.internal.throwError("invalid-params", "that is the project open: open another one first")
+            end
         end
 
         function result = apiProjectOpen(obj, params)

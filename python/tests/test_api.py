@@ -380,6 +380,30 @@ def test_any_file_goes_to_the_workspace(tmp_path):
         api.close()
 
 
+def test_projects_are_renamed_moved_and_deleted(tmp_path):
+    catalog = Catalog(tmp_path / "catalog.json")
+    one, two = Project.create(tmp_path / "one", "One"), Project.create(tmp_path / "two", "Two")
+    catalog.add(one)
+    catalog.add(two)
+    api = Api(catalog=catalog, project=Project.open(tmp_path / "one"), start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    try:
+        before = (tmp_path / "one" / "project.nansen.json").read_text()
+        names = {p["path"]: p["name"] for p in call("catalog.rename", path=str(tmp_path / "one"), name="First")["result"]}
+        assert names[str((tmp_path / "one").resolve())] == "First" and api.project.name == "First"   # the open one, read again
+        assert (tmp_path / "one" / "project.nansen.json").read_text() == before.replace('"One"', '"First"', 1)
+        assert call("catalog.rename", path=str(tmp_path / "one"), name="no good")["error"]["code"] == "invalid-params"
+        assert call("catalog.move", path=str(tmp_path / "one"), newPath=str(tmp_path / "moved"))["error"]["code"] == "invalid-params"   # open
+        moved = call("catalog.move", path=str(tmp_path / "two"), newPath=str(tmp_path / "archive" / "two"))["result"]
+        assert str((tmp_path / "archive" / "two").resolve()) in [p["path"] for p in moved] and not (tmp_path / "two").exists()
+        assert call("catalog.move", path=str(tmp_path / "archive" / "two"), newPath=str(tmp_path / "one"))["error"]["code"] == "folder-not-empty"
+        assert call("catalog.remove", path=str(tmp_path / "one"), deleteFolder=True)["error"]["code"] == "invalid-params"   # open
+        left = call("catalog.remove", path=str(tmp_path / "archive" / "two"), deleteFolder=True)["result"]
+        assert [p["name"] for p in left] == ["First"] and not (tmp_path / "archive" / "two").exists()
+    finally:
+        api.close()
+
+
 def test_a_shared_project_is_installed_from_git(tmp_path):
     import shutil
     import subprocess

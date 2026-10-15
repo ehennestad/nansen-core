@@ -146,6 +146,33 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyNotEmpty(sent{2});
         end
 
+        function projectsAreRenamedMovedAndDeleted(testCase)
+            folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
+            catalog = nansen.Catalog(fullfile(folder, "catalog.json"));
+            catalog.add(nansen.Project.create(fullfile(folder, "one"), "One"));
+            catalog.add(nansen.Project.create(fullfile(folder, "two"), "Two"));
+            api = nansen.Api(Catalog=catalog, Project=nansen.Project.open(fullfile(folder, "one")));
+            call = @(method, params) api.handle(struct("id", 1, "method", method, "params", params));
+            before = nansen.internal.readText(fullfile(folder, "one", "project.nansen.json"));
+            call("catalog.rename", struct("path", fullfile(folder, "one"), "name", "First"));
+            testCase.verifyEqual(api.Project.Name, "First");   % the open one, read again
+            testCase.verifyEqual(string(nansen.internal.readText(fullfile(folder, "one", "project.nansen.json"))), ...
+                replace(string(before), """One""", """First"""));
+            response = call("catalog.rename", struct("path", fullfile(folder, "one"), "name", "no good"));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+            response = call("catalog.move", struct("path", fullfile(folder, "one"), "newPath", fullfile(folder, "moved")));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");   % open
+            call("catalog.move", struct("path", fullfile(folder, "two"), "newPath", fullfile(folder, "archive", "two")));
+            testCase.verifyTrue(isfile(fullfile(folder, "archive", "two", "project.nansen.json")));
+            testCase.verifyFalse(isfolder(fullfile(folder, "two")));
+            response = call("catalog.remove", struct("path", fullfile(folder, "one"), "deleteFolder", true));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");   % open
+            left = call("catalog.remove", struct("path", fullfile(folder, "archive", "two"), "deleteFolder", true)).result;
+            left = nansen.internal.asCellOfStructs(left);
+            testCase.verifyEqual(string(cellfun(@(p) string(p.name), left)), "First");
+            testCase.verifyFalse(isfolder(fullfile(folder, "archive", "two")));
+        end
+
         function anyFileGoesToTheWorkspace(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             project = nansen.demo.create(fullfile(fixture.Folder, "demo"));

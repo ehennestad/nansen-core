@@ -119,6 +119,29 @@ classdef Catalog
             obj.write(document)
         end
 
+        function entry = rename(obj, path, name)
+            %rename Give an entry's project another name, in its project.nansen.json (the rest of the file as it was) and here
+            name = string(name);
+            if ~isscalar(name) || isempty(regexp(name, "^[A-Za-z][A-Za-z0-9_]*$", "once"))
+                nansen.internal.throwError("invalid-params", "'%s' is not a project name: a letter, then letters, digits or _", strjoin(name, " "))
+            end
+            document = obj.read();
+            path = nansen.Catalog.absolute(path);
+            entries = nansen.internal.asCellOfStructs(document.projects);
+            index = find(cellfun(@(p) string(p.path) == path, entries), 1);
+            if isempty(index)
+                nansen.internal.throwError("unknown-project", "%s is not in the catalog", path)
+            end
+            projectFile = fullfile(path, "project.nansen.json");
+            nansen.readDocument(projectFile, ExpectedType="nansen.project");   % it is a project
+            text = nansen.internal.readText(projectFile);
+            nansen.internal.writeText(projectFile, nansen.internal.JsonText.replace(text, "/name", char(name)));
+            entries{index}.name = char(name);
+            entry = entries{index};
+            document.projects = entries;
+            obj.write(document)
+        end
+
         function remove(obj, path)
             document = obj.read();
             path = nansen.Catalog.absolute(path);

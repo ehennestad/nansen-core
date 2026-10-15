@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 import os
 import sys
 from pathlib import Path
@@ -101,6 +102,26 @@ class Catalog:
                 p["path"] = new_path
         self._write(document)
         return next(p for p in document["projects"] if p["path"] == new_path)
+
+    def rename(self, path: PathLike, name: str) -> dict:
+        """Give an entry's project another name, in its project.nansen.json (the rest of the file as it was) and here."""
+        from . import jsontext
+        from .documents import read_document
+
+        if not isinstance(name, str) or not re.match(r"^[A-Za-z][A-Za-z0-9_]*$", name):
+            raise NansenError("invalid-params", f"{name!r} is not a project name: a letter, then letters, digits or _")
+        document = self._read()
+        path = str(Path(path).resolve())
+        entry = next((p for p in document["projects"] if p["path"] == path), None)
+        if entry is None:
+            raise NansenError("unknown-project", f"{path} is not in the catalog")
+        project_file = Path(path) / "project.nansen.json"
+        read_document(project_file, "nansen.project")   # it is a project
+        text = project_file.read_text(encoding="utf-8")
+        project_file.write_text(jsontext.replace(text, "/name", name), encoding="utf-8")
+        entry["name"] = name
+        self._write(document)
+        return entry
 
     def remove(self, path: PathLike) -> None:
         document = self._read()
