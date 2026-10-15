@@ -241,6 +241,28 @@ def test_create_the_demo_and_a_project_from_the_projects_page(empty_app, page):
     assert [p["name"] for p in empty_app["api"].handle({"id": 1, "method": "catalog.list"})["result"]] == ["Study", "TwoPhotonDemo"]
 
 
+def test_create_the_two_photon_quickstart_and_view_a_recording(empty_app, page):
+    pytest.importorskip("numpy")
+    page.goto(empty_app["server"].url)
+    page.click(".action-card:has-text('Create the demo')")
+    assert page.locator(".dialog select option").all_inner_texts() == ["Sessions demo", "Two-photon quickstart"]
+    page.select_option(".dialog select", "two-photon")
+    page.fill(".dialog .field:has-text('Folder') input", str(empty_app["folder"] / "tutorial"))
+    page.click(".dialog-foot button:has-text('Create')")
+    page.wait_for_selector(".stat")
+    assert page.locator(".stat .value").all_inner_texts() == ["2", "4"]
+    assert empty_app["api"].project.name == "TwoPhotonQuickstart"
+
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.click(".drawer.open li[data-variable='TwoPhotonSeries_Original'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('64 × 64')")
+    assert page.locator(".viewer-frame").inner_text() == "1 / 300"
+    page.locator(".viewer-slider").fill("149")
+    page.wait_for_selector(".viewer-frame:text-is('150 / 300')")
+
+
 def test_a_project_without_a_dataset_offers_to_set_one_up(empty_app, page):
     from nansen.demo import demo_dir
 

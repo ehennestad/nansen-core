@@ -1,0 +1,76 @@
+{
+  "description": "What demo.create builds with kind two-photon (Python's create_two_photon_demo, MATLAB's nansen.demo.createTwoPhoton): synthetic SciScan recordings of disk-shaped cells with calcium activity on a textured background, moving by whole pixels, with noise, and a project over them with the ophys variables set up. Every random number is a 32-bit hash of a seed and an index, so both languages write the same bytes.",
+  "project": {
+    "name": "TwoPhotonQuickstart",
+    "title": "Two-photon quickstart",
+    "description": "Synthetic two-photon recordings to try motion correction, ROI detection and signal extraction on."
+  },
+  "subjects": {
+    "m1": ["s1", "s2"],
+    "m2": ["s1", "s2"]
+  },
+  "entityTypes": [
+    {
+      "name": "subject",
+      "title": "Subjects",
+      "fragments": ["core.notes", "core.subject"]
+    },
+    {
+      "name": "session",
+      "title": "Sessions",
+      "fragments": ["core.notes"]
+    }
+  ],
+  "setup": {
+    "rawFilePattern": "recording",
+    "rawFileAdapter": "ophys.sciscan_raw"
+  },
+  "methods": [
+    {
+      "methodId": "ophys.read_metadata",
+      "entityType": "session"
+    }
+  ],
+  "presets": [
+    {
+      "methodId": "ophys.quicky",
+      "name": "tutorial",
+      "values": {
+        "roiDiameter": 8,
+        "binarizationPercentile": 85
+      },
+      "description": "For the tutorial's cells, about 8 pixels across"
+    }
+  ],
+  "recording": {
+    "height": 64,
+    "width": 64,
+    "frames": 300,
+    "framesPerSecond": "31,25",
+    "fov": ["1.28E-4", "1.28E-4"],
+    "maxShift": 3,
+    "moveChance": 0.125,
+    "noise": 40
+  },
+  "cells": {
+    "count": 12,
+    "radius": 4,
+    "margin": 12,
+    "minDistance": 9,
+    "baseline": 120,
+    "amplitude": 320,
+    "spikeChance": 0.03,
+    "decay": 0.9
+  },
+  "background": {
+    "level": 300,
+    "coarse": 240,
+    "grid": 16,
+    "fine": 60
+  },
+  "seeds": {
+    "note": "Each subject's field of view (cells, background) is drawn from 100 x its number; each session's activity, motion and noise from that plus 10 x the session's number (numbers from 1). Added to them: 0 cell positions, 1 cell amplitudes, 2 coarse background, 3 fine background; 0 spikes, 1 motion, 2 noise.",
+    "subject": 100,
+    "session": 10
+  }
+}

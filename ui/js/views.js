@@ -1670,7 +1670,7 @@
         h("p.muted", "Open a project folder, start a new one, or bring one over from NANSEN. Projects you open are remembered here."),
         h("div.action-cards",
           action("plus", "New project", "In an empty folder, optionally from an existing dataset config", () => newProjectDialog(app, opened)),
-          action("compass", "Create the demo", "A small two-photon dataset to try things on", () => demoDialog(app, opened)),
+          action("compass", "Create the demo", "Sessions to try things on, or a two-photon quickstart", () => demoDialog(app, opened)),
           action("download", "Import from NANSEN", "Convert a project made with the existing NANSEN", () => importDialog(app, opened)),
           action("git", "Install a shared project", "Clone a project from GitHub or another git repository", () => installDialog())),
         h("div.card", { style: { margin: "18px 0" } }, h("div.card-body", { style: { display: "flex", gap: "8px" } }, path,
@@ -2185,10 +2185,16 @@
   function demoDialog(app, opened) {
     formDialog({
       title: "Create the demo",
-      intro: "Writes a small two-photon dataset (raw and partly processed sessions of four mice) and a project over it.",
+      intro: "Writes a small dataset and a project over it.",
       label: "Create",
       required: ["path"],
-      schema: { type: "object", properties: { path: { type: "string", title: "Folder", description: "A new or empty folder" } } },
+      schema: { type: "object", properties: {
+        kind: { type: "string", title: "Demo", enum: ["sessions", "two-photon"], enumTitles: ["Sessions demo", "Two-photon quickstart"],
+          default: "sessions",
+          description: "Sessions demo: raw and partly processed sessions of four mice, to try tables, notes and pipelines on. " +
+            "Two-photon quickstart: synthetic recordings to run motion correction, ROI detection and signal extraction on." },
+        path: { type: "string", title: "Folder", description: "A new or empty folder" },
+      } },
       submit: async (values) => opened(await app.client.request("demo.create", values), "Demo created"),
     });
   }

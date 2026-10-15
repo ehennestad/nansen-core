@@ -1,0 +1,4 @@
+{
+  "description": "The two-photon quickstart (demo.create with kind two-photon) in ${scratch}: its project, with the core and ophys modules, the ophys columns, and the frame rate and pixel size read from each recording's .ini; a kind that does not exist; its quicky preset; and frames of two recordings, and a maximum projection, as the viewer gets them. The recordings are synthetic, made from 32-bit hashes, so the pixels must be the same bytes in both languages.",
+  "steps": 9
+}

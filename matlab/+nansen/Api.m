@@ -485,7 +485,17 @@ classdef Api < handle
         end
 
         function result = apiDemoCreate(obj, params)
-            obj.setProject(nansen.demo.create(nansen.Api.param(params, "path")));
+            % A demo project in a new folder, now open: kind sessions (the default) or two-photon (the quickstart)
+            path = nansen.Api.param(params, "path");
+            kind = nansen.internal.getField(params, "kind", "sessions");
+            if ~(ischar(kind) || isstring(kind)) || ~ismember(string(kind), ["sessions", "two-photon"])
+                nansen.internal.throwError("invalid-params", "kind is one of sessions, two-photon, not %s", jsonencode(kind))
+            elseif string(kind) == "sessions"
+                project = nansen.demo.create(path);
+            else
+                project = nansen.demo.createTwoPhoton(path);
+            end
+            obj.setProject(project);
             obj.emit("project", struct("name", char(obj.Project.Name)));
             result = obj.apiProjectInfo(struct());
         end

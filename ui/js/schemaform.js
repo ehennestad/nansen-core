@@ -32,7 +32,9 @@
     let input;
     let read;
     if (schema.enum) {
-      input = h("select.input", schema.enum.map((option) => h("option", { value: String(option), selected: option === value }, String(option))));
+      const titles = schema.enumTitles || [];   // labels for the options, when the values are not for reading
+      input = h("select.input", schema.enum.map((option, i) => h("option", { value: String(option), selected: option === value },
+        String(titles[i] ?? option))));
       read = () => {
         const chosen = schema.enum.find((option) => String(option) === input.value);
         return chosen === undefined ? input.value : chosen;

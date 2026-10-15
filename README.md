@@ -17,6 +17,8 @@ A rebuild of the NANSEN core for MATLAB and Python. It is built around versioned
 
 ## Quick start
 
+New to NANSEN? [Getting started](docs/getting-started.md) walks through the two-photon quickstart in the dashboard: synthetic recordings to correct for motion, find cells in, curate and plot the signals of (`nansen demo --kind two-photon <folder>`, or `nansen.demo.createTwoPhoton` in MATLAB).
+
 ### MATLAB
 
 ```matlab
