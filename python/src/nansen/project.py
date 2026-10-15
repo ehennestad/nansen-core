@@ -1421,6 +1421,20 @@ class Project:
             self.document.pop("preferredPresets", None)
         self._check_and_save()
 
+    def hidden_methods(self) -> List[str]:
+        """The methods and tools left out of the run menus (dev's Customize Menus), by id."""
+        return list(self.document.get("hiddenMethods", []))
+
+    def set_method_hidden(self, method_id: str, hidden: bool) -> None:
+        """Leave a method out of the run menus, or put it back; it still runs when asked for by id."""
+        self.method(method_id)  # unknown-method
+        ids = [m for m in self.hidden_methods() if m != method_id] + ([method_id] if hidden else [])
+        if ids:
+            self.document["hiddenMethods"] = ids
+        else:
+            self.document.pop("hiddenMethods", None)
+        self._check_and_save()
+
     def _check_and_save(self) -> None:
         self.document = check_document(self.document, "nansen.project")
         write_json(self.folder / PROJECT_FILE, self.document)

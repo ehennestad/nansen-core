@@ -52,7 +52,7 @@ classdef Api < handle
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
-                "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
+                "methods.list", "methods.setHidden", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.comment", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
             for name = names
@@ -1395,7 +1395,17 @@ classdef Api < handle
         function result = apiMethodsList(obj, params)
             project = obj.requireProject();
             methods = project.entityMethods(string(nansen.internal.getField(params, "entityType", "")));
-            result = arrayfun(@(m) m.summary(), methods, UniformOutput=false);
+            result = nansen.Api.markedHidden(project, methods);
+        end
+
+        function result = apiMethodsSetHidden(obj, params)
+            % Leave a method out of the run menus or put it back (dev's Customize Menus); returns methods.list
+            hidden = nansen.internal.getField(params, "hidden", true);
+            if ~(islogical(hidden) && isscalar(hidden))
+                nansen.internal.throwError("invalid-params", "hidden is true or false")
+            end
+            obj.requireProject().setMethodHidden(string(nansen.Api.param(params, "methodId")), hidden);
+            result = obj.apiMethodsList(struct());
         end
 
         function result = apiMethodsEdit(obj, params)
@@ -1672,7 +1682,8 @@ classdef Api < handle
         end
 
         function result = apiToolsList(obj, ~)
-            result = arrayfun(@(m) m.summary(), obj.requireProject().tools(), UniformOutput=false);
+            project = obj.requireProject();
+            result = nansen.Api.markedHidden(project, project.tools());
         end
 
         function result = apiToolsRun(obj, params)
@@ -2394,6 +2405,18 @@ classdef Api < handle
     end
 
     methods (Static, Access = private)
+        function result = markedHidden(project, found)
+            % Method summaries, those left out of the run menus with hidden: true
+            hidden = project.hiddenMethods();
+            result = cell(1, numel(found));
+            for i = 1:numel(found)
+                result{i} = found(i).summary();
+                if ismember(string(found(i).Id), hidden)
+                    result{i}.hidden = true;
+                end
+            end
+        end
+
         function [value, state] = progressOf(progress, key)
             % The fraction of the entity's pipeline that is done, or [] (null) when it has none
             value = [];

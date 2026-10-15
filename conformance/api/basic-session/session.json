@@ -735,6 +735,112 @@
     },
     {
       "request": {
+        "method": "methods.setHidden",
+        "id": 37,
+        "params": {
+          "methodId": "core.wait",
+          "hidden": true
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "core.file_stats"
+          },
+          {
+            "id": "core.export_keys"
+          },
+          {
+            "id": "core.wait",
+            "hidden": true
+          },
+          {
+            "id": "core.backup"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "methods.list",
+        "id": 38,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "core.file_stats"
+          },
+          {
+            "id": "core.export_keys"
+          },
+          {
+            "id": "core.wait",
+            "hidden": true
+          },
+          {
+            "id": "core.backup"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "methods.setHidden",
+        "id": 39,
+        "params": {
+          "methodId": "core.nope",
+          "hidden": true
+        }
+      },
+      "expect": {
+        "error": "unknown-method"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.setHidden",
+        "id": 40,
+        "params": {
+          "methodId": "core.wait",
+          "hidden": "yes"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.setHidden",
+        "id": 41,
+        "params": {
+          "methodId": "core.wait",
+          "hidden": false
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "core.file_stats"
+          },
+          {
+            "id": "core.export_keys"
+          },
+          {
+            "id": "core.wait",
+            "tool": false
+          },
+          {
+            "id": "core.backup"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
         "method": "tasks.comment",
         "id": 33,
         "params": {

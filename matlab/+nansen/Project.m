@@ -301,6 +301,31 @@ classdef Project < handle
             obj.writeDocument(document)
         end
 
+        function ids = hiddenMethods(obj)
+            %hiddenMethods The methods and tools left out of the run menus (dev's Customize Menus), by id
+            ids = string(nansen.internal.getField(obj.Document, "hiddenMethods", {}));
+            ids = reshape(ids, 1, []);
+        end
+
+        function setMethodHidden(obj, methodId, hidden)
+            %setMethodHidden Leave a method out of the run menus, or put it back; it still runs when asked for by id
+            obj.method(methodId);   % unknown-method
+            ids = obj.hiddenMethods();
+            ids = ids(ids ~= string(methodId));
+            if hidden
+                ids(end + 1) = string(methodId);
+            end
+            document = obj.Document;
+            if isempty(ids)
+                if isfield(document, "hiddenMethods")
+                    document = rmfield(document, "hiddenMethods");
+                end
+            else
+                document.hiddenMethods = cellstr(ids);
+            end
+            obj.writeDocument(document)
+        end
+
         function result = excludeFromScan(obj, dataLocation, path)
             %excludeFromScan Have scans skip an entry the last scan did not match
             %

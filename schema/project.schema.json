@@ -67,6 +67,14 @@
         "$ref": "#/definitions/entityType"
       }
     },
+    "hiddenMethods": {
+      "type": "array",
+      "description": "Methods and tools left out of the run menus (dev's Customize Menus), by id; they still run when asked for by id.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
     "preferredPresets": {
       "type": "array",
       "description": "The preset a method runs with when a run gives neither a preset nor options (dev's preferred options, its Default run mode).",

@@ -1384,7 +1384,22 @@ class Api:
 
     def methods__list(self, params: dict) -> list:
         project = self._require_project()
-        return [m.summary() for m in project.methods(params.get("entityType"))]
+        return self._marked_hidden(project, project.methods(params.get("entityType")))
+
+    @staticmethod
+    def _marked_hidden(project, methods) -> list:
+        """Method summaries, those left out of the run menus with hidden: true."""
+        hidden = set(project.hidden_methods())
+        return [dict(m.summary(), hidden=True) if m.id in hidden else m.summary() for m in methods]
+
+    def methods__setHidden(self, params: dict) -> list:
+        """Leave a method out of the run menus or put it back (dev's Customize Menus); returns methods.list."""
+        project = self._require_project()
+        hidden = params.get("hidden", True)
+        if not isinstance(hidden, bool):
+            raise NansenError("invalid-params", "hidden is true or false")
+        project.set_method_hidden(params["methodId"], hidden)
+        return self.methods__list({})
 
     def methods__edit(self, params: dict) -> dict:
         """Open a method's code in an editor: in this language unless asked for the other."""
@@ -1412,7 +1427,8 @@ class Api:
         return {"name": name, "variable": params["variable"]}
 
     def tools__list(self, params: dict) -> list:
-        return [m.summary() for m in self._require_project().tools()]
+        project = self._require_project()
+        return self._marked_hidden(project, project.tools())
 
     def tools__run(self, params: dict) -> dict:
         """Run a project tool now; its result and log."""

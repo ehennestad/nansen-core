@@ -135,7 +135,7 @@
           } catch (error) { N.showError(error, "Could not undo it"); }
         } } }, "Undo"))))) : null;
 
-    const tools = (app.methods || []).filter((m) => m.tool);
+    const tools = (app.methods || []).filter((m) => m.tool && !m.hidden);
     const toolsCard = tools.length ? h("div.card.tools-card", h("div.card-head", N.icon("zap"), h("h3", "Tools")),
       h("ul.list", tools.map((m) => h("li", { dataset: { tool: m.id } },
         h("div.grow", h("div.title", m.title), h("div.sub", m.description || m.id)),
@@ -1100,35 +1100,48 @@
         app.client.request("pipelines.list", { entityType }).catch(() => [])]);
     } catch (error) { N.showError(error); return; }
     if (!methods.length) { N.toast("No methods", `No method runs on ${entityType}. Add a module with methods.`); return; }
+    const hiddenCount = methods.filter((m) => m.hidden).length;   // left out of the menus on the Data page (dev's Customize Menus)
+    let showHidden = false;
     const target = rows.length ? `${rows.length} selected` : `all ${app.typeTitle(entityType).toLowerCase()}`;
     let current = null;
     let form = null;
     let presets = [];
     const list = h("div.method-list");
     const detail = h("div.method-detail");
-    const groups = new Map();
-    for (const m of methods) {
-      const group = m.category || "Methods";
-      if (!groups.has(group)) groups.set(group, []);
-      groups.get(group).push(m);
-    }
     const items = new Map();
-    for (const [group, members] of groups) {
-      list.appendChild(h("div.group", group));
-      for (const m of members) {
-        const item = h("button.method-item", { on: { click: () => select(m) } }, h("div.t", m.title), h("div.d", m.description || m.id));
-        items.set(m.id, item);
-        list.appendChild(item);
+    function drawList() {
+      list.replaceChildren();
+      items.clear();
+      const groups = new Map();
+      for (const m of methods) {
+        if (m.hidden && !showHidden) continue;
+        const group = m.category || "Methods";
+        if (!groups.has(group)) groups.set(group, []);
+        groups.get(group).push(m);
       }
-    }
-    if (pipelines.length) {
-      list.appendChild(h("div.group", "Pipelines"));
-      for (const p of pipelines) {
-        const item = h("button.method-item", { on: { click: () => selectPipeline(p) } },
-          h("div.t", N.icon("layers", 13), " ", p.title || p.id), h("div.d", p.steps.map((s) => s.title).join(" → ")));
-        items.set("pipeline:" + p.id, item);
-        list.appendChild(item);
+      for (const [group, members] of groups) {
+        list.appendChild(h("div.group", group));
+        for (const m of members) {
+          const item = h("button.method-item" + (m.hidden ? ".muted" : ""), { on: { click: () => select(m) } }, h("div.t", m.title), h("div.d", m.description || m.id));
+          items.set(m.id, item);
+          list.appendChild(item);
+        }
       }
+      if (pipelines.length) {
+        list.appendChild(h("div.group", "Pipelines"));
+        for (const p of pipelines) {
+          const item = h("button.method-item", { on: { click: () => selectPipeline(p) } },
+            h("div.t", N.icon("layers", 13), " ", p.title || p.id), h("div.d", p.steps.map((s) => s.title).join(" → ")));
+          items.set("pipeline:" + p.id, item);
+          list.appendChild(item);
+        }
+      }
+      if (hiddenCount) {
+        list.appendChild(h("button.btn.ghost.small.show-hidden-methods", { title: "Methods left out of the menus on the Data page", on: { click: () => { showHidden = !showHidden; drawList(); } } },
+          showHidden ? "Leave out the hidden methods" : `Show ${hiddenCount} hidden method${hiddenCount === 1 ? "" : "s"}`));
+      }
+      const on = pipeline ? "pipeline:" + pipeline.id : current && current.id;
+      items.forEach((el, id) => el.classList.toggle("on", id === on));
     }
     let pipeline = null;
     function selectPipeline(p) {
@@ -1310,7 +1323,9 @@
         { label: "Add to queue", kind: "primary", icon: "play", onClick: (close) => run(close, true) },
       ],
     });
-    select(methods[0]);
+    if (hiddenCount === methods.length) showHidden = true;
+    drawList();
+    select(methods.find((m) => showHidden || !m.hidden));
   };
 
   /** A grayscale canvas of a frame-like payload ({height, width, pixels}, as data.frame gives). */
@@ -1666,7 +1681,19 @@
               h("div.sub", `${f.id} ${f.version} · ${f.columns.map((c) => c.name).join(", ")}`)))))),
           h("div.card.methods-card", h("div.card-head", N.icon("zap"), h("h3", "Methods"), h("div.spacer"),
             h("button.btn.small.new-method", { on: { click: () => newMethodDialog(app) } }, N.icon("plus", 14), "New method")),
-            h("ul.list", methods.map((m) => h("li", h("div.grow", h("div.title", m.title), h("div.sub", `${m.id} · ${m.tool ? "project tool" : m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)))))))));
+            h("ul.list", methods.map((m) => {
+              // dev's Customize Menus: a method left out of the run menus still runs when asked for by id
+              const shown = h("input", { type: "checkbox", checked: !m.hidden, on: { change: async () => {
+                try {
+                  app.methods = await app.client.request("methods.setHidden", { methodId: m.id, hidden: !shown.checked });
+                  item.classList.toggle("muted", !shown.checked);
+                } catch (error) { shown.checked = !shown.checked; N.showError(error, "Could not change the menus"); }
+              } } });
+              const item = h("li" + (m.hidden ? ".muted" : ""), { dataset: { method: m.id } },
+                h("div.grow", h("div.title", m.title), h("div.sub", `${m.id} · ${m.tool ? "project tool" : m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)),
+                h("label.switch.method-shown", { title: "Shown in the run menus" }, shown, h("span")));
+              return item;
+            }))))));
   };
 
   /* ------------------------------------------------------------------ settings */
