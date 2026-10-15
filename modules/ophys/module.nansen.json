@@ -29,6 +29,7 @@
     "methods/export_tiff.method.nansen.json",
     "methods/extract.method.nansen.json",
     "methods/extract_signals.method.nansen.json",
+    "methods/find_plane.method.nansen.json",
     "methods/flowreg.method.nansen.json",
     "methods/flufinder.method.nansen.json",
     "methods/fov_region.method.nansen.json",

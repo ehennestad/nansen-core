@@ -271,6 +271,17 @@ def main():
         {"variable": "FrameStats", "count": 4, "columnNames": ["mean", "min", "max", "std"],
          "columns": [{"column": c, "values": [four(stats[t, c]) for t in range(0, FRAMES, 10)]} for c in (0, 3)]}]}
     expected["frame3"] = {"frame": 3, **frame_bytes(aligned[:, :, 3], (0, 1000))}
+    # find_plane: a z-stack of 5 planes, the third the recording's mean image moved by (2, -1), the others other
+    # scenes; the third's Pearson correlation with the mean image over the pixels both cover, from its definition
+    fov = aligned.astype(np.float64).mean(axis=2)
+    planes = [scene(seed)[1].astype(np.float64).mean(axis=2) for seed in (11, 12, 13, 14)]
+    planes.insert(2, np.roll(fov, (2, -1), axis=(0, 1)))
+    zstack = np.stack([np.round(p) for p in planes], axis=2).astype(np.uint16)
+    tifffile.imwrite(HERE / "project/data/raw/sub-m1/ses-s1/zstack.tiff", np.moveaxis(zstack, 2, 0), photometric="minisblack")
+    back = zstack[2:, :WIDTH - 1, 2].astype(np.float64)   # plane[y + 2, x - 1] is fov[y, x], for y < HEIGHT - 2, x >= 1
+    seen = fov[:HEIGHT - 2, 1:]
+    a, b = seen - seen.mean(), back - back.mean()
+    expected["findPlane"] = {"plane": 3, "shift": [2, -1], "correlation": round_to(float((a * b).sum() / math.sqrt((a * a).sum() * (b * b).sum())), 4)}
     # crop of rows 3..20, columns 5..30 and frames 2..10 (from 1): its frame 0 is frame 1 (from 0) cut
     expected["cropped"] = {"height": 18, "width": 26, "frames": 9, "frame": 0, **frame_bytes(aligned[2:20, 4:30, 1], (0, 1000))}
     # export_tiff of frames 3..7 (from 1), read back through a data variable: its frame 2 (from 0) is frame 4 (from 0)

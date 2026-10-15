@@ -1114,6 +1114,61 @@
     },
     {
       "request": {
+        "method": "dataVariables.save",
+        "id": 2304,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "ZStack",
+            "entityType": "session",
+            "dataLocation": "raw",
+            "fileName": "zstack.tiff",
+            "fileAdapter": "ophys.tiff_stack"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "ZStack"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 2305,
+        "params": {
+          "methodId": "ophys.find_plane",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "maxShift": 5
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "plane": 3,
+              "shift": [
+                2,
+                -1
+              ],
+              "correlation": 1.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
         "method": "data.frame",
         "id": 24,
         "params": {

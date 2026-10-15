@@ -1549,6 +1549,32 @@ def denoise(entity, options, context):
     return {"frames": frames, "height": height, "width": width, "meanIntensity": round_to(total / (height * width * frames), 4)}
 
 
+def find_plane(entity, options, context):
+    """The plane of a z-stack the recording's field of view is, as dev's zStackPlaneFinder: the recording's mean image
+    is compared with each plane at the shift the phase correlation finds (within maxShift, as motion correction
+    finds one), by the Pearson correlation of the pixels both cover. The best plane (from 1), its shift and the
+    correlation of each plane (4 decimals)."""
+    stack = _open_stack(entity, options["stack"], context, options)
+    height, width, frames = stack.shape
+    total = np.zeros((height, width))
+    for start in range(0, frames, CHUNK):
+        context.check_cancelled()
+        total += np.asarray(stack.frames(start, min(start + CHUNK, frames)), dtype=np.float64).sum(axis=2)
+    fov = total / frames
+    planes = np.asarray(_open_stack(entity, options["zstack"], context)[:, :, :], dtype=np.float64)
+    if planes.shape[:2] != (height, width):
+        raise NansenError("invalid-data", f"the z-stack's planes are {planes.shape[0]} x {planes.shape[1]}, the recording's frames {height} x {width}")
+    shifts = estimate_shifts(planes, _reference_fft(fov, True), int(options["maxShift"]), tapered=True)
+    correlations = []
+    for p in range(planes.shape[2]):
+        moved = apply_shifts(planes[:, :, p:p + 1], shifts[p:p + 1])[:, :, 0]
+        covered = apply_shifts(np.ones((height, width, 1)), shifts[p:p + 1])[:, :, 0] > 0
+        correlations.append(round_to(_pearson(fov[covered], moved[covered]), 4))
+    best = int(np.nanargmax(np.array(correlations, dtype=float)))
+    context.log(f"{_name(entity)}: plane {best + 1} of {planes.shape[2]} (r = {correlations[best]})")
+    return {"plane": best + 1, "shift": [int(v) for v in shifts[best]], "correlation": correlations[best], "correlations": correlations}
+
+
 def crop(entity, options, context):
     """Rows firstRow..lastRow, columns firstColumn..lastColumn and frames firstFrame..lastFrame of the stack (from 1;
     0 for the last), saved as a new stack, as dev's StackCropper. Read and written a chunk at a time."""

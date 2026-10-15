@@ -1,0 +1,24 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.find_plane",
+  "version": "1.0.0",
+  "title": "Find the plane in a z-stack",
+  "category": "Two-photon/Inspect",
+  "entityType": "*",
+  "description": "Finds which plane of a z-stack the recording's field of view is, as dev's zStackPlaneFinder: the recording's mean image is compared with each plane at the shift the phase correlation finds, by the Pearson correlation of the pixels both cover. Gives the best plane (from 1), its shift and every plane's correlation.",
+  "implementations": {
+    "python": "ophys_methods:find_plane",
+    "matlab": "ophys.findPlane"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": { "type": "string", "default": "TwoPhotonSeries_Corrected", "title": "Recording" },
+      "zstack": { "type": "string", "default": "ZStack", "title": "Z-stack", "description": "Variable that holds the z-stack: height x width x planes, the planes in place of frames." },
+      "maxShift": { "type": "integer", "default": 10, "minimum": 0, "title": "Largest shift (px)" },
+      "channel": { "type": "integer", "default": 1, "minimum": 1, "title": "Channel" },
+      "plane": { "type": "integer", "default": 1, "minimum": 1, "title": "Plane", "description": "Of a recording with planes, the one to compare." }
+    }
+  }
+}
