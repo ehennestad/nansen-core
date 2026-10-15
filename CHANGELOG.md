@@ -44,6 +44,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - The viewer improves the selected ROIs (i, dev's improveRois): each is found again around its middle as the Detect tool finds one, keeping its id, class and links.
 - The viewer colours the ROIs each its own colour, by classification or by cell type in dev's colours, or all in one (roimanager's roiColorScheme), in the image and the list.
 - The viewer shows other ROI groups with the one edited (roimanager's showRoiGroups): the other ROI variables chosen are drawn as outlines, each in a colour of its own (`data.frame` with `alsoRois`).
+- The viewer takes imviewer's keys (← and → step a frame, 5 with Shift; z and Shift+Z zoom) and offers imviewer's colormaps (MATLAB's copper and bone, ColorBrewer's and cmocean's); the keyboard shortcuts dialog lists the viewer's keys.
 - Events can be marked on ROI traces, as dev's signal viewer's event annotator: a drag across a trace marks frames of the ROI, with a label, drawn as a patch and kept in the project (module data `trace_events`).
 - The ROI gallery shows dev's classifier images of each ROI (its ΔF/F-weighted mean, the mean of its top 1% frames, local correlation) and sorts by its statistics (salience, how typical its images are, peak ΔF/F), computed by `ophys.roi_images` in both languages; and shows one class at a time, as dev's "Show" (`data.value` reads the saved JSON).
 - The viewer saves a video of the frames with the selected ROI's signal under them, as imviewer's RoiSignalVideo (WebM, recorded in the browser).

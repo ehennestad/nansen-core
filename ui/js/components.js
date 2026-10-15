@@ -48,11 +48,22 @@
       ["g then o", "Overview"], ["g then 1…9", "The first, second, … entity table"], ["g then t", "Tasks"],
       ["g then d", "Data"], ["g then p", "Pipelines"], ["g then n", "Notes"], ["g then j", "Projects"], ["g then s", "Settings"],
       ["Shift + click", "Select a range of rows"],
+      // the stack viewer's keys: imviewer's and roimanager's
+      ["In the viewer"],
+      ["← →", "A frame back or on (with Shift, 5 frames)"], ["z", "Zoom in"], ["Shift + Z", "Zoom out"], ["Shift + B", "Binning on or off"],
+      ["a r q u", "Accept, reject, unresolved or clear the selected ROIs"], ["Delete", "Delete the selected ROIs"],
+      ["m", "Merge the selected ROIs"], ["+ -", "Grow or shrink the selected ROI by a pixel"], ["i", "Improve the selected ROIs"],
+      ["↑ ↓", "The ROI before or after (also j and k)"], ["Alt + arrows", "Move the selected ROI a pixel"],
+      ["Shift + E", "Excitatory (Shift + I inhibitory, Shift + X axon)"], ["Shift + C", "Link the selected ROIs"], ["Shift + N", "The selected ROI's neuropil"],
+      ["Ctrl + Z", "Undo (Ctrl + Shift + Z redo)"], ["Shift + drag", "Select the ROIs in a rectangle"], ["Esc", "Leave the drawing tool"],
     ];
+    const keysOf = (keys) => (keys.includes(" ") && !["← →", "a r q u", "+ -", "↑ ↓"].includes(keys) ? keys.split(" ") : [keys])
+      .map((k) => (["then", "+"].includes(k) ? h("span.muted", ` ${k} `) : h("kbd", k)));
     N.dialog({
       title: "Keyboard shortcuts", narrow: true,
-      content: h("table.simple.shortcuts", h("tbody", rows.map(([keys, what]) => h("tr",
-        h("td", keys.split(" ").map((k) => (["then", "+"].includes(k) ? h("span.muted", ` ${k} `) : h("kbd", k)))), h("td", what))))),
+      content: h("table.simple.shortcuts", h("tbody", rows.map(([keys, what]) => (what === undefined
+        ? h("tr.shortcut-section", h("th", { colSpan: 2 }, keys))
+        : h("tr", h("td", keysOf(keys)), h("td", what)))))),
     });
   };
 

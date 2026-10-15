@@ -485,6 +485,7 @@ def test_filters_and_saved_views(empty_app, page):
     page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
     wait_until(lambda: [v["name"] for v in views()] == ["Bleaching"])
     assert views()[0]["filters"] == [{"column": "description", "op": "in", "values": ["Bleaching after 20 min"]}]
+    page.wait_for_selector(".toolbar .view-name:text-is('Bleaching')")   # the table shows the saved view: its filters applied again
 
     page.click(".filter-bar .filter-chip button")
     wait_until(lambda: rows().count() == 14)
@@ -502,6 +503,7 @@ def test_filters_and_saved_views(empty_app, page):
     page.fill(".dialog.narrow input", "Pair")
     page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
     wait_until(lambda: any(v["name"] == "Pair" and len(v.get("keys", [])) == 2 for v in views()))
+    page.wait_for_selector(".toolbar .view-name:text-is('Pair')")
     page.wait_for_function("() => document.querySelectorAll('.grid-table tbody tr[data-id]').length === 2")
     page.reload()  # the view shown last is shown again
     page.wait_for_selector(".grid-table tbody td.key")
@@ -822,6 +824,8 @@ def test_lock_editing_and_keyboard_shortcuts(empty_app, page):
     page.keyboard.press("Escape")  # out of the search box, which has the focus
     page.keyboard.press("?")
     page.wait_for_selector(".dialog .shortcuts")
+    assert page.locator(".dialog .shortcuts .shortcut-section").inner_text() == "In the viewer"   # and the viewer's keys
+    assert page.locator(".dialog .shortcuts tr:has-text('Improve the selected ROIs') kbd").inner_text() == "i"
     page.keyboard.press("Escape")
     opened = []
     empty_app["api"].open_url = opened.append   # the Help menu's pages open in the system's browser
@@ -1381,6 +1385,18 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32 · 3 ROIs')")
     assert page.evaluate("document.querySelector('.viewer-canvas').width") == 32
     assert page.locator(".viewer-frame").inner_text() == "1 / 40"
+    page.keyboard.press("ArrowRight")   # imviewer's keys: a frame on, 5 with Shift, back; z and Shift+Z zoom
+    page.wait_for_selector(".viewer-frame:text-is('2 / 40')")
+    page.keyboard.press("Shift+ArrowRight")
+    page.wait_for_selector(".viewer-frame:text-is('7 / 40')")
+    page.keyboard.press("ArrowLeft")
+    page.wait_for_selector(".viewer-frame:text-is('6 / 40')")
+    width = lambda: page.evaluate("document.querySelector('.viewer-canvas').getBoundingClientRect().width")
+    fitted = width()
+    page.keyboard.press("z")
+    wait_until(lambda: width() > fitted * 1.2)
+    page.keyboard.press("Shift+Z")
+    wait_until(lambda: abs(width() - fitted) < 1)
     page.locator(".viewer-slider").fill("9")
     page.wait_for_selector(".viewer-frame:text-is('10 / 40')")
     page.select_option(".viewer-mode", "max")
