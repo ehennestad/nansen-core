@@ -3,7 +3,9 @@
  * Run by the dashboard with N (its toolkit) and module (this module's id). Positions are columns of the
  * ophys.cranial_window and ophys.fov_position fragments, so they are edited, filtered and exported like any other
  * column; this page draws them on the atlas and places them with a click. Injection sites (any number per subject)
- * and notes on the map are the module's data (modules.data, modules.saveData), in the project's module-data folder.
+ * and notes on the map are the module's data (modules.data, modules.saveData), in the project's module-data folder:
+ * an injection has what was injected, its depth (µm), volume (nL), spread (µm, drawn as a circle) and a colour. Marks
+ * are edited by clicking them (on the map or in the list) and moved by dragging them; the map can be saved as PNG.
  */
 "use strict";
 const { h } = N;
@@ -86,10 +88,16 @@ if (!document.getElementById("ophys-fovmap-style")) {
     .fov-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
     .fov-bar .spacer { flex: 1; }
     .fov-bar .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
-    .fov-labels { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+    .fov-labels { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
     .fov-canvas { display: block; width: 100%; max-width: 600px; margin: 12px auto; aspect-ratio: 3 / 4; cursor: crosshair; }
     .fov-canvas.placing { cursor: copy; }
     .fov-where { padding: 0 14px 12px; font-size: 12px; min-height: 18px; }
+    .fov-canvas.over-mark { cursor: grab; }
+    .fov-canvas.dragging { cursor: grabbing; }
+    .fov-marks .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+    .mark-form { padding: 16px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .mark-form .field:first-child { grid-column: 1 / -1; }
+    .mark-form .input { width: 100%; }
     @media (max-width: 1100px) { .fov-layout { grid-template-columns: 1fr; } }
   `;
   document.head.appendChild(style);
@@ -98,6 +106,55 @@ if (!document.getElementById("ophys-fovmap-style")) {
 const keyText = (key) => Object.values(key).join(" / ");
 const sameKey = (a, b) => Object.keys(a).every((k) => a[k] === b[k]);
 const number = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+const COLOURS = { magenta: "#d81b60", green: "#2e7d32", red: "#c62828", blue: "#1565c0", orange: "#ef6c00", purple: "#6a1b9a" };
+const colourOf = (mark) => COLOURS[mark.colour] || COLOURS.magenta;
+
+/** A dialog with the fields of an injection or a note; resolves to the values, or null when cancelled. */
+function markForm(kind, mark = {}) {
+  return new Promise((resolve) => {
+    const fields = kind === "injections"
+      ? [["material", "What was injected (virus or tracer)", "text"], ["depth", "Depth (µm)", "number"], ["volume", "Volume (nL)", "number"],
+        ["spread", "Spread (µm, radius)", "number"], ["colour", "Colour", "colour"]]
+      : [["text", "Note", "text"]];
+    const inputs = {};
+    const rows = fields.map(([name, label, type]) => {
+      const value = mark[name] === undefined || mark[name] === null ? "" : String(mark[name]);
+      inputs[name] = type === "colour"
+        ? h("select.input", { name }, Object.keys(COLOURS).map((c) => h("option", { value: c, selected: c === (mark.colour || "magenta") }, c)))
+        : h("input.input", { name, type, value, step: type === "number" ? "any" : undefined, min: type === "number" ? 0 : undefined });
+      return h("div.field", h("label.name", label), inputs[name]);
+    });
+    const read = () => {
+      const values = {};
+      for (const [name, , type] of fields) {
+        const raw = inputs[name].value.trim();
+        values[name] = type === "number" ? (raw === "" ? null : Number(raw)) : raw;
+      }
+      return values;
+    };
+    const valid = () => {
+      const values = read();
+      return fields.every(([name, , type]) => type !== "number" || values[name] === null || (isFinite(values[name]) && values[name] >= 0)) &&
+        (kind !== "notes" || values.text);
+    };
+    const finish = (close) => { if (!valid()) { N.toast("Check the fields", "Numbers are 0 or more, and a note has text", "error"); return; } resolve(read()); close(); };
+    const d = N.dialog({
+      title: (mark.id ? "Edit " : "New ") + (kind === "injections" ? "injection site" : "note"), narrow: true,
+      content: h("div.mark-form", rows),
+      buttons: [{ label: "Cancel", onClick: (close) => { resolve(null); close(); } }, { label: "OK", kind: "primary", onClick: finish }],
+      onClose: () => resolve(null),
+    });
+    d.el.classList.add("mark-dialog");
+    Object.values(inputs).forEach((input) => input.addEventListener("keydown", (e) => { if (e.key === "Enter") finish(d.close); }));
+    setTimeout(() => inputs[fields[0][0]].focus(), 0);
+  });
+}
+
+/** What the list and the map say about an injection: what, how deep, how much. */
+function injectionText(m) {
+  return [m.material || "Injection", number(m.depth) !== null ? `${m.depth} µm deep` : null, number(m.volume) !== null ? `${m.volume} nL` : null]
+    .filter(Boolean).join(" · ");
+}
 
 N.registerPage({
   id: "ophys.fovmap", title: "FOV map", icon: "compass",
@@ -162,6 +219,7 @@ N.registerPage({
     const placeNote = h("button.btn.small.place-note", { on: { click: () => setPlacing("note") } }, N.icon("note", 13), "Add note");
     const markList = h("ul.fov-list.fov-marks");
     const labels = h("input", { type: "checkbox", checked: true, on: { change: () => { state.labels = labels.checked; draw(); } } });
+    const exportButton = h("button.btn.ghost.icon.small.fov-export", { title: "Save the map as PNG", on: { click: () => saveMap() } }, N.icon("download", 14));
 
     const scale = () => canvas.width / (atlas.width / atlas.pixelsPerMm);   // px per mm
     const toCanvas = (ml, ap) => [(ml - atlas.origin[0]) * scale(), (atlas.origin[1] + atlas.height / atlas.pixelsPerMm - ap) * scale()];
@@ -208,14 +266,26 @@ N.registerPage({
         ctx.stroke();
         ctx.restore();
       });
-      marks.injections.filter(ofSubject).forEach((m) => {   // injection sites: a dot, and what was injected
-        const [x, y] = toCanvas(m.ml, m.ap);
-        ctx.fillStyle = "#d81b60";
+      marks.injections.filter(ofSubject).forEach((m) => {   // injection sites: the spread, a dot, and what was injected
+        const [x, y] = position(m);
+        const colour = colourOf(m);
+        if (number(m.spread)) {
+          ctx.fillStyle = colour + "33";
+          ctx.strokeStyle = colour + "aa";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([]);
+          ctx.beginPath(); ctx.arc(x, y, m.spread / 1000 * scale(), 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        }
+        ctx.fillStyle = colour;
         ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.fill();
-        if (m.material) { ctx.fillStyle = "#880e4f"; ctx.fillText(m.material, x, y - 9); }
+        ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
+        if (m.material) {
+          ctx.fillStyle = "rgba(20, 24, 33, 0.85)";
+          ctx.fillText(m.material + (number(m.depth) !== null ? ` · ${m.depth} µm` : ""), x, y - 9);
+        }
       });
       marks.notes.filter(ofSubject).forEach((m) => {   // notes: a small flag and the text
-        const [x, y] = toCanvas(m.ml, m.ap);
+        const [x, y] = position(m);
         ctx.fillStyle = "#1e3a8a";
         ctx.fillRect(x - 3, y - 3, 6, 6);
         ctx.textAlign = "left";
@@ -254,11 +324,13 @@ N.registerPage({
       placeFov.disabled = !state.session;
       placeWindow.disabled = !state.subject || !windowType;
       placeInjection.disabled = !state.subject;
-      const listed = [...marks.injections.filter(ofSubject).map((m) => ["injections", m, `Injection${m.material ? ": " + m.material : ""}`]),
+      const listed = [...marks.injections.filter(ofSubject).map((m) => ["injections", m, injectionText(m)]),
         ...marks.notes.filter(ofSubject).map((m) => ["notes", m, m.text])];
-      N.fill(markList, listed.length ? listed.map(([kind, m, label]) => h("li", { dataset: { mark: `${kind}-${m.id}` } },
-        h("span.dot." + (kind === "injections" ? "bad" : "plain")),
-        h("div.grow", h("div", label), h("div.sub.muted", `AP ${m.ap}, ML ${m.ml}` + (m.subject ? ` · ${keyText(m.subject)}` : ""))),
+      N.fill(markList, listed.length ? listed.map(([kind, m, label]) => h("li", { dataset: { mark: `${kind}-${m.id}` }, title: "Edit",
+        on: { click: () => edit(kind, m) } },
+        kind === "injections" ? h("span.swatch", { style: { background: colourOf(m) } }) : h("span.dot.plain"),
+        h("div.grow", h("div", label), h("div.sub.muted", `AP ${m.ap}, ML ${m.ml}` + (number(m.spread) ? ` · spread ${m.spread} µm` : "") +
+          (m.subject ? ` · ${keyText(m.subject)}` : ""))),
         h("button.btn.ghost.icon.small.remove-mark", { title: "Remove", on: { click: async (event) => {
           event.stopPropagation();
           try { await changeMarks((all) => { all[kind] = all[kind].filter((x) => x.id !== m.id); }); refresh(); }
@@ -268,15 +340,87 @@ N.registerPage({
 
     function refresh() { renderLists(); draw(); }
 
+    // Marks: where one is drawn (while it is dragged, where it is dragged to), which is under the pointer
+    let drag = null;
+    const position = (m) => (drag && drag.mark === m && drag.moved ? drag.at : toCanvas(m.ml, m.ap));
+    const pointer = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      return [(event.clientX - rect.left) / rect.width * canvas.width, (event.clientY - rect.top) / rect.height * canvas.height];
+    };
+    const markAt = ([x, y]) => {
+      for (const kind of ["notes", "injections"]) {
+        const hit = marks[kind].filter(ofSubject).reverse().find((m) => { const [mx, my] = toCanvas(m.ml, m.ap); return Math.hypot(mx - x, my - y) <= 8; });
+        if (hit) return [kind, hit];
+      }
+      return null;
+    };
+    const round2 = (v) => Math.round(v * 100) / 100;
+    async function edit(kind, mark) {
+      const values = await markForm(kind, mark);
+      if (!values) return;
+      try {
+        await changeMarks((all) => { const m = all[kind].find((x) => x.id === mark.id); if (m) Object.assign(m, values); });
+        refresh();
+      } catch (error) { N.showError(error, "Could not change it"); }
+    }
+    function saveMap() {
+      const out = document.createElement("canvas");
+      out.width = canvas.width * 2;
+      out.height = canvas.height * 2;
+      const ctx = out.getContext("2d");
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(canvas, 0, 0, out.width, out.height);
+      const name = `fov_map${state.subject ? "_" + keyText(state.subject).replace(/[^\w.-]+/g, "_") : ""}.png`;
+      const link = h("a", { href: out.toDataURL("image/png"), download: name });
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      N.toast("Map saved", name, "success", 2500);
+    }
+
     canvas.addEventListener("mousemove", (event) => {
-      const rect = canvas.getBoundingClientRect();
-      const [ml, ap] = toMm((event.clientX - rect.left) / rect.width * canvas.width, (event.clientY - rect.top) / rect.height * canvas.height);
+      const [ml, ap] = toMm(...pointer(event));
       where.textContent = `ML ${ml.toFixed(2)} mm, AP ${ap.toFixed(2)} mm` + (regionAt(atlas, ml, ap) ? ` · ${regionAt(atlas, ml, ap)}` : "");
+      canvas.classList.toggle("over-mark", !state.placing && markAt(pointer(event)) !== null);
     });
+    canvas.addEventListener("mousedown", (event) => {
+      if (state.placing || event.button !== 0) return;
+      const hit = markAt(pointer(event));
+      if (!hit) return;
+      drag = { kind: hit[0], mark: hit[1], from: pointer(event), at: pointer(event), moved: false };
+      event.preventDefault();
+    });
+    const gone = () => {   // the page was left: stop listening
+      if (document.body.contains(canvas)) return false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      return true;
+    };
+    const onMove = (event) => {
+      if (gone() || !drag) return;
+      drag.at = pointer(event);
+      if (Math.hypot(drag.at[0] - drag.from[0], drag.at[1] - drag.from[1]) > 3) drag.moved = true;
+      canvas.classList.toggle("dragging", drag.moved);
+      if (drag.moved) draw();
+    };
+    const onUp = async () => {
+      const done = drag;
+      if (gone() || !done) return;
+      canvas.classList.remove("dragging");
+      if (!done.moved) { drag = null; edit(done.kind, done.mark); return; }
+      const [ml, ap] = toMm(...done.at);
+      try {
+        await changeMarks((all) => { const m = all[done.kind].find((x) => x.id === done.mark.id); if (m) { m.ml = round2(ml); m.ap = round2(ap); } });
+      } catch (error) { N.showError(error, "Could not move it"); }
+      drag = null;
+      refresh();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
     canvas.addEventListener("click", async (event) => {
-      const rect = canvas.getBoundingClientRect();
-      const [ml, ap] = toMm((event.clientX - rect.left) / rect.width * canvas.width, (event.clientY - rect.top) / rect.height * canvas.height);
-      const round2 = (v) => Math.round(v * 100) / 100;
+      const [ml, ap] = toMm(...pointer(event));
+      if (!state.placing && markAt(pointer(event))) return;   // a mark: edited or moved on mouseup
       try {
         if (state.placing === "fov" && state.session) {
           await app.client.request("entities.update", { entityType: fovType.name, key: state.session, values: { fov_ml: round2(ml), fov_ap: round2(ap) } });
@@ -286,13 +430,13 @@ N.registerPage({
         } else if (state.placing === "window" && state.subject) {
           await app.client.request("entities.update", { entityType: windowType.name, key: state.subject, values: { window_ml: round2(ml), window_ap: round2(ap) } });
         } else if (state.placing === "injection" && state.subject) {
-          const material = await N.prompt("Injection site", "What was injected (virus or tracer)", "");
-          if (material === null) return;
-          await changeMarks((all) => { all.injections.push({ id: nextId(all.injections), subject: state.subject, ml: round2(ml), ap: round2(ap), material }); });
+          const values = await markForm("injections");
+          if (values === null) return;
+          await changeMarks((all) => { all.injections.push({ id: nextId(all.injections), subject: state.subject, ml: round2(ml), ap: round2(ap), ...values }); });
         } else if (state.placing === "note") {
-          const text = await N.prompt("Note on the map", "Note", "");
-          if (!text) return;
-          await changeMarks((all) => { all.notes.push({ id: nextId(all.notes), subject: state.subject, ml: round2(ml), ap: round2(ap), text }); });
+          const values = await markForm("notes");
+          if (!values) return;
+          await changeMarks((all) => { all.notes.push({ id: nextId(all.notes), subject: state.subject, ml: round2(ml), ap: round2(ap), ...values }); });
         } else {
           // select the FOV under the cursor
           const hit = shown().find((s) => {
@@ -315,7 +459,7 @@ N.registerPage({
       h("div.fov-layout",
         h("div.card.fov-side", h("div.card-head", h("h3", windowType ? N.titleCase(windowType.name) : "Subjects")), subjectList),
         h("div.card.fov-map",
-          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, h("div.spacer"), h("label.fov-labels", labels, "Region labels")),
+          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, h("div.spacer"), h("label.fov-labels", labels, "Region labels"), exportButton),
           canvas, where),
         h("div.fov-side-column",
           h("div.card.fov-side", h("div.card-head", h("h3", N.titleCase(fovType.name))), sessionList),

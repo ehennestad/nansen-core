@@ -1239,22 +1239,45 @@ def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     page.mouse.click(*at(2, -2))
     wait_until(lambda: api.project.table("subject").get({"subject_id": "m1"}).get("window_ml") is not None)
     page.wait_for_selector(".fov-list li[data-subject='m1'] .pill")
-    for material, where in (("AAV-GCaMP8m", (1.5, -1.5)), ("AAV-jRGECO1a", (2.5, -2.5))):
+    for material, depth, colour, where in (("AAV-GCaMP8m", "300", "green", (1.5, -1.5)), ("AAV-jRGECO1a", "", "magenta", (2.5, -2.5))):
         page.click(".place-injection")
         page.mouse.click(*at(*where))
-        page.fill(".dialog.narrow input", material)
-        page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+        page.fill(".mark-dialog input[name=material]", material)
+        page.fill(".mark-dialog input[name=depth]", depth)
+        page.fill(".mark-dialog input[name=spread]", "400")
+        page.select_option(".mark-dialog select[name=colour]", colour)
+        page.click(".mark-dialog .dialog-foot button:has-text('OK')")
         page.wait_for_selector(f".fov-marks li:has-text('{material}')")
+    assert page.locator(".fov-marks li[data-mark='injections-1']").inner_text().startswith("AAV-GCaMP8m · 300 µm deep")
     page.click(".place-note")
     page.mouse.click(*at(2, -3))
-    page.fill(".dialog.narrow input", "blood vessel")
-    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.fill(".mark-dialog input[name=text]", "blood vessel")
+    page.click(".mark-dialog .dialog-foot button:has-text('OK')")
     page.wait_for_selector(".fov-marks li:has-text('blood vessel')")
     stored = api.handle({"id": 9, "method": "modules.data", "params": {"module": "ophys", "name": "fovmap"}})["result"]
     import json
     marks = json.loads(stored["text"])
     assert stored["revision"] == 3 and [m["material"] for m in marks["injections"]] == ["AAV-GCaMP8m", "AAV-jRGECO1a"]
+    first = marks["injections"][0]
+    assert (first["depth"], first["volume"], first["spread"], first["colour"]) == (300, None, 400, "green")
     assert marks["notes"][0]["text"] == "blood vessel" and marks["notes"][0]["subject"] == {"subject_id": "m1"}
+
+    # edit an injection from the list; drag the note to another place; save the map
+    page.click(".fov-marks li[data-mark='injections-2']")
+    page.fill(".mark-dialog input[name=volume]", "50")
+    page.click(".mark-dialog .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".fov-marks li[data-mark='injections-2']:has-text('50 nL')")
+    page.mouse.move(*at(2, -3))
+    page.mouse.down()
+    page.mouse.move(*at(1, -2), steps=6)
+    page.mouse.up()
+    stored_marks = lambda: json.loads(api.handle({"id": 10, "method": "modules.data", "params": {"module": "ophys", "name": "fovmap"}})["result"]["text"])
+    wait_until(lambda: abs(stored_marks()["notes"][0]["ml"] - 1) < 0.05)
+    marks = stored_marks()
+    assert abs(marks["notes"][0]["ml"] - 1) < 0.05 and abs(marks["notes"][0]["ap"] + 2) < 0.05 and marks["injections"][1]["volume"] == 50
+    with page.expect_download() as download:
+        page.click(".fov-export")
+    assert download.value.suggested_filename == "fov_map_m1.png"
     page.click(".fov-marks li[data-mark='injections-1'] .remove-mark")
     page.wait_for_selector(".fov-marks li[data-mark='injections-1']", state="detached")
 
