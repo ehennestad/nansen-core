@@ -71,6 +71,8 @@ class TaskQueue:
         self._worker: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._wake = threading.Event()
+        self._last_created = ""
+        self._created_lock = threading.Lock()  # creation times this queue gives out only grow, so tasks keep the order they were queued in
         self._lock = threading.Lock()
 
     # -- documents ----------------------------------------------------------------------------
@@ -86,6 +88,17 @@ class TaskQueue:
 
     def claim_path(self, task_id: str) -> Path:
         return self.folder / f"{task_id}.claim"
+
+    def _created_at(self) -> str:
+        """Now, or a millisecond after the last task this queue made when that is not earlier: tasks queued
+        within one millisecond would otherwise be ordered by their random ids."""
+        with self._created_lock:
+            created = now()
+            if created <= self._last_created:
+                later = dt.datetime.fromisoformat(self._last_created) + dt.timedelta(milliseconds=1)
+                created = later.isoformat(timespec="milliseconds")
+            self._last_created = created
+            return created
 
     def claim(self, task_id: str) -> bool:
         """Take a queued task for this worker. Creating a folder is atomic, so two workers
@@ -163,7 +176,7 @@ class TaskQueue:
             "entities": [{"entityType": e.entity_type, "key": dict(e.key)} for e in entities],
             "options": {"values": values},
             "status": "queued",
-            "createdAt": now(),
+            "createdAt": self._created_at(),
             "progress": 0,
         }
         if preset:
@@ -229,7 +242,7 @@ class TaskQueue:
             raise NansenError("task-active", f"task {task_id} is {old['status']}")
         task = {k: v for k, v in old.items() if k in ("schemaType", "schemaVersion", "method", "entities", "options",
                                                        "language", "pipeline")}
-        task.update(id=str(uuid.uuid4()), status="queued", createdAt=now(), progress=0)
+        task.update(id=str(uuid.uuid4()), status="queued", createdAt=self._created_at(), progress=0)
         self._save(task)
         self._wake.set()
         return task

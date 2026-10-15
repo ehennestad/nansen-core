@@ -23,6 +23,7 @@ classdef TaskQueue < handle
         Timer = []
         Future = []
         FutureTaskId (1,1) string = ""
+        LastCreated = datetime.empty   % creation times this queue gives out only grow, so tasks keep the order they were queued in
     end
 
     methods
@@ -246,7 +247,7 @@ classdef TaskQueue < handle
                 "id", char(nansen.internal.uuid4()), ...
                 "method", struct("id", char(method.Id), "version", char(method.Version)), ...
                 "entities", {references}, "options", optionsEntry, "status", 'queued', ...
-                "createdAt", char(nansen.internal.timestamp()), "progress", 0);
+                "createdAt", char(obj.createdAt()), "progress", 0);
             if language ~= ""
                 task.language = char(language);
             end
@@ -279,7 +280,7 @@ classdef TaskQueue < handle
             task = struct("schemaType", old.schemaType, "schemaVersion", old.schemaVersion, ...
                 "id", char(nansen.internal.uuid4()), "method", old.method, ...
                 "entities", {nansen.internal.asCellOfStructs(old.entities)}, "options", old.options, ...
-                "status", 'queued', "createdAt", char(nansen.internal.timestamp()), "progress", 0);
+                "status", 'queued', "createdAt", char(obj.createdAt()), "progress", 0);
             if isfield(old, "language")
                 task.language = old.language;
             end
@@ -546,6 +547,19 @@ classdef TaskQueue < handle
     end
 
     methods (Access = private)
+        function text = createdAt(obj)
+            %createdAt Now, or a millisecond after the last task this queue made when that is not earlier
+            %
+            %   Tasks queued within one millisecond would otherwise be ordered by their random ids.
+            created = datetime("now", Format="yyyy-MM-dd'T'HH:mm:ss.SSS");
+            created = dateshift(created, "start", "second") + milliseconds(floor(1000 * (second(created) - floor(second(created)))));
+            if ~isempty(obj.LastCreated) && created <= obj.LastCreated
+                created = obj.LastCreated + milliseconds(1);
+            end
+            obj.LastCreated = created;
+            text = string(created);
+        end
+
         function task = changeQueued(obj, taskId, change)
             %changeQueued Change a queued task while holding its claim, so no worker starts it meanwhile
             %

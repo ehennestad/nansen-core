@@ -188,6 +188,17 @@ def test_waiting_task_is_not_run_before_its_dependency(project):
     queue.release(tasks[0]["id"])
 
 
+def test_tasks_keep_the_order_they_were_queued_in(tmp_path):
+    from nansen.demo import create_demo
+
+    project = create_demo(tmp_path / "demo")
+    queue = TaskQueue(project)
+    session = project.entities("session")[0]
+    ids = [queue.submit("core.wait", [session], {"seconds": 0})["id"] for _ in range(30)]  # many in one millisecond
+    assert [t["id"] for t in queue.list()] == ids
+    assert queue.next_task()["id"] == ids[0]
+
+
 def test_queued_tasks_are_held_changed_and_reordered(tmp_path):
     from nansen.demo import create_demo
     from nansen.tasks import TaskQueue

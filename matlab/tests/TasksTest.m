@@ -45,6 +45,40 @@ classdef TasksTest < matlab.unittest.TestCase
                 Options=struct("seconds", "soon")), "nansen:InvalidOptions");
         end
 
+        function tasksKeepTheOrderTheyWereQueuedIn(testCase)
+            % Many in one millisecond: their creation times still grow, so the random ids do not decide
+            sessions = testCase.sessions();
+            ids = strings(1, 20);
+            for i = 1:20
+                task = testCase.Queue.submit("core.wait", sessions(1), Options=struct("seconds", 0));
+                ids(i) = string(task.id);
+            end
+            listed = cellfun(@(t) string(t.id), testCase.Queue.list());
+            testCase.verifyEqual(listed, ids);
+            testCase.verifyEqual(string(testCase.Queue.nextTask().id), ids(1));
+        end
+
+        function queuedTasksAreHeldChangedAndReordered(testCase)
+            sessions = testCase.sessions();
+            ids = strings(1, 3);
+            for i = 1:3
+                task = testCase.Queue.submit("core.wait", sessions(i), Options=struct("seconds", 0));
+                ids(i) = string(task.id);
+            end
+            testCase.Queue.hold(ids(1));
+            testCase.verifyEqual(string(testCase.Queue.nextTask().id), ids(2));
+            order = testCase.Queue.reorder(ids(3));
+            testCase.verifyEqual(cellfun(@(t) string(t.id), order), ids([3, 1, 2]));
+            changed = testCase.Queue.update(ids(3), Options=struct("seconds", 0, "message", "changed"));
+            testCase.verifyEqual(string(changed.options.values.message), "changed");
+            testCase.verifyEqual(string(testCase.Queue.runNext().id), ids(3));
+            testCase.verifyEqual(string(testCase.Queue.runNext().id), ids(2));   % the first is on hold
+            testCase.verifyEmpty(testCase.Queue.runNext());
+            testCase.Queue.hold(ids(1), false);
+            testCase.verifyEqual(string(testCase.Queue.runNext().id), ids(1));
+            testCase.verifyError(@() testCase.Queue.hold(ids(1)), "nansen:TaskNotQueued");
+        end
+
         function runNextCompletesWithLogAndResult(testCase)
             task = testCase.Queue.submit("core.wait", testCase.sessions(), Options=struct("seconds", 0, "steps", 2));
             done = testCase.Queue.runNext();
