@@ -7,7 +7,7 @@ function result = flufinder(entity, options, context)
         nansen.internal.throwError("dependency-missing", ...
             "ophys.flufinder needs flufinder from NANSEN dev on the MATLAB path: https://github.com/VervaekeLab/NANSEN")
     end
-    stack = ophys.internal.loadStack(context, entity, options.stack);
+    stack = ophys.internal.loadStack(context, entity, options.stack, options);
     [height, width, frames] = size(stack);
     context.log("%s: running flufinder on %d frames", ophys.internal.entityName(entity), frames);
     found = feval("flufinder.runAutoSegmentation", stack, "RoiDiameter", options.roiDiameter);

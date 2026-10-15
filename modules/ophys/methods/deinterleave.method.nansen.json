@@ -1,0 +1,43 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.deinterleave",
+  "version": "1.0.0",
+  "title": "Deinterleave channels and planes",
+  "category": "Two-photon/Image processing",
+  "entityType": "*",
+  "description": "Puts frames of several channels and planes, interleaved in one stack (channel fastest, then plane, as ScanImage saves them), in a height x width x channels (x planes) x frames stack, which the other methods take a channel and plane of. Frames after the last whole volume are left out. Reads and writes a chunk at a time.",
+  "implementations": {
+    "python": "ophys_methods:deinterleave",
+    "matlab": "ophys.deinterleave"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Original",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Deinterleaved",
+        "title": "Deinterleaved stack",
+        "description": "Variable the result is saved to."
+      },
+      "channels": {
+        "type": "integer",
+        "default": 2,
+        "minimum": 1,
+        "title": "Channels"
+      },
+      "planes": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Planes"
+      }
+    }
+  }
+}

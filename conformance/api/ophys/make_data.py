@@ -209,6 +209,28 @@ def main():
     expected["migrated"] = [{"id": n + 1, "pixels": [[int(y) + 2, int(x) - 3] for y, x in zip(*np.nonzero(d))]}
                             for n, d in enumerate(disks)]
     expected["keptSignals"] = {"rois": 2, "ids": [1, 3], "meanSignal": [expected["signals"]["meanSignal"][i] for i in (0, 2)]}
+    # channels and planes: ScanImage's channel 1 plane 1 and channel 2 plane 2, picked by image_stats
+    for c, p in ((0, 0), (1, 1)):
+        part = scanimage[:, :, c, p, :].astype(float)
+        expected[f"scanimageStats{c + 1}{p + 1}"] = {"n_frames": 3, "height": 16, "width": 64,
+                                                     "mean_intensity": round_to(part.mean(), 4), "max_intensity": float(part.max())}
+    # session 1's recording deinterleaved as 2 channels: channel 1 is the even frames, channel 2 the odd ones.
+    # Motion correction finds the shifts in channel 1 (the even frames' true shifts) and moves channel 2 by them.
+    even = shifts[0::2]
+    expected["deinterleave"] = {"frames": FRAMES // 2, "channels": 2, "planes": 1}
+    expected["deinterleavedFrame"] = {"height": HEIGHT, "width": WIDTH, "frames": FRAMES // 2, "channels": 2, "planes": 1, "frame": 1,
+                                      **frame_bytes(recording[:, :, 3].astype(float))}   # channel 2, frame 1: frame 3
+    expected["motionByChannel"] = {"frames": FRAMES // 2, "maxShift": int(np.abs(even).max()),
+                                   "meanShift": round_to(np.sqrt((even ** 2).sum(axis=1)).mean(), 4)}
+    second_channel = np.zeros((HEIGHT, WIDTH, FRAMES // 2))
+    for k, (dy, dx) in enumerate(even):
+        frame = recording[:, :, 2 * k + 1].astype(float)
+        for y in range(HEIGHT):
+            for x in range(WIDTH):
+                if 0 <= y + dy < HEIGHT and 0 <= x + dx < WIDTH:
+                    second_channel[y, x, k] = frame[y + dy, x + dx]   # moved back by the shift; 0 outside
+    expected["secondChannelStats"] = {"n_frames": FRAMES // 2, "height": HEIGHT, "width": WIDTH,
+                                      "mean_intensity": round_to(second_channel.mean(), 4), "max_intensity": float(second_channel.max())}
     expected["scanimage"] = {"height": 16, "width": 64, "frames": 3, "frame": 2,
                              **frame_bytes(scanimage[:, :, 1, 1, 2].astype(float))}
     print(json.dumps(expected, indent=1))

@@ -1,0 +1,36 @@
+function result = deinterleave(entity, options, context)
+%deinterleave Frames of several channels and planes, interleaved in one stack, as height x width x channels (x planes) x frames
+%
+%   Channel fastest, then plane, as ScanImage saves them. Frames after the
+%   last whole volume are left out. Reads and writes a chunk at a time.
+    stack = ophys.internal.openStack(context, entity, options.stack);
+    channels = double(options.channels);
+    planes = double(options.planes);
+    [height, width, total] = size(stack);
+    per = channels * planes;
+    frames = floor(total / per);
+    if frames == 0
+        nansen.internal.throwError("invalid-options", "%s has %d frames, fewer than %d channels x %d planes", options.stack, total, channels, planes)
+    end
+    if planes > 1
+        shape = [height, width, channels, planes, frames];
+    elseif channels > 1
+        shape = [height, width, channels, frames];
+    else
+        shape = [height, width, frames];
+    end
+    step = max(1, floor(ophys.internal.chunk() / per));
+    writer = context.Project.stackWriter(entity, options.output, shape, stack.ClassName);
+    for first = 1:step:frames
+        context.checkCancelled();
+        last = min(first + step - 1, frames);
+        n = last - first + 1;
+        chunk = stack.frames((first - 1) * per + 1, last * per);
+        % frame k of the chunk is channel c, plane p, volume v with k = ((v - 1) * planes + (p - 1)) * channels + c
+        writer.write(first, reshape(chunk, [shape(1:end - 1), n]));
+        context.progress(last / frames, sprintf("frame %d/%d", last, frames));
+    end
+    writer.close();
+    context.log("%s: %d frames of %d channel(s) and %d plane(s)", ophys.internal.entityName(entity), frames, channels, planes);
+    result = struct("frames", frames, "channels", channels, "planes", planes);
+end

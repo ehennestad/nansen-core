@@ -38,6 +38,8 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         stack = from_array(np.asarray(stack)[:, :, None])
     if stack.dtype.kind not in "biuf" or not 3 <= stack.ndim <= 5:
         raise NansenError("invalid-data", "the data is not an image or a stack of images")
+    channels = stack.shape[2] if stack.ndim >= 4 else 1
+    planes = stack.shape[3] if stack.ndim == 5 else 1
     if stack.ndim == 5:
         if not 0 <= plane < stack.shape[3]:
             raise NansenError("invalid-params", f"there are {stack.shape[3]} planes; plane {plane} is not one")
@@ -77,7 +79,8 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         with np.errstate(invalid="ignore"):
             values = np.floor((image - low) / (high - low) * 255 + 0.5)
         scaled = np.clip(np.nan_to_num(values, nan=0.0), 0, 255).astype(np.uint8)
-    return {"height": height, "width": width, "frames": frames, "frame": frame, "low": _number(low), "high": _number(high),
+    return {"height": height, "width": width, "frames": frames, "channels": channels, "planes": planes, "frame": frame,
+            "low": _number(low), "high": _number(high),
             "pixels": base64.b64encode(scaled.tobytes()).decode("ascii")}
 
 

@@ -4,7 +4,7 @@ function result = flowreg(entity, options, context)
         nansen.internal.throwError("dependency-missing", ...
             "ophys.flowreg needs Flow-Registration on the MATLAB path: https://github.com/FlowRegSuite/flow_registration")
     end
-    stack = ophys.internal.loadStack(context, entity, options.stack);
+    stack = ophys.internal.loadStack(context, entity, options.stack, options);
     frames = size(stack, 3);
     folder = string(tempname);
     mkdir(folder);

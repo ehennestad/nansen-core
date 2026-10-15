@@ -51,6 +51,20 @@
         "minimum": 0,
         "title": "Border left out (px)",
         "description": "Pixels this close to the edge are not part of any ROI: after motion correction they are partly filled with 0, and correlate"
+      },
+      "channel": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Channel",
+        "description": "Of a stack with channels (height x width x channels x frames): the one to use, from 1"
+      },
+      "plane": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Plane",
+        "description": "Of a stack with planes (height x width x channels x planes x frames): the one to use, from 1"
       }
     }
   }

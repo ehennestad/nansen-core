@@ -29,6 +29,14 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
             "uint32", "int32", "uint64", "int64", "single", "double"])
         nansen.internal.throwError("invalid-data", "the data is not an image or a stack of images")
     end
+    channels = 1;
+    planes = 1;
+    if ndims(stack) >= 4
+        channels = size(stack, 3);
+    end
+    if ndims(stack) == 5
+        planes = size(stack, 4);
+    end
     if ndims(stack) == 5
         if plane < 0 || plane >= size(stack, 4)
             nansen.internal.throwError("invalid-params", "there are %d planes; plane %d is not one", size(stack, 4), plane)
@@ -91,6 +99,6 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
         values(isnan(values)) = 0;
         scaled = uint8(min(max(values, 0), 255));
     end
-    result = struct("height", height, "width", width, "frames", frames, "frame", frame, ...
+    result = struct("height", height, "width", width, "frames", frames, "channels", channels, "planes", planes, "frame", frame, ...
         "low", low, "high", high, "pixels", matlab.net.base64encode(reshape(scaled.', 1, [])));
 end

@@ -28,7 +28,7 @@ def round_to(value, digits):
 
 def image_stats(entity, options, context):
     """Size and intensity of the stack; saves its average and maximum projections. Reads a chunk at a time."""
-    stack = _open_stack(entity, options["stack"], context)
+    stack = _open_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     total = 0.0
     maximum = None
@@ -52,8 +52,17 @@ def motion_correction(entity, options, context):
 
     The stack is read a chunk at a time and the aligned stack written the same way, so a recording need not
     fit in memory. Each iteration but the last makes the next reference: the average of the frames aligned.
+    In a stack with channels, the shifts are found in the options' channel and every channel is aligned by
+    them; in one with planes, the options' plane is aligned (height x width x channels x frames).
     """
-    stack = _open_stack(entity, options["stack"], context)
+    stack = _open_stack(entity, options["stack"], context, options)
+    whole = context.project.open_stack(entity, options["stack"])
+    if whole.ndim == 5:
+        target = whole.select(slice(None), slice(None), slice(None), options.get("plane", 1) - 1)
+    elif whole.ndim == 4:
+        target = whole
+    else:
+        target = stack
     height, width, frames = stack.shape
     count = min(options["referenceFrames"], frames)
     reference = stack[:, :, :count].astype(np.float64).mean(axis=2)
@@ -63,17 +72,21 @@ def motion_correction(entity, options, context):
         shifts = np.zeros((frames, 2), dtype=np.int32)
         reference_fft = np.conj(np.fft.fft2(reference)) * _smoothing(height, width)
         total = np.zeros((height, width))
-        with (context.project.stack_writer(entity, options["output"], stack.shape, stack.dtype) if last else _NoWriter()) as out:
+        with (context.project.stack_writer(entity, options["output"], target.shape, target.dtype) if last else _NoWriter()) as out:
             for start in range(0, frames, CHUNK):
                 context.check_cancelled()
                 stop = min(start + CHUNK, frames)
                 chunk = stack[:, :, start:stop]
                 shifts[start:stop] = estimate_shifts(chunk, reference_fft, options["maxShift"])
-                aligned = apply_shifts(chunk, shifts[start:stop])
                 if last:
-                    out.write(start, aligned)
+                    if target is stack:
+                        out.write(start, apply_shifts(chunk, shifts[start:stop]))
+                    else:
+                        channels = target.frames(start, stop)
+                        out.write(start, np.stack([apply_shifts(channels[:, :, c, :], shifts[start:stop])
+                                                   for c in range(channels.shape[2])], axis=2))
                 else:
-                    total += aligned.astype(np.float64).sum(axis=2)
+                    total += apply_shifts(chunk, shifts[start:stop]).astype(np.float64).sum(axis=2)
                 context.progress((iteration * frames + stop) / (iterations * frames), f"iteration {iteration + 1}: frame {stop}/{frames}")
         reference = total / frames
     _save(entity, options["shiftsOutput"], shifts, context)
@@ -127,7 +140,7 @@ def _smoothing(height, width):
 
 def detect_rois(entity, options, context):
     """ROIs as 4-connected areas of pixels whose average correlation with their 8 neighbours reaches the threshold."""
-    stack = _load_stack(entity, options["stack"], context)
+    stack = _load_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     image = correlation_image(stack)
     border = options["border"]
@@ -209,7 +222,7 @@ def quicky(entity, options, context):
     3 px of the median, and the ROI is the largest area of their overlap image above the mid-point of its
     50th and 95th percentile, holes filled. ROIs overlapping an earlier one by 75 % or more are left out.
     """
-    stack = _load_stack(entity, options["stack"], context)
+    stack = _load_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     diameter = options["roiDiameter"]
     binned = bin_max(stack.astype(np.float64), options["binSize"])
@@ -406,7 +419,7 @@ def overlap(a, b):
 def extract_signals(entity, options, context):
     """Average of each ROI's pixels per frame, and of a ring of neuropil around it outside every ROI.
     Reads the stack a chunk at a time."""
-    stack = _open_stack(entity, options["stack"], context)
+    stack = _open_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     document = context.project.load(entity, options["rois"])
     kept = [roi for roi in document.get("rois", []) if options["includeRejected"] or roi.get("classification") != "rejected"]
@@ -523,7 +536,7 @@ def _percentile(values, percentile):
 
 def downsample(entity, options, context):
     """Bin the stack: mean (single precision) or maximum of each bin of frames and of pixels. Reads a chunk at a time."""
-    stack = _open_stack(entity, options["stack"], context)
+    stack = _open_stack(entity, options["stack"], context, options)
     factor, side = options["temporalFactor"], options["spatialFactor"]
     height, width = stack.shape[0] // side, stack.shape[1] // side
     frames = stack.shape[2] // factor
@@ -659,7 +672,7 @@ def deep_interpolation(entity, options, context):
     if not model.is_file():
         raise NansenError("invalid-options", f"there is no model file {model}")
     import tempfile
-    stack = _load_stack(entity, options["stack"], context)
+    stack = _load_stack(entity, options["stack"], context, options)
     frames = stack.shape[2]
     before = options["preFrames"] + options["omittedFrames"]
     after = options["postFrames"] + options["omittedFrames"]
@@ -691,9 +704,33 @@ def deep_interpolation(entity, options, context):
     _save(entity, options["output"], out, context)
     return {"frames": frames, "height": out.shape[0], "width": out.shape[1], "predicted": int(count)}
 
+def deinterleave(entity, options, context):
+    """Frames of several channels and planes, interleaved in one height x width x frames stack, put in a
+    height x width x channels (x planes) x frames stack: channel fastest, then plane (as ScanImage saves them).
+    Frames after the last whole volume are left out. Reads and writes a chunk at a time."""
+    stack = _open_stack(entity, options["stack"], context)
+    channels, planes = options["channels"], options["planes"]
+    height, width, total = stack.shape
+    per = channels * planes
+    frames = total // per
+    if frames == 0:
+        raise NansenError("invalid-options", f"{options['stack']} has {total} frames, fewer than {channels} channels x {planes} planes")
+    shape = (height, width) + ((channels, planes) if planes > 1 else (channels,) if channels > 1 else ()) + (frames,)
+    step = max(1, CHUNK // per)
+    with context.project.stack_writer(entity, options["output"], shape, stack.dtype) as out:
+        for start in range(0, frames, step):
+            context.check_cancelled()
+            stop = min(start + step, frames)
+            chunk = stack[:, :, start * per:stop * per].reshape(height, width, stop - start, planes, channels)
+            out.write(start, chunk.transpose(0, 1, 4, 3, 2).reshape(shape[:-1] + (stop - start,)))
+            context.progress(stop / frames, f"frame {stop}/{frames}")
+    context.log(f"{_name(entity)}: {frames} frames of {channels} channel(s) and {planes} plane(s)")
+    return {"frames": frames, "channels": channels, "planes": planes}
+
+
 def denoise(entity, options, context):
     """Gaussian smoothing in space and in time, with the weights renormalised at the edges."""
-    stack = _load_stack(entity, options["stack"], context)
+    stack = _load_stack(entity, options["stack"], context, options)
     out = stack.astype(np.float64)
     for axis, sigma in ((0, options["spatialSigma"]), (1, options["spatialSigma"]), (2, options["temporalSigma"])):
         context.check_cancelled()
@@ -810,6 +847,7 @@ VARIABLES = [
     ("RoiSignals_Deconvolved", "Deconvolved spikes", "roi_signals_deconvolved.npy", "npy", "RoiSignals"),
     ("RoiSignals_Denoised", "Denoised calcium", "roi_signals_denoised.npy", "npy", "RoiSignals"),
     ("TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack"),
+    ("TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"),
 ]
 
 
@@ -863,7 +901,7 @@ def suite2p(entity, options, context):
     except ImportError as error:
         raise NansenError("dependency-missing",
                           f"ophys.suite2p needs suite2p and tifffile ({error}): pip install suite2p tifffile") from None
-    stack = _load_stack(entity, options["stack"], context)
+    stack = _load_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     folder = context.project.write_path(entity, options["rois"]).parent / "suite2p"
     folder.mkdir(parents=True, exist_ok=True)
@@ -902,22 +940,41 @@ def suite2p(entity, options, context):
     _save(entity, options["spikesOutput"], np.load(plane / "spks.npy")[keep].T.astype(np.float64), context)
     return {"rois": len(rois), "frames": frames}
 
-def _open_stack(entity, name, context):
-    """The variable as a height x width x frames stack read a chunk at a time (an image is one frame)."""
+def _open_stack(entity, name, context, options=None):
+    """The variable as a height x width x frames stack read a chunk at a time (an image is one frame).
+
+    A stack with channels (height x width x channels x frames) or planes too (x channels x planes x frames)
+    gives the options' channel and plane (1-based; the first when there is no such option).
+    """
     from nansen.stacks import from_array
     stack = context.project.open_stack(entity, name)
     if stack.ndim == 2:
         limit, stack.max_frames = stack.max_frames, None   # an image's columns are not frames
         stack = from_array(np.asarray(stack)[:, :, None])
         stack.max_frames = limit
-    if stack.ndim != 3:
-        raise NansenError("invalid-data", f"{name} is {stack.shape}; ophys methods take one channel, height x width x frames")
+    return _pick(stack, name, (options or {}).get("channel", 1), (options or {}).get("plane", 1))
+
+
+def _pick(stack, name, channel, plane):
+    """One channel and plane of a 3-, 4- or 5-dimensional stack, as height x width x frames (still lazy)."""
+    channels = stack.shape[2] if stack.ndim >= 4 else 1
+    planes = stack.shape[3] if stack.ndim == 5 else 1
+    if stack.ndim > 5:
+        raise NansenError("invalid-data", f"{name} is {stack.shape}; a stack is height x width (x channels (x planes)) x frames")
+    if not 1 <= channel <= channels:
+        raise NansenError("invalid-options", f"{name} has {channels} channel{'s' if channels > 1 else ''}; channel {channel} is not one")
+    if not 1 <= plane <= planes:
+        raise NansenError("invalid-options", f"{name} has {planes} plane{'s' if planes > 1 else ''}; plane {plane} is not one")
+    if stack.ndim == 5:
+        return stack.select(slice(None), slice(None), channel - 1, plane - 1)
+    if stack.ndim == 4:
+        return stack.select(slice(None), slice(None), channel - 1)
     return stack
 
 
-def _load_stack(entity, name, context):
+def _load_stack(entity, name, context, options=None):
     """The variable as a height x width x frames array, read whole (for methods that need every frame at once)."""
-    return np.asarray(_open_stack(entity, name, context))
+    return np.asarray(_open_stack(entity, name, context, options))
 
 
 def _as_traces(data):

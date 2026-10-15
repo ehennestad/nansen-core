@@ -1,6 +1,6 @@
 function result = imageStats(entity, options, context)
 %imageStats Size and intensity of the stack; saves its average and maximum projections. Reads a chunk at a time.
-    stack = ophys.internal.openStack(context, entity, options.stack);
+    stack = ophys.internal.openStack(context, entity, options.stack, options);
     [height, width, frames] = size(stack);
     average = zeros(height, width);
     maximum = [];

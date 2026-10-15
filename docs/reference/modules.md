@@ -43,6 +43,7 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 | `ophys.extract_signals` | The mean of each ROI's pixels per frame (frames x ROIs, rejected ROIs left out), and of a ring of neuropil around it, outside every ROI |
 | `ophys.compute_dff` | ΔF/F = (F - F0) / F0, with F the signal less `neuropilFactor` times the neuropil, and F0 a percentile of F over the whole trace or a window of frames |
 | `ophys.downsample` | Mean or maximum over bins of frames and of pixels |
+| `ophys.deinterleave` | Frames of several channels and planes interleaved in one stack (channel fastest, then plane, as ScanImage saves them) put in a height x width x channels (x planes) x frames stack |
 | `ophys.deconvolve` | Spikes and denoised calcium by OASIS for an AR(1) model, natively: the exact optimum of 1/2 |c - y|² + λ Σ s with s ≥ 0, g from `tauDecay` and the frame rate (`frameRate`, or the entity's `frame_rate`), λ = `sparsity` times the trace's noise |
 | `ophys.denoise` | Gaussian smoothing in space and time, renormalised at the edges (dev used DeepInterpolation, which needs a trained network) |
 | `ophys.deep_interpolation` | Python: DeepInterpolation with a trained model, as dev's Denoiser, when deepinterpolation and h5py are installed |
@@ -54,6 +55,8 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 | `ophys.suite2p` | Python: runs suite2p, when it is installed, and saves its cells and signals in the same variables |
 | `ophys.normcorre` | MATLAB: rigid or piecewise rigid motion correction with NoRMCorre, when it is on the path |
 | `ophys.open_in_imviewer` | MATLAB R2024b or older (imviewer uses Java figures), run by hand: opens a stack in dev's imviewer, when it and the Widgets Toolbox are on the path |
+
+Stacks with channels (height x width x channels x frames) or planes (height x width x channels x planes x frames) are taken a channel and plane at a time: image statistics, ROI detection, Quicky, signal extraction, downsampling and denoising have `channel` and `plane` options (from 1). Motion correction finds the shifts in its `channel` and aligns every channel of its `plane` by them, so a structural channel can steer the alignment of a functional one. The viewer offers the channels and planes of the stack it shows (`data.frame` gives their counts).
 
 A method that needs a package that is not installed fails with `dependency-missing`. The file adapters are `ophys.sciscan_raw` (a SciScan `.raw` file and its `.ini` file, as written by the microscope: big-endian, one channel after the other in each frame), `ophys.tiff_stack` (multi-page TIFF) and `ophys.scanimage_tiff` (ScanImage TIFF files, read only: channels and planes from the metadata, and multi-ROI recordings with their ROIs side by side, without flyback lines; height x width x channels x planes x frames when there is more than one plane). The fragments are `ophys.imaging` (field of view, depth, indicator and frame rate, typed in) and `ophys.image_stats` (computed). The pipeline `ophys.preprocess` runs motion correction, image statistics, ROI detection, signal extraction, ΔF/F and deconvolution.
 

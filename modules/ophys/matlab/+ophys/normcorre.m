@@ -8,7 +8,7 @@ function result = normcorre(entity, options, context)
         nansen.internal.throwError("dependency-missing", ...
             "ophys.normcorre needs NoRMCorre on the MATLAB path: https://github.com/flatironinstitute/NoRMCorre")
     end
-    stack = ophys.internal.loadStack(context, entity, options.stack);
+    stack = ophys.internal.loadStack(context, entity, options.stack, options);
     [height, width, frames] = size(stack);
     if options.gridSize == 0
         grid = [height, width];

@@ -123,7 +123,8 @@
               "RoiSignals_Dff",
               "RoiSignals_Deconvolved",
               "RoiSignals_Denoised",
-              "TwoPhotonSeries_Denoised"
+              "TwoPhotonSeries_Denoised",
+              "TwoPhotonSeries_Deinterleaved"
             ],
             "existing": [],
             "fragments": [
@@ -730,6 +731,11 @@
             "files": [
               "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/two_photon_series_corrected.npy"
             ]
+          },
+          {
+            "name": "TwoPhotonSeries_Deinterleaved",
+            "dataLocation": "processed",
+            "files": []
           },
           {
             "name": "TwoPhotonSeries_Denoised",
@@ -2353,13 +2359,84 @@
         }
       },
       "expect": {
-        "error": "invalid-data"
+        "result": {
+          "results": [
+            {
+              "n_frames": 3,
+              "height": 16,
+              "width": 64,
+              "mean_intensity": 1979.513,
+              "max_intensity": 3999.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 50,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s4"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_ScanImage",
+            "averageOutput": "",
+            "maximumOutput": "",
+            "channel": 2,
+            "plane": 2
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "n_frames": 3,
+              "height": 16,
+              "width": 64,
+              "mean_intensity": 2011.4714,
+              "max_intensity": 3999.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 51,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s4"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_ScanImage",
+            "averageOutput": "",
+            "maximumOutput": "",
+            "channel": 3
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
       }
     },
     {
       "request": {
         "method": "app.plugins",
-        "id": 50,
+        "id": 52,
         "params": {}
       },
       "expect": {
@@ -2378,7 +2455,7 @@
     {
       "request": {
         "method": "modules.data",
-        "id": 51,
+        "id": 53,
         "params": {
           "module": "ophys",
           "name": "fovmap"
@@ -2396,7 +2473,7 @@
     {
       "request": {
         "method": "modules.saveData",
-        "id": 52,
+        "id": 54,
         "params": {
           "module": "ophys",
           "name": "fovmap",
@@ -2413,7 +2490,7 @@
     {
       "request": {
         "method": "modules.saveData",
-        "id": 53,
+        "id": 55,
         "params": {
           "module": "ophys",
           "name": "fovmap",
@@ -2428,7 +2505,7 @@
     {
       "request": {
         "method": "modules.saveData",
-        "id": 54,
+        "id": 56,
         "params": {
           "module": "ophys",
           "name": "fovmap",
@@ -2442,7 +2519,7 @@
     {
       "request": {
         "method": "modules.data",
-        "id": 55,
+        "id": 57,
         "params": {
           "module": "ophys",
           "name": "fovmap"
@@ -2458,7 +2535,7 @@
     {
       "request": {
         "method": "modules.data",
-        "id": 56,
+        "id": 58,
         "params": {
           "module": "core",
           "name": "fovmap"
@@ -2471,7 +2548,7 @@
     {
       "request": {
         "method": "modules.data",
-        "id": 57,
+        "id": 59,
         "params": {
           "module": "ophys",
           "name": "../x"
@@ -2484,7 +2561,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 58,
+        "id": 60,
         "params": {
           "module": "ophys",
           "path": "atlas/dorsal_cortex.json"
@@ -2500,7 +2577,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 59,
+        "id": 61,
         "params": {
           "module": "ophys",
           "path": "../core/module.nansen.json"
@@ -2513,7 +2590,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 60,
+        "id": 62,
         "params": {
           "module": "ophys",
           "path": "atlas/nothing.json"
@@ -2526,7 +2603,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 61,
+        "id": 63,
         "params": {
           "module": "core",
           "path": "module.nansen.json"
@@ -2539,7 +2616,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 62,
+        "id": 64,
         "params": {
           "entityType": "session",
           "key": {
@@ -2560,7 +2637,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 63,
+        "id": 65,
         "params": {
           "entityType": "session",
           "key": {
@@ -2580,7 +2657,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 64,
+        "id": 66,
         "params": {
           "entityType": "subject",
           "key": {
@@ -2600,7 +2677,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 65,
+        "id": 67,
         "params": {
           "entityType": "subject",
           "key": {
@@ -2618,7 +2695,7 @@
     {
       "request": {
         "method": "fragments.update",
-        "id": 66,
+        "id": 68,
         "params": {
           "entityType": "session",
           "fragmentId": "ophys.fov_region"
@@ -2634,7 +2711,7 @@
     {
       "request": {
         "method": "methods.run",
-        "id": 67,
+        "id": 69,
         "params": {
           "methodId": "ophys.fov_region",
           "entityType": "session",
@@ -2673,7 +2750,7 @@
     {
       "request": {
         "method": "entities.list",
-        "id": 68,
+        "id": 70,
         "params": {
           "entityType": "session"
         }
@@ -2726,7 +2803,7 @@
     {
       "request": {
         "method": "tools.run",
-        "id": 69,
+        "id": 71,
         "params": {
           "methodId": "ophys.setup_variables",
           "options": {
@@ -2751,10 +2828,138 @@
               "RoiSignals_Dff",
               "RoiSignals_Deconvolved",
               "RoiSignals_Denoised",
-              "TwoPhotonSeries_Denoised"
+              "TwoPhotonSeries_Denoised",
+              "TwoPhotonSeries_Deinterleaved"
             ],
             "fragments": []
           }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 72,
+        "params": {
+          "methodId": "ophys.deinterleave",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "channels": 2
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 20,
+              "channels": 2,
+              "planes": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 73,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Deinterleaved",
+          "channel": 1,
+          "frame": 1
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 20,
+          "channels": 2,
+          "planes": 1,
+          "frame": 1,
+          "low": 34.0,
+          "high": 603.0,
+          "pixels": "SFVfWVZOWD1EMzw0L05PU1FVUkVLS1RNSURGZFJOKThRUE9ZVlZKQDozP0dLXlNtcHBNOkVJS1BRQ0A+S1JERVJQQlBRTkRAOzg+SVFdU2tfWj1BPEE+UVk0LjFMU0Q/VFZIT09IQkI7PURZWl5FVExMNTc+Qj1RUEk9O0dQUkQ9TEBOUlNUS0E+VGBRS0NCNzVCSldUS1dJTT1PPUUyQjNJR1xdVFdSUVlaXUFIMzQwP1ZOWlZVUD1TU1pPQjtBOkNfX1lQTklHXVpeQVNGUD9MVFpaWVpXVFBOPkE5PEdOTlxPRTw2O0piVFE9WkhXR1NPUlJOYFRfUV9BSTxGOFxbZ1I/Oi40Pl5gZ2JqZmhbT0hNUkpcU19DSTNCR0k+ZF1EOzlHODtHTlNQWF5TVT9GQ0tJUFJGUz5HMEpSUjhRTDEyOUVHOj9PX2VbaFZWOEpGTUFNRDQzIjU2W19bR1s3ESVEW1g6MiZFSU1XQ0coRUE7JjcqHxsjJCZGWVpDQScfLEpBRjs0OVFmZGRVRjRGQkU+SDMyGiIdMUJHTEksL0FJTzo2MCgjOD5OPUoyJys6UE9OKywcKRwoMz1HSB0fNzlBNDdBOTgtMjwvJwwEIDhaxF09TkJMPjs4ODhOKDhLRkhHOTkyLScYJBQVAA0rTcCnpiZESVxKPTw6N0ZINj1DW044MzQkHgkeKSgjHzerrZixm1BOcWVTOCQxQktSV1tPPjQwNCcuHC45R0lFSUq5ucQ/Pz5fcFlAHjY4UDg5RE9TSEE7N0Q4Vl1mV1FWQU2/dWZSOUNhV0gmO0tTUFJSSVlfX1hIT0lfXVxQXF5RQ05jYlxGQEdJSTo5TWFRSktSUlZPUExjS2RWWk1aZV1SXGtXUkA8QU1bXERhW15OVkE4RlJjTWRHSTBDT2NpZEpJW1RhS09IUkVQOFtWSEFKOjLVKEROa1JbQVlMXmlmYWBwX1VQVFxaWFlGT048PUAt4d/mRUhqX1pITlFgc25pVWNlaWNOUU5OQD9KVkNKQN/k3dXYN1ZSVFZVUlxjbGZjWmNlaVhYVVxOWE1VRUI0M/f/9ERHT09BQkFQYmh0XmVSY2RbP0JFUTpSQ1pUPkE8TfhVVFJDR1ROVThVOF5RYEhWVk5JUldSMDkwUFAyNztNS09XYUVMTlVVQVE9S0tfXl9SQS09RVIxMihBOCswOUpESlNkYWpsY1MzQjVNTk5bWFhIPVJNUDtDREQzMCdJU11AR2V7eGJYS0xQTk9GRlJkZ19HR0VNUVlIRjs6PUVKRSsvR3p9eWBNOEFHS0xBRkFOTVhPVlZXV05PSFlMRTNFKy83UU5STU8/OUJHVEVDOEE0QTdHQElLSg=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 74,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Deinterleaved",
+            "maxShift": 8,
+            "referenceFrames": 1,
+            "channel": 1,
+            "shiftsOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 20,
+              "maxShift": 3,
+              "meanShift": 2.8679
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 75,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "channel": 2,
+            "averageOutput": "",
+            "maximumOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "n_frames": 20,
+              "height": 32,
+              "width": 32,
+              "mean_intensity": 181.6686,
+              "max_intensity": 812.0
+            }
+          ]
         }
       }
     }

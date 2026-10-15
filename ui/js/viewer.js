@@ -53,7 +53,7 @@
    */
   N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = []) {
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
-      playing: false, busy: false, pending: false, selected: null, adding: false, radius: 3, hideRejected: false };
+      playing: false, busy: false, pending: false, selected: null, adding: false, radius: 3, hideRejected: false, channel: 0, plane: 0 };
     const canvas = h("canvas.viewer-canvas");
     const slider = h("input.viewer-slider", { type: "range", min: 0, max: 0, value: 0, on: { input: () => { state.frame = Number(slider.value); show(); } } });
     const frameLabel = h("span.viewer-frame.mono", "");
@@ -66,6 +66,13 @@
     const roiToggle = h("input.viewer-rois", { type: "checkbox", checked: state.showRois, on: { change: () => { state.showRois = roiToggle.checked; show(); } } });
     const roiPick = roiVariables.length > 1 ? h("select.input", { on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; show(); } } },
       roiVariables.map((v) => h("option", { value: v }, v))) : null;
+    // channel and plane pickers, shown once the stack turns out to have more than one
+    const channelPick = h("select.input.viewer-channel", { style: { display: "none" }, on: { change: () => { state.channel = Number(channelPick.value); show(); } } });
+    const planePick = h("select.input.viewer-plane", { style: { display: "none" }, on: { change: () => { state.plane = Number(planePick.value); show(); } } });
+    const fillPick = (select, count, label, value) => {
+      if (select.options.length !== count) N.fill(select, Array.from({ length: count }, (_, i) => h("option", { value: i, selected: i === value }, `${label} ${i + 1}`)));
+      select.style.display = count > 1 ? "" : "none";
+    };
     const status = h("div.viewer-status.muted", "Loading…");
     const where = h("span.viewer-where.mono.muted", "");
     let last = null;
@@ -200,7 +207,7 @@
     async function show() {
       if (state.busy) { state.pending = true; return; }
       state.busy = true;
-      const params = { entityType, key, variable };
+      const params = { entityType, key, variable, channel: state.channel, plane: state.plane };
       if (state.mode === "frame") params.frame = state.frame; else params.projection = state.mode;
       if (!state.auto) params.limits = [state.low, state.high];
       if (state.showRois && state.roiVariable && !state.rois) params.rois = state.roiVariable;
@@ -208,6 +215,8 @@
         const frame = await app.client.request("data.frame", params);
         if (frame.rois) state.rois = frame.rois;
         last = frame;
+        fillPick(channelPick, frame.channels || 1, "Channel", state.channel);
+        fillPick(planePick, frame.planes || 1, "Plane", state.plane);
         state.frames = frame.frames;
         slider.max = String(Math.max(0, frame.frames - 1));
         slider.disabled = state.mode !== "frame" || frame.frames < 2;
@@ -244,7 +253,7 @@
 
     const content = h("div.viewer" + (signalPanel ? ".with-signal" : ""),
       h("div.viewer-bar",
-        playButton, slider, frameLabel, mode,
+        playButton, slider, frameLabel, mode, channelPick, planePick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
         roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick),
       h("div.viewer-main", h("div.viewer-stage", canvas), roiVariables.length ? roiPanel : null),

@@ -1,6 +1,6 @@
 function result = downsample(entity, options, context)
 %downsample Bin the stack: mean (single precision) or maximum of each bin of frames and of pixels. Reads a chunk at a time.
-    stack = ophys.internal.openStack(context, entity, options.stack);
+    stack = ophys.internal.openStack(context, entity, options.stack, options);
     factor = options.temporalFactor;
     side = options.spatialFactor;
     height = floor(size(stack, 1) / side);

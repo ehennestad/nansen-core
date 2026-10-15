@@ -2,7 +2,7 @@ function result = extractSignals(entity, options, context)
 %extractSignals Average of each ROI's pixels per frame (frames x ROIs), and of a ring of neuropil around it outside every ROI
 %
 %   Reads the stack a chunk at a time.
-    stack = ophys.internal.openStack(context, entity, options.stack);
+    stack = ophys.internal.openStack(context, entity, options.stack, options);
     [height, width, frames] = size(stack);
     document = context.Project.load(entity, options.rois);
     rois = ophys.internal.roiList(document);

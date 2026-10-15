@@ -18,7 +18,8 @@ function result = setupVariables(project, options, context)
         "RoiSignals_Dff", "ROI ΔF/F", "roi_signals_dff.npy", "npy", "RoiSignals"
         "RoiSignals_Deconvolved", "Deconvolved spikes", "roi_signals_deconvolved.npy", "npy", "RoiSignals"
         "RoiSignals_Denoised", "Denoised calcium", "roi_signals_denoised.npy", "npy", "RoiSignals"
-        "TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack"};
+        "TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack";
+        "TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"};
     documents = {};
     if strlength(string(options.rawFilePattern)) > 0
         documents{end + 1} = struct("schemaType", "nansen.dataVariable", "schemaVersion", "0.1.0", ...

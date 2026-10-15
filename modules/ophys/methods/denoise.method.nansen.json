@@ -37,6 +37,20 @@
         "default": 1,
         "minimum": 0,
         "title": "Temporal sigma (frames)"
+      },
+      "channel": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Channel",
+        "description": "Of a stack with channels (height x width x channels x frames): the one to use, from 1"
+      },
+      "plane": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Plane",
+        "description": "Of a stack with planes (height x width x channels x planes x frames): the one to use, from 1"
       }
     }
   }

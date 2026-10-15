@@ -1,6 +1,6 @@
 function result = denoise(entity, options, context)
 %denoise Gaussian smoothing in space and in time, with the weights renormalised at the edges
-    stack = ophys.internal.loadStack(context, entity, options.stack);
+    stack = ophys.internal.loadStack(context, entity, options.stack, options);
     out = double(stack);
     sigmas = [options.spatialSigma, options.spatialSigma, options.temporalSigma];
     for axis = 1:3

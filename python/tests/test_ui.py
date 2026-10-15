@@ -1074,6 +1074,25 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_view_a_stack_with_channels_and_planes(empty_app, page):
+    api = ophys_project(empty_app, [("dataVariables.save", {"document": {
+        "schemaType": "nansen.dataVariable", "schemaVersion": "0.1.0", "name": "TwoPhotonSeries_ScanImage", "entityType": "session",
+        "dataLocation": "raw", "filePattern": "scanimage", "fileAdapter": "ophys.scanimage_tiff", "dataType": "ImageStack"}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").nth(3).locator("td.key").first.click()   # s4: 2 channels x 2 planes
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_ScanImage'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_ScanImage'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('16 × 64')")
+    assert page.locator(".viewer-channel").is_visible() and page.locator(".viewer-plane").is_visible()
+    assert page.locator(".viewer-channel option").all_inner_texts() == ["Channel 1", "Channel 2"]
+    first = page.evaluate("Array.from(document.querySelector('.viewer-canvas').getContext('2d').getImageData(0, 0, 64, 16).data).join()")
+    page.select_option(".viewer-channel", "1")
+    page.select_option(".viewer-plane", "1")
+    wait_until(lambda: page.evaluate("Array.from(document.querySelector('.viewer-canvas').getContext('2d').getImageData(0, 0, 64, 16).data).join()") != first)
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     api = ophys_project(empty_app)
     page.goto(empty_app["server"].url + "#/overview")

@@ -6,7 +6,7 @@ function result = quicky(entity, options, context)
 %   background taken out, each bin thresholded at a percentile of all
 %   values and cleaned with disk-shaped morphology; areas that recur at the
 %   same place in several bins make an ROI.
-    stack = ophys.internal.loadStack(context, entity, options.stack);
+    stack = ophys.internal.loadStack(context, entity, options.stack, options);
     [height, width, ~] = size(stack);
     diameter = options.roiDiameter;
     binned = ophys.internal.binMax(double(stack), options.binSize);

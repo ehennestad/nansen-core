@@ -6,7 +6,7 @@
   "title": "Correct motion (rigid)",
   "category": "Two-photon/Motion correction",
   "entityType": "*",
-  "description": "Aligns every frame to a reference image by the whole-pixel shift that maximises their phase correlation, and saves the aligned stack and the shifts. The reference is the average of the first frames; each further iteration uses the average of the frames aligned in the one before. Pixels shifted in from outside the frame are 0.",
+  "description": "Aligns every frame to a reference image by the whole-pixel shift that maximises their phase correlation, and saves the aligned stack and the shifts. The reference is the average of the first frames; each further iteration uses the average of the frames aligned in the one before. Pixels shifted in from outside the frame are 0. In a stack with channels, the shifts are found in one channel and every channel is aligned by them; in one with planes, one plane is aligned (as height x width x channels x frames).",
   "implementations": {
     "python": "ophys_methods:motion_correction",
     "matlab": "ophys.motionCorrection"
@@ -50,6 +50,20 @@
         "minimum": 1,
         "maximum": 10,
         "title": "Iterations"
+      },
+      "channel": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Reference channel",
+        "description": "Of a stack with channels: the one the shifts are found in, from 1. Every channel is aligned by them"
+      },
+      "plane": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Plane",
+        "description": "Of a stack with planes: the one to align, from 1"
       }
     }
   }
