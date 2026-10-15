@@ -312,6 +312,33 @@ def test_starting_a_matlab_worker_needs_matlab(tmp_path, monkeypatch):
         api.close()
 
 
+def test_a_shared_project_is_installed_from_git(tmp_path):
+    import shutil
+    import subprocess
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    git = lambda *args, cwd: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd, check=True, capture_output=True)
+    shared = tmp_path / "shared"
+    Project.create(shared, "Shared")
+    git("init", "-q", cwd=shared)
+    git("add", ".", cwd=shared)
+    git("commit", "-q", "-m", "a project", cwd=shared)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "README.md").write_text("no project here")
+    git("init", "-q", cwd=empty)
+    git("add", ".", cwd=empty)
+    git("commit", "-q", "-m", "not a project", cwd=empty)
+    api = Api(catalog=Catalog(tmp_path / "catalog.json"), start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    projects = call("catalog.install", url=str(shared), path=str(tmp_path / "mine"))["result"]
+    assert [p["name"] for p in projects] == ["Shared"] and projects[0]["available"] is True
+    assert (tmp_path / "mine" / "project.nansen.json").is_file()
+    assert call("catalog.install", url=str(shared), path=str(tmp_path / "mine"))["error"]["code"] == "folder-not-empty"
+    assert call("catalog.install", url=str(tmp_path / "nowhere"), path=str(tmp_path / "other"))["error"]["code"] == "install-failed"
+    assert call("catalog.install", url=str(empty), path=str(tmp_path / "third"))["error"]["code"] == "not-a-project"
+
+
 def test_a_moved_project_is_located_again(tmp_path):
     import shutil
 

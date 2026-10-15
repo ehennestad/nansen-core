@@ -39,7 +39,7 @@ classdef Api < handle
             end
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
-            names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
+            names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
@@ -210,6 +210,34 @@ classdef Api < handle
                 nansen.internal.throwError("no-catalog", "this app has no project catalog")
             end
             obj.Catalog.relocate(string(nansen.Api.param(params, "path")), string(nansen.Api.param(params, "newPath")));
+            result = obj.Catalog.projects();
+        end
+
+        function result = apiCatalogInstall(obj, params)
+            % A project shared in a git repository (on GitHub, say) cloned into a folder and added to the catalog,
+            % as dev's installProject; the folder must hold a project once cloned
+            if isempty(obj.Catalog)
+                nansen.internal.throwError("no-catalog", "this app has no project catalog")
+            end
+            url = string(nansen.Api.param(params, "url"));
+            folder = string(nansen.Api.param(params, "path"));
+            if isfolder(folder) && numel(dir(folder)) > 2
+                nansen.internal.throwError("folder-not-empty", "%s is not empty", folder)
+            end
+            [status, ~] = system("git --version");
+            if status ~= 0
+                nansen.internal.throwError("dependency-missing", "installing a project needs git")
+            end
+            [status, output] = system(sprintf('git clone --depth 1 -- "%s" "%s" 2>&1', url, folder));
+            if status ~= 0
+                nansen.internal.throwError("install-failed", "git could not clone %s: %s", url, strtrim(output))
+            end
+            try
+                project = nansen.Project.open(folder);
+            catch err
+                nansen.internal.throwError("not-a-project", "%s holds no NANSEN project (%s); it was cloned to %s", url, err.message, folder)
+            end
+            obj.Catalog.add(project, false);
             result = obj.Catalog.projects();
         end
 

@@ -326,6 +326,30 @@ class Api:
         self.catalog.relocate(params["path"], params["newPath"])
         return self.catalog.projects()
 
+    def catalog__install(self, params: dict) -> list:
+        """A project shared in a git repository (on GitHub, say) cloned into a folder and added to the catalog, as dev's
+        installProject: the folder must hold a project once cloned. Data locations' roots stay to be set."""
+        import shutil
+        import subprocess
+
+        if self.catalog is None:
+            raise NansenError("no-catalog", "this app has no project catalog")
+        url, folder = str(params["url"]), Path(params["path"]).expanduser()
+        if folder.exists() and any(folder.iterdir()):
+            raise NansenError("folder-not-empty", f"{folder} is not empty")
+        git = shutil.which("git")
+        if git is None:
+            raise NansenError("dependency-missing", "installing a project needs git")
+        done = subprocess.run([git, "clone", "--depth", "1", "--", url, str(folder)], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise NansenError("install-failed", f"git could not clone {url}: {done.stderr.strip()[-500:]}")
+        try:
+            project = Project.open(folder)
+        except NansenError as error:
+            raise NansenError("not-a-project", f"{url} holds no NANSEN project ({error.message}); it was cloned to {folder}") from None
+        self.catalog.add(project, opened=False)
+        return self.catalog.projects()
+
     def catalog__remove(self, params: dict) -> list:
         if self.catalog is None:
             raise NansenError("no-catalog", "this app has no project catalog")

@@ -189,6 +189,28 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(status.worker), "thread");
         end
 
+        function aSharedProjectIsInstalledFromGit(testCase)
+            testCase.assumeEqual(system("git --version"), 0, "git is not installed");
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            shared = fullfile(fixture.Folder, "shared");
+            nansen.Project.create(shared, "Shared");
+            git = @(command) system(sprintf('git -C "%s" -c user.name=t -c user.email=t@t %s', shared, command));
+            testCase.assertEqual(git("init -q") + git("add .") + git("commit -q -m project"), 0);
+            api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));
+            call = @(params) api.handle(struct("id", 1, "method", "catalog.install", "params", params));
+            response = call(struct("url", shared, "path", fullfile(fixture.Folder, "mine")));
+            projects = response.result;
+            if isstruct(projects)
+                projects = num2cell(projects);
+            end
+            testCase.verifyEqual(string(cellfun(@(p) string(p.name), projects)), "Shared");
+            testCase.verifyTrue(isfile(fullfile(fixture.Folder, "mine", "project.nansen.json")));
+            response = call(struct("url", shared, "path", fullfile(fixture.Folder, "mine")));
+            testCase.verifyEqual(string(response.error.code), "folder-not-empty");
+            response = call(struct("url", fullfile(fixture.Folder, "nowhere"), "path", fullfile(fixture.Folder, "other")));
+            testCase.verifyEqual(string(response.error.code), "install-failed");
+        end
+
         function aMovedProjectIsLocatedAgain(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));

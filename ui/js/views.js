@@ -1560,6 +1560,26 @@
       app.go("#/overview");
       if (message) N.toast(message, info.title, "success");
     };
+    // a project shared in a git repository: cloned into a folder and remembered here (dev's installProject)
+    function installDialog() {
+      const url = h("input.input.install-url", { placeholder: "https://github.com/lab/project", style: { width: "100%" } });
+      const folder = h("input.input.install-folder", { placeholder: "/path/to/new/folder", style: { width: "100%" } });
+      N.dialog({
+        title: "Install a shared project", narrow: true,
+        content: h("div", h("p.muted", "The repository is cloned into the folder, which must be new or empty. Set where its data is on this computer after opening it."),
+          h("div.field", h("label.name", "Repository"), url), h("div.field", h("label.name", "Folder"), folder)),
+        buttons: [{ label: "Cancel" }, { label: "Install", kind: "primary", icon: "download", onClick: async (close) => {
+          if (!url.value.trim() || !folder.value.trim()) { N.toast("Give the repository and the folder", "", "error"); return; }
+          N.toast("Installing", url.value.trim());
+          try {
+            await app.client.request("catalog.install", { url: url.value.trim(), path: folder.value.trim() });
+            close();
+            N.toast("Installed", folder.value.trim(), "success");
+            N.views.projects(app, content);
+          } catch (error) { N.showError(error, "Could not install the project"); }
+        } }],
+      });
+    }
     const action = (icon, title, text, onClick) => h("button.action-card", { on: { click: onClick } },
       h("div.action-icon", N.icon(icon, 20)), h("div", h("div.title", title), h("div.sub", text)));
     N.fill(content,
@@ -1569,7 +1589,8 @@
         h("div.action-cards",
           action("plus", "New project", "In an empty folder, optionally from an existing dataset config", () => newProjectDialog(app, opened)),
           action("compass", "Create the demo", "A small two-photon dataset to try things on", () => demoDialog(app, opened)),
-          action("download", "Import from NANSEN", "Convert a project made with the existing NANSEN", () => importDialog(app, opened))),
+          action("download", "Import from NANSEN", "Convert a project made with the existing NANSEN", () => importDialog(app, opened)),
+          action("git", "Install a shared project", "Clone a project from GitHub or another git repository", () => installDialog())),
         h("div.card", { style: { margin: "18px 0" } }, h("div.card-body", { style: { display: "flex", gap: "8px" } }, path,
           h("button.btn.primary", { on: { click: () => open(path.value) } }, N.icon("folder"), "Open"))),
         h("div.card", projects.length ? h("ul.list", projects.map((p) => h("li",

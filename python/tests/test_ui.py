@@ -1569,3 +1569,23 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     import numpy as np
     order = [i + 1 for i in np.argsort(-np.asarray(dff).max(axis=0), kind="stable")]
     wait_until(lambda: page.eval_on_selector_all(".roi-tile", "els => els.map(e => Number(e.dataset.roi))")[:3] == order)
+
+
+def test_install_a_shared_project_from_git(empty_app, page):
+    import shutil
+    import subprocess
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    from nansen import Project
+    shared = empty_app["folder"] / "shared"
+    Project.create(shared, "Shared")
+    for args in (["init", "-q"], ["add", "."], ["commit", "-q", "-m", "a project"]):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=shared, check=True, capture_output=True)
+    page.goto(empty_app["server"].url + "#/projects")
+    page.click(".action-card:has-text('Install a shared project')")
+    page.fill(".install-url", str(shared))
+    page.fill(".install-folder", str(empty_app["folder"] / "mine"))
+    page.click(".dialog .btn.primary:has-text('Install')")
+    page.wait_for_selector(".toast:has-text('Installed')")
+    page.wait_for_selector(".card li:has-text('Shared')")
+    assert (empty_app["folder"] / "mine" / "project.nansen.json").is_file()
