@@ -1112,7 +1112,14 @@
       if (!rows.length) { N.toast("Select an entity", "The preview runs on one entity: select it in the table first", "error"); return; }
       const problems = form.validate();
       if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
-      N.views.preview(app, current, entityType, rows[0].key, form.getValue());
+      const method = current;
+      N.views.preview(app, method, entityType, rows[0].key, form.getValue(), (values) => {
+        if (current !== method) return;   // another method was chosen meanwhile
+        const fresh = N.schemaForm(method.options || {}, values);
+        form.el.replaceWith(fresh.el);
+        form = fresh;
+        N.toast("Options taken", "From the preview", "success", 2000);
+      });
     };
     N.dialog({
       title: `Run a method on ${target}`,
@@ -1144,13 +1151,27 @@
   }
 
   /** A method run on the first frames of one entity, writing nothing (methods.preview): what it returns and saves. */
-  N.views.preview = function (app, method, entityType, key, options) {
+  /**
+   * Preview a method on one entity: run on the first frames, saving nothing. Its options are beside the result, and
+   * a change runs it again a moment later (tuning, as dev's previews); onApply takes them back to the run dialog.
+   */
+  N.views.preview = function (app, method, entityType, key, options, onApply = null) {
     const body = h("div.preview-body", h("div.muted", "Running…"));
     const frames = h("input.input.preview-frames", { type: "number", min: 1, value: 20, title: "Frames the preview runs on" });
+    const form = N.schemaForm(method.options || {}, options);
+    let runs = 0, timer = null;
+    const soon = () => { clearTimeout(timer); timer = setTimeout(run, 700); };
+    form.el.addEventListener("input", soon);
+    form.el.addEventListener("change", soon);
     async function run() {
+      clearTimeout(timer);
+      const problems = form.validate();
+      if (problems.length) { N.fill(body, h("div.preview-error", "Check the options: ", problems.join("; "))); return; }
+      const mine = ++runs;   // only the latest run shows
       N.fill(body, h("div.muted.preview-running", "Running ", method.title, " on the first ", frames.value, " frames…"));
       try {
-        const result = await app.client.request("methods.preview", { methodId: method.id, entityType, key, options, frames: Number(frames.value) || 20 });
+        const result = await app.client.request("methods.preview", { methodId: method.id, entityType, key, options: form.getValue(), frames: Number(frames.value) || 20 });
+        if (mine !== runs) return;
         N.fill(body,
           h("div.preview-section", h("h4", "Result"), h("pre.preview-result.mono", JSON.stringify(result.results.length === 1 ? result.results[0] : result.results, null, 2))),
           h("div.preview-section", h("h4", "Saved (in the preview only)"),
@@ -1162,14 +1183,22 @@
               : h("div.muted", "Nothing")),
           result.log.length ? h("div.preview-section", h("h4", "Log"), h("pre.preview-log.mono", result.log.join("\n"))) : null);
       } catch (error) {
+        if (mine !== runs) return;
         N.fill(body, h("div.preview-error", h("b", error.code ? `[${error.code}] ` : ""), error.message || String(error)));
       }
     }
     const view = N.dialog({
       title: `Preview · ${method.title} on ${N.fmt.key(key)}`,
-      content: h("div.preview", h("div.preview-bar", h("span.muted", "Runs on the first"), frames, h("span.muted", "frames of each stack and writes nothing."),
-        h("div.spacer"), h("button.btn.small.preview-again", { on: { click: () => run() } }, N.icon("retry", 13), "Run again")), body),
-      buttons: [{ label: "Close" }],
+      content: h("div.preview", h("div.preview-bar", h("span.muted", "Runs on the first"), frames, h("span.muted", "frames of each stack and writes nothing; a change of the options runs it again."),
+        h("div.spacer"), h("button.btn.small.preview-again", { on: { click: () => run() } }, N.icon("retry", 13), "Run again")),
+        h("div.preview-columns", h("div.preview-options", form.el), body)),
+      buttons: [{ label: "Close", onClick: (close) => { clearTimeout(timer); close(); } }].concat(onApply ? [{ label: "Use these options", kind: "primary", onClick: (close) => {
+        const problems = form.validate();
+        if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
+        clearTimeout(timer);
+        onApply(form.getValue());
+        close();
+      } }] : []),
     });
     view.el.classList.add("preview-dialog");
     frames.addEventListener("keydown", (event) => { if (event.key === "Enter") run(); });

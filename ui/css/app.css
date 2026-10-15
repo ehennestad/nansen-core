@@ -665,3 +665,8 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .loc-found { margin-top: 12px; font-size: 13px; }
 .loc-danger { margin-top: 22px; padding-top: 12px; border-top: 1px dashed var(--border); }
 @media (max-width: 860px) { .loc-editor { grid-template-columns: 1fr; } .loc-side { border-right: 0; border-bottom: 1px solid var(--border); } }
+
+/* the preview's options beside its result, so a change can be seen at once */
+.preview-columns { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; align-items: start; }
+.preview-options { max-height: 60vh; overflow: auto; padding-right: 6px; border-right: 1px solid var(--border); }
+@media (max-width: 760px) { .preview-columns { grid-template-columns: 1fr; } .preview-options { border-right: none; max-height: none; } }

@@ -1480,8 +1480,16 @@ def test_preview_a_method_on_the_first_frames(empty_app, page):
     page.wait_for_selector(".preview-output[data-name='MotionCorrectionShifts']:has-text('5 × 2')")
     status = api.handle({"id": 9, "method": "data.status", "params": {"entityType": "session", "key": s1}})["result"]
     assert [d["files"] for d in status if d["name"] in ("TwoPhotonSeries_Corrected", "MotionCorrectionShifts")] == [[], []]
-    page.locator(".preview-dialog .dialog-foot button:has-text('Close')").click()
+    # tuning: a change of an option in the preview runs it again, and the options go back to the run dialog
+    previewed = lambda response: "/api" in response.url and "methods.preview" in (response.request.post_data or "")
+    with page.expect_response(previewed) as answer:
+        page.fill(".preview-options .field:has-text('Largest shift') input", "8")
+    assert '"maxShift": 8' in answer.value.request.post_data.replace('"maxShift":8', '"maxShift": 8')
+    page.wait_for_selector(".preview-output[data-name='MotionCorrectionShifts']:has-text('5 × 2')")
+    page.locator(".preview-dialog .dialog-foot button:has-text('Use these options')").click()
     assert page.locator(".dialog-foot button:has-text('Run now')").count() == 1   # back in the run dialog
+    assert page.locator(".method-detail .field:has-text('Largest shift') input").input_value() == "8"
+    assert page.locator(".method-detail .field:has-text('Frames in the first reference') input").input_value() == "1"
 
 
 def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page):
