@@ -99,7 +99,7 @@
         "github": "VervaekeLab/NANSEN"
       },
       "check": "imviewer",
-      "description": "imviewer and flufinder (ophys.open_in_imviewer, ophys.flufinder), put on the path after this NANSEN",
+      "description": "imviewer and flufinder (ophys.open_in_imviewer, ophys.flufinder), put on the path after this NANSEN; imviewer also needs the Widgets Toolbox - Compatibility Support (File Exchange 66235)",
       "url": "https://github.com/VervaekeLab/NANSEN",
       "pathOrder": "end"
     },

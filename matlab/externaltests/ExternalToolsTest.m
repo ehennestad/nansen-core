@@ -101,7 +101,8 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             for i = 1:size(testCase.Centers, 1)
                 matched = matched + any(vecnorm(centersFound - testCase.Centers(i, :), 2, 2) <= 4);
             end
-            testCase.verifyGreaterThanOrEqual(matched, 8);
+            testCase.verifyGreaterThanOrEqual(matched, 8, sprintf("EXTRACT's centres (row, column):%s\ntrue centres:%s", ...
+                sprintf(" (%.1f, %.1f)", centersFound.'), sprintf(" (%d, %d)", testCase.Centers.')));
             testCase.verifySize(testCase.Project.load(testCase.Session, "RoiSignals_MeanF", Cached=false), [300, numel(rois)]);
         end
 

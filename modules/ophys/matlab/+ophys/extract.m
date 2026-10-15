@@ -15,14 +15,26 @@ function result = extract(entity, options, context)
     context.log("%s: EXTRACT kept %d cells", ophys.internal.entityName(entity), size(output.spatial_weights, 3));
     weights = full(double(output.spatial_weights));
     rois = {};
+    kept = [];
     for i = 1:size(weights, 3)
         cell_ = weights(:, :, i);
-        [rows, columns] = find(cell_ >= options.threshold * max(cell_, [], "all") & cell_ > 0);
-        if ~isempty(rows)
-            rois{end + 1} = ophys.internal.makeRoi(numel(rois) + 1, sortrows([rows, columns])); %#ok<AGROW>
+        [peak, at] = max(cell_, [], "all");
+        if peak <= 0
+            continue
+        end
+        % the 8-connected area around the peak, as dev's enforceSingleSegment: a cell's weights can have
+        % faint patches elsewhere that would move its centre
+        [peakRow, peakColumn] = ind2sub([height, width], at);
+        areas = ophys.internal.components(cell_ >= options.threshold * peak, 8);
+        for k = 1:numel(areas)
+            if any(areas{k}(:, 1) == peakRow & areas{k}(:, 2) == peakColumn)
+                rois{end + 1} = ophys.internal.makeRoi(numel(rois) + 1, sortrows(areas{k})); %#ok<AGROW>
+                kept(end + 1) = i; %#ok<AGROW>
+                break
+            end
         end
     end
     context.Project.save(entity, options.rois, struct("imageSize", [height, width], "rois", {rois}));
-    ophys.internal.saveIf(context, entity, options.output, double(output.temporal_weights));
+    ophys.internal.saveIf(context, entity, options.output, double(output.temporal_weights(:, kept)));
     result = struct("rois", numel(rois), "frames", frames);
 end

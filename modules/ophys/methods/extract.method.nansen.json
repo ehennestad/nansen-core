@@ -6,7 +6,7 @@
   "title": "Detect cells (EXTRACT)",
   "category": "Two-photon/Segmentation",
   "entityType": "*",
-  "description": "Runs EXTRACT (extractor, with get_defaults) on the stack, when it is on the MATLAB path, and saves its cells as ROIs (pixels above threshold times each cell's largest spatial weight) and its traces as signals.",
+  "description": "Runs EXTRACT (extractor, with get_defaults) on the stack, when it is on the MATLAB path, and saves its cells as ROIs (the connected pixels around each cell's peak whose spatial weight is above threshold times the peak's) and its traces as signals.",
   "implementations": {
     "matlab": "ophys.extract"
   },

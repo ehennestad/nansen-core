@@ -12,9 +12,10 @@ function result = caimanDeconvolution(entity, options, context)
     for i = 1:rois
         context.checkCancelled();
         if ~any(isnan(traces(:, i)))
-            % foopsi, with the kernel estimated: CaImAn-MATLAB's constrained solver (constrained_oasisAR1)
-            % does not parse in current MATLAB releases
-            [c, s] = feval("deconvolveCa", traces(:, i), char(model), 'foopsi', 'lambda', double(options.lambda));
+            % OASIS with the kernel estimated and the given sparsity penalty. The 'thresholded' route with smin 0
+            % calls oasisAR1/oasisAR2 directly: CaImAn-MATLAB's foopsi_, constrained_ and thresholded_oasisAR1
+            % share a nested-function bug (update_g's h) that current MATLAB releases refuse to parse
+            [c, s] = feval("deconvolveCa", traces(:, i), char(model), 'thresholded', 'smin', 0, 'lambda', double(options.lambda));
             calcium(:, i) = c(:);
             spikes(:, i) = s(:);
         end

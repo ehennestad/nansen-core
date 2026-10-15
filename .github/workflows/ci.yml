@@ -163,6 +163,10 @@ jobs:
           for repo in flatironinstitute/NoRMCorre flatironinstitute/CaImAn-MATLAB schnitzer-lab/EXTRACT-public FlowRegSuite/flow_registration VervaekeLab/NANSEN; do
             git clone -q --depth 1 "https://github.com/$repo" "external-tools/$(basename "$repo")"
           done
+          # imviewer's community dependency: the Widgets Toolbox version dev's nansen.setup installs
+          curl -sSfL -o widgets.zip "https://www.mathworks.com/matlabcentral/mlc-downloads/downloads/b0bebf59-856a-4068-9d9c-0ed8968ac9e6/099f0a4d-9837-4e5f-b3df-aa7d4ec9c9c9/packages/zip"
+          unzip -q widgets.zip -d external-tools/widgets-toolbox
+          find external-tools/widgets-toolbox -maxdepth 3 -type d | head -20
 
       - uses: matlab-actions/setup-matlab@v2
         with:
