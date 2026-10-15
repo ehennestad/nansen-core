@@ -1603,6 +1603,117 @@ def test_view_a_stack_with_channels_and_planes(empty_app, page):
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+CANVAS_RGB = """(() => {
+    const c = document.querySelector('.viewer-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, rgb = [];
+    for (let i = 0; i < d.length; i += 4) rgb.push([d[i], d[i + 1], d[i + 2]]);
+    return {width: c.width, height: c.height, rgb};
+})()"""
+
+
+def png_size(path):
+    with open(path, "rb") as file:
+        head = file.read(24)
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+
+
+def test_channels_in_colour_and_planes_side_by_side(empty_app, page):   # imviewer's channel colours and volume display
+    ophys_project(empty_app, [("dataVariables.save", {"document": {
+        "schemaType": "nansen.dataVariable", "schemaVersion": "0.1.0", "name": "TwoPhotonSeries_ScanImage", "entityType": "session",
+        "dataLocation": "raw", "filePattern": "scanimage", "fileAdapter": "ophys.scanimage_tiff", "dataType": "ImageStack"}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").nth(3).locator("td.key").first.click()   # s4: 2 channels x 2 planes of 16 x 64
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_ScanImage'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_ScanImage'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('16 × 64')")
+    rgb = lambda: page.evaluate(CANVAS_RGB)
+
+    # a stack with channels opens with them together, in dev's colours for two: red and cyan
+    page.wait_for_selector(".viewer-composite:checked")
+    assert page.locator(".viewer-channel-toggle").count() == 2
+    assert page.locator(".viewer-channel-color").evaluate_all("els => els.map((e) => e.value)") == ["#ff0000", "#00ffff"]
+    wait_until(lambda: any(r != g for r, g, b in rgb()["rgb"]))
+    assert all(g == b for r, g, b in rgb()["rgb"])
+    page.uncheck(".viewer-channel-toggle[data-channel='1'] .viewer-channel-shown")   # channel 2 hidden: red only
+    wait_until(lambda: all(g == 0 and b == 0 for r, g, b in rgb()["rgb"]))
+    assert any(r > 0 for r, g, b in rgb()["rgb"])
+    page.locator(".viewer-channel-toggle[data-channel='0'] .viewer-channel-color").fill("#00ff00")   # channel 1 in green
+    wait_until(lambda: all(r == 0 and b == 0 for r, g, b in rgb()["rgb"]) and any(g > 0 for r, g, b in rgb()["rgb"]))
+    page.uncheck(".viewer-composite")   # one channel again, in the colormap
+    wait_until(lambda: all(r == g == b for r, g, b in rgb()["rgb"]))
+    assert not page.locator(".viewer-channel-strip").is_visible()
+
+    # the planes side by side, labelled, 10 pixels apart; their maximum and mean are on the montage's one scale
+    page.select_option(".viewer-volume", "montage")
+    page.wait_for_selector(".viewer-status:has-text('16 × 64 · 2 planes side by side')")
+    montage = rgb()
+    assert (montage["width"], montage["height"]) == (2 * 64 + 10, 16)
+    assert page.evaluate("document.querySelector('.viewer-canvas').dataset.tiles") == "2"
+    assert page.locator(".viewer-plane").is_disabled()
+    values = [row[0] for row in montage["rgb"]]
+    one = [values[y * 138 + x] for y in range(16) for x in range(64)]
+    two = [values[y * 138 + 74 + x] for y in range(16) for x in range(64)]
+    assert all(values[y * 138 + x] == 0 for y in range(16) for x in range(64, 74))
+    page.select_option(".viewer-volume", "max")
+    page.wait_for_selector(".viewer-status:has-text('maximum of 2 planes')")
+    assert [row[0] for row in rgb()["rgb"]] == [max(a, b) for a, b in zip(one, two)]
+    page.select_option(".viewer-volume", "mean")
+    page.wait_for_selector(".viewer-status:has-text('mean of 2 planes')")
+    assert [row[0] for row in rgb()["rgb"]] == [int((a + b) / 2 + 0.5) for a, b in zip(one, two)]
+
+    # the channels in colour on the montage too, and the PNG is what is shown
+    page.select_option(".viewer-volume", "montage")
+    page.check(".viewer-composite")
+    wait_until(lambda: rgb()["width"] == 138 and any(r != g or g != b for r, g, b in rgb()["rgb"]))
+    with page.expect_download() as download:
+        page.click(".viewer-export")
+        page.click(".menu .item:has-text('Image as PNG')")
+    assert download.value.suggested_filename.endswith("_TwoPhotonSeries_ScanImage_frame1_planes.png")
+    assert png_size(download.value.path()) == (138 * 7, 16 * 7)
+    page.click(".viewer-export")   # and the video's frames
+    page.click(".menu .item:has-text('Video')")
+    page.fill(".video-dialog .field:has-text('Last frame') input", "3")
+    with page.expect_download() as download:
+        page.click(".video-dialog .dialog-foot button:has-text('Record')")
+    assert download.value.suggested_filename.endswith("_frames1-3.webm")
+    page.select_option(".viewer-volume", "single")   # one plane again, the plane picker back
+    page.wait_for_selector(".viewer-status:not(:has-text('planes'))")
+    assert rgb()["width"] == 64 and not page.locator(".viewer-plane").is_disabled()
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
+def test_rois_are_shown_and_edited_with_one_plane_only(empty_app, page):
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    ophys_project(empty_app, [
+        ("dataVariables.save", {"document": {"schemaType": "nansen.dataVariable", "schemaVersion": "0.1.0", "name": "TwoPhotonSeries_Planes",
+                                             "entityType": "session", "dataLocation": "processed", "subfolder": "ophys",
+                                             "fileName": "TwoPhotonSeries_Planes.npy", "fileAdapter": "npy", "dataType": "ImageStack"}}),
+        ("methods.run", {"methodId": "ophys.deinterleave", "entityType": "session", "keys": [s1],
+                         "options": {"channels": 1, "planes": 2, "output": "TwoPhotonSeries_Planes"}}),
+        ("rois.update", {"entityType": "session", "key": s1, "variable": "RoiArray", "plane": 0, "imageSize": [32, 32],
+                         "add": [{"pixels": [[10, 10], [10, 11], [11, 10], [11, 11]]}]})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Planes'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Planes'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32 · 1 ROIs')")
+    assert not page.locator(".viewer-composite-label").is_visible()   # one channel: no colours to choose
+    page.click(".viewer-add")
+    page.select_option(".viewer-volume", "montage")   # the ROIs are of plane 1: hidden, and the tools put away
+    page.wait_for_selector(".viewer-status:text-is('32 × 32 · 2 planes side by side')")
+    assert not page.locator(".viewer-roi-panel").is_visible()
+    assert page.locator(".viewer-add.active").count() == 0
+    box = page.locator(".viewer-canvas").bounding_box()
+    page.mouse.click(box["x"] + box["width"] * 0.8, box["y"] + box["height"] / 2)   # a click adds nothing
+    page.mouse.move(box["x"] + box["width"] * 0.8, box["y"] + box["height"] / 2)
+    page.wait_for_selector(".viewer-where:has-text('plane 2')")
+    page.select_option(".viewer-volume", "single")
+    page.wait_for_selector(".viewer-status:text-is('32 × 32 · 1 ROIs')")
+    assert page.locator(".viewer-roi-list li").count() == 1
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_signals_of_every_plane_follow_the_roi_on_its_plane(empty_app, page):
     # every plane in one run (plane 0): one ROI file with places, and a signal column per ROI in the file's order
     s1 = [{"subject_id": "m1", "session_id": "s1"}]

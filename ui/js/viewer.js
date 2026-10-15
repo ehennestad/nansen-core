@@ -47,9 +47,10 @@
     canvas.width = frame.width;
     canvas.height = frame.height;
     const ctx = canvas.getContext("2d");
-    const bytes = atob(frame.pixels);
     const image = ctx.createImageData(frame.width, frame.height);
     const table = lut(colormap);
+    if (frame.layers) image.data.set(composeLayers(frame, table));   // channels in colour, planes side by side or projected
+    const bytes = frame.layers ? "" : atob(frame.pixels);
     const bright = frame.brightness ? atob(frame.brightness) : null;   // peakTime: the hue is when, the brightness the peak
     for (let i = 0; i < bytes.length; i++) {
       if (bright) {
@@ -81,6 +82,76 @@
     const c = value, x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
     const [r, g, b] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : hue < 180 ? [0, c, x] : hue < 240 ? [0, x, c] : hue < 300 ? [x, 0, c] : [c, 0, x];
     return [r, g, b].map((v) => Math.round(v * 255));
+  }
+
+  /* imviewer's channel colours: channels shown together, each in its colour and added up (dev's setChColors), with dev's
+   * defaults for 2, 3 and 4 channels (getDefaultSettings' DefaultChannelColors_) and hsv(n) for other counts */
+  const CHANNEL_COLORS = { 2: [[255, 0, 0], [0, 255, 255]], 3: [[255, 0, 0], [0, 255, 0], [0, 0, 255]],
+    4: [[255, 0, 0], [128, 255, 0], [0, 255, 255], [128, 0, 255]] };
+  N.channelColors = (count) => (CHANNEL_COLORS[count] || range(count).map((i) => hsv(360 * i / count, 1))).map((rgb) => rgb.slice());
+  const range = (count) => Array.from({ length: count }, (_, i) => i);
+  const hex = (rgb) => "#" + rgb.map((v) => v.toString(16).padStart(2, "0")).join("");
+  const rgbOf = (text) => [1, 3, 5].map((i) => parseInt(text.slice(i, i + 2), 16));
+
+  /** The grid of imviewer's plane montage: as near square as the planes allow, filled row by row, tiles pad pixels apart. */
+  N.montageLayout = function (count, height, width, pad = 10) {
+    const columns = Math.ceil(Math.sqrt(count)), rows = Math.ceil(count / columns);
+    return { rows, columns, height: rows * height + (rows - 1) * pad, width: columns * width + (columns - 1) * pad,
+      tiles: range(count).map((p) => ({ plane: p, y: Math.floor(p / columns) * (height + pad), x: (p % columns) * (width + pad), height, width })) };
+  };
+
+  function bytesOf(base64) {
+    const text = atob(base64), out = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i);
+    return out;
+  }
+  /** data.frame's bytes, scaled from low to high, scaled again from to[0] to to[1] (as data.frame rounds): planes on one scale. */
+  function rescale(bytes, low, high, to) {
+    if (low === to[0] && high === to[1]) return bytes;
+    const out = new Uint8Array(bytes.length), span = to[1] - to[0];
+    for (let i = 0; i < bytes.length; i++) {
+      const value = low + bytes[i] / 255 * (high - low);
+      out[i] = span > 0 ? Math.min(255, Math.max(0, Math.floor((value - to[0]) / span * 255 + 0.5))) : 0;
+    }
+    return out;
+  }
+  /** RGBA of a composed view's layers: one layer without a colour in the colormap, or each layer times its colour, added up. */
+  function composeLayers(frame, table) {
+    const count = frame.width * frame.height, out = new Uint8ClampedArray(4 * count);
+    const layers = frame.layers;
+    if (layers.length === 1 && !layers[0].color) {
+      const bytes = layers[0].bytes;
+      for (let i = 0; i < count; i++) {
+        const v = 3 * bytes[i];
+        out[4 * i] = table[v]; out[4 * i + 1] = table[v + 1]; out[4 * i + 2] = table[v + 2]; out[4 * i + 3] = 255;
+      }
+      return out;
+    }
+    for (let i = 0; i < count; i++) {
+      let r = 0, g = 0, b = 0;
+      for (const layer of layers) {
+        const v = layer.bytes[i] / 255;
+        r += v * layer.color[0]; g += v * layer.color[1]; b += v * layer.color[2];
+      }
+      out[4 * i] = r; out[4 * i + 1] = g; out[4 * i + 2] = b; out[4 * i + 3] = 255;   // clamped at 255
+    }
+    return out;
+  }
+  /** Each plane's number at the top left of its tile; coordinates times scale, in a font of size px. */
+  function labelTiles(ctx, tiles, scale, size) {
+    ctx.save();
+    ctx.font = `${size}px system-ui, sans-serif`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+    ctx.lineWidth = size / 5;
+    tiles.forEach((t) => {
+      const x = t.x * scale + size / 4, y = t.y * scale + size / 4;
+      ctx.strokeText(`Plane ${t.plane + 1}`, x, y);
+      ctx.fillText(`Plane ${t.plane + 1}`, x, y);
+    });
+    ctx.restore();
   }
 
   function roiColor(n) {
@@ -135,7 +206,10 @@
     let initial = options.select ?? null;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
-      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false, links: false };
+      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false, links: false,
+      // imviewer's channel colours and volume display: channels counted, shown together (null: not decided yet, on for a
+      // stack with channels), which are shown in which colour, each one's contrast; planes one, side by side, or projected
+      channels: 1, composite: null, shown: [], colors: [], channelLimits: [], planes: 1, volume: "single" };
     const canvas = h("canvas.viewer-canvas");
     const overlay = h("canvas.viewer-overlay");
     const holder = h("div.viewer-holder", canvas, overlay);
@@ -166,8 +240,62 @@
     // channel and plane pickers, shown once the stack turns out to have more than one
     // ROIs with places belong to a plane and channel: another place has its own, read again, and its own undo
     const toPlace = (change) => { change(); state.rois = null; state.undo = []; state.redo = []; select(null); show(); };
-    const channelPick = h("select.input.viewer-channel", { style: { display: "none" }, on: { change: () => toPlace(() => { state.channel = Number(channelPick.value); }) } });
+    const channelPick = h("select.input.viewer-channel", { style: { display: "none" }, on: { change: () => toPlace(() => pickChannel(Number(channelPick.value))) } });
     const planePick = h("select.input.viewer-plane", { style: { display: "none" }, on: { change: () => toPlace(() => { state.plane = Number(planePick.value); }) } });
+    // imviewer's channel colours: the channels together, each in its colour (a box each to show it, and its colour); the
+    // channel picked above is the one whose ROIs and contrast limits are at hand
+    const composite = () => Boolean(state.composite) && state.channels > 1;
+    const compositeToggle = h("input.viewer-composite", { type: "checkbox", on: { change: () => { state.composite = compositeToggle.checked; showChannels(); show(); } } });
+    const compositeLabel = h("label.viewer-composite-label", { title: "Show the channels together, each in its colour; the contrast limits are the picked channel's",
+      style: { display: "none" } }, compositeToggle, "Colour");
+    const channelStrip = h("span.viewer-channel-strip", { style: { display: "none" } });
+    function showChannels() {
+      const on = composite();
+      compositeLabel.style.display = state.channels > 1 ? "" : "none";
+      compositeToggle.checked = on;
+      channelStrip.style.display = on ? "" : "none";
+      colormapPick.disabled = on;
+      if (channelStrip.children.length !== state.channels) {
+        N.fill(channelStrip, range(state.channels).map((c) => h("label.viewer-channel-toggle", { dataset: { channel: c }, title: `Channel ${c + 1}: show it, and its colour` },
+          h("input.viewer-channel-shown", { type: "checkbox", checked: state.shown[c], on: { change: (event) => { state.shown[c] = event.target.checked; show(); } } }),
+          h("input.viewer-channel-color", { type: "color", value: hex(state.colors[c]), on: { input: (event) => recolor(c, rgbOf(event.target.value)) } }),
+          String(c + 1))));
+      }
+    }
+    /** The stack's channels, counted anew: dev's colours, all shown, and the colours on for a stack that has several. */
+    function setChannels(count) {
+      state.channels = count;
+      state.colors = N.channelColors(count);
+      state.shown = state.colors.map(() => true);
+      state.channelLimits = [];
+      if (state.composite === null && count > 1) state.composite = true;
+      N.fill(channelStrip);
+      showChannels();
+    }
+    function recolor(channel, rgb) {
+      state.colors[channel] = rgb;
+      if (last && last.layers) last.layers.forEach((layer) => { if (layer.channel === channel) layer.color = rgb; });
+      redraw();
+    }
+    /** Pick the channel at hand; with the channels in colour, each keeps its own contrast limits. */
+    function pickChannel(channel) {
+      if (composite() && channel !== state.channel) {
+        state.channelLimits[state.channel] = { auto: state.auto, low: state.low, high: state.high };
+        const own = state.channelLimits[channel] || { auto: true, low: state.low, high: state.high };
+        Object.assign(state, { auto: own.auto, low: own.low, high: own.high });
+        auto.checked = own.auto;
+        low.value = String(own.low);
+        high.value = String(own.high);
+      }
+      state.channel = channel;
+    }
+    // imviewer's volume display: one plane, the planes side by side (labelled), or their maximum or mean, the planes on
+    // one scale; ROIs belong to a plane, so they are shown and edited with one plane only
+    const volumePick = h("select.input.viewer-volume", { title: "Planes: one, side by side, or projected (imviewer's volume display)", style: { display: "none" },
+      on: { change: () => { state.volume = volumePick.value; setTool(null); planePick.disabled = state.volume !== "single"; show(); } } },
+      h("option", { value: "single" }, "One plane"), h("option", { value: "montage" }, "Plane montage"),
+      h("option", { value: "max" }, "Maximum over planes"), h("option", { value: "mean" }, "Mean over planes"));
+    const roisOn = () => state.showRois && state.volume === "single";
     const fillPick = (select, count, label, value) => {
       if (select.options.length !== count) N.fill(select, Array.from({ length: count }, (_, i) => h("option", { value: i, selected: i === value }, `${label} ${i + 1}`)));
       select.style.display = count > 1 ? "" : "none";
@@ -204,7 +332,7 @@
     };
     const pixelAt = (event) => pointAt(event).map(Math.floor);
     const visible = () => (state.rois || []).filter((r) => !(state.hideRejected && r.classification === "rejected"));
-    const roiAt = (y, x) => state.showRois && state.rois ? visible().find((r) => r.pixels.some(([py, px]) => py === y && px === x)) || null : null;
+    const roiAt = (y, x) => roisOn() && state.rois ?visible().find((r) => r.pixels.some(([py, px]) => py === y && px === x)) || null : null;
 
     // --- size: the image fits the stage, times the zoom ---------------------------------------------------------------
     function layout() {
@@ -320,7 +448,7 @@
         for (let y = step; y < last.height; y += step) { ctx.moveTo(0, y); ctx.lineTo(last.width, y); }
         ctx.stroke();
       }
-      if (state.links && state.showRois && state.rois) {   // roimanager's ROI relations: a line between linked ROIs
+      if (state.links && roisOn() && state.rois) {   // roimanager's ROI relations: a line between linked ROIs
         const centre = (roi) => [roi.pixels.reduce((t, p) => t + p[1], 0) / roi.pixels.length + 0.5, roi.pixels.reduce((t, p) => t + p[0], 0) / roi.pixels.length + 0.5];
         const byId = new Map(visible().map((r) => [r.id, r]));
         ctx.strokeStyle = "rgba(255, 220, 80, 0.9)";
@@ -336,7 +464,7 @@
         ctx.stroke();
         canvas.dataset.links = String(drawn);
       }
-      if (state.labels && state.showRois && state.rois) {
+      if (state.labels && roisOn() && state.rois) {
         ctx.font = `${Math.max(6, 11 * last.width / width)}px system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -351,10 +479,12 @@
         });
         canvas.dataset.labels = String(visible().length);
       }
-      if (state.selection.size > 1 && state.showRois && state.rois) {
+      if (state.selection.size > 1 && roisOn() && state.rois) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
         state.rois.filter((r) => state.selection.has(r.id)).forEach((roi) => edge(roi).forEach(([y, x]) => ctx.fillRect(x, y, 1, 1)));
       }
+      if (last.tiles) labelTiles(ctx, last.tiles, 1, Math.max(4, 12 * last.width / width));   // the plane montage
+      canvas.dataset.tiles = last.tiles ? String(last.tiles.length) : "";
     }
 
     // --- the mouse: tools, selection, moving an ROI and panning -----------------------------------------------------
@@ -362,7 +492,9 @@
       if (!last) return;
       const [y, x] = pixelAt(event);
       const roi = roiAt(y, x);
-      where.textContent = `row ${y}, column ${x}` + (roi ? ` · ROI ${roi.id}` : "");
+      const tile = last.tiles && last.tiles.find((t) => y >= t.y && y < t.y + t.height && x >= t.x && x < t.x + t.width);
+      where.textContent = tile ? `plane ${tile.plane + 1}, row ${y - tile.y}, column ${x - tile.x}`
+        : `row ${y}, column ${x}` + (roi ? ` · ROI ${roi.id}` : "");
       canvas.classList.toggle("over-selected", !state.tool && roi !== null && roi.id === state.selected);
     });
     canvas.addEventListener("mouseleave", () => { where.textContent = ""; });
@@ -657,9 +789,9 @@
       undoButton.disabled = !state.undo.length;
       redoButton.disabled = !state.redo.length;
       galleryButton.disabled = !state.rois || !state.rois.length;
-      roiPanel.style.display = state.rois && state.showRois ? "" : "none";
+      roiPanel.style.display = state.rois && roisOn() ? "" : "none";
     }
-    function redraw() { if (last) paint(canvas, last, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap, state.outlines); drawOverlay(); }
+    function redraw() { if (last) paint(canvas, last, state.rois, roisOn(),state.selection, state.hideRejected, state.colormap, state.outlines); drawOverlay(); }
     let onSelect = null;   // the gallery, while it is open
     /** Select an ROI (null for none); with add, add it to the selection, or take it out. */
     function select(id, add = false) {
@@ -757,6 +889,7 @@
         return;
       }
       if (event.target.tagName === "INPUT" || event.target.tagName === "SELECT" || !state.rois || !document.body.contains(canvas)) return;
+      if (state.volume !== "single") return;   // the ROIs are of one plane
       if (onSelect) return;   // the gallery has the keys
       const order = visible().map((r) => r.id);
       const at = order.indexOf(state.selected);
@@ -798,7 +931,9 @@
       const ctx = out.getContext("2d");
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(canvas, 0, 0, out.width, out.height);
-      const name = `${N.fmt.key(key)}_${variable}_${state.mode === "frame" ? `frame${state.frame + 1}` : state.mode}.png`.replace(/[^\w.-]+/g, "_");
+      if (last.tiles) labelTiles(ctx, last.tiles, scale, tileFont(scale));
+      const planes = last.layers && state.volume !== "single" ? `_planes${state.volume === "montage" ? "" : state.volume}` : "";
+      const name = `${N.fmt.key(key)}_${variable}_${state.mode === "frame" ? `frame${state.frame + 1}` : state.mode}${planes}.png`.replace(/[^\w.-]+/g, "_");
       const link = h("a", { href: out.toDataURL("image/png"), download: name });
       document.body.appendChild(link);
       link.click();
@@ -843,17 +978,13 @@
       N.toast("Recording", `frames ${first + 1}–${final + 1}…`);
       try {
         for (let f = first; f <= final; f++) {
-          const params = options.file ? { ...options.file, channel: state.channel, plane: state.plane, frame: f }
-            : { entityType, key, variable, channel: state.channel, plane: state.plane, frame: f };
-          if (options.file && state.adapter) params.adapter = state.adapter;
-          if (state.filter) params.filter = state.filter;
-          if (!state.auto) params.limits = [state.low, state.high];
-          const frame = await app.client.request(options.file ? "files.frame" : "data.frame", params);
-          paint(frameCanvas, frame, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap, state.outlines);
+          const frame = await fetchView({ frame: f }, false);   // as shown: channels in colour, planes side by side or projected
+          paint(frameCanvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines);
           ctx.fillStyle = "#000";
           ctx.fillRect(0, 0, out.width, out.height);
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(frameCanvas, 0, 0, last.width * scale, last.height * scale);
+          if (frame.tiles) labelTiles(ctx, frame.tiles, scale, tileFont(scale));
           if (trace) {
             tracePlot.cursor(f);
             ctx.fillStyle = "#fff";
@@ -1041,20 +1172,67 @@
     }
 
     // --- the frame --------------------------------------------------------------------------------------------------
+    /**
+     * The frame or projection at ({frame} or {projection}) as it is shown. One channel and plane is data.frame's (or
+     * files.frame's) answer; channels in colour and planes side by side or projected are composed here from one answer
+     * per channel and plane (imviewer's setChColors and plane montage and projection): each channel scaled by its own
+     * limits, and every plane of a channel brought to one scale, from the lowest low to the highest high of them. The
+     * composed view has the answer's fields, its size, layers ({channel, bytes, color}) and, for the montage, tiles.
+     */
+    async function fetchView(at, withRois) {
+      // a file of no entity (options.file: as files.resolve takes it) is read by files.frame, as dev's imviewer opens any file
+      const base = options.file ? { ...options.file, ...at } : { entityType, key, variable, ...at };
+      if (options.file && state.adapter) base.adapter = state.adapter;
+      if (state.filter) base.filter = state.filter;
+      const method = options.file ? "files.frame" : "data.frame";
+      const limitsOf = (c) => {
+        if (c === state.channel) return state.auto ? null : [state.low, state.high];
+        const own = state.channelLimits[c];
+        return own && !own.auto ? [own.low, own.high] : null;
+      };
+      const ask = (c, p, more = {}) => app.client.request(method, { ...base, channel: c, plane: p, ...(limitsOf(c) ? { limits: limitsOf(c) } : {}), ...more });
+      const rois = withRois && state.showRois && state.roiVariable && !state.rois ? { rois: state.roiVariable } : {};
+      const colour = composite() && at.projection !== "peakTime";   // the time of peak has its own colours
+      const planes = state.volume !== "single" && state.planes > 1 && at.projection !== "peakTime" ? range(state.planes) : null;
+      if (!colour && !planes) return ask(state.channel, state.plane, rois);
+      // the channel at hand is read even when hidden: its ROIs and limits
+      const channels = colour ? range(state.channels).filter((c) => state.shown[c] || c === state.channel) : [state.channel];
+      const answers = await Promise.all(channels.map((c) => Promise.all((planes || [state.plane]).map((p) =>
+        ask(c, p, !planes && c === state.channel ? rois : {})))));
+      const first = answers[0][0], own = answers[channels.indexOf(state.channel)];
+      const view = { ...first, pixels: planes ? undefined : own[0].pixels, rois: planes ? undefined : own[0].rois, brightness: undefined, layers: [] };
+      const size = first.width * first.height;
+      const layout = planes && state.volume === "montage" ? N.montageLayout(planes.length, first.height, first.width) : null;
+      if (layout) Object.assign(view, { height: layout.height, width: layout.width, tiles: layout.tiles });
+      channels.forEach((c, k) => {
+        const low = Math.min(...answers[k].map((f) => f.low ?? 0)), high = Math.max(...answers[k].map((f) => f.high ?? 0));
+        const each = answers[k].map((f) => rescale(bytesOf(f.pixels), f.low ?? 0, f.high ?? 0, [low, high]));
+        let bytes = each[0];
+        if (layout) {
+          bytes = new Uint8Array(layout.width * layout.height);
+          layout.tiles.forEach((t, p) => { for (let y = 0; y < t.height; y++) bytes.set(each[p].subarray(y * t.width, (y + 1) * t.width), (t.y + y) * layout.width + t.x); });
+        } else if (planes) {
+          bytes = new Uint8Array(size);
+          for (let i = 0; i < size; i++) {
+            let top = 0, sum = 0;
+            for (const plane of each) { top = Math.max(top, plane[i]); sum += plane[i]; }
+            bytes[i] = state.volume === "max" ? top : Math.floor(sum / each.length + 0.5);
+          }
+        }
+        if (c === state.channel) Object.assign(view, { low, high });
+        else if (!(state.channelLimits[c] && !state.channelLimits[c].auto)) state.channelLimits[c] = { auto: true, low, high };
+        if (!colour || state.shown[c]) view.layers.push({ channel: c, bytes, color: colour ? state.colors[c] : null });
+      });
+      return view;
+    }
+    const tileFont = (scale) => Math.min(32, Math.max(12, Math.round(last.tiles[0].height * scale / 8)));
+
     async function show() {
       if (state.busy) { state.pending = true; return; }
       state.busy = true;
-      // a file of no entity (options.file: as files.resolve takes it) is read by files.frame, as dev's imviewer opens any file
-      const params = options.file ? { ...options.file, channel: state.channel, plane: state.plane }
-        : { entityType, key, variable, channel: state.channel, plane: state.plane };
-      if (options.file && state.adapter) params.adapter = state.adapter;
-      if (state.filter) params.filter = state.filter;
-      if (state.mode === "frame") params.frame = state.frame; else params.projection = state.mode;
-      if (state.mode === "frame" && state.bin) params.bin = { method: state.bin.split(":")[0], size: Number(state.bin.split(":")[1]) };
-      if (!state.auto) params.limits = [state.low, state.high];
-      if (state.showRois && state.roiVariable && !state.rois) params.rois = state.roiVariable;
       try {
-        const frame = await app.client.request(options.file ? "files.frame" : "data.frame", params);
+        const binning = state.mode === "frame" && state.bin ? { bin: { method: state.bin.split(":")[0], size: Number(state.bin.split(":")[1]) } } : {};
+        const frame = await fetchView(state.mode === "frame" ? { frame: state.frame, ...binning } : { projection: state.mode }, true);
         if (frame.adapters && frame.adapters.length > 1 && adapterPick.options.length !== frame.adapters.length) {
           N.fill(adapterPick, frame.adapters.map((id) => h("option", { value: id }, id)));
           adapterPick.style.display = "";
@@ -1070,6 +1248,13 @@
         last = frame;
         fillPick(channelPick, frame.channels || 1, "Channel", state.channel);
         fillPick(planePick, frame.planes || 1, "Plane", state.plane);
+        if ((frame.channels || 1) !== state.colors.length) {   // a stack (or file adapter) of another number of channels
+          setChannels(frame.channels || 1);
+          if (composite()) state.pending = true;   // shown again with its channels in colour
+        }
+        state.planes = frame.planes || 1;
+        volumePick.style.display = state.planes > 1 ? "" : "none";
+        if (state.planes < 2 && state.volume !== "single") { state.volume = volumePick.value = "single"; planePick.disabled = false; }
         state.frames = frame.frames;
         slider.max = String(Math.max(0, frame.frames - 1));
         slider.disabled = state.mode !== "frame" || frame.frames < 2;
@@ -1079,11 +1264,14 @@
           : `${frame.frames} frames`;
         binPick.disabled = state.mode !== "frame";
         showTime();
-        paint(canvas, frame, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap, state.outlines);
+        paint(canvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines);
         if (resized) layout(); else { drawOverlay(); drawScalebar(); }
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
-        status.textContent = `${frame.height} × ${frame.width}` + (state.rois && state.showRois ? ` · ${state.rois.length} ROIs` : "");
+        const planes = frame.layers && state.volume !== "single" && state.planes > 1 && state.mode !== "peakTime"
+          ? ({ montage: " · %d planes side by side", max: " · maximum of %d planes", mean: " · mean of %d planes" })[state.volume].replace("%d", state.planes) : "";
+        const [height, width] = frame.tiles ? [frame.tiles[0].height, frame.tiles[0].width] : [frame.height, frame.width];
+        status.textContent = `${height} × ${width}` + planes + (state.rois && roisOn() ? ` · ${state.rois.length} ROIs` : "");
       } catch (error) {
         state.playing = false;
         status.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error));
@@ -1110,7 +1298,7 @@
 
     const content = h("div.viewer" + (signalPanel ? ".with-signal" : ""),
       h("div.viewer-bar",
-        playButton, slider, frameLabel, timeLabel, mode, channelPick, planePick, adapterPick,
+        playButton, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
         binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, scaleButton,
         exportButton),
