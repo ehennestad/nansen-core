@@ -48,6 +48,7 @@
       this.client.on("log", (event) => this.onLogEvent && this.onLogEvent(event));
       this.client.on("entities", (data) => this.entitiesEvent(data));
       this.client.on("pipelines", () => this.onPipelinesEvent && this.onPipelinesEvent());
+      this.client.on("views", (data) => this.onViewsEvent && this.onViewsEvent(data));
       this.client.on("notes", (data) => {   // the page and an entity's drawer can both show notes
         if (this.onNotesEvent) this.onNotesEvent(data);
         if (this.onDrawerNotesEvent) this.onDrawerNotesEvent(data);
@@ -201,6 +202,7 @@
       this.onLogEvent = null;
       this.onNotesEvent = null;
       this.onPipelinesEvent = null;
+      this.onViewsEvent = null;
       this.currentGrid = null;
       N.drawer.close();
       this.renderNav();

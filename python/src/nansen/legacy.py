@@ -72,6 +72,8 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
             entity_table.add(row)
         entity_table.write()
         rows[table["entityType"]] = len(table["rows"])
+        for view in table.get("views", []):
+            project.views(table["entityType"]).save(view)
         if table["notes"]:
             notebook = project.notebook(table["entityType"])
             for note in table["notes"]:
@@ -328,11 +330,13 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
     fragments: List[dict] = []
     tables: List[dict] = []
     done: set = set()
+    subsets: List[dict] = []
     for table in export.get("tables", []):
         label = table.get("name", "")
         entity_type = str(table.get("entityClass", "")).lower()
         if not table.get("isMaster", True):
-            continue  # a dev "filtered" table holds a subset of the master's rows
+            subsets.append(table)  # a dev "filtered" table holds a subset of the master's rows: a view
+            continue
         if entity_type not in declared:
             warnings.append(f"table '{label}': the dataset has no {entity_type or 'such'} entity type; left out")
             continue
@@ -422,7 +426,38 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
             tables.append({"entityType": entity_type, "title": f"{entity_type.title()}s",
                            "key": _key(entity_type, declared), "fragments": ["core.notes"], "rows": [], "notes": []})
     tables.sort(key=lambda t: declared.index(t["entityType"]))
+    for subset in subsets:
+        _view(subset, tables, declared, warnings)
     return fragments, tables
+
+
+def _view(table: dict, tables: List[dict], declared: List[str], warnings: List[str]) -> None:
+    """A dev filtered table as a view of its entity type: the keys of its rows, found in the master's."""
+    label = table.get("name", "")
+    entity_type = str(table.get("entityClass", "")).lower()
+    target = next((t for t in tables if t["entityType"] == entity_type), None)
+    if target is None:
+        warnings.append(f"table '{label}': the dataset has no {entity_type or 'such'} entity type; left out")
+        return
+    key_names = [k for k, _ in target["key"]]
+    keys: List[dict] = []
+    unmatched = 0
+    for legacy_row in table.get("rows", []):
+        given = {ID_COLUMNS[c]: v for c, v in legacy_row.items() if c in ID_COLUMNS and v not in (None, "")}
+        given = {k: v for k, v in given.items() if k in key_names}
+        if len(given) == len(key_names):
+            key = {k: given[k] for k in key_names}
+        else:  # a filtered table may hold only the session id: find the row of the master table it is
+            found = [r for r in target["rows"] if given and all(r.get(k) == v for k, v in given.items())]
+            if len(found) != 1:
+                unmatched += 1
+                continue
+            key = {k: found[0][k] for k in key_names}
+        if key not in keys:
+            keys.append(key)
+    if unmatched:
+        warnings.append(f"table '{label}': {unmatched} row(s) not found in the {entity_type} table; left out of its view")
+    target.setdefault("views", []).append({"name": label, "description": f"Imported from the dev table {label}", "keys": keys})
 
 
 def _notes(table: dict, identities: Dict[int, Tuple[Any, ...]], key_names: List[str], label: str,

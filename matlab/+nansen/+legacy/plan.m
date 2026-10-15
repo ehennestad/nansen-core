@@ -391,13 +391,15 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
     idColumns = struct("sessionID", "session_id", "SessionID", "session_id", ...
         "subjectID", "subject_id", "SubjectID", "subject_id");
     notesColumns = struct("Ignore", "ignore", "Description", "description");
+    subsets = {};
     for entry = nansen.internal.asCellOfStructs(nansen.internal.getField(export, "tables", []))
         table = entry{1};
         label = textOf(table, "name");
         entityType = lower(textOf(table, "entityClass"));
         isMaster = nansen.internal.getField(table, "isMaster", true);
         if islogical(isMaster) && isscalar(isMaster) && ~isMaster
-            continue   % a dev "filtered" table holds a subset of the master's rows
+            subsets{end + 1} = table; %#ok<AGROW>   % a dev "filtered" table holds a subset of the master's rows: a view
+            continue
         end
         if ~ismember(entityType, declared)
             shown = entityType;
@@ -567,6 +569,75 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
         [~, order] = sort(cellfun(@(t) find(declared == t.entityType, 1), tables));
         tables = tables(order);
     end
+    for i = 1:numel(subsets)
+        [tables, warnings] = buildView(subsets{i}, tables, idColumns, warnings);
+    end
+end
+
+function [tables, warnings] = buildView(table, tables, idColumns, warnings)
+    % A dev filtered table as a view of its entity type: the keys of its rows, found in the master's
+    label = textOf(table, "name");
+    entityType = lower(textOf(table, "entityClass"));
+    at = find(cellfun(@(t) string(t.entityType) == entityType, tables), 1);
+    if isempty(at)
+        shown = entityType;
+        if shown == ""
+            shown = "such";
+        end
+        warnings{end + 1} = sprintf("table '%s': the dataset has no %s entity type; left out", label, shown);
+        return
+    end
+    target = tables{at};
+    keyNames = string(target.key(:, 1))';
+    keys = {};
+    seen = strings(1, 0);
+    unmatched = 0;
+    for r = nansen.internal.asCellOfStructs(nansen.internal.getField(table, "rows", []))
+        given = struct();
+        for column = reshape(string(fieldnames(r{1})), 1, [])
+            value = r{1}.(column);
+            if isfield(idColumns, column) && ~isempty(value) && ismember(idColumns.(column), keyNames)
+                given.(idColumns.(column)) = value;
+            end
+        end
+        names = string(fieldnames(given))';
+        if numel(names) == numel(keyNames)
+            key = struct();
+            for name = keyNames
+                key.(name) = given.(name);
+            end
+        else   % a filtered table may hold only the session id: find the row of the master table it is
+            found = {};
+            for m = 1:numel(target.rows)
+                row = target.rows{m};
+                if ~isempty(names) && all(arrayfun(@(n) isfield(row, n) && isequal(string(row.(n)), string(given.(n))), names))
+                    found{end + 1} = row; %#ok<AGROW>
+                end
+            end
+            if numel(found) ~= 1
+                unmatched = unmatched + 1;
+                continue
+            end
+            key = struct();
+            for name = keyNames
+                key.(name) = found{1}.(name);
+            end
+        end
+        id = nansen.internal.runKeyId(key);
+        if ~ismember(id, seen)
+            seen(end + 1) = id; %#ok<AGROW>
+            keys{end + 1} = key; %#ok<AGROW>
+        end
+    end
+    if unmatched
+        warnings{end + 1} = sprintf("table '%s': %d row(s) not found in the %s table; left out of its view", label, unmatched, entityType);
+    end
+    view = struct("name", char(label), "description", char("Imported from the dev table " + label), "keys", {keys});
+    if ~isfield(target, "views")
+        target.views = {};
+    end
+    target.views{end + 1} = view;
+    tables{at} = target;
 end
 
 function [notes, warnings] = notesOf(table, identities, keyNames, label, warnings)

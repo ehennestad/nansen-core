@@ -19,6 +19,22 @@
     return null;
   }
 
+  /** Whether a row's value passes a filter ({column, op, ...} as in nansen.views). */
+  function passes(value, filter) {
+    const none = value === null || value === undefined || value === "";
+    switch (filter.op) {
+      case "in": return (filter.values || []).some((v) => (v === null ? none : v === value));
+      case "range": return !none && (filter.min === undefined || filter.min === null || value >= filter.min) &&
+        (filter.max === undefined || filter.max === null || value <= filter.max);
+      case "is": return value === filter.value;
+      case "contains": return !none && String(value).toLowerCase().includes(String(filter.text || "").toLowerCase());
+      case "empty": return none;
+      case "notEmpty": return !none;
+      default: return true;
+    }
+  }
+  N.filterPasses = passes;
+
   class EntityGrid {
     constructor({ onOpen, onEdit, onSelection, onColumnMenu }) {
       this.onOpen = onOpen;
@@ -33,6 +49,8 @@
       this.status = "all";
       this.hidden = new Set();
       this.hideIgnored = false;
+      this.filters = [];       // [{column, op, ...}]: every one must pass
+      this.viewKeys = null;    // a Set of key ids when a view with keys is shown
       this.lastClicked = null;
       this.el = h("div.grid-wrap", { on: { scroll: () => this.renderBody() } });
       this.table = h("table.grid-table");
@@ -91,6 +109,8 @@
       let rows = this.data.rows;
       if (this.status !== "all") rows = rows.filter((r) => statusOf(r) === this.status);
       if (this.hideIgnored) rows = rows.filter((r) => r.values.ignore !== true);
+      if (this.viewKeys) rows = rows.filter((r) => this.viewKeys.has(N.keyId(r.key)));
+      for (const filter of this.filters) rows = rows.filter((r) => passes(r.values[filter.column], filter));
       if (this.search) {
         rows = rows.filter((r) => Object.values(r.values).some((v) => v !== null && v !== undefined && String(v).toLowerCase().includes(this.search)));
       }
@@ -126,6 +146,24 @@
           this.onColumnMenu ? h("button.col-menu", { title: "Column menu", "aria-label": `Menu of ${c.title || c.name}`,
             on: { click: (e) => { e.stopPropagation(); this.onColumnMenu(c, e.currentTarget); } } }, "⋮") : null);
         })));
+    }
+
+    setFilter(filter) {
+      this.filters = this.filters.filter((f) => f.column !== filter.column).concat([filter]);
+      this.refresh();
+    }
+    clearFilter(column) {
+      this.filters = column ? this.filters.filter((f) => f.column !== column) : [];
+      this.refresh();
+    }
+    /** Show a saved view: its rows (keys), filters, hidden columns and search; null shows everything. */
+    applyView(view) {
+      this.viewKeys = view && view.keys ? new Set(view.keys.map((k) => N.keyId(k))) : null;
+      this.filters = view && view.filters ? view.filters.map((f) => Object.assign({}, f)) : [];
+      if (view && view.hiddenColumns) this.hidden = new Set(view.hiddenColumns);
+      else this.hidden = new Set(store(`nansen.hidden.${this.data.entityType}`) || []);
+      this.search = view && view.search ? view.search.toLowerCase() : "";
+      this.refresh();
     }
 
     sortBy(name, dir) { this.sort = dir ? { name, dir } : null; this.refresh(); }

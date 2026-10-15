@@ -125,10 +125,149 @@
       grid.setHideIgnored(!grid.hideIgnored);
       hideIgnored.classList.toggle("on", grid.hideIgnored);
     } } }, N.icon("eye-off"), "Hide ignored");
+    let views = [];
+    let activeView = null;
+    const viewStoreKey = `nansen.view.${app.project.folder}.${entityType}`;
+    const viewsButton = h("button.btn", { on: { click: (e) => viewsMenu(e.currentTarget) } }, N.icon("eye"), h("span.view-name", "All rows"));
+    const filterBar = h("div.filter-bar.hidden");
+    async function loadViews() {
+      views = await app.client.request("views.list", { entityType }).catch(() => []);
+      if (activeView) activeView = views.find((v) => v.name === activeView.name) || null;
+    }
+    function showView(view) {
+      activeView = view;
+      try { localStorage.setItem(viewStoreKey, view ? view.name : ""); } catch (e) { /* fine */ }
+      grid.applyView(view);
+      search.value = view && view.search ? view.search : "";
+      viewsButton.querySelector(".view-name").textContent = view ? view.name : "All rows";
+      viewsButton.classList.toggle("on", !!view);
+      renderFilters();
+      renderChips();
+      renderFooter();
+    }
+    function currentState() {
+      const view = { filters: grid.filters.map((f) => Object.assign({}, f)), hiddenColumns: [...grid.hidden] };
+      if (grid.search) view.search = search.value.trim();
+      if (activeView && activeView.keys) view.keys = activeView.keys;
+      if (!view.filters.length) delete view.filters;
+      if (!view.hiddenColumns.length) delete view.hiddenColumns;
+      return view;
+    }
+    async function saveView(view) {
+      try {
+        const saved = await app.client.request("views.save", { entityType, view });
+        await loadViews();
+        showView(views.find((v) => v.name === saved.name) || saved);
+        N.toast("View saved", saved.name, "success");
+      } catch (error) { N.showError(error, "Could not save the view"); }
+    }
+    function viewsMenu(anchor) {
+      const items = [{ heading: "Views" },
+        { label: "All rows", icon: activeView ? "dot" : "check", onClick: () => showView(null) }];
+      for (const v of views) items.push({ label: v.name + (v.keys ? ` (${v.keys.length})` : ""), icon: activeView && activeView.name === v.name ? "check" : (v.keys ? "list" : "filter"), onClick: () => showView(v) });
+      items.push({ heading: "Save" }, { label: "Save as a new view…", icon: "plus", onClick: async () => {
+        const name = await N.prompt("Save as a view", "Name of the view", "");
+        if (!name) return;
+        if (views.some((v) => v.name === name) && !(await N.confirm("Replace the view?", `There is a view named ${name} already.`, "Replace", "danger"))) return;
+        saveView(Object.assign({ name }, currentState()));
+      } });
+      if (activeView) {
+        items.push({ label: `Update ${activeView.name}`, icon: "refresh", onClick: () => saveView(Object.assign({ name: activeView.name },
+          activeView.description ? { description: activeView.description } : {}, currentState())) },
+        { label: `Delete ${activeView.name}…`, icon: "trash", onClick: async () => {
+          if (!(await N.confirm("Delete the view?", `The view ${activeView.name} is deleted. The rows in it stay in the table.`, "Delete", "danger"))) return;
+          try {
+            await app.client.request("views.delete", { entityType, name: activeView.name });
+            await loadViews();
+            showView(null);
+          } catch (error) { N.showError(error, "Could not delete the view"); }
+        } });
+      }
+      N.menu(anchor, items);
+    }
+    const describe = (f) => {
+      const column = (grid.data.columns.find((c) => c.name === f.column) || { title: f.column });
+      const label = column.title || f.column;
+      const show = (v) => (v === null ? "none" : v === true ? "yes" : v === false ? "no" : String(v));
+      switch (f.op) {
+        case "in": return `${label}: ${f.values.map(show).join(", ")}`;
+        case "range": return `${label}: ${f.min !== undefined && f.min !== null ? f.min : "…"} – ${f.max !== undefined && f.max !== null ? f.max : "…"}`;
+        case "is": return `${label}: ${show(f.value)}`;
+        case "contains": return `${label} contains “${f.text}”`;
+        case "empty": return `${label}: empty`;
+        default: return `${label}: has a value`;
+      }
+    };
+    function renderFilters() {
+      const any = grid.filters.length > 0 || (activeView && activeView.keys);
+      filterBar.classList.toggle("hidden", !any);
+      N.fill(filterBar,
+        activeView && activeView.keys ? h("span.filter-chip.view", N.icon("list", 12), `${activeView.keys.length} row(s) of ${activeView.name}`) : null,
+        grid.filters.map((f) => h("span.filter-chip", { dataset: { column: f.column } }, describe(f),
+          h("button", { title: "Remove this filter", on: { click: () => { grid.clearFilter(f.column); renderFilters(); renderFooter(); } } }, "×"))),
+        grid.filters.length ? h("button.btn.ghost.small", { on: { click: () => { grid.clearFilter(); renderFilters(); renderFooter(); } } }, "Clear filters") : null);
+    }
+    function filterDialog(column) {
+      const current = grid.filters.find((f) => f.column === column.name);
+      const label = column.title || column.name;
+      const values = grid.data.rows.map((r) => r.values[column.name]);
+      let body, read;
+      if (column.dataType === "boolean") {
+        const choice = h("select.input", ["yes", "no"].map((v) => h("option", { value: v, selected: current && current.op === "is" && (current.value ? "yes" : "no") === v }, v)));
+        body = h("div.field", h("label.name", `Rows where ${label} is`), choice);
+        read = () => ({ column: column.name, op: "is", value: choice.value === "yes" });
+      } else if (["number", "integer", "date", "datetime"].includes(column.dataType)) {
+        const type = { date: "date", number: "number", integer: "number" }[column.dataType] || "text";
+        const min = h("input.input", { type, value: current && current.op === "range" && current.min !== undefined ? current.min : "" });
+        const max = h("input.input", { type, value: current && current.op === "range" && current.max !== undefined ? current.max : "" });
+        body = h("div", h("div.field", h("label.name", "From"), min), h("div.field", { style: { marginTop: "10px" } }, h("label.name", "To"), max),
+          h("div.help", "Either can be left empty."));
+        const value = (input) => (input.value === "" ? undefined : type === "number" ? Number(input.value) : input.value);
+        read = () => {
+          const f = { column: column.name, op: "range" };
+          if (value(min) !== undefined) f.min = value(min);
+          if (value(max) !== undefined) f.max = value(max);
+          return f.min === undefined && f.max === undefined ? null : f;
+        };
+      } else {
+        const distinct = [...new Set(values.map((v) => (v === undefined || v === "" ? null : v)))];
+        const options = column.choices ? [...column.choices, null] : distinct.sort((a, b) => (a === null ? 1 : b === null ? -1 : String(a).localeCompare(String(b))));
+        if (options.length <= 40) {
+          const chosen = new Set(current && current.op === "in" ? current.values : []);
+          const boxes = options.map((v) => h("label.item", h("input", { type: "checkbox", value: v === null ? "" : v, checked: chosen.has(v) }), v === null ? h("span.muted", "(none)") : String(v)));
+          body = h("div", h("div.label-row", h("label.name", `Rows where ${label} is one of`)), h("div.filter-options", boxes));
+          read = () => {
+            const picked = boxes.map((b, i) => (b.querySelector("input").checked ? options[i] : undefined)).filter((v) => v !== undefined);
+            return picked.length ? { column: column.name, op: "in", values: picked } : null;
+          };
+        } else {
+          const text = h("input.input", { value: current && current.op === "contains" ? current.text : "", placeholder: "Text" });
+          body = h("div.field", h("label.name", `Rows where ${label} contains`), text);
+          read = () => (text.value.trim() ? { column: column.name, op: "contains", text: text.value.trim() } : null);
+        }
+      }
+      const presence = h("select.input", [["", "Any"], ["notEmpty", "Has a value"], ["empty", "Is empty"]].map(([v, t]) =>
+        h("option", { value: v, selected: current && current.op === v }, t)));
+      N.dialog({
+        title: `Filter: ${label}`, narrow: true,
+        content: h("div", { style: { padding: "18px 20px", display: "grid", gap: "12px" } }, body,
+          h("div.field", h("label.name", "Or only rows where it"), presence)),
+        buttons: [
+          { label: "Remove filter", onClick: (close) => { grid.clearFilter(column.name); renderFilters(); renderFooter(); close(); } },
+          { label: "Apply", kind: "primary", onClick: (close) => {
+            const filter = presence.value ? { column: column.name, op: presence.value } : read();
+            if (filter) grid.setFilter(filter); else grid.clearFilter(column.name);
+            renderFilters();
+            renderFooter();
+            close();
+          } }],
+      });
+    }
     const computed = (app.fragments || []).filter((f) => f.computed && type.fragments.includes(f.id));
     const toolbar = h("div.toolbar",
       h("div.search", N.icon("search", 14), search), chips, h("div.spacer"),
       computed.length ? h("button.btn", { on: { click: (e) => updateMenu(e.currentTarget) } }, N.icon("zap"), "Update") : null,
+      viewsButton,
       type.fragments.includes("core.notes") ? hideIgnored : null,
       columnsButton,
       app.project.dataset ? h("button.btn", { on: { click: () => app.sync(entityType) } }, N.icon("sync"), "Sync") : null,
@@ -138,7 +277,8 @@
       const items = [{ heading: column.title || column.name },
         { label: "Sort A → Z", icon: "sort-asc", onClick: () => grid.sortBy(column.name, 1) },
         { label: "Sort Z → A", icon: "sort-desc", onClick: () => grid.sortBy(column.name, -1) },
-        { label: "Hide column", icon: "eye-off", onClick: () => grid.toggleColumn(column.name) }];
+        { label: "Hide column", icon: "eye-off", onClick: () => grid.toggleColumn(column.name) },
+        { label: "Filter…", icon: "filter", onClick: () => filterDialog(column) }];
       if (column.source === "table") {
         const selected = grid.selectedRows().filter((r) => r.inTable);
         const reset = async (rows) => {
@@ -202,8 +342,30 @@
           N.copyText(text).then(() => N.toast("Copied", `${selected.length} key(s)`, "success"), (error) => N.showError(error, "Could not copy"));
         } } }, N.icon("copy", 14), "Copy keys"),
         h("button.btn.small", { on: { click: (e) => pipelineMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("layers", 14), "Pipeline"),
+        h("button.btn.small", { on: { click: (e) => addToViewMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("list", 14), "View"),
         h("button.btn.small", { on: { click: () => removeRows(grid.selectedRows()) } }, N.icon("trash", 14), "Remove from table"),
         h("button.btn.small", { on: { click: () => grid.clearSelection() } }, "Clear"));
+    }
+    function addToViewMenu(anchor, rows) {
+      const keys = rows.map((r) => r.key);
+      const ids = new Set(keys.map((k) => N.keyId(k)));
+      const items = [{ heading: `${rows.length} selected row(s)` }, { label: "New view with these rows…", icon: "plus", onClick: async () => {
+        const name = await N.prompt("New view", "Name of the view", "");
+        if (name) saveView({ name, keys });
+      } }];
+      const listed = views.filter((v) => v.keys);
+      if (listed.length) items.push({ heading: "Add to" });
+      for (const v of listed) {
+        items.push({ label: v.name, icon: "list", onClick: () => {
+          const merged = v.keys.concat(keys.filter((k) => !v.keys.some((x) => N.keyId(x) === N.keyId(k))));
+          saveView(Object.assign({}, v, { keys: merged }));
+        } });
+      }
+      if (activeView && activeView.keys) {
+        items.push({ heading: activeView.name }, { label: `Remove from ${activeView.name}`, icon: "x", onClick: () =>
+          saveView(Object.assign({}, activeView, { keys: activeView.keys.filter((k) => !ids.has(N.keyId(k))) })) });
+      }
+      N.menu(anchor, items);
     }
     async function pipelineMenu(anchor, rows) {
       const inTable = rows.filter((r) => r.inTable);
@@ -251,7 +413,7 @@
     }
 
     const body = h("div", { style: { position: "relative", flex: "1", display: "flex", flexDirection: "column", minHeight: 0 } }, grid.el, selectionBar);
-    N.fill(content, toolbar, body, footer);
+    N.fill(content, toolbar, filterBar, body, footer);
 
     app.reloadEntities = async () => {
       try {
@@ -264,7 +426,12 @@
     };
     const origRefresh = grid.refresh.bind(grid);
     grid.refresh = () => { origRefresh(); renderFooter(); };
-    await app.reloadEntities();
+    app.onViewsEvent = (data) => { if (data.entityType === entityType) loadViews(); };
+    await Promise.all([app.reloadEntities(), loadViews()]);
+    let remembered = "";
+    try { remembered = localStorage.getItem(viewStoreKey) || ""; } catch (e) { /* fine */ }
+    const view = views.find((v) => v.name === remembered);
+    if (view) showView(view);
     search.focus();
   };
 

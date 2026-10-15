@@ -15,7 +15,8 @@ function report = convert(export, folder)
 %     kept no table of gets an empty table with core.notes;
 %   - file path settings become data variables when their file adapter has
 %     a built-in equivalent;
-%   - the notes of a Notebook column go into the entity type's notebook.
+%   - the notes of a Notebook column go into the entity type's notebook;
+%   - filtered (non-master) tables become views of their entity type.
 %
 %   Whatever cannot be mapped is left out and named in report.warnings.
     arguments
@@ -52,6 +53,9 @@ function report = convert(export, folder)
         end
         table.write();
         rows.(spec.entityType) = numel(spec.rows);
+        for v = 1:numel(nansen.internal.getField(spec, "views", {}))
+            project.views(spec.entityType).save(spec.views{v});
+        end
         if ~isempty(spec.notes)
             notebook = project.notebook(spec.entityType);
             for n = 1:numel(spec.notes)

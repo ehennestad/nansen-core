@@ -39,7 +39,7 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 
 **Tables.**
 
-- The master table of sessions becomes the `session` table, keyed by `subject_id` and `session_id`. The master table of subjects becomes the `subject` table, keyed by `subject_id`. Filtered (non-master) tables are left out: they hold a subset of the master's rows.
+- The master table of sessions becomes the `session` table, keyed by `subject_id` and `session_id`. The master table of subjects becomes the `subject` table, keyed by `subject_id`. A filtered (non-master) table holds a subset of the master's rows; it becomes a saved view of the entity type with the keys of its rows. A row that holds only part of the key, such as the session id, is found in the master table; rows that are not found are left out of the view, with a warning.
 - `Ignore` and `Description` go to the `core.notes` fragment.
 - `Date` and `Time` are left out of the session table when the dataset reads them from folder names: they are DSM attributes now.
 - Every other column with a table type goes to a fragment `legacy.<entityType>` in the project. Columns holding structs or objects, such as `DataLocation` and `Progress`, are left out and listed.

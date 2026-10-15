@@ -71,7 +71,7 @@
     {
       "name": "Sessions (curated)", "entityClass": "session", "isMaster": false,
       "columns": [ { "name": "sessionID", "dataType": "string" } ],
-      "rows": [ { "sessionID": "m110-001" } ]
+      "rows": [ { "sessionID": "m110-001" }, { "sessionID": "m110-002" }, { "sessionID": "m999-001" } ]
     },
     {
       "name": "Subjects", "entityClass": "subject", "isMaster": true,

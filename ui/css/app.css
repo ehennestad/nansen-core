@@ -479,3 +479,14 @@ ul.notes li { margin: 4px 0; font-size: 13px; }
 .step-buttons { display: flex; gap: 2px; margin-top: 3px; }
 @media (max-width: 760px) { .step-fields { grid-template-columns: 1fr; } }
 
+
+/* ---------------------------------------------------------------- filters and views */
+.filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 22px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.filter-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 4px 0 10px; border-radius: 13px; background: var(--accent-soft); color: var(--accent-text); font-size: 12.5px; font-weight: 600; }
+.filter-chip.view { padding-right: 10px; background: var(--surface-3); color: var(--text-2); }
+.filter-chip button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; width: 20px; height: 20px; border-radius: 50%; }
+.filter-chip button:hover { background: rgba(0, 0, 0, 0.08); }
+.filter-options { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px 0; }
+.filter-options .item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; cursor: pointer; }
+.filter-options .item:hover { background: var(--surface-2); }
+.view-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

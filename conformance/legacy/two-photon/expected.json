@@ -1,5 +1,5 @@
 {
-  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second.",
+  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table).",
   "project": {
     "schemaType": "nansen.project",
     "schemaVersion": "0.1.0",
@@ -322,7 +322,8 @@
     "table 'Sessions': a note of type 'Reminder' is imported as informal",
     "table 'Sessions': 1 note(s) on rows that were left out; left out",
     "table 'Sessions': 1 note(s) with no time; left out",
-    "table 'Subjects': 1 BiologicalSex value(s) not among female, male, not detected; kept as written"
+    "table 'Subjects': 1 BiologicalSex value(s) not among female, male, not detected; kept as written",
+    "table 'Sessions (curated)': 1 row(s) not found in the session table; left out of its view"
   ],
   "notebooks": [
     {
@@ -407,6 +408,29 @@
           "text": "Check at week 6 #window",
           "tags": [
             "window"
+          ]
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "schemaType": "nansen.views",
+      "schemaVersion": "0.1.0",
+      "entityType": "session",
+      "views": [
+        {
+          "name": "Sessions (curated)",
+          "description": "Imported from the dev table Sessions (curated)",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-001"
+            },
+            {
+              "subject_id": "m110",
+              "session_id": "m110-002"
+            }
           ]
         }
       ]

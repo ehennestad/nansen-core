@@ -423,3 +423,50 @@ def test_pipelines_page_assign_and_progress(empty_app, page):
     page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
     page.wait_for_selector(".drawer.open .pipeline-card .steps li.done")
     assert page.locator(".drawer .pipeline-card .steps li.done").count() == 2
+
+
+def test_filters_and_saved_views(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    views = lambda: api.handle({"id": 2, "method": "views.list", "params": {"entityType": "session"}})["result"]
+    listed = api.handle({"id": 3, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"]
+    bleaching = sum(1 for r in listed if r["values"].get("description") == "Bleaching after 20 min")
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    rows = lambda: page.locator(".grid-table tbody tr[data-id]")
+
+    page.hover(".grid-table th:has-text('Description')")
+    page.click(".grid-table th:has-text('Description') .col-menu")
+    page.click(".menu .item:has-text('Filter')")
+    page.check(".dialog .filter-options label:has-text('Bleaching after 20 min') input")
+    page.click(".dialog-foot button:has-text('Apply')")
+    page.wait_for_selector(".filter-bar .filter-chip[data-column='description']")
+    assert rows().count() == bleaching
+
+    page.click(".toolbar button:has(.view-name)")
+    page.click(".menu .item:has-text('Save as a new view')")
+    page.fill(".dialog.narrow input", "Bleaching")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    wait_until(lambda: [v["name"] for v in views()] == ["Bleaching"])
+    assert views()[0]["filters"] == [{"column": "description", "op": "in", "values": ["Bleaching after 20 min"]}]
+
+    page.click(".filter-bar .filter-chip button")
+    assert rows().count() == 14
+    page.click(".toolbar button:has(.view-name)")
+    page.click(".menu .item:has-text('Bleaching')")
+    assert rows().count() == bleaching
+    page.click(".toolbar button:has(.view-name)")
+    page.click(".menu .item:has-text('All rows')")
+    assert rows().count() == 14
+
+    rows().nth(0).locator("td.sel input").check()
+    rows().nth(1).locator("td.sel input").check()
+    page.click(".selection-bar button:has-text('View')")
+    page.click(".menu .item:has-text('New view with these rows')")
+    page.fill(".dialog.narrow input", "Pair")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    wait_until(lambda: any(v["name"] == "Pair" and len(v.get("keys", [])) == 2 for v in views()))
+    page.wait_for_function("() => document.querySelectorAll('.grid-table tbody tr[data-id]').length === 2")
+    page.reload()  # the view shown last is shown again
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.wait_for_function("() => document.querySelectorAll('.grid-table tbody tr[data-id]').length === 2")
