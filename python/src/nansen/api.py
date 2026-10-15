@@ -1270,9 +1270,14 @@ class Api:
         result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
                              int(params.get("plane", 0)), params.get("filter"), _bin_of(params))
         result["metadata"] = _entity_metadata(stack.metadata, entity)
+        at = int(params.get("plane", 0)) + 1, int(params.get("channel", 0)) + 1
         if params.get("rois"):   # those of the plane and channel shown, when they have places; none before the first is saved
-            result["rois"] = roi_outlines(rois_at(self._rois_of(project, entity, params["rois"]), int(params.get("plane", 0)) + 1,
-                                                  int(params.get("channel", 0)) + 1))
+            result["rois"] = roi_outlines(rois_at(self._rois_of(project, entity, params["rois"]), *at))
+        also = params.get("alsoRois", [])
+        if not isinstance(also, list) or not all(isinstance(name, str) for name in also):
+            raise NansenError("invalid-params", "alsoRois is a list of ROI variables")
+        if also:   # roimanager's showRoiGroups: other ROI groups, shown beside those edited
+            result["roiGroups"] = [{"variable": name, "rois": roi_outlines(rois_at(self._rois_of(project, entity, name), *at))} for name in also]
         return result
 
     def data__traces(self, params: dict) -> dict:

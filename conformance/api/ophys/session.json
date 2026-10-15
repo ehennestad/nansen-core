@@ -3816,6 +3816,256 @@
     },
     {
       "request": {
+        "method": "data.frame",
+        "id": 9601,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "max",
+          "rois": "RoiArray",
+          "alsoRois": [
+            "RoiArray_Quicky",
+            "RoiArray"
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1
+            },
+            {
+              "id": 2
+            },
+            {
+              "id": 3
+            }
+          ],
+          "roiGroups": [
+            {
+              "variable": "RoiArray_Quicky",
+              "rois": [
+                {
+                  "id": 1,
+                  "pixels": [
+                    [
+                      8,
+                      12
+                    ],
+                    [
+                      9,
+                      11
+                    ],
+                    [
+                      9,
+                      12
+                    ],
+                    [
+                      9,
+                      13
+                    ],
+                    [
+                      10,
+                      10
+                    ],
+                    [
+                      10,
+                      11
+                    ],
+                    [
+                      10,
+                      12
+                    ],
+                    [
+                      10,
+                      13
+                    ],
+                    [
+                      10,
+                      14
+                    ],
+                    [
+                      11,
+                      11
+                    ],
+                    [
+                      11,
+                      12
+                    ],
+                    [
+                      11,
+                      13
+                    ],
+                    [
+                      12,
+                      12
+                    ]
+                  ],
+                  "classification": null
+                },
+                {
+                  "id": 2,
+                  "pixels": [
+                    [
+                      12,
+                      23
+                    ],
+                    [
+                      13,
+                      22
+                    ],
+                    [
+                      13,
+                      23
+                    ],
+                    [
+                      13,
+                      24
+                    ],
+                    [
+                      14,
+                      21
+                    ],
+                    [
+                      14,
+                      22
+                    ],
+                    [
+                      14,
+                      23
+                    ],
+                    [
+                      14,
+                      24
+                    ],
+                    [
+                      14,
+                      25
+                    ],
+                    [
+                      15,
+                      22
+                    ],
+                    [
+                      15,
+                      23
+                    ],
+                    [
+                      15,
+                      24
+                    ],
+                    [
+                      16,
+                      23
+                    ]
+                  ],
+                  "classification": null
+                },
+                {
+                  "id": 3,
+                  "pixels": [
+                    [
+                      20,
+                      9
+                    ],
+                    [
+                      21,
+                      8
+                    ],
+                    [
+                      21,
+                      9
+                    ],
+                    [
+                      21,
+                      10
+                    ],
+                    [
+                      22,
+                      7
+                    ],
+                    [
+                      22,
+                      8
+                    ],
+                    [
+                      22,
+                      9
+                    ],
+                    [
+                      22,
+                      10
+                    ],
+                    [
+                      22,
+                      11
+                    ],
+                    [
+                      23,
+                      8
+                    ],
+                    [
+                      23,
+                      9
+                    ],
+                    [
+                      23,
+                      10
+                    ],
+                    [
+                      24,
+                      9
+                    ]
+                  ],
+                  "classification": null
+                }
+              ]
+            },
+            {
+              "variable": "RoiArray",
+              "rois": [
+                {
+                  "id": 1
+                },
+                {
+                  "id": 2
+                },
+                {
+                  "id": 3
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9602,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "max",
+          "rois": "RoiArray_Quicky",
+          "alsoRois": "RoiArray_Quicky"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
         "method": "dataVariables.save",
         "id": 45,
         "params": {

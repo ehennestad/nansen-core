@@ -44,7 +44,7 @@
 
   /** Decode a data.frame result onto a canvas of its own size, in a colormap, with ROIs filled over it.
    * Rejected ROIs are dimmed (or left out with hideRejected); selected ROIs are drawn in full color. */
-  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false, colormap = "gray", outlines = false, colorBy = "roi") {
+  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false, colormap = "gray", outlines = false, colorBy = "roi", groups = null) {
     canvas.width = frame.width;
     canvas.height = frame.height;
     const ctx = canvas.getContext("2d");
@@ -61,6 +61,16 @@
       }
       const v = 3 * bytes.charCodeAt(i);
       image.data[4 * i] = table[v]; image.data[4 * i + 1] = table[v + 1]; image.data[4 * i + 2] = table[v + 2]; image.data[4 * i + 3] = 255;
+    }
+    if (showRois && groups) {   // roimanager's showRoiGroups: the other groups' outlines, each group in a colour of its own
+      groups.forEach((group, k) => {
+        const [r, g, b] = GROUP_COLORS[k % GROUP_COLORS.length];
+        group.rois.forEach((roi) => edge(roi).forEach(([y, x]) => {
+          if (y < 0 || y >= frame.height || x < 0 || x >= frame.width) return;
+          const i = 4 * (y * frame.width + x);
+          image.data[i] += (r - image.data[i]) * 0.8; image.data[i + 1] += (g - image.data[i + 1]) * 0.8; image.data[i + 2] += (b - image.data[i + 2]) * 0.8;
+        }));
+      });
     }
     if (showRois && rois) {
       rois.forEach((roi, n) => {
@@ -166,6 +176,7 @@
   // roimanager's roiColorScheme: each ROI its own colour (rejected ones red), or by classification or by cell type in dev's colours
   const CLASSIFICATION_COLORS = { accepted: [44, 178, 125], rejected: [235, 86, 96], unresolved: [45, 95, 232] };
   const CELL_TYPE_COLORS = { excitatory: [255, 0, 0], inhibitory: [0, 255, 0], axon: [245, 166, 7] };
+  const GROUP_COLORS = [[0, 220, 255], [255, 150, 0], [220, 80, 255], [255, 255, 80], [80, 255, 160]];
   const ROI_COLOR_SCHEMES = [["roi", "A colour each"], ["classification", "By classification"], ["cellType", "By cell type"], ["none", "One colour"]];
   function colorOf(roi, n, colorBy = "roi") {
     if (colorBy === "classification") return CLASSIFICATION_COLORS[roi.classification] || [204, 204, 204];
@@ -258,8 +269,27 @@
     const high = h("input.input.viewer-high", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.high = Number(high.value); show(); } } });
     const auto = h("input", { type: "checkbox", checked: true, on: { change: () => { state.auto = auto.checked; show(); } } });
     const roiToggle = h("input.viewer-rois", { type: "checkbox", checked: state.showRois, on: { change: () => { state.showRois = roiToggle.checked; show(); } } });
-    const roiPick = roiVariables.length > 1 ? h("select.input", { on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; select(null); show(); } } },
+    const roiPick = roiVariables.length > 1 ? h("select.input.viewer-roi-variable", { on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; state.groupRois = null; select(null); show(); } } },
       roiVariables.map((v) => h("option", { value: v }, v))) : null;
+    // roimanager's showRoiGroups: other ROI variables shown with the one edited, as outlines in colours of their own
+    state.groups = new Set();
+    state.groupRois = null;
+    const shownGroups = () => (state.groups.size && state.groupRois ? state.groupRois : null);
+    const groupsButton = roiVariables.length > 1 && !viewable ? h("button.btn.ghost.small.viewer-roi-groups", { title: "Show other ROI groups too",
+      on: { click: () => {
+        const others = roiVariables.filter((v) => v !== state.roiVariable);
+        N.menu(groupsButton, [{ heading: "Also show" }].concat(others.map((v) => {
+          const k = [...state.groups].filter((g) => g !== state.roiVariable).indexOf(v);
+          const box = h("input", { type: "checkbox", checked: state.groups.has(v), on: { change: () => {
+            if (box.checked) state.groups.add(v); else state.groups.delete(v);
+            state.groupRois = null;
+            groupsButton.lastChild.textContent = state.groups.size ? ` ${state.groups.size}` : "";
+            show();
+          } } });
+          return { node: h("label.item.viewer-roi-group", { dataset: { variable: v } }, box, " ", v,
+            k >= 0 ? h("span.swatch", { style: { background: `rgb(${GROUP_COLORS[k % GROUP_COLORS.length].join(",")})`, marginLeft: "6px" } }) : null) };
+        })));
+      } } }, N.icon("layers", 13), h("span", "")) : null;
     // roimanager's roiColorScheme: the ROIs' colours, in the image and the list
     const roiColorPick = h("select.input.viewer-roi-colors", { title: "Colour of the ROIs", on: { change: () => { state.colorBy = roiColorPick.value; redraw(); renderList(); } } },
       ROI_COLOR_SCHEMES.map(([value, label]) => h("option", { value }, label)));
@@ -964,7 +994,7 @@
       roiPanel.style.display = state.rois && roisOn() ? "" : "none";
     }
     function redraw() {
-      if (last) paint(canvas, last, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy);
+      if (last) paint(canvas, last, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy, shownGroups());
       if (pane && pane.last) paint(paneCanvas, pane.last, null, false, new Set(), false, state.colormap, false);
       drawOverlay();
       showNeuropil();
@@ -1181,7 +1211,7 @@
       try {
         for (let f = first; f <= final; f++) {
           const frame = await fetchView({ frame: f }, false);   // as shown: channels in colour, planes side by side or projected
-          paint(frameCanvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy);
+          paint(frameCanvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy, shownGroups());
           ctx.fillStyle = "#000";
           ctx.fillRect(0, 0, out.width, out.height);
           ctx.imageSmoothingEnabled = false;
@@ -1589,7 +1619,9 @@
         return own && !own.auto ? [own.low, own.high] : null;
       };
       const ask = (c, p, more = {}) => app.client.request(method, { ...base, channel: c, plane: p, ...(limitsOf(c) ? { limits: limitsOf(c) } : {}), ...more });
+      const groups = [...state.groups].filter((g) => g !== state.roiVariable);
       const rois = !linked && withRois && state.showRois && state.roiVariable && !state.rois ? { rois: viewable ? true : state.roiVariable } : {};
+      if (!linked && withRois && state.showRois && groups.length && (!state.rois || !state.groupRois)) rois.alsoRois = groups;
       const [channel, plane] = linked ? [Math.min(state.channel, linked.channels - 1), Math.min(state.plane, linked.planes - 1)] : [state.channel, state.plane];
       const planeCount = linked ? linked.planes : state.planes;
       const colour = composite() && (!linked || linked.channels === state.channels) && at.projection !== "peakTime";   // the time of peak has its own colours
@@ -1600,7 +1632,8 @@
       const answers = await Promise.all(channels.map((c) => Promise.all((planes || [plane]).map((p) =>
         ask(c, p, !planes && c === channel ? rois : {})))));
       const first = answers[0][0], own = answers[channels.indexOf(channel)];
-      const view = { ...first, pixels: planes ? undefined : own[0].pixels, rois: planes ? undefined : own[0].rois, brightness: undefined, layers: [] };
+      const view = { ...first, pixels: planes ? undefined : own[0].pixels, rois: planes ? undefined : own[0].rois, roiGroups: planes ? undefined : own[0].roiGroups,
+        brightness: undefined, layers: [] };
       const size = first.width * first.height;
       const layout = planes && state.volume === "montage" ? N.montageLayout(planes.length, first.height, first.width) : null;
       if (layout) Object.assign(view, { height: layout.height, width: layout.width, tiles: layout.tiles });
@@ -1639,6 +1672,7 @@
         }
         if (frame.adapter) adapterPick.value = frame.adapter;
         if (frame.rois) state.rois = frame.rois;
+        if (frame.roiGroups) state.groupRois = frame.roiGroups;
         if (initial !== null && state.rois && state.rois.some((r) => r.id === initial)) {
           const id = initial;
           initial = null;
@@ -1664,7 +1698,7 @@
           : `${frame.frames} frames`;
         binPick.disabled = state.mode !== "frame";
         showTime();
-        paint(canvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy);
+        paint(canvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy, shownGroups());
         if (resized) layout(); else { drawOverlay(); drawScalebar(); }
         showNeuropil();
         showLinked();
@@ -1702,7 +1736,7 @@
       h("div.viewer-bar",
         playButton, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, roiVariables.length ? roiColorPick : null, mirrorLabel, measurement, measureButton, scaleButton,
+        binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, groupsButton, roiVariables.length ? roiColorPick : null, mirrorLabel, measurement, measureButton, scaleButton,
         linkButton, exportButton),
       h("div.viewer-main", stage, linkedPanel, roiVariables.length ? roiPanel : null),
       signalPanel,

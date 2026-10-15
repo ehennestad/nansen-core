@@ -1342,6 +1342,31 @@ def ophys_project(empty_app, steps=()):
     return api
 
 
+def test_other_roi_groups_shown_with_the_one_edited(empty_app, page):   # roimanager's showRoiGroups
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    api = ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}}),
+        ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": s1, "options": {"threshold": 0.25, "border": 4}}),
+        ("rois.update", {"entityType": "session", "key": s1[0], "variable": "HandRois", "imageSize": [32, 32],
+                         "add": [{"pixels": [[2, 2], [2, 3], [3, 2], [3, 3]]}]})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.click(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('ROIs')")
+    page.select_option(".viewer-roi-variable", "RoiArray")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+    pixel = lambda: page.evaluate("Array.from(document.querySelector('.viewer-canvas').getContext('2d').getImageData(2, 2, 1, 1).data.slice(0, 3))")
+    cyan = lambda rgb: rgb[1] > rgb[0] + 60 and rgb[2] > rgb[0] + 60
+    assert not cyan(pixel())
+    page.click(".viewer-roi-groups")
+    page.check(".menu .viewer-roi-group[data-variable='HandRois'] input")
+    wait_until(lambda: cyan(pixel()))   # HandRois' outline, in the first group colour, over RoiArray's ROIs
+    assert page.locator(".viewer-roi-list li").count() == 3   # the ROIs edited are still RoiArray's
+    page.uncheck(".menu .viewer-roi-group[data-variable='HandRois'] input")
+    wait_until(lambda: not cyan(pixel()))
+
+
 def test_view_a_stack_with_its_rois(empty_app, page):
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     api = ophys_project(empty_app, [

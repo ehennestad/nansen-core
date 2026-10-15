@@ -1521,10 +1521,24 @@ classdef Api < handle
                 double(nansen.internal.getField(params, "plane", 0)), string(nansen.internal.getField(params, "filter", "")), ...
                 nansen.Api.binOf(params));
             result.metadata = nansen.Api.entityMetadata(stack.Metadata, entity);
+            plane = double(nansen.internal.getField(params, "plane", 0)) + 1;
+            channel = double(nansen.internal.getField(params, "channel", 0)) + 1;
             rois = string(nansen.internal.getField(params, "rois", ""));
             if rois ~= ""   % those of the plane and channel shown, when they have places; none before the first is saved
-                result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(nansen.Api.roisOf(project, entity, rois, true), ...
-                    double(nansen.internal.getField(params, "plane", 0)) + 1, double(nansen.internal.getField(params, "channel", 0)) + 1));
+                result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(nansen.Api.roisOf(project, entity, rois, true), plane, channel));
+            end
+            also = nansen.internal.getField(params, "alsoRois", {});
+            if ischar(also) || (isstring(also) && isscalar(also)) || ~(iscellstr(also) || isstring(also) || isempty(also))
+                nansen.internal.throwError("invalid-params", "alsoRois is a list of ROI variables")
+            end
+            also = reshape(string(also), 1, []);
+            if ~isempty(also)   % roimanager's showRoiGroups: other ROI groups, shown beside those edited
+                groups = cell(1, numel(also));
+                for i = 1:numel(also)
+                    groups{i} = struct("variable", char(also(i)), "rois", {nansen.internal.roiOutlines( ...
+                        nansen.internal.roisAt(nansen.Api.roisOf(project, entity, also(i), true), plane, channel))});
+                end
+                result.roiGroups = groups;
             end
         end
 
