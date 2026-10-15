@@ -24,7 +24,7 @@ from .dataset import Dataset
 from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
-from .frames import _mean as mean_image, _pick as pick_channel, detect_roi, image_frame, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
+from .frames import _mean as mean_image, _pick as pick_channel, detect_roi, image_frame, import_rois_at, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -1204,8 +1204,31 @@ class Api:
                                          classify=params.get("classify"), remove=params.get("remove"), add=params.get("add"),
                                          move=params.get("move"), merge=params.get("merge"), pixels=params.get("pixels"),
                                          restore=params.get("restore"), cell_type=params.get("cellType"), link=params.get("link"))
+        if params.get("import") is not None:   # roimanager's loaded ROIs, or a segmentation's, added to these
+            spec = params["import"]
+            if not isinstance(spec, dict):
+                raise NansenError("invalid-params", "import is {variable} or {path, adapter?}, and a mode")
+            document, imported = import_rois_at(document, plane, channel, self._imported_rois(project, entity, spec),
+                                                spec.get("mode", "append"))
+            added = added + imported
         project.save(entity, params["variable"], document)
         return {"rois": roi_outlines(rois_at(document, plane, channel)), "added": added}
+
+    def _imported_rois(self, project, entity, spec: dict) -> Any:
+        """The ROIs rois.update imports: another ROI variable of the entity, or a file (as files.resolve takes it) read
+        by a file adapter (the json adapter for a .json file, when none is given)."""
+        if spec.get("variable"):
+            return project.load(entity, spec["variable"])
+        if not spec.get("path"):
+            raise NansenError("invalid-params", "import names an ROI variable or a file's path")
+        resolved = self.files__resolve(spec)
+        if not resolved["exists"] or resolved["isFolder"]:
+            raise NansenError("file-not-found", f"{resolved['path']} is not a file")
+        path = Path(resolved["path"])
+        adapter = spec.get("adapter") or ("json" if path.suffix.lower() == ".json" else None)
+        if not adapter:
+            raise NansenError("invalid-params", f"which file adapter reads {path.name}? Give the import's adapter")
+        return project.adapters.get(adapter).read(path)
 
     @staticmethod
     def _rois_of(project, entity, name, cached=True):
@@ -1376,11 +1399,12 @@ class Api:
         return {"results": results, "skipped": task.get("skipped", []), "taskId": task["id"], "language": language}
 
     def methods__preview(self, params: dict) -> dict:
-        """Run a method on the first frames of one entity's stacks, saving nothing (nansen.preview)."""
-        from .preview import FRAMES, preview
+        """Run a method on the first frames of one entity's stacks, saving nothing (nansen.preview); with a column, on
+        that column of the signals it loads, giving its outputs of one column as traces."""
+        from .preview import FRAMES, MAX_POINTS, preview
         project = self._require_project()
         return preview(project, params["methodId"], self._entity(params), params.get("options"), params.get("preset"),
-                       int(params.get("frames", FRAMES)))
+                       int(params.get("frames", FRAMES)), params.get("column"), int(params.get("maxPoints", MAX_POINTS)))
 
     # -- tasks --------------------------------------------------------------------------------
 

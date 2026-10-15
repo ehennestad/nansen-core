@@ -5,11 +5,15 @@ classdef PreviewProject < handle
 %   Frames frames, and what it saves or writes as a stack is kept in
 %   memory, where it reads it back from; nothing is written to the project.
 %   A method that writes files itself (an external tool) writes to a folder
-%   deleted after the preview. As Python's nansen.preview.PreviewProject.
+%   deleted after the preview. With a Column (0-based), each frames x N
+%   array the method loads (a numeric matrix that is not an image stack; a
+%   vector is one column) is cut to that column, so the method runs on one
+%   ROI. As Python's nansen.preview.PreviewProject.
 
     properties (SetAccess = private)
         Inner        % the nansen.Project
         Frames (1, 1) double
+        Column = []   % the column of the signals the method sees, or [] for all
         Names (1, :) string = string.empty(1, 0)   % what was saved, in order
         Values (1, :) cell = {}
     end
@@ -24,9 +28,12 @@ classdef PreviewProject < handle
     end
 
     methods
-        function obj = PreviewProject(project, frames)
+        function obj = PreviewProject(project, frames, column)
             obj.Inner = project;
             obj.Frames = double(frames);
+            if nargin >= 3 && ~isempty(column)
+                obj.Column = double(column);
+            end
         end
 
         function value = get.Folder(obj)
@@ -77,10 +84,13 @@ classdef PreviewProject < handle
             end
             data = obj.Inner.load(entity, name, varargin{:});
             variable = obj.Inner.dataVariable(name);
-            if string(nansen.internal.getField(variable.Document, "dataType", "")) == "ImageStack" && isnumeric(data) && ndims(data) >= 3
+            isStack = string(nansen.internal.getField(variable.Document, "dataType", "")) == "ImageStack";
+            if isStack && isnumeric(data) && ndims(data) >= 3
                 index = repmat({':'}, 1, ndims(data));
                 index{end} = 1:min(obj.Frames, size(data, ndims(data)));
                 data = data(index{:});
+            elseif ~isStack && ~isempty(obj.Column)
+                data = nansen.internal.PreviewProject.oneColumn(name, data, obj.Column);
             end
         end
 
@@ -135,6 +145,30 @@ classdef PreviewProject < handle
 
         function delete(obj)
             obj.close();
+        end
+    end
+
+    methods (Static)
+        function data = oneColumn(name, data, column)
+            %oneColumn A frames x N numeric array cut to one column (frames x 1)
+            %
+            %   A vector is one column (a 1-D array is read as a column), and
+            %   other values are as they are. invalid-params for a column the
+            %   array does not have. As Python's nansen.preview.one_column.
+            if ~(isnumeric(data) || islogical(data)) || ~ismatrix(data) || numel(data) < 2
+                return
+            end
+            if isrow(data)
+                count = 1;
+            else
+                count = size(data, 2);
+            end
+            if column >= count
+                nansen.internal.throwError("invalid-params", "%s has %d columns; column %d is not one", name, count, column)
+            end
+            if ~isrow(data)
+                data = data(:, column + 1);
+            end
         end
     end
 

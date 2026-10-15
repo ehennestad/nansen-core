@@ -261,6 +261,95 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyError(@() nansen.internal.updateRois(document, [], [], struct("pixels", [20, 20])), "nansen:InvalidParams");
         end
 
+        function roisOverlapAsDevFindsOverlappingRois(testCase)
+            % as test_ophys.py's test_rois_overlap_as_dev_finds_overlapping_rois
+            [columns, rows] = meshgrid(0:3, 0:3);
+            square = sortrows([rows(:), columns(:)]);   % 16 pixels, row after row
+            testCase.verifyTrue(nansen.internal.roisOverlap(square, square));
+            testCase.verifyTrue(nansen.internal.roisOverlap(square, square(1:13, :)));
+            testCase.verifyFalse(nansen.internal.roisOverlap(square, square + [0, 1]));   % 12 of 16: exactly 0.75 is not more
+            line = [zeros(21, 1), (0:20)'];
+            testCase.verifyFalse(nansen.internal.roisOverlap(line, [0, 0]));   % the centres 10 apart
+            testCase.verifyTrue(nansen.internal.roisOverlap(line, [0, 1]));
+            testCase.verifyFalse(nansen.internal.roisOverlap(zeros(0, 2), square));
+        end
+
+        function importsRoisReplacingAppendingOrAppendingThoseThatDoNotOverlap(testCase)
+            % as test_ophys.py's test_rois_are_imported_replacing_appending_or_appending_those_that_do_not_overlap
+            document = jsondecode(['{"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1], [1, 2], [2, 1], [2, 2]], ' ...
+                '"classification": "accepted", "uid": "a", "links": [2]}, {"id": 2, "pixels": [[6, 6]], "cellType": "axon", "links": [1]}]}']);
+            source = jsondecode(['{"imageSize": [20, 20], "rois": [{"id": 4, "pixels": [[1, 1], [1, 2], [2, 1], [2, 2]], "uid": "a"}, ' ...
+                '{"id": 5, "pixels": [[8, 8], [8, 9], [12, 12]], "classification": "rejected", "uid": "b", "tags": ["x"], "links": [6, 9]}, ' ...
+                '{"id": 6, "pixels": [[4, 4]], "cellType": "inhibitory", "links": [5]}, {"id": 7, "pixels": [[15, 15]]}]}']);
+            ids = @(d) cellfun(@(r) double(r.id), d.rois);
+            [appended, added] = nansen.internal.importRoisAt(document, 1, 1, source, "append");
+            testCase.verifyEqual(added, {3, 4, 5});
+            testCase.verifyEqual(ids(appended), [1, 2, 3, 4, 5]);
+            testCase.verifyEqual(appended.rois{1}.classification, 'accepted');   % those it had stay as they were
+            testCase.verifyEqual(string(appended.rois{2}.cellType), "axon");
+            testCase.verifyFalse(isfield(appended.rois{3}, "uid"));   % the file has uid a already
+            fourth = jsondecode(jsonencode(appended.rois{4}));
+            testCase.verifyEqual(fourth.pixels, [8, 8; 8, 9]);
+            testCase.verifyEqual(fourth.center, [8; 8.5]);
+            testCase.verifyEqual(string(fourth.classification), "rejected");
+            testCase.verifyEqual(string(fourth.uid), "b");
+            testCase.verifyEqual(string(fourth.tags), "x");
+            testCase.verifyEqual(fourth.links, 5);   % links among those imported, to their new ids
+            testCase.verifyEqual(string(appended.rois{5}.cellType), "inhibitory");
+            testCase.verifyEqual(appended.rois{5}.links, {4});
+            [fewer, added] = nansen.internal.importRoisAt(document, 1, 1, source, "appendNonOverlapping");
+            testCase.verifyEqual(added, {3, 4});
+            testCase.verifyEqual(nansen.internal.roiPixels(fewer.rois{4}), [4, 4]);
+            [replaced, added] = nansen.internal.importRoisAt(document, 1, 1, source, "replace");
+            testCase.verifyEqual(added, {3, 4, 5});
+            testCase.verifyEqual(ids(replaced), [3, 4, 5]);
+            testCase.verifyEqual(string(replaced.rois{1}.uid), "a");
+            fresh = nansen.internal.importRoisAt(struct("rois", {{}}), 1, 1, source, "append");
+            testCase.verifyEqual(fresh.imageSize, [20, 20]);   % a new file takes the source's size
+            testCase.verifyError(@() nansen.internal.importRoisAt(document, 1, 1, source, "merge"), "nansen:InvalidParams");
+        end
+
+        function importsRoisAtTheirPlace(testCase)
+            document = jsondecode(['{"rois": [{"id": 1, "pixels": [[1, 1]], "plane": 1, "channel": 1}, ' ...
+                '{"id": 2, "pixels": [[2, 2]], "plane": 2, "channel": 1}]}']);
+            source = jsondecode(['{"rois": [{"id": 1, "pixels": [[5, 5]], "plane": 1, "channel": 1}, ' ...
+                '{"id": 2, "pixels": [[6, 6]], "plane": 2, "channel": 1}]}']);
+            [changed, added] = nansen.internal.importRoisAt(document, 2, 1, source, "replace");
+            testCase.verifyEqual(added, {3});
+            testCase.verifyEqual(cellfun(@(r) double(r.id), changed.rois), [1, 3]);
+            testCase.verifyEqual(cellfun(@(r) double(r.plane), changed.rois), [1, 2]);
+            testCase.verifyEqual(nansen.internal.roiPixels(changed.rois{2}), [6, 6]);
+        end
+
+        function aPreviewOnOneColumnGivesWhatTheWholeRunGivesForIt(testCase)
+            % as test_ophys.py's test_a_preview_on_one_column_gives_what_the_whole_run_gives_for_it
+            project = testCase.ophysProject();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+            rng(4);
+            traces = cumsum(0.1 * randn(300, 4), 1) + rand(300, 4) .^ 8 * 5;
+            project.save(entity, "RoiSignals_Dff", traces);
+            options = struct("frameRate", 30, "tauDecay", 0.4, "sparsity", 0.5);
+            whole = project.run("ophys.deconvolve", {entity}, Options=options);
+            spikes = project.load(entity, "RoiSignals_Deconvolved", Cached=false);
+            calcium = project.load(entity, "RoiSignals_Denoised", Cached=false);
+            one = nansen.internal.previewMethod(project, "ophys.deconvolve", entity, options, "", 20, 2, 100);
+            testCase.verifyEqual(one.results{1}.noise, {whole{1}.noise{3}});
+            testCase.verifyEqual(one.results{1}.spikeSum, {whole{1}.spikeSum{3}});
+            names = string(cellfun(@(o) char(o.name), one.outputs, UniformOutput=false));
+            deconvolved = one.outputs{names == "RoiSignals_Deconvolved"};
+            denoised = one.outputs{names == "RoiSignals_Denoised"};
+            testCase.verifyEqual(deconvolved.size, [300, 1]);
+            rounded = @(column) num2cell(floor(column(1:3:end)' * 10000 + 0.5) / 10000);   % every third frame: 300 frames in 100 points
+            testCase.verifyEqual(deconvolved.trace.frames, 300);
+            testCase.verifyEqual(deconvolved.trace.step, 3);
+            testCase.verifyEqual(deconvolved.trace.values, rounded(spikes(:, 3)));
+            testCase.verifyEqual(denoised.trace.values, rounded(calcium(:, 3)));
+            plain = nansen.internal.previewMethod(project, "ophys.deconvolve", entity, options, "", 5);
+            testCase.verifyFalse(isfield(plain.outputs{1}, "trace"));   % only with a column
+            testCase.verifyError(@() nansen.internal.previewMethod(project, "ophys.deconvolve", entity, options, "", 20, 4, 100), ...
+                "nansen:InvalidParams");
+        end
+
         function findsTheRegionOfAFov(testCase)
             atlas = jsondecode(nansen.internal.readText(fullfile(nansen.internal.repoRoot(), "modules", "ophys", "atlas", "dorsal_cortex.json")));
             testCase.verifyEqual(ophys.internal.atlasRegion(atlas, 2.3, -3.6), 'V1');

@@ -1569,14 +1569,62 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     page.mouse.click(image["x"] + image["width"] * 28.5 / 32, image["y"] + image["height"] * 28.5 / 32)
     page.wait_for_selector(".viewer-status:has-text('4 ROIs')")
     page.wait_for_selector(".viewer-signal-hint:has-text('ROI 4 · live from the stack')")
-    # find ROIs with a segmentation method from the viewer: the ROIs are read again
+    # find ROIs with a segmentation method from the viewer, into the variable on screen, which has ROIs: asked how to add
+    # those found (roimanager's Replace / Append / Append non-overlapping), the curated ones are not overwritten unasked
     page.click(".viewer-find-rois")
     page.click(".menu .item:has-text('Detect ROIs')")
     page.fill(".dialog .field:has-text('Correlation threshold') input", "0.25")
     page.fill(".dialog .field:has-text('Border left out') input", "4")
     page.click(".dialog .btn.primary:has-text('Find ROIs')")
+    page.wait_for_selector(".viewer-import-mode:has-text('found 3 ROIs')")
+    page.click(".dialog .btn:text-is('Append non-overlapping')")   # the three cells are there already; ROI 4 stays
     page.wait_for_selector(".toast:has-text('ROIs found')")
+    page.wait_for_selector(".viewer-status:has-text('4 ROIs')")
+    page.click(".viewer-find-rois")
+    page.click(".menu .item:has-text('Detect ROIs')")
+    page.fill(".dialog .field:has-text('Correlation threshold') input", "0.25")
+    page.fill(".dialog .field:has-text('Border left out') input", "4")
+    page.click(".dialog .btn.primary:has-text('Find ROIs')")
+    page.click(".dialog .btn:text-is('Replace')")
     page.wait_for_selector(".viewer-status:has-text('3 ROIs')")
+    assert [r["id"] for r in empty_app["api"].project.load(empty_app["api"].project.entity("session", s1[0]), "RoiArray", cached=False)["rois"]] == [5, 6, 7]
+    page.click(".roi-undo")   # the ROIs there were come back
+    page.wait_for_selector(".viewer-status:has-text('4 ROIs')")
+    assert [r["id"] for r in empty_app["api"].project.load(empty_app["api"].project.entity("session", s1[0]), "RoiArray", cached=False)["rois"]] == [1, 2, 3, 4]
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
+def test_rois_are_added_from_another_roi_variable(empty_app, page):
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    cell = [[8, 12], [9, 11], [9, 12], [9, 13], [10, 10], [10, 11], [10, 12], [10, 13], [10, 14], [11, 11], [11, 12], [11, 13], [12, 12]]
+    api = ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": [s1], "options": {"referenceFrames": 1}}),
+        ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": [s1], "options": {"threshold": 0.25, "border": 4}}),
+        ("rois.update", {"entityType": "session", "key": s1, "variable": "RoiArray_Hand", "imageSize": [32, 32],   # one on a cell, one not
+                         "add": [{"pixels": cell}, {"pixels": [[3, 3], [3, 4], [4, 3], [4, 4]]}]})])
+    ids = lambda: [r["id"] for r in api.project.load(api.project.entity("session", s1), "RoiArray", cached=False)["rois"]]
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+    page.click(".viewer-add-rois-from")
+    page.click(".menu .item:text-is('RoiArray_Hand')")
+    page.wait_for_selector(".viewer-import-mode:has-text('RoiArray has 3 ROIs here')")
+    page.click(".dialog .btn:text-is('Append non-overlapping')")   # the one on a cell is left out
+    page.wait_for_selector(".viewer-status:has-text('4 ROIs')")
+    assert ids() == [1, 2, 3, 4]
+    page.click(".roi-undo")
+    page.wait_for_selector(".viewer-status:has-text('3 ROIs')")
+    assert ids() == [1, 2, 3]
+    page.click(".viewer-add-rois-from")
+    page.click(".menu .item:text-is('RoiArray_Hand')")
+    page.click(".dialog .btn:text-is('Append')")
+    page.wait_for_selector(".viewer-status:has-text('5 ROIs')")
+    page.click(".viewer-add-rois-from")
+    page.click(".menu .item:text-is('RoiArray_Hand')")
+    page.click(".dialog .btn:text-is('Cancel')")   # nothing changes
+    assert ids() == [1, 2, 3, 4, 5]
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
@@ -2093,3 +2141,29 @@ def test_dff_explorer_matches_compute_dff_and_queues_its_settings(empty_app, pag
     wait_until(lambda: len(api.handle({"id": 2, "method": "tasks.list", "params": {}})["result"]) == 1)
     task = api.handle({"id": 3, "method": "tasks.list", "params": {}})["result"][0]
     assert task["method"]["id"] == "ophys.compute_dff" and task["options"]["values"]["baselineWindow"] == 10 and task["options"]["values"]["method"] == "chen2013"
+
+
+def test_deconvolution_explorer_shows_what_deconvolve_gives_and_queues_its_settings(empty_app, page):
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    run = lambda method, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": [s1], "options": options})
+    api = ophys_project(empty_app, [run("ophys.motion_correction", referenceFrames=1), run("ophys.detect_rois", threshold=0.25, border=4),
+                                    run("ophys.extract_signals"), run("ophys.compute_dff")])
+    deconvolved = lambda **options: api.handle({"id": 1, "method": "methods.run", "params": {"methodId": "ophys.deconvolve", "entityType": "session",
+                                                                                           "keys": [s1], "options": options}})["result"]["results"][0]
+    spikes = lambda: float(page.locator(".cx-stats").get_attribute("data-spike-sum") or "nan")
+    page.goto(empty_app["server"].url + "#/page/ophys.deconvolutionexplorer")
+    page.wait_for_selector(".cx-roi option", state="attached")
+    assert page.locator(".cx-roi option").all_inner_texts() == ["ROI 1", "ROI 2", "ROI 3"]
+    page.locator("input.cx-frameRate").fill("30")
+    expected = deconvolved(frameRate=30)["spikeSum"]   # the page shows what the method gives, run on one ROI in the backend
+    wait_until(lambda: abs(spikes() - expected[0]) < 1e-9)
+    page.select_option(".cx-roi", "1")
+    wait_until(lambda: abs(spikes() - expected[1]) < 1e-9)
+    page.evaluate("(() => { const s = document.querySelector('input.cx-tauDecay'); s.value = '0.3'; s.dispatchEvent(new Event('input')); })()")
+    expected = deconvolved(frameRate=30, tauDecay=0.3)["spikeSum"]
+    wait_until(lambda: abs(spikes() - expected[1]) < 1e-9)
+    assert page.evaluate("document.querySelector('.cx-main .trace-canvas').height") > 0
+    page.click(".cx-queue-one")   # the settings, run as ophys.deconvolve
+    wait_until(lambda: len(api.handle({"id": 2, "method": "tasks.list", "params": {}})["result"]) == 1)
+    task = api.handle({"id": 3, "method": "tasks.list", "params": {}})["result"][0]
+    assert task["method"]["id"] == "ophys.deconvolve" and task["options"]["values"]["tauDecay"] == 0.3 and task["options"]["values"]["frameRate"] == 30

@@ -403,6 +403,54 @@ def test_rois_carry_cell_types_links_and_their_identity():
         update_rois(document, link=[[1, 1]])
 
 
+def test_rois_overlap_as_dev_finds_overlapping_rois():
+    from nansen.frames import rois_overlap
+    square = [[r, c] for r in range(4) for c in range(4)]   # 16 pixels
+    assert rois_overlap(square, square)   # the same ROI (dev skips coinciding centres, meant for a set against itself)
+    assert rois_overlap(square, square[:13])   # 13 of the smaller's 13: more than 0.75
+    shifted = [[r, c + 1] for r, c in square]   # 12 of 16 shared: exactly 0.75 is not more
+    assert not rois_overlap(square, shifted)
+    line = [[0, c] for c in range(21)]   # its centre is [0, 10]
+    assert not rois_overlap(line, [[0, 0]])   # all of the smaller one inside, but the centres 10 apart
+    assert rois_overlap(line, [[0, 1]])
+    assert not rois_overlap([], square)
+
+
+def test_rois_are_imported_replacing_appending_or_appending_those_that_do_not_overlap():
+    from nansen.frames import import_rois_at
+    document = {"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1], [1, 2], [2, 1], [2, 2]], "classification": "accepted",
+                                                 "uid": "a", "links": [2]},
+                                                {"id": 2, "pixels": [[6, 6]], "cellType": "axon", "links": [1]}]}
+    source = {"imageSize": [20, 20], "rois": [
+        {"id": 4, "pixels": [[1, 1], [1, 2], [2, 1], [2, 2]], "uid": "a"},   # on ROI 1
+        {"id": 5, "pixels": [[8, 8], [8, 9], [12, 12]], "classification": "rejected", "uid": "b", "tags": ["x"], "links": [6, 9]},
+        {"id": 6, "pixels": [[4, 4]], "cellType": "inhibitory", "links": [5]},
+        {"id": 7, "pixels": [[15, 15]]}]}   # outside the file's image: left out
+    appended, added = import_rois_at(document, 1, 1, source, "append")
+    assert added == [3, 4, 5] and [r["id"] for r in appended["rois"]] == [1, 2, 3, 4, 5]
+    assert appended["rois"][0] == document["rois"][0] and appended["rois"][1]["cellType"] == "axon"   # those it had stay as they were
+    assert "uid" not in appended["rois"][2]   # the file has uid a already
+    assert appended["rois"][3] == {"id": 4, "area": 2, "center": [8.0, 8.5], "pixels": [[8, 8], [8, 9]], "classification": "rejected",
+                                   "uid": "b", "tags": ["x"], "links": [5]}   # links among those imported, to their new ids
+    assert appended["rois"][4]["cellType"] == "inhibitory" and appended["rois"][4]["links"] == [4]
+    fewer, added = import_rois_at(document, 1, 1, source, "appendNonOverlapping")
+    assert added == [3, 4] and [r["pixels"] for r in fewer["rois"][2:]] == [[[8, 8], [8, 9]], [[4, 4]]]
+    replaced, added = import_rois_at(document, 1, 1, source, "replace")
+    assert added == [3, 4, 5] and [r["id"] for r in replaced["rois"]] == [3, 4, 5] and replaced["rois"][0]["uid"] == "a"
+    assert import_rois_at({"rois": []}, 1, 1, source)[0]["imageSize"] == [20, 20]   # a new file takes the source's size
+    with pytest.raises(NansenError) as error:
+        import_rois_at(document, 1, 1, source, "merge")
+    assert error.value.code == "invalid-params"
+
+
+def test_rois_are_imported_at_their_place():
+    from nansen.frames import import_rois_at
+    document = {"rois": [{"id": 1, "pixels": [[1, 1]], "plane": 1, "channel": 1}, {"id": 2, "pixels": [[2, 2]], "plane": 2, "channel": 1}]}
+    source = {"rois": [{"id": 1, "pixels": [[5, 5]], "plane": 1, "channel": 1}, {"id": 2, "pixels": [[6, 6]], "plane": 2, "channel": 1}]}
+    changed, added = import_rois_at(document, 2, 1, source, "replace")   # plane 2's own ROIs replaced by the source's of plane 2
+    assert added == [3] and [(r["id"], r["plane"], r["pixels"]) for r in changed["rois"]] == [(1, 1, [[1, 1]]), (3, 2, [[6, 6]])]
+
+
 def test_update_rois_classifies_removes_and_adds():
     from nansen.frames import update_rois
     document = {"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}, {"id": 5, "pixels": [[2, 2], [2, 3]]}]}
@@ -635,6 +683,32 @@ def test_methods_work_on_a_range_of_frames(tmp_path):
         assert _run(api, "ophys.image_stats", dict(none, stack="FovAverageProjection", lastFrame=1))["n_frames"] == 1
         with pytest.raises(NansenError):
             _run(api, "ophys.image_stats", dict(none, stack="FovAverageProjection", firstFrame=2))
+    finally:
+        api.close()
+
+
+def test_a_preview_on_one_column_gives_what_the_whole_run_gives_for_it(tmp_path):
+    api = _ophys_api(tmp_path)
+    try:
+        entity = api.project.entity("session", {"subject_id": "m1", "session_id": "s2"})
+        rng = np.random.default_rng(4)
+        traces = np.cumsum(rng.normal(0, 0.1, (300, 4)), axis=0) + rng.random((300, 4)) ** 8 * 5
+        api.project.save(entity, "RoiSignals_Dff", traces)
+        options = {"frameRate": 30, "tauDecay": 0.4, "sparsity": 0.5}
+        whole = _run(api, "ophys.deconvolve", options)
+        spikes, calcium = (np.asarray(api.project.load(entity, n, cached=False)) for n in ("RoiSignals_Deconvolved", "RoiSignals_Denoised"))
+        params = {"methodId": "ophys.deconvolve", "entityType": "session", "key": {"subject_id": "m1", "session_id": "s2"},
+                  "options": options, "column": 2, "maxPoints": 100}
+        one = api.handle({"id": 1, "method": "methods.preview", "params": params})["result"]
+        assert one["results"][0]["noise"] == [whole["noise"][2]] and one["results"][0]["spikeSum"] == [whole["spikeSum"][2]]
+        outputs = {o["name"]: o for o in one["outputs"]}
+        assert outputs["RoiSignals_Deconvolved"]["size"] == [300, 1]
+        rounded = lambda column: [ophys["round_to"](v, 4) for v in column[::3]]   # every third frame: 300 frames in 100 points
+        assert outputs["RoiSignals_Deconvolved"]["trace"] == {"frames": 300, "step": 3, "values": rounded(spikes[:, 2])}
+        assert outputs["RoiSignals_Denoised"]["trace"]["values"] == rounded(calcium[:, 2])
+        assert "trace" not in _run(api, "ophys.deconvolve", options, preview=5)["outputs"][0]   # only with a column
+        params["column"] = 4
+        assert api.handle({"id": 1, "method": "methods.preview", "params": params})["error"]["code"] == "invalid-params"
     finally:
         api.close()
 

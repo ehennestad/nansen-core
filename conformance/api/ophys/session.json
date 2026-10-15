@@ -4256,6 +4256,10 @@
           {
             "module": "ophys",
             "path": "dashboard/dffexplorer.js"
+          },
+          {
+            "module": "ophys",
+            "path": "dashboard/deconvolutionexplorer.js"
           }
         ]
       }
@@ -8065,6 +8069,2450 @@
       },
       "expect": {
         "error": "invalid-data"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9401,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "imageSize": [
+            32,
+            32
+          ],
+          "import": {
+            "variable": "RoiArray_Quicky",
+            "mode": "append"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": [
+            1,
+            2,
+            3
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9402,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "classify": [
+            {
+              "id": 1,
+              "classification": "accepted"
+            }
+          ],
+          "cellType": [
+            {
+              "id": 2,
+              "cellType": "axon"
+            }
+          ],
+          "link": [
+            [
+              1,
+              2
+            ]
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": "accepted",
+              "links": [
+                2
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": null,
+              "cellType": "axon",
+              "links": [
+                1
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9403,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "variable": "RoiArray_Quicky",
+            "mode": "appendNonOverlapping"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": "accepted",
+              "links": [
+                2
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": null,
+              "cellType": "axon",
+              "links": [
+                1
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9404,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "variable": "HandRois",
+            "mode": "appendNonOverlapping"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": "accepted",
+              "links": [
+                2
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": null,
+              "cellType": "axon",
+              "links": [
+                1
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  4
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": [
+            4
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9405,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "path": "imported_rois.json",
+            "mode": "appendNonOverlapping"
+          }
+        }
+      },
+      "keep": {
+        "combined": "/rois"
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": "accepted",
+              "links": [
+                2
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": null,
+              "cellType": "axon",
+              "links": [
+                1
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  4
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 5,
+              "pixels": [
+                [
+                  12,
+                  24
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  13,
+                  25
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  14,
+                  26
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  15,
+                  25
+                ],
+                [
+                  16,
+                  24
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 6,
+              "pixels": [
+                [
+                  28,
+                  28
+                ],
+                [
+                  28,
+                  29
+                ],
+                [
+                  29,
+                  28
+                ],
+                [
+                  29,
+                  29
+                ]
+              ],
+              "classification": "rejected",
+              "uid": "c0ffee",
+              "cellType": "inhibitory",
+              "links": [
+                7
+              ]
+            },
+            {
+              "id": 7,
+              "pixels": [
+                [
+                  28,
+                  2
+                ],
+                [
+                  29,
+                  2
+                ],
+                [
+                  30,
+                  2
+                ],
+                [
+                  31,
+                  2
+                ]
+              ],
+              "classification": "accepted",
+              "links": [
+                6
+              ]
+            }
+          ],
+          "added": [
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9406,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "variable": "RoiArray_Quicky",
+            "mode": "replace"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 8,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 9,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 10,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": [
+            8,
+            9,
+            10
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9407,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "restore": "${combined}"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": "${combined}",
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9408,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "variable": "RoiArray_Quicky",
+            "mode": "merge"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9409,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "mode": "append"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9410,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "path": "tables/session.csv"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9411,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "path": "missing_rois.json"
+          }
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9412,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_OnePlane",
+          "plane": 1,
+          "import": {
+            "variable": "RoiArray_Planes"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  10,
+                  10
+                ],
+                [
+                  11,
+                  9
+                ],
+                [
+                  11,
+                  10
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  12,
+                  8
+                ],
+                [
+                  12,
+                  9
+                ],
+                [
+                  12,
+                  10
+                ],
+                [
+                  12,
+                  11
+                ],
+                [
+                  12,
+                  12
+                ],
+                [
+                  13,
+                  9
+                ],
+                [
+                  13,
+                  10
+                ],
+                [
+                  13,
+                  11
+                ],
+                [
+                  14,
+                  10
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  14,
+                  21
+                ],
+                [
+                  15,
+                  20
+                ],
+                [
+                  15,
+                  21
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  16,
+                  19
+                ],
+                [
+                  16,
+                  20
+                ],
+                [
+                  16,
+                  21
+                ],
+                [
+                  16,
+                  22
+                ],
+                [
+                  16,
+                  23
+                ],
+                [
+                  17,
+                  20
+                ],
+                [
+                  17,
+                  21
+                ],
+                [
+                  17,
+                  22
+                ],
+                [
+                  18,
+                  21
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  22,
+                  7
+                ],
+                [
+                  23,
+                  6
+                ],
+                [
+                  23,
+                  7
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  24,
+                  5
+                ],
+                [
+                  24,
+                  6
+                ],
+                [
+                  24,
+                  7
+                ],
+                [
+                  24,
+                  8
+                ],
+                [
+                  24,
+                  9
+                ],
+                [
+                  25,
+                  6
+                ],
+                [
+                  25,
+                  7
+                ],
+                [
+                  25,
+                  8
+                ],
+                [
+                  26,
+                  7
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": [
+            1,
+            2,
+            3
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9413,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Planes",
+          "plane": 1,
+          "import": {
+            "variable": "HandRois",
+            "mode": "append"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  10,
+                  10
+                ],
+                [
+                  11,
+                  9
+                ],
+                [
+                  11,
+                  10
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  12,
+                  8
+                ],
+                [
+                  12,
+                  9
+                ],
+                [
+                  12,
+                  10
+                ],
+                [
+                  12,
+                  11
+                ],
+                [
+                  12,
+                  12
+                ],
+                [
+                  13,
+                  9
+                ],
+                [
+                  13,
+                  10
+                ],
+                [
+                  13,
+                  11
+                ],
+                [
+                  14,
+                  10
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 5,
+              "pixels": [
+                [
+                  14,
+                  21
+                ],
+                [
+                  15,
+                  20
+                ],
+                [
+                  15,
+                  21
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  16,
+                  19
+                ],
+                [
+                  16,
+                  20
+                ],
+                [
+                  16,
+                  21
+                ],
+                [
+                  16,
+                  22
+                ],
+                [
+                  16,
+                  23
+                ],
+                [
+                  17,
+                  20
+                ],
+                [
+                  17,
+                  21
+                ],
+                [
+                  17,
+                  22
+                ],
+                [
+                  18,
+                  21
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 6,
+              "pixels": [
+                [
+                  22,
+                  7
+                ],
+                [
+                  23,
+                  6
+                ],
+                [
+                  23,
+                  7
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  24,
+                  5
+                ],
+                [
+                  24,
+                  6
+                ],
+                [
+                  24,
+                  7
+                ],
+                [
+                  24,
+                  8
+                ],
+                [
+                  24,
+                  9
+                ],
+                [
+                  25,
+                  6
+                ],
+                [
+                  25,
+                  7
+                ],
+                [
+                  25,
+                  8
+                ],
+                [
+                  26,
+                  7
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 7,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  4
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": [
+            7
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9414,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Planes",
+          "plane": 0,
+          "import": {
+            "variable": "HandRois",
+            "mode": "replace"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 8,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  4
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": [
+            8
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9415,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_PlanesCorrected",
+          "plane": 1,
+          "rois": "RoiArray_Planes"
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "rois": [
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  10,
+                  10
+                ],
+                [
+                  11,
+                  9
+                ],
+                [
+                  11,
+                  10
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  12,
+                  8
+                ],
+                [
+                  12,
+                  9
+                ],
+                [
+                  12,
+                  10
+                ],
+                [
+                  12,
+                  11
+                ],
+                [
+                  12,
+                  12
+                ],
+                [
+                  13,
+                  9
+                ],
+                [
+                  13,
+                  10
+                ],
+                [
+                  13,
+                  11
+                ],
+                [
+                  14,
+                  10
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 5,
+              "pixels": [
+                [
+                  14,
+                  21
+                ],
+                [
+                  15,
+                  20
+                ],
+                [
+                  15,
+                  21
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  16,
+                  19
+                ],
+                [
+                  16,
+                  20
+                ],
+                [
+                  16,
+                  21
+                ],
+                [
+                  16,
+                  22
+                ],
+                [
+                  16,
+                  23
+                ],
+                [
+                  17,
+                  20
+                ],
+                [
+                  17,
+                  21
+                ],
+                [
+                  17,
+                  22
+                ],
+                [
+                  18,
+                  21
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 6,
+              "pixels": [
+                [
+                  22,
+                  7
+                ],
+                [
+                  23,
+                  6
+                ],
+                [
+                  23,
+                  7
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  24,
+                  5
+                ],
+                [
+                  24,
+                  6
+                ],
+                [
+                  24,
+                  7
+                ],
+                [
+                  24,
+                  8
+                ],
+                [
+                  24,
+                  9
+                ],
+                [
+                  25,
+                  6
+                ],
+                [
+                  25,
+                  7
+                ],
+                [
+                  25,
+                  8
+                ],
+                [
+                  26,
+                  7
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 7,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  4
+                ]
+              ],
+              "classification": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 9416,
+        "params": {
+          "methodId": "ophys.deconvolve",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "options": {
+            "frameRate": 30,
+            "tauDecay": 0.5
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "noise": [
+                3.3309,
+                1.8056,
+                2.4238
+              ],
+              "spikeSum": [
+                9.378,
+                6.121,
+                6.247
+              ],
+              "maxCalcium": [
+                4.688,
+                3.06,
+                3.96
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "name": "RoiSignals_Deconvolved",
+              "kind": "array",
+              "size": [
+                40,
+                3
+              ],
+              "min": 0.0,
+              "max": 3.1538,
+              "mean": 0.1812
+            },
+            {
+              "name": "RoiSignals_Denoised",
+              "kind": "array",
+              "size": [
+                40,
+                3
+              ],
+              "min": 0.173,
+              "max": 4.6883,
+              "mean": 2.1037
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 9417,
+        "params": {
+          "methodId": "ophys.deconvolve",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "options": {
+            "frameRate": 30,
+            "tauDecay": 0.5
+          },
+          "column": 2,
+          "maxPoints": 8
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "results": [
+            {
+              "rois": 1,
+              "frames": 40,
+              "noise": [
+                2.4238
+              ],
+              "spikeSum": [
+                6.247
+              ],
+              "maxCalcium": [
+                3.96
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "name": "RoiSignals_Deconvolved",
+              "kind": "array",
+              "size": [
+                40,
+                1
+              ],
+              "min": 0.0,
+              "max": 2.2102,
+              "mean": 0.1562,
+              "trace": {
+                "frames": 40,
+                "step": 5,
+                "values": [
+                  0.1976,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.5182,
+                  0.0,
+                  0.0
+                ]
+              }
+            },
+            {
+              "name": "RoiSignals_Denoised",
+              "kind": "array",
+              "size": [
+                40,
+                1
+              ],
+              "min": 0.173,
+              "max": 3.9603,
+              "mean": 1.8569,
+              "trace": {
+                "frames": 40,
+                "step": 5,
+                "values": [
+                  0.1976,
+                  1.0516,
+                  0.9342,
+                  0.6694,
+                  2.7074,
+                  3.9603,
+                  2.8377,
+                  2.0333
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 9418,
+        "params": {
+          "methodId": "ophys.deconvolve",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "column": 3
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 9419,
+        "params": {
+          "methodId": "ophys.compute_dff",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "column": 1,
+          "maxPoints": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "results": [
+            {
+              "rois": 1,
+              "frames": 40,
+              "baseline": [
+                71.5472
+              ],
+              "maxDff": [
+                7.3852
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "name": "RoiSignals_Dff",
+              "kind": "array",
+              "size": [
+                40,
+                1
+              ],
+              "min": -0.8993,
+              "max": 7.3852,
+              "mean": 1.8917,
+              "trace": {
+                "frames": 40,
+                "step": 8,
+                "values": [
+                  0.6556,
+                  4.6073,
+                  0.6119,
+                  0.5247,
+                  -0.0073
+                ]
+              }
+            }
+          ]
+        }
       }
     }
   ]

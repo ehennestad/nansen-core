@@ -1451,8 +1451,48 @@ classdef Api < handle
                 nansen.internal.getField(params, "add", []), nansen.internal.getField(params, "move", []), ...
                 nansen.internal.getField(params, "merge", []), nansen.internal.getField(params, "pixels", []), restore, ...
                 nansen.internal.getField(params, "cellType", []), nansen.internal.getField(params, "link", []));
+            if isfield(params, "import") && ~(isnumeric(params.import) && isempty(params.import))   % null is none
+                % roimanager's loaded ROIs, or a segmentation's, added to these
+                spec = params.import;
+                if ~(isstruct(spec) && isscalar(spec))
+                    nansen.internal.throwError("invalid-params", "import is {variable} or {path, adapter?}, and a mode")
+                end
+                [document, imported] = nansen.internal.importRoisAt(document, plane, channel, obj.importedRois(project, entity, spec), ...
+                    nansen.internal.getField(spec, "mode", "append"));
+                added = [reshape(added, 1, []), reshape(imported, 1, [])];
+            end
             project.save(entity, variable, document);
             result = struct("rois", {nansen.internal.roiOutlines(nansen.internal.roisAt(document, plane, channel))}, "added", {added});
+        end
+
+        function value = importedRois(obj, project, entity, spec)
+            % The ROIs rois.update imports: another ROI variable of the entity, or a file (as files.resolve takes it)
+            % read by a file adapter (the json adapter for a .json file, when none is given)
+            variable = nansen.internal.getField(spec, "variable", "");
+            if ~isempty(variable) && string(variable) ~= ""
+                value = project.load(entity, string(variable));
+                return
+            end
+            path = nansen.internal.getField(spec, "path", "");
+            if isempty(path) || string(path) == ""
+                nansen.internal.throwError("invalid-params", "import names an ROI variable or a file's path")
+            end
+            resolved = obj.apiFilesResolve(spec);
+            if ~resolved.exists || resolved.isFolder
+                nansen.internal.throwError("file-not-found", "%s is not a file", resolved.path)
+            end
+            [~, name, extension] = fileparts(string(resolved.path));
+            adapterId = nansen.internal.getField(spec, "adapter", "");
+            if isempty(adapterId) || string(adapterId) == ""
+                adapterId = "";
+                if lower(extension) == ".json"
+                    adapterId = "json";
+                end
+            end
+            if string(adapterId) == ""
+                nansen.internal.throwError("invalid-params", "which file adapter reads %s? Give the import's adapter", name + extension)
+            end
+            value = project.adapters().get(string(adapterId)).read(string(resolved.path));
         end
 
         function result = apiRoisDetect(obj, params)
@@ -1625,9 +1665,11 @@ classdef Api < handle
         end
 
         function result = apiMethodsPreview(obj, params)
-            % Run a method on the first frames of one entity's stacks, saving nothing
+            % Run a method on the first frames of one entity's stacks, saving nothing; with a column, on that column of the
+            % signals it loads, giving its outputs of one column as traces
             result = nansen.internal.previewMethod(obj.requireProject(), string(nansen.Api.param(params, "methodId")), obj.entity(params), ...
-                obj.optionsOf(params), string(nansen.internal.getField(params, "preset", "")), double(nansen.internal.getField(params, "frames", 20)));
+                obj.optionsOf(params), string(nansen.internal.getField(params, "preset", "")), double(nansen.internal.getField(params, "frames", 20)), ...
+                nansen.internal.getField(params, "column", []), double(nansen.internal.getField(params, "maxPoints", 2000)));
         end
 
         function result = apiPresetsList(obj, params)

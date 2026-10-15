@@ -179,6 +179,7 @@
   "dashboard": [
     "dashboard/fovmap.js",
     "dashboard/roireview.js",
-    "dashboard/dffexplorer.js"
+    "dashboard/dffexplorer.js",
+    "dashboard/deconvolutionexplorer.js"
   ]
 }

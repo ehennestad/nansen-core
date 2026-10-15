@@ -397,6 +397,74 @@ def update_rois_at(value: Any, plane: int, channel: int, **changes) -> Any:
     return document, added
 
 
+IMPORT_MODES = ("replace", "append", "appendNonOverlapping")   # roimanager's Replace, Append and Append non-overlapping
+
+
+def rois_overlap(a: List[Any], b: List[Any]) -> bool:
+    """Whether two ROIs (lists of [row, column] pixels, each pixel once) overlap as dev's findOverlappingRois finds
+    them: their centres (the mean of their pixels) are less than 10 pixels apart, and they share more than 0.75 of
+    the smaller one's pixels (dev's RoI.calculateOverlap). Unlike dev, ROIs whose centres coincide exactly count too:
+    dev leaves those out to skip an ROI matching itself when a set is compared with itself. MATLAB's
+    nansen.internal.roisOverlap finds the same (the comparisons are made so they come out alike in both)."""
+    if not a or not b:
+        return False
+    dy = sum(p[0] for p in a) / len(a) - sum(p[0] for p in b) / len(b)
+    dx = sum(p[1] for p in a) / len(a) - sum(p[1] for p in b) / len(b)
+    if dy * dy + dx * dx >= 100:
+        return False
+    shared = len({(int(p[0]), int(p[1])) for p in a} & {(int(p[0]), int(p[1])) for p in b})
+    return 4 * shared > 3 * min(len(a), len(b))
+
+
+def import_rois_at(value: Any, plane: int, channel: int, source: Any, mode: str = "append") -> Any:
+    """Combine the ROIs of another ROI file into a file's ROIs at a plane and channel (from 1), as roimanager adds
+    loaded ROIs to those it has. Returns (document, ids of the imported ROIs).
+
+    The source's ROIs at that place (all of them when it has no places) are taken, with their pixels outside the
+    file's imageSize (or the source's, when the file has none) left out, and those with none inside left out
+    altogether. mode is replace (the place's ROIs are removed first), append, or appendNonOverlapping (a source ROI
+    that overlaps one of the place's ROIs, as rois_overlap finds, is left out). The place's ROIs that stay keep
+    everything; the imported ones get the next free ids, in the source's order, as update_rois adds ROIs, and keep
+    their classification, cell type, tags, uid (unless an ROI of the file has it already) and their links among
+    themselves. MATLAB's nansen.internal.importRoisAt does the same.
+    """
+    if mode not in IMPORT_MODES:
+        raise NansenError("invalid-params", f"an import's mode is replace, append or appendNonOverlapping, not {mode!r}")
+    roi_outlines(source)   # checks the shape
+    if "imageSize" not in value and source.get("imageSize"):
+        value = dict(value, imageSize=list(source["imageSize"]))
+    size = value.get("imageSize")
+    inside = lambda p: size is None or (0 <= p[0] < size[0] and 0 <= p[1] < size[1])
+    numbered = [dict(roi, id=roi.get("id", number)) for number, roi in enumerate(source.get("rois", []), start=1)]
+    incoming = []
+    for roi in rois_at(dict(source, rois=numbered), plane, channel)["rois"]:
+        pixels = sorted({(int(p[0]), int(p[1])) for p in roi_outlines({"rois": [roi]})[0]["pixels"] if inside(p)})
+        if pixels:
+            incoming.append((roi, [list(p) for p in pixels]))
+    here = roi_outlines(rois_at(value, plane, channel))
+    remove = [roi["id"] for roi in here] if mode == "replace" else []
+    if mode == "appendNonOverlapping":
+        incoming = [(roi, pixels) for roi, pixels in incoming if not any(rois_overlap(pixels, other["pixels"]) for other in here)]
+    document, added = update_rois_at(value, plane, channel, remove=remove, add=[{"pixels": pixels} for _, pixels in incoming])
+    new_id = {roi["id"]: added[i] for i, (roi, _) in enumerate(incoming)}
+    by_id = {roi["id"]: roi for roi in document["rois"]}
+    taken = {roi.get("uid") for roi in document["rois"] if roi["id"] not in added and roi.get("uid")}
+    for roi, _ in incoming:
+        target = by_id[new_id[roi["id"]]]
+        if roi.get("classification") in CLASSES:
+            target["classification"] = roi["classification"]
+        for name in ("cellType", "tags"):
+            if roi.get(name):
+                target[name] = roi[name]
+        if roi.get("uid") and roi["uid"] not in taken:
+            target["uid"] = roi["uid"]
+            taken.add(roi["uid"])
+        links = sorted(new_id[i] for i in (roi.get("links") or []) if i in new_id)
+        if links:
+            target["links"] = links
+    return document, added
+
+
 def detect_roi(image: Any, point: List[int], radius: int = 6) -> List[List[int]]:
     """An ROI found around a point of an image (height x width), as the viewer's Detect tool does.
 

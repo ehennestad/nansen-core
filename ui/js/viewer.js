@@ -523,9 +523,22 @@
           const problems = form.validate();
           if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
           close();
+          const values = form.getValue();
+          // into the variable on screen, which has ROIs: found into one of their own, then added to them as asked (dev's roimanager)
+          const into = values.output && values.output === state.roiVariable && (await roisOnScreen()).length ? values.output : null;
+          if (into) values.output = `${into}_Found`;
           N.toast("Finding ROIs", `${method.title}…`);
           try {
-            await app.client.request("methods.run", { methodId: method.id, entityType, keys: [key], options: form.getValue() });
+            const run = await app.client.request("methods.run", { methodId: method.id, entityType, keys: [key], options: values });
+            if (into) {
+              const found = run.results && run.results[0] && typeof run.results[0].rois === "number" ? `${run.results[0].rois} ROIs` : "ROIs";
+              const mode = await askImportMode(`${method.title} found ${found}. ${into} has ${state.rois.length} here: should those found replace them, ` +
+                "be appended, or be appended where they do not overlap one of them?");
+              if (!mode) { N.toast("ROIs kept apart", `What ${method.title} found is in ${values.output}`); return; }
+              await edit({ import: { variable: values.output, mode } });
+              N.toast("ROIs found", `${method.title}, added to ${into} (Ctrl+Z undoes it)`, "success");
+              return;
+            }
             state.rois = null;
             state.undo = [];
             state.redo = [];
@@ -535,6 +548,43 @@
           } catch (error) { N.showError(error, `${method.title} failed`); }
         } }],
       });
+    }
+    // Add ROIs to those on screen (dev's roimanager loadRois): those of another ROI variable, replacing them, appended, or
+    // appended where they do not overlap one of them (rois.update's import); Ctrl+Z puts back the ROIs there were
+    const IMPORT_MODES = [["replace", "Replace"], ["append", "Append"], ["appendNonOverlapping", "Append non-overlapping"]];
+    /** Ask how ROIs join those on screen (roimanager's uiGetModeForAddingRois): resolves to a mode, or null. */
+    function askImportMode(message) {
+      return new Promise((resolve) => {
+        N.dialog({
+          title: "Add ROIs", narrow: true, content: h("div.viewer-import-mode", { style: { padding: "18px 20px" } }, message),
+          buttons: [{ label: "Cancel", onClick: (close) => { resolve(null); close(); } }].concat(IMPORT_MODES.map(([mode, label]) => ({
+            label, kind: mode === "append" ? "primary" : "", onClick: (close) => { resolve(mode); close(); } }))),
+          onClose: () => resolve(null),
+        });
+      });
+    }
+    /** The ROIs of the variable on screen, read first when they are not shown. */
+    async function roisOnScreen() {
+      if (!state.rois && state.roiVariable) {
+        state.showRois = true;
+        roiToggle.checked = true;
+        await show();
+      }
+      return state.rois || [];
+    }
+    const addFromButton = h("button.btn.ghost.icon.small.viewer-add-rois-from", { title: "Add ROIs from another ROI variable",
+      on: { click: () => addRoisFrom() } }, N.icon("layers", 13));
+    function addRoisFrom() {
+      const others = roiVariables.filter((v) => v !== state.roiVariable);
+      if (!others.length) { N.toast("No other ROI variables", "The project has no other ROI variable to add ROIs from", "error"); return; }
+      N.menu(addFromButton, [{ heading: "Add ROIs from" }].concat(others.map((name) => ({ label: name, onClick: () => addFrom(name) }))));
+    }
+    async function addFrom(name) {
+      const count = (await roisOnScreen()).length;
+      const mode = count ? await askImportMode(`${state.roiVariable} has ${count} ROIs here: should those of ${name} replace them, be appended, ` +
+        "or be appended where they do not overlap one of them?") : "append";
+      if (!mode) return;
+      await edit({ import: { variable: name, mode } });
     }
     const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of a round ROI (px); Detect looks twice as far",
       on: { change: () => { state.radius = Math.max(1, Math.round(Number(radius.value) || 1)); } } });
@@ -546,7 +596,7 @@
     const roiList = h("ul.viewer-roi-list");
     const roiPanel = h("div.viewer-roi-panel",
       h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
-      h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, h("div.spacer"), radius),
+      h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, addFromButton, h("div.spacer"), radius),
       h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
         h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links")),
       roiList);
