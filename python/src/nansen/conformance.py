@@ -190,11 +190,14 @@ def _run_api_case(case: Path) -> str:
         # ${scratch} and ${case} may appear inside any string, in requests and expected results alike
         for placeholder, path in (("${scratch}", Path(scratch)), ("${case}", case.resolve())):
             session_text = session_text.replace(placeholder, json.dumps(path.as_posix())[1:-1])
-        steps = json.loads(session_text)["steps"]
+        session = json.loads(session_text)
+        steps = session["steps"]
         folder = Path(scratch) / "project"
         if (case / "project").is_dir():
             shutil.copytree(case / "project", folder)
-        api = Api(start_queue=False)
+        if (case / "data").is_dir():   # files viewed without a project
+            shutil.copytree(case / "data", Path(scratch) / "data")
+        api = Api(start_queue=False, viewables=_viewables(session.get("viewables", [])))
         kept: dict = {}  # values a step keeps from its result, as ${name}, for the steps after it
         try:
             for number, step in enumerate(steps, start=1):
@@ -221,6 +224,20 @@ def _run_api_case(case: Path) -> str:
         finally:
             api.close()
     return ""
+
+
+def _viewables(entries: List[dict]):
+    """What the case's app is given to view, as `nansen view` gives it: [{stack, rois?, name?, frameRate?} or
+    {signals, name?, frameRate?}], registered in order (v1, v2, ...)."""
+    from .viewables import Viewables
+
+    viewables = Viewables()
+    for entry in entries:
+        if "signals" in entry:
+            viewables.add_signals(entry["signals"], name=entry.get("name"), frame_rate=entry.get("frameRate"))
+        else:
+            viewables.add_stack(entry["stack"], name=entry.get("name"), rois=entry.get("rois"), frame_rate=entry.get("frameRate"))
+    return viewables
 
 
 def _substitute(value: Any, replacements: dict) -> Any:

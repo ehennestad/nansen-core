@@ -1,5 +1,6 @@
 """Viewing without a project: `nansen view` and nansen.view register files and arrays (viewables), and view.frame,
-view.signal and view.traces serve those only (dev's imviewer, signalviewer and roimanager from the command line)."""
+view.signal and view.traces serve those only (dev's imviewer, signalviewer and roimanager from the command line);
+view.updateRois saves ROIs drawn on them, view.detect finds one around a click and view.run runs a method on them."""
 
 import json
 
@@ -46,11 +47,11 @@ def test_nothing_is_viewable_until_registered_and_no_project_is_needed():
     assert code(api, "files.frame", path="anything.tif") == "no-project"   # files are still read only in a project
 
 
-def test_an_array_is_viewed_with_its_rois_read_only():
+def test_an_array_is_viewed_with_its_rois():
     viewables = Viewables()
     first = viewables.add_stack(stack(), name="movie", rois=ROIS, frame_rate=10)
     api = Api(viewables=viewables)
-    assert call(api, "view.list") == [{"id": first, "kind": "stack", "name": "movie", "path": "", "rois": True}]
+    assert call(api, "view.list") == [{"id": first, "kind": "stack", "name": "movie", "path": "", "rois": True, "roiFile": ""}]
     frame = call(api, "view.frame", viewable=first, frame=2, rois=True)
     assert (frame["height"], frame["width"], frame["frames"], frame["frame"]) == (24, 32, 6, 2)
     assert (frame["low"], frame["high"]) == (2, 100)
@@ -140,6 +141,136 @@ def test_a_mat_file_names_the_signals_variable(tmp_path):
     assert call(Api(viewables=viewables), "view.traces", viewable=sid)["traces"][0]["count"] == 2
 
 
+SQUARE = [[4, 4], [4, 5], [5, 4], [5, 5]]
+
+
+def test_rois_drawn_on_a_file_are_saved_beside_it_and_read_again(tmp_path):
+    np.save(tmp_path / "movie.npy", stack())
+    api = Api(viewables=register(Viewables(), tmp_path / "movie.npy"))
+    beside = tmp_path / "movie_rois.json"
+    assert call(api, "view.list")[0]["roiFile"] == str(beside) and not beside.exists()
+    assert call(api, "view.frame", viewable="v1", rois=True)["rois"] == []   # none yet
+    added = call(api, "view.updateRois", viewable="v1", imageSize=[24, 32], add=[{"pixels": SQUARE}])
+    assert added["added"] == [1] and added["file"] == str(beside)
+    changed = call(api, "view.updateRois", viewable="v1", classify=[{"id": 1, "classification": "accepted"}], cellType=[{"id": 1, "cellType": "axon"}])
+    assert changed["rois"][0]["classification"] == "accepted" and changed["added"] == []
+    saved = json.loads(beside.read_text())
+    assert saved["imageSize"] == [24, 32] and [r["pixels"] for r in saved["rois"]] == [SQUARE]
+    assert saved["rois"][0]["classification"] == "accepted" and saved["rois"][0]["cellType"] == "axon"
+    assert call(api, "view.list")[0]["rois"] is True
+    # undo (restore), and roimanager's other edits, as rois.update makes them
+    restored = call(api, "view.updateRois", viewable="v1", restore=[])
+    assert restored["rois"] == [] and json.loads(beside.read_text())["rois"] == []
+    call(api, "view.updateRois", viewable="v1", restore=[{"id": 1, "pixels": SQUARE, "classification": "accepted"}])
+    moved = call(api, "view.updateRois", viewable="v1", move=[{"id": 1, "rows": 2, "columns": 0}])
+    assert moved["rois"][0]["pixels"] == [[6, 4], [6, 5], [7, 4], [7, 5]]
+    assert code(api, "view.updateRois", viewable="v1", mirror=True) == "invalid-params"   # aligned with nothing
+    assert code(api, "view.updateRois", viewable="v1", remove=[9]) == "invalid-params"
+    # viewed again with no ROIs given: the ones saved beside it
+    again = Api(viewables=register(Viewables(), tmp_path / "movie.npy"))
+    assert [r["pixels"] for r in call(again, "view.frame", viewable="v1", rois=True)["rois"]] == [[[6, 4], [6, 5], [7, 4], [7, 5]]]
+
+
+def test_rois_given_in_a_file_are_saved_back_to_it_and_an_arrays_kept_in_memory(tmp_path):
+    np.save(tmp_path / "movie.npy", stack())
+    (tmp_path / "curated.json").write_text(json.dumps(ROIS))
+    viewables = Viewables()
+    viewables.add_stack(tmp_path / "movie.npy", rois=tmp_path / "curated.json")
+    viewables.add_stack(tmp_path / "movie.npy", rois=ROIS, name="document")   # a document: saved beside the stack
+    viewables.add_stack(stack(), name="array")
+    viewables.add_signals(np.ones((6, 2)), name="dff")
+    api = Api(viewables=viewables)
+    assert [v["roiFile"] for v in call(api, "view.list")] == [
+        str(tmp_path / "curated.json"), str(tmp_path / "movie_rois.json"), "", ""]
+    result = call(api, "view.updateRois", viewable="v1", remove=[2])
+    assert result["file"] == str(tmp_path / "curated.json") and [r["id"] for r in json.loads((tmp_path / "curated.json").read_text())["rois"]] == [1]
+    assert call(api, "view.updateRois", viewable="v2", remove=[1])["file"] == str(tmp_path / "movie_rois.json")
+    # an array's ROIs are kept while the app runs; one viewable's ROIs are imported into another's
+    imported = api.handle({"id": 1, "method": "view.updateRois", "params": {"viewable": "v3", "import": {"viewable": "v1", "mode": "append"}}})["result"]
+    assert imported["file"] == "" and imported["added"] == [1]
+    assert [r["pixels"] for r in call(api, "view.frame", viewable="v3", rois=True)["rois"]] == [ROIS["rois"][0]["pixels"]]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["curated.json", "movie.npy", "movie_rois.json"]
+    for wrong in ({"variable": "RoiArray"}, {"viewable": "v4"}, "v1"):
+        assert api.handle({"id": 1, "method": "view.updateRois", "params": {"viewable": "v3", "import": wrong}})["error"]["code"] == "invalid-params"
+    assert code(api, "view.updateRois", viewable="v4", add=[{"pixels": SQUARE}]) == "invalid-params"   # signals
+
+
+def test_detect_finds_the_cell_around_a_click():
+    viewables = Viewables()
+    viewables.add_stack(stack())
+    viewables.add_signals(np.ones((6, 2)))
+    api = Api(viewables=viewables)
+    found = call(api, "view.detect", viewable="v1", point=[5, 6], radius=4)
+    assert found["pixels"] == [[4, 4], [4, 5], [4, 6], [4, 7], [5, 4], [5, 5], [5, 6], [5, 7], [6, 4], [6, 5], [6, 6], [6, 7],
+                               [7, 4], [7, 5], [7, 6], [7, 7]]
+    assert code(api, "view.detect", viewable="v1", point=[30, 0]) == "invalid-params"
+    assert code(api, "view.detect", viewable="v1", point=5) == "invalid-params"
+    assert code(api, "view.detect", viewable="v2", point=[0, 0]) == "invalid-params"   # signals
+
+
+def moving():
+    """32 x 32 x 8 float64: a periodic texture moved circularly by whole pixels, frame by frame."""
+    rng = np.random.default_rng(3)
+    texture = rng.normal(100, 20, (32, 32))
+    shifts = [(0, 0), (1, 0), (0, -2), (2, 1), (-1, 1), (0, 0), (1, 2), (-2, 0)]
+    return np.stack([np.roll(texture, (-dy, -dx), axis=(0, 1)) for dy, dx in shifts], axis=2)
+
+
+def test_a_method_runs_on_a_file_and_what_it_saves_is_written_beside_it_and_viewable(tmp_path):
+    np.save(tmp_path / "rec.npy", moving())
+    viewables = Viewables()
+    viewables.add_stack(tmp_path / "rec.npy", frame_rate=15)
+    api = Api(viewables=viewables)
+    listed = [m["id"] for m in call(api, "view.methods")]
+    assert {"ophys.motion_correction", "ophys.detect_rois", "ophys.extract_signals"} <= set(listed)
+    assert "ophys.setup_variables" not in listed and "ophys.compute_dff" not in listed   # a tool; no stack
+    run = call(api, "view.run", viewable="v1", methodId="ophys.motion_correction", options={"maxShift": 4, "referenceFrames": 1})
+    assert run["result"] == {"frames": 8, "maxShift": 2, "meanShift": 1.3608} and run["log"]
+    assert run["outputs"] == [
+        {"variable": "TwoPhotonSeries_Corrected", "path": str(tmp_path / "rec_TwoPhotonSeries_Corrected.npy"), "kind": "stack", "viewable": "v2"},
+        {"variable": "MotionCorrectionShifts", "path": str(tmp_path / "rec_MotionCorrectionShifts.npy"), "kind": "data", "viewable": ""}]
+    aligned = np.load(tmp_path / "rec_TwoPhotonSeries_Corrected.npy")
+    assert np.allclose(aligned[4:-4, 4:-4, :], moving()[4:-4, 4:-4, :1])   # each frame back where the first is
+    assert np.load(tmp_path / "rec_MotionCorrectionShifts.npy").tolist()[3] == [-2, -1]   # the scene moved by (-2, -1) in frame 3
+    second = call(api, "view.list")[1]
+    assert second == {"id": "v2", "kind": "stack", "name": "rec.npy · TwoPhotonSeries_Corrected", "rois": False,
+                      "path": str(tmp_path / "rec_TwoPhotonSeries_Corrected.npy"), "roiFile": str(tmp_path / "rec_TwoPhotonSeries_Corrected_rois.json")}
+    frame = call(api, "view.frame", viewable="v2", projection="std")
+    assert frame["frames"] == 8 and frame["adapter"] == "npy" and frame["metadata"] == {"frameRate": 15.0}
+    # run again: the aligned stack is read again, under the same id
+    again = call(api, "view.run", viewable="v1", methodId="ophys.motion_correction", preset="default", options={"maxShift": 4})
+    assert [o["viewable"] for o in again["outputs"]] == ["v2", ""] and len(call(api, "view.list")) == 2
+    # ROI detection on the aligned stack: the ROIs found are viewable over it, and signals are extracted with its ROIs
+    call(api, "view.updateRois", viewable="v2", imageSize=[32, 32], add=[{"pixels": [[10, 10], [10, 11], [11, 10], [11, 11]]}])
+    found = call(api, "view.run", viewable="v2", methodId="ophys.detect_rois", options={"threshold": 0.99, "border": 4})
+    assert found["outputs"][0]["kind"] == "rois" and found["outputs"][0]["viewable"] == "v3"
+    third = call(api, "view.list")[2]
+    assert third["path"] == second["path"] and third["roiFile"] == str(tmp_path / "rec_TwoPhotonSeries_Corrected_RoiArray.json")
+    signals = call(api, "view.run", viewable="v2", methodId="ophys.extract_signals")
+    saved = {o["variable"]: o for o in signals["outputs"]}
+    assert saved["RoiSignals_MeanF"]["kind"] == "data" and np.load(saved["RoiSignals_MeanF"]["path"]).shape[0] == 8
+    assert code(api, "view.run", viewable="v1", methodId="ophys.extract_signals") == "data-not-found"   # v1 has no ROIs
+    # what cannot run on a viewable
+    assert code(api, "view.run", viewable="v1", methodId="ophys.nothing") == "unknown-method"
+    assert code(api, "view.run", viewable="v1", methodId="ophys.setup_variables") == "wrong-entity-type"
+    assert code(api, "view.run", viewable="v1", methodId="ophys.compute_dff") == "invalid-params"
+    assert code(api, "view.run", viewable="v1", methodId="ophys.motion_correction", options={"maxShift": -1}) == "invalid-options"
+    assert code(api, "view.run", viewable="v1", methodId="ophys.motion_correction", preset="nothing") == "unknown-preset"
+    assert code(api, "view.run", viewable="v1", methodId="ophys.motion_correction", options=[1]) == "invalid-params"
+
+
+def test_a_method_run_on_an_array_keeps_what_it_saves_in_memory(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    viewables = Viewables()
+    viewables.add_stack(moving(), name="movie")
+    api = Api(viewables=viewables)
+    run = call(api, "view.run", viewable="v1", methodId="ophys.motion_correction", options={"maxShift": 4, "referenceFrames": 1})
+    assert [(o["path"], o["kind"], o["viewable"]) for o in run["outputs"]] == [("", "stack", "v2"), ("", "data", "")]
+    assert call(api, "view.list")[1]["name"] == "movie · TwoPhotonSeries_Corrected"
+    assert call(api, "view.frame", viewable="v2", frame=3)["frames"] == 8
+    assert list(tmp_path.iterdir()) == []   # nothing written
+
+
 def test_the_cli_registers_what_it_is_given_and_serves_it(tmp_path, monkeypatch):
     import nansen.server
     from nansen.cli import main
@@ -209,18 +340,19 @@ def test_the_dashboard_opens_straight_into_the_viewer(tmp_path):
             assert page.url.endswith("#/view/v1")
             assert page.locator(".viewer-dialog .dialog-head").inner_text().startswith("movie")
             assert page.locator(".nav a").all_inner_texts()[:2] == ["movie", "dff"]
-            # the viewer's tools: projections, binning, export; ROIs read only
+            # the viewer's tools: projections, binning, export; ROIs edited as roimanager's, kept in memory for an array
             page.select_option(".viewer-mode", "max")
             page.wait_for_selector(".viewer-frame:has-text('6 frames')")
             page.select_option(".viewer-mode", "frame")
             page.select_option(".viewer-bin", "mean:5")
             page.wait_for_selector(".viewer-frame:has-text('(1–5)')")
-            assert page.locator(".viewer-dialog .viewer-roi-tools").count() == 0
-            assert page.locator(".viewer-dialog .roi-reject").count() == 0
-            page.click(".viewer-roi-list li[data-roi='1']")   # its signal, live from the array
-            page.wait_for_selector(".viewer-signal-hint:has-text('ROI 1 · live from the stack')")
-            page.keyboard.press("r")   # read only: nothing changes
-            page.wait_for_selector(".viewer-status:has-text('read only')")
+            assert page.locator(".viewer-dialog .viewer-roi-tools").count() == 1
+            assert page.locator(".viewer-dialog .viewer-roi-file").inner_text() == "Kept while the app is open (an array has no folder)"
+            page.click(".viewer-roi-list li[data-roi='2']")   # its signal, live from the array
+            page.wait_for_selector(".viewer-signal-hint:has-text('ROI 2 · live from the stack')")
+            page.keyboard.press("r")   # rejected, in memory
+            page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill.bad")
+            assert viewables.get("v1").rois["rois"][1]["classification"] == "rejected"
             page.click(".viewer-export")
             with page.expect_download() as download:
                 page.click(".menu .item:has-text('Image as PNG')")

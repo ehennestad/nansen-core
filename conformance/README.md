@@ -53,6 +53,8 @@ Like `entities`, plus `requests.json`: a list of `{entityType, key, variable}`.
 
 `session.json` is a list of `steps`, each a protocol `request` and what to `expect`: a `result` or an `error` code. Each case starts a fresh API. `${project}` in a request is replaced by the path of a scratch copy of `project/` (if the case has one), and `${listing}` by the contents of `listing.json`. A step can `keep` values from its result for the steps after it: `"keep": {"first": "/id"}` keeps the result's `id` (a JSON pointer into the result), and a string `"${first}"` in a later request or expected result stands for it.
 
+A case's `data/` is copied to `${scratch}/data` (`${scratch}`, the scratch folder, and `${case}`, the case's folder, may appear inside any string). Its `viewables` are what the app is given to view without a project, as `nansen view` gives them, registered before the first step in order (`v1`, `v2`, ...): `{"stack": path, "rois"?: path, "name"?, "frameRate"?}` or `{"signals": path, "name"?, "frameRate"?}` (see `api/view`).
+
 - A result is compared as a subset: every key in the expected object must be present with the expected value, and arrays must have the same length. Other keys are ignored, so the cases pin down what clients rely on without freezing everything else.
 
 ## Adding a case

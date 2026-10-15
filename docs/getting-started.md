@@ -32,7 +32,7 @@ To look at a recording, an array or a set of signals without making a project, a
 
 ```bash
 nansen view recording.tif                       # any stack file: TIFF, .npy, SciScan .raw, HDF5, video, ...
-nansen view recording.raw --rois rois.json      # with ROIs over it, read only
+nansen view recording.raw --rois rois.json      # with ROIs over it, edited and saved back to rois.json
 nansen view --signals dff.npy --frame-rate 31.25   # frames x N signals in the trace plot (a .mat: --variable)
 ```
 
@@ -49,7 +49,11 @@ app = nansen.view([], Signals=dff, FrameRate=31.25);
 ```
 
 The dashboard opens straight into the viewer, with its projections, binning, filters, colour channels and export.
-Only what was given can be read by the page.
+Only what was given can be read by the page. ROIs are drawn, detected, found (Find ROIs) and edited as in a project,
+as dev's roimanager does on any file: they are saved to the ROI file given, or to `<stem>_rois.json` beside the stack
+(read again the next time the file is viewed); an array's are kept while the app is open. Run… on the Viewer page runs
+a built-in method on a stack, such as motion correction (dev's Align Images): what it saves is written beside the file
+as `<stem>_<variable>.npy` or `.json`, and the aligned stack (or the ROIs found) is listed to be opened in turn.
 
 ### What is in it
 

@@ -2497,3 +2497,74 @@ def test_deconvolution_explorer_shows_what_deconvolve_gives_and_queues_its_setti
     wait_until(lambda: len(api.handle({"id": 2, "method": "tasks.list", "params": {}})["result"]) == 1)
     task = api.handle({"id": 3, "method": "tasks.list", "params": {}})["result"][0]
     assert task["method"]["id"] == "ophys.deconvolve" and task["options"]["values"]["tauDecay"] == 0.3 and task["options"]["values"]["frameRate"] == 30
+
+
+def test_rois_drawn_found_and_saved_and_motion_corrected_on_a_file_viewed_without_a_project(app, page, tmp_path):
+    """dev's command-line roimanager and imviewer on any file: ROIs drawn and found are saved beside it, and Run… corrects
+    its motion (Align Images), the aligned stack then viewed and segmented like the file."""
+    import json
+
+    import numpy as np
+    from nansen.viewables import Viewables
+
+    rng = np.random.default_rng(5)
+    scene = np.round(400 + 40 * rng.random((32, 32)))
+    shifts = [(0, 0), (1, 0), (0, -1), (2, 1), (-1, 2), (0, 0), (-2, -1), (1, -2), (0, 1), (2, 2), (-1, 0), (1, 1)]
+    cell = [(y, x) for y in range(14, 19) for x in range(14, 19) if (y - 16) ** 2 + (x - 16) ** 2 <= 4]
+    frames = []
+    for dy, dx in shifts:
+        frame = scene.copy()
+        brightness = 200 + int(rng.integers(0, 600))   # a cell whose activity changes from frame to frame
+        for y, x in cell:
+            frame[y, x] += brightness
+        frames.append(np.roll(frame, (-dy, -dx), axis=(0, 1)))
+    np.save(tmp_path / "rec.npy", np.stack(frames, axis=2).astype(np.uint16))
+    viewables = Viewables()
+    viewables.add_stack(tmp_path / "rec.npy")
+    api = Api(catalog=Catalog(tmp_path / "catalog.json"), viewables=viewables, start_queue=False)
+    server = serve(api)
+    saved = lambda name: json.loads((tmp_path / name).read_text())["rois"] if (tmp_path / name).is_file() else None
+    try:
+        page.goto(server.url)
+        page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32 · 0 ROIs')")
+        assert page.locator(".viewer-dialog .viewer-roi-file").inner_text() == "Saved to rec_rois.json"
+        # a round ROI where it is clicked, saved to rec_rois.json; rejected, and the rejection undone
+        page.click(".viewer-add")
+        box = page.locator(".viewer-canvas").bounding_box()
+        page.mouse.click(box["x"] + box["width"] * 6.5 / 32, box["y"] + box["height"] * 6.5 / 32)
+        page.wait_for_selector(".viewer-roi-list li[data-roi='1'].selected")
+        wait_until(lambda: saved("rec_rois.json") is not None and len(saved("rec_rois.json")) == 1)
+        page.click(".viewer-add")
+        page.keyboard.press("r")
+        page.wait_for_selector(".viewer-roi-list li[data-roi='1'] .pill.bad")
+        wait_until(lambda: saved("rec_rois.json")[0]["classification"] == "rejected")
+        page.keyboard.press("Control+z")
+        wait_until(lambda: saved("rec_rois.json")[0].get("classification") is None)
+        page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+        # Run…: motion correction, written beside the file; the aligned stack is opened from what it saved
+        page.click(".viewable-list li[data-viewable='v1'] .run-viewable")
+        page.click(".menu .item:has-text('Correct motion')")
+        page.wait_for_selector(".view-run-form")
+        page.click(".dialog-foot button:has-text('Run')")
+        page.wait_for_selector(".view-run-outputs li[data-variable='TwoPhotonSeries_Corrected'] .open-output")
+        assert (tmp_path / "rec_TwoPhotonSeries_Corrected.npy").is_file() and (tmp_path / "rec_MotionCorrectionShifts.npy").is_file()
+        assert page.locator(".view-run-outputs li[data-variable='MotionCorrectionShifts'] .open-output").count() == 0
+        assert page.locator(".nav a").all_inner_texts()[:2] == ["rec.npy", "rec.npy · TwoPhotonSeries_Corrected"]
+        page.click(".view-run-outputs li[data-variable='TwoPhotonSeries_Corrected'] .open-output")
+        page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32 · 0 ROIs')")
+        assert page.locator(".viewer-dialog .dialog-head").inner_text().startswith("rec.npy · TwoPhotonSeries_Corrected")
+        assert page.url.endswith("#/view/v2")
+
+        # Find ROIs: ROI detection on the aligned stack, its ROIs added to the stack's own and saved beside it
+        page.click(".viewer-find-rois")
+        page.click(".menu .item:has-text('Detect ROIs')")
+        page.click(".dialog-foot button:has-text('Find ROIs')")
+        page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32 · 1 ROIs')")
+        found = saved("rec_TwoPhotonSeries_Corrected_rois.json")
+        assert len(found) == 1 and len(found[0]["pixels"]) == 9   # the cell's middle: its pixels with most neighbours in it
+        assert [v["name"] for v in api.handle({"id": 1, "method": "view.list"})["result"]] == [
+            "rec.npy", "rec.npy · TwoPhotonSeries_Corrected", "rec.npy · TwoPhotonSeries_Corrected · RoiArray"]
+    finally:
+        server.shutdown()
+        api.close()

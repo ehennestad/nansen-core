@@ -278,6 +278,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .list .grow { flex: 1; min-width: 0; }
 .list .title { font-weight: 600; }
 .list .sub { color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view-run-form { padding: 14px 18px; }
+.view-run-outputs li { padding: 8px 0; }
+.view-run-outputs .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.view-run-log { max-height: 160px; overflow: auto; font-size: 12px; background: var(--surface-2); padding: 8px; border-radius: 6px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-3); }
 .dot.good { background: var(--good); }
 .dot.warn { background: var(--warn); }
@@ -607,6 +611,7 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .viewer-roi-actions { display: flex; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid var(--border); }
 .viewer-roi-actions .spacer { flex: 1; }
 .viewer-roi-tools { padding-top: 6px; padding-bottom: 6px; }
+.viewer-roi-file { font-size: 12px; padding: 5px 10px; border-bottom: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viewer-roi-actions .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
 .viewer-radius.input { width: 52px; padding: 4px 6px; }
 .viewer-hide { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 10px; color: var(--muted); border-bottom: 1px solid var(--border); }

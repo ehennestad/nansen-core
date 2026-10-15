@@ -213,16 +213,17 @@
    * Open the viewer on a variable of an entity. roiVariables are the entity's variables that hold ROIs, and
    * signalVariables its signals, shown for the selected ROI. options.select is an ROI to select once the ROIs are
    * read, and options.mode the image to start on ("mean", ...); options.onClose is called when the viewer closes.
-   * options.file is a file of no entity (files.frame); options.viewable ({id, name, rois}) something `nansen view` or
-   * nansen.view was given, with no project (view.frame): its ROIs, when it has some, are shown read only.
+   * options.file is a file of no entity (files.frame); options.viewable ({id, name, roiFile}) something `nansen view` or
+   * nansen.view was given, with no project (view.frame), as dev's command-line roimanager: ROIs drawn and edited on it
+   * are saved to its ROI file (view.updateRois; kept in memory for an array), and Detect and Find ROIs work on it
+   * (view.detect, view.run).
    * With options.mirror (true or false), the viewer offers "All aligned sessions": each ROI edit is also made, through the
    * alignment, to the sessions ophys.align_sessions aligned this one with (rois.update's mirror: dev's synchEntries Mirror).
    */
   N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = [], options = {}) {
     let initial = options.select ?? null;
     const viewable = options.viewable || null;
-    if (viewable) roiVariables = viewable.rois ? ["ROIs"] : [];
-    const readOnly = Boolean(viewable);   // no project to save ROIs into
+    if (viewable) roiVariables = ["ROIs"];   // the stack's own, none at first: drawn, found and saved to its ROI file
     // what the stack is called in file names and titles
     const title = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${variable} · ${N.fmt.key(key)}`;
     const stem = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${N.fmt.key(key)}_${variable}`;
@@ -555,7 +556,7 @@
         return;   // circle and detect act on the click
       } else if (event.shiftKey && state.rois) {   // roimanager's multi-select: the ROIs inside a rectangle dragged out
         state.drag = { kind: "box", from: [px, py], to: [px, py], add: event.ctrlKey || event.metaKey };
-      } else if (roi && roi.id === state.selected && !several(event) && !readOnly) {
+      } else if (roi && roi.id === state.selected && !several(event)) {
         state.drag = { kind: "move", roi, from: [Math.floor(py), Math.floor(px)], dy: 0, dx: 0 };
       } else {
         state.drag = { kind: "pan", from: [event.clientX, event.clientY], scroll: [stage.scrollLeft, stage.scrollTop], moved: false };
@@ -674,7 +675,8 @@
       }
       try {
         status.textContent = "Detecting…";
-        const found = await app.client.request("rois.detect", { entityType, key, variable, point: [y, x], radius: Math.max(2 * state.radius, 4),
+        const where = viewable ? { viewable: viewable.id, ...(state.adapter ? { adapter: state.adapter } : {}) } : { entityType, key, variable };
+        const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, point: [y, x], radius: Math.max(2 * state.radius, 4),
           channel: state.channel, plane: state.plane });
         if (found.pixels.length) edit({ add: [{ pixels: found.pixels }] });
         else status.textContent = "No cell found there: click on its bright middle, or draw it";
@@ -715,10 +717,12 @@
     const findButton = h("button.btn.ghost.icon.small.viewer-find-rois", { title: "Find ROIs with a segmentation method", on: { click: () => findRois() } }, N.icon("zap", 13));
     async function findRois() {
       let methods = [];
-      try { methods = await app.client.request("methods.list", { entityType }); } catch (error) { N.showError(error, "Could not list the methods"); return; }
+      // a stack viewed without a project runs the built-in modules' methods (view.methods), in this language only
+      try { methods = await (viewable ? app.client.request("view.methods") : app.client.request("methods.list", { entityType })); }
+      catch (error) { N.showError(error, "Could not list the methods"); return; }
       const language = app.info && app.info.language;
       const found = methods.filter((m) => /\/Segmentation$/.test(m.category || "") && !m.hidden);
-      if (!found.length) { N.toast("No segmentation methods", "The project's modules have none", "error"); return; }
+      if (!found.length) { N.toast("No segmentation methods", viewable ? "No built-in module has one in this language" : "The project's modules have none", "error"); return; }
       // a method only the other language has runs in a worker of that language (methods.run starts one)
       const elsewhere = (m) => language && m.languages && !m.languages.includes(language) ? ` (in ${m.languages[0] === "matlab" ? "MATLAB" : "Python"})` : "";
       N.menu(findButton, [{ heading: "Find ROIs with" }].concat(found.map((m) => ({ label: m.title + elsewhere(m), onClick: () => findWith(m) }))));
@@ -726,8 +730,8 @@
     function findWith(method) {
       const properties = (method.options && method.options.properties) || {};
       const values = {};
-      if ("stack" in properties) values.stack = variable;
-      if ("output" in properties && (properties.output.default || "").startsWith("Roi") && !(properties.output.default || "").startsWith("RoiSignals")) values.output = state.roiVariable;
+      if ("stack" in properties && !viewable) values.stack = variable;   // a viewable is its method's stack, whatever it is called
+      if ("output" in properties && !viewable && (properties.output.default || "").startsWith("Roi") && !(properties.output.default || "").startsWith("RoiSignals")) values.output = state.roiVariable;
       if ("channel" in properties) values.channel = state.channel + 1;
       if ("plane" in properties) values.plane = state.plane + 1;
       const form = N.schemaForm(method.options || {}, values);
@@ -738,6 +742,7 @@
           if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
           close();
           const values = form.getValue();
+          if (viewable) { findInViewable(method, values); return; }
           // into the variable on screen, which has ROIs: found into one of their own, then added to them as asked (dev's roimanager)
           const into = values.output && values.output === state.roiVariable && (await roisOnScreen()).length ? values.output : null;
           if (into) values.output = `${into}_Found`;
@@ -762,6 +767,25 @@
           } catch (error) { N.showError(error, `${method.title} failed`); }
         } }],
       });
+    }
+    /** dev's roimanager autosegmentation on a stack viewed without a project: the method runs on it (view.run), what it
+     * finds is written beside the stack and viewable on its own, and is added to the ROIs on screen as asked. */
+    async function findInViewable(method, values) {
+      N.toast("Finding ROIs", `${method.title}…`);
+      try {
+        const run = await app.client.request("view.run", { viewable: viewable.id, methodId: method.id, options: values });
+        const output = (run.outputs || []).find((o) => o.kind === "rois");
+        if (!output) { N.toast("No ROIs found", `${method.title} saved no ROIs`, "error"); return; }
+        app.viewables = await app.client.request("view.list");
+        app.renderNav();
+        const count = (await roisOnScreen()).length;
+        const found = run.result && typeof run.result.rois === "number" ? `${run.result.rois} ROIs` : "ROIs";
+        const mode = count ? await askImportMode(`${method.title} found ${found}. There are ${count} here: should those found replace them, ` +
+          "be appended, or be appended where they do not overlap one of them?") : "append";
+        if (!mode) { N.toast("ROIs kept apart", `What ${method.title} found is in ${output.path || "the viewer's list"}`); return; }
+        await edit({ import: { viewable: output.viewable, mode } });
+        N.toast("ROIs found", `${method.title}, added to these ROIs (Ctrl+Z undoes it)`, "success");
+      } catch (error) { N.showError(error, `${method.title} failed`); }
     }
     // Add ROIs to those on screen (dev's roimanager loadRois): those of another ROI variable, replacing them, appended, or
     // appended where they do not overlap one of them (rois.update's import); Ctrl+Z puts back the ROIs there were
@@ -788,17 +812,25 @@
     }
     const addFromButton = h("button.btn.ghost.icon.small.viewer-add-rois-from", { title: "Add ROIs from another ROI variable",
       on: { click: () => addRoisFrom() } }, N.icon("layers", 13));
-    function addRoisFrom() {
+    async function addRoisFrom() {
+      if (viewable) {   // the ROIs of another stack viewed, such as those a run found
+        let listed = [];
+        try { listed = await app.client.request("view.list"); } catch (error) { N.showError(error); return; }
+        const others = listed.filter((v) => v.kind === "stack" && v.rois && v.id !== viewable.id);
+        if (!others.length) { N.toast("No other ROIs", "Nothing else viewed here has ROIs to add", "error"); return; }
+        N.menu(addFromButton, [{ heading: "Add ROIs from" }].concat(others.map((v) => ({ label: v.name, onClick: () => addFrom(v.name, { viewable: v.id }) }))));
+        return;
+      }
       const others = roiVariables.filter((v) => v !== state.roiVariable);
       if (!others.length) { N.toast("No other ROI variables", "The project has no other ROI variable to add ROIs from", "error"); return; }
-      N.menu(addFromButton, [{ heading: "Add ROIs from" }].concat(others.map((name) => ({ label: name, onClick: () => addFrom(name) }))));
+      N.menu(addFromButton, [{ heading: "Add ROIs from" }].concat(others.map((name) => ({ label: name, onClick: () => addFrom(name, { variable: name }) }))));
     }
-    async function addFrom(name) {
+    async function addFrom(name, source) {
       const count = (await roisOnScreen()).length;
       const mode = count ? await askImportMode(`${state.roiVariable} has ${count} ROIs here: should those of ${name} replace them, be appended, ` +
         "or be appended where they do not overlap one of them?") : "append";
       if (!mode) return;
-      await edit({ import: { variable: name, mode } });
+      await edit({ import: { ...source, mode } });
     }
     const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of a round ROI (px); Detect looks twice as far",
       on: { change: () => { state.radius = Math.max(1, Math.round(Number(radius.value) || 1)); } } });
@@ -821,7 +853,7 @@
       showNeuropil();
     }
     async function showNeuropil() {
-      if (!state.neuropil || readOnly || state.selected === null || !state.rois || !roisOn() || !last || neuropilShown()) { drawOverlay(); return; }
+      if (!state.neuropil || viewable || state.selected === null || !state.rois || !roisOn() || !last || neuropilShown()) { drawOverlay(); return; }
       const roi = state.selected, rois = state.rois;
       if (neuropilAsked && neuropilAsked.roi === roi && neuropilAsked.rois === rois) return;   // on its way
       neuropilAsked = { roi, rois };
@@ -845,13 +877,15 @@
       }
     }
     const roiList = h("ul.viewer-roi-list");
-    // ROIs read only (no project to save them into): seen, selected and gone through in the gallery, not changed
+    // where a viewable's ROIs are saved (dev's roimanager saves them beside the file): its ROI file, or memory for an array
+    const roiFileNote = viewable ? h("div.muted.viewer-roi-file", { title: viewable.roiFile || "" },
+      viewable.roiFile ? `Saved to ${viewable.roiFile.split(/[\\/]/).pop()}` : "Kept while the app is open (an array has no folder)") : null;
     const roiPanel = h("div.viewer-roi-panel",
-      readOnly ? h("div.viewer-roi-actions", h("span.muted.viewer-read-only-note", "Read only"), h("div.spacer"), galleryButton)
-        : h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, improveButton, h("div.spacer"), undoButton, redoButton, galleryButton),
-      readOnly ? null : h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, addFromButton, h("div.spacer"), radius),
+      h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, improveButton, h("div.spacer"), undoButton, redoButton, galleryButton),
+      h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, addFromButton, h("div.spacer"), radius),
+      roiFileNote,
       h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
-        h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links"), readOnly ? null : neuropilLabel),
+        h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links"), viewable ? null : neuropilLabel),
       roiList);
 
     // The selected ROI's signal under the image: the frame shown is marked, a click on the trace goes to that frame.
@@ -960,11 +994,12 @@
     const enqueue = (task) => (queue = queue.then(task, task));
     function edit(change, history = "record") { return enqueue(() => apply(change, history)); }
     async function apply(change, history) {
-      if (readOnly) { status.textContent = "These ROIs are read only: open them in a project to change them"; return; }
       const before = snapshot();
       try {
-        const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, channel: state.channel, plane: state.plane,
-          ...(last ? { imageSize: [last.height, last.width] } : {}), ...(state.mirror ? { mirror: true } : {}), ...change });   // the size, for a variable's first ROIs
+        // a viewable's ROIs are saved to its ROI file (view.updateRois), an entity's to its ROI variable
+        const where = viewable ? { viewable: viewable.id } : { entityType, key, variable: state.roiVariable, ...(state.mirror ? { mirror: true } : {}) };
+        const result = await app.client.request(viewable ? "view.updateRois" : "rois.update", { ...where, channel: state.channel, plane: state.plane,
+          ...(last ? { imageSize: [last.height, last.width] } : {}), ...change });   // the size, for a variable's first ROIs
         if (history === "record") { state.undo.push(before); state.redo = []; }
         else if (history === "undo") state.redo.push(before);
         else if (history === "redo") state.undo.push(before);
@@ -1006,7 +1041,8 @@
     /** dev's improveRois (i): each selected ROI found again around its middle (rois.detect, as the Detect tool, in twice the radius of a
      * circle of its area), the shape replaced and its id, class and links kept; one undo puts them all back. */
     async function improve() {
-      if (!state.selection.size || !last || readOnly) return;
+      if (!state.selection.size || !last) return;
+      const where = viewable ? { viewable: viewable.id, ...(state.adapter ? { adapter: state.adapter } : {}) } : { entityType, key, variable };
       const changed = [];
       status.textContent = "Improving…";
       try {
@@ -1015,7 +1051,7 @@
           if (!roi || !roi.pixels.length) continue;
           const middle = [0, 1].map((i) => Math.round(roi.pixels.reduce((sum, p) => sum + p[i], 0) / roi.pixels.length));
           const radius = Math.max(4, 2 * Math.round(Math.sqrt(roi.pixels.length / Math.PI)));
-          const found = await app.client.request("rois.detect", { entityType, key, variable, point: middle, radius, channel: state.channel, plane: state.plane });
+          const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, point: middle, radius, channel: state.channel, plane: state.plane });
           if (found.pixels.length) changed.push({ id, pixels: found.pixels });
         }
       } catch (error) { N.showError(error, "Could not improve the ROIs"); return; }
@@ -1074,7 +1110,7 @@
       else if (event.key === "I") setCellType("inhibitory");
       else if (event.key === "X") setCellType("axon");
       else if (event.key === "C") linkRois();
-      else if (event.key === "N" && !readOnly) setNeuropil(!state.neuropil);
+      else if (event.key === "N" && !viewable) setNeuropil(!state.neuropil);
       else if (event.key === "Delete" || event.key === "Backspace") remove();
       else if (event.altKey && event.key.startsWith("Arrow")) {   // move the selected ROI a pixel
         if (state.selected === null) return;
@@ -1681,7 +1717,6 @@
       window.removeEventListener("mouseup", onUp);
     } });
     dialog.el.classList.add("viewer-dialog");
-    if (readOnly) dialog.el.classList.add("viewer-read-only");
     if (options.mode) { state.mode = options.mode; mode.value = options.mode; }
     show();
     return dialog;
