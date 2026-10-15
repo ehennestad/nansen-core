@@ -1067,7 +1067,7 @@ classdef Api < handle
         end
 
         function result = apiViewDetect(obj, params)
-            % The pixels of an ROI found around a point of a registered stack's mean, as rois.detect finds one; not saved
+            % The pixels of an ROI found around a point of a registered stack, as rois.detect finds one; not saved
             item = obj.Viewables.get(nansen.Api.param(params, "viewable"));
             point = nansen.internal.getField(params, "point", []);
             if ~isnumeric(point) || numel(point) ~= 2
@@ -1076,7 +1076,8 @@ classdef Api < handle
             stack = obj.Viewables.stack(item, string(nansen.internal.getField(params, "adapter", "")));
             stack = nansen.internal.pickChannel(stack, double(nansen.internal.getField(params, "channel", 0)), ...
                 double(nansen.internal.getField(params, "plane", 0)));
-            pixels = nansen.internal.detectRoi(nansen.internal.meanImage(stack), point, double(nansen.internal.getField(params, "radius", 6)));
+            pixels = nansen.internal.autodetectRoi(stack, point, double(nansen.internal.getField(params, "radius", 6)), ...
+                nansen.internal.getField(params, "mode", 1));
             result = struct("pixels", {num2cell(pixels, 2)'});
         end
 
@@ -1706,7 +1707,7 @@ classdef Api < handle
         end
 
         function result = apiRoisDetect(obj, params)
-            % The pixels of an ROI found around a point of an image variable (a stack's mean projection)
+            % The pixels of an ROI found around a point of an image or stack variable, in one of dev's autodetection modes
             project = obj.requireProject();
             entity = obj.entity(params);
             point = nansen.internal.getField(params, "point", []);
@@ -1715,7 +1716,8 @@ classdef Api < handle
             end
             stack = nansen.internal.pickChannel(project.openStack(entity, string(nansen.Api.param(params, "variable"))), ...
                 double(nansen.internal.getField(params, "channel", 0)), double(nansen.internal.getField(params, "plane", 0)));
-            pixels = nansen.internal.detectRoi(nansen.internal.meanImage(stack), point, double(nansen.internal.getField(params, "radius", 6)));
+            pixels = nansen.internal.autodetectRoi(stack, point, double(nansen.internal.getField(params, "radius", 6)), ...
+                nansen.internal.getField(params, "mode", 1));
             result = struct("pixels", {num2cell(pixels, 2)'});
         end
 

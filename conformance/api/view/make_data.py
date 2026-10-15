@@ -11,7 +11,9 @@ recording is made from, computed here directly, not with either reader's code:
   motion correction finds them exactly and the aligned scene does not change). Motion correction finds those moves.
   In the aligned stack a cell's pixels change together and the scene's not at all, so a pixel's average correlation
   with its 8 neighbours is the share of them in its cell: ROI detection at threshold 0.45 finds, in each cell, the
-  pixels with 4 or more of their neighbours in it. Detect finds the whole cell around a click.
+  pixels with 4 or more of their neighbours in it. Detect's threshold (mode 0) finds the whole cell around a click;
+  dev's default autodetection (mode 1, flufinder's edge detection) puts the cell's edge where its brightness falls,
+  halfway between its last pixels (at 2 from its centre) and the background (at 3): the pixels within 2.5 of the centre.
 - curated.json: two ROIs given with a second view of the same file, saved back to that file when they change.
 - dff.npy: signals (frames x 2), which have no ROIs and run no methods.
 """
@@ -154,7 +156,9 @@ def main():
     step("view.frame", {"viewable": "v4", "projection": "mean"}, ok({"height": SIZE, "width": SIZE, "frames": FRAMES,
                                                                      "adapter": "npy", "adapters": ["npy"]}))
     # Detect, around a click on a cell of the aligned stack's mean
-    step("view.detect", {"viewable": "v4", "point": list(CELLS[2]), "radius": 4}, ok({"pixels": disc(CELLS[2])}))
+    step("view.detect", {"viewable": "v4", "point": list(CELLS[2]), "radius": 4, "mode": 0}, ok({"pixels": disc(CELLS[2])}))
+    within = [[y, x] for y in range(SIZE) for x in range(SIZE) if (y - CELLS[0][0]) ** 2 + (x - CELLS[0][1]) ** 2 <= 2.5 ** 2]
+    step("view.detect", {"viewable": "v4", "point": list(CELLS[0]), "radius": 3}, ok({"pixels": within}))
     step("view.detect", {"viewable": "v4", "point": [SIZE, 0]}, error("invalid-params"))
     step("view.detect", {"viewable": "v3", "point": [0, 0]}, error("invalid-params"))
     # roimanager's autosegmentation: ROIs found in the aligned stack, viewable over it, and added to its own ROIs

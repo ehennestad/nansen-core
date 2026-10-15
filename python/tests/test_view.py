@@ -200,7 +200,7 @@ def test_detect_finds_the_cell_around_a_click():
     viewables.add_stack(stack())
     viewables.add_signals(np.ones((6, 2)))
     api = Api(viewables=viewables)
-    found = call(api, "view.detect", viewable="v1", point=[5, 6], radius=4)
+    found = call(api, "view.detect", viewable="v1", point=[5, 6], radius=4, mode=0)   # the threshold (dev's modes are 1-5)
     assert found["pixels"] == [[4, 4], [4, 5], [4, 6], [4, 7], [5, 4], [5, 5], [5, 6], [5, 7], [6, 4], [6, 5], [6, 6], [6, 7],
                                [7, 4], [7, 5], [7, 6], [7, 7]]
     assert code(api, "view.detect", viewable="v1", point=[30, 0]) == "invalid-params"

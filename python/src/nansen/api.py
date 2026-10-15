@@ -24,7 +24,8 @@ from .dataset import Dataset
 from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
-from .frames import NEUROPIL_DEFAULTS, _mean as mean_image, _pick as pick_channel, alignment_entry, detect_roi, image_frame, import_rois_at, mirror_rois_at, roi_neuropil, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
+from .autodetect import autodetect_roi
+from .frames import NEUROPIL_DEFAULTS, _pick as pick_channel, alignment_entry, image_frame, import_rois_at, mirror_rois_at, roi_neuropil, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -1043,14 +1044,14 @@ class Api:
         return other.rois if other.rois is not None else {"rois": []}
 
     def view__detect(self, params: dict) -> dict:
-        """The pixels of an ROI found around a point of a registered stack's mean, as rois.detect finds one; not saved."""
+        """The pixels of an ROI found around a point of a registered stack, as rois.detect finds one; not saved."""
         viewable = self.viewables.get(params["viewable"])
         point = params.get("point")
         if not isinstance(point, list) or len(point) != 2:
             raise NansenError("invalid-params", "point is [row, column]")
         stack, _ = self.viewables.stack(viewable, params.get("adapter"))
         stack, _, _ = pick_channel(stack, int(params.get("channel", 0)), int(params.get("plane", 0)))
-        return {"pixels": detect_roi(mean_image(stack), point, int(params.get("radius", 6)))}
+        return {"pixels": autodetect_roi(stack, point, int(params.get("radius", 6)), params.get("mode", 1))}
 
     def view__methods(self, params: dict) -> list:
         """Summaries of the built-in methods view.run runs on a registered stack."""
@@ -1418,15 +1419,15 @@ class Api:
             return {"rois": []}
 
     def rois__detect(self, params: dict) -> dict:
-        """The pixels of an ROI found around a point of an image variable (a stack's mean projection)."""
+        """The pixels of an ROI found around a point of an image or stack variable, in one of dev's autodetection modes
+        (nansen.autodetect; mode 0, the threshold of the stack's mean)."""
         project = self._require_project()
         entity = self._entity(params)
         point = params.get("point")
         if not isinstance(point, list) or len(point) != 2:
             raise NansenError("invalid-params", "point is [row, column]")
         stack, _, _ = pick_channel(project.open_stack(entity, params["variable"]), int(params.get("channel", 0)), int(params.get("plane", 0)))
-        image = mean_image(stack)
-        return {"pixels": detect_roi(image, point, int(params.get("radius", 6)))}
+        return {"pixels": autodetect_roi(stack, point, int(params.get("radius", 6)), params.get("mode", 1))}
 
     def rois__neuropil(self, params: dict) -> dict:
         """An ROI's neuropil, as ophys.extract_signals takes it (nansen.frames.neuropil_masks), among the ROIs of its
