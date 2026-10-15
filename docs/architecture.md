@@ -41,7 +41,7 @@ Each step was usable without a GUI before the next one started.
 |---|---|
 | `ProjectManager` singleton, `nansen.getCurrentProject()` | `Project.open(folder)`, passed explicitly; `nansen.catalog` lists known projects for the app |
 | `project.nansen.json` + `.mat` catalogs | Versioned JSON documents and CSV tables, each with a schema |
-| `DataLocationModel` (root paths, subfolder structure, metadata rules) | A DSM config: locations, roots per environment, folder levels, extraction rules; the same file is read by DSM's own tools. A wizard makes one from the data folders; the Data page sets roots per machine and edits the config as text, checked by DSM before it is saved |
+| `DataLocationModel` (root paths, subfolder structure, metadata rules) | A DSM config: locations, roots per environment, folder levels, extraction rules; the same file is read by DSM's own tools. A wizard makes one from the data folders; the Data page sets roots per machine and edits the locations in forms (several locations, roots, folder levels and their file patterns, naming rules, a writable processed location derived from the raw one, with its folder names), or the config as text; DSM checks it before it is saved |
 | `VariableModel` (file path settings) | Data variables: DSM file pattern or file name template + file adapter; added, edited and deleted on the Data page |
 | `MetaTable` of `Session`/`Subject` objects | Entity tables joined with DSM records; one generic entity, so entity types are documents, not classes |
 | Table variables (with update functions) | Fragments; computed fragments for the ones with update functions |

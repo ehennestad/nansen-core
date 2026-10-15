@@ -548,9 +548,12 @@ def test_edit_the_dataset_config(empty_app, page):
     config = empty_app["folder"] / "demo" / "dataset.dsm.json"
     page.goto(empty_app["server"].url + "#/data")
     page.click(".data-locations .edit-config")
+    page.wait_for_selector(".loc-dialog .loc-list li")
+    page.click(".loc-dialog .dialog-foot button:has-text('Edit as JSON')")   # what the forms do not show
     page.wait_for_selector(".dialog .config-text")
     text = page.locator(".dialog .config-text").input_value()
-    assert text == config.read_text()
+    import json
+    assert json.loads(text) == json.loads(config.read_text())
     page.fill(".dialog .config-text", "{")
     assert page.locator(".dialog .config-status").inner_text().startswith("Not valid JSON")
     page.click(".dialog-foot button:has-text('Save')")
@@ -560,6 +563,55 @@ def test_edit_the_dataset_config(empty_app, page):
     page.click(".dialog-foot button:has-text('Save')")
     page.wait_for_selector(".data-locations td:has-text('Processed data')")
     assert '"displayName": "Processed data"' in config.read_text()
+
+
+def test_edit_data_locations_in_forms(empty_app, page):
+    import json
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    config_file = empty_app["folder"] / "demo" / "dataset.dsm.json"
+    before = json.loads(config_file.read_text())
+    page.goto(empty_app["server"].url + "#/data")
+    page.click(".data-locations .edit-config")
+    page.wait_for_selector(".loc-dialog .loc-list li")
+    assert page.locator(".loc-list li").count() == len(before["dataLocations"])
+    first = before["dataLocations"][0]
+    assert page.locator(".loc-form input[name=displayName]").input_value() == first["displayName"]
+    assert page.locator(".loc-level").count() == len(first["filesystemSource"]["entityLayout"])
+
+    # a location of processed data, written by methods, with folders named from the keys of the raw one's levels
+    page.click(".loc-add")
+    page.click(".menu .item:has-text('Processed data, written by methods')")
+    page.wait_for_selector(".loc-list li.selected:has-text('Processed data')")
+    page.fill(".loc-form input[name=displayName]", "Analysis")
+    page.locator(".loc-roots input[name=rootPath]").fill("data/analysis")
+    page.click(".loc-dialog .dialog-foot button:has-text('Test')")
+    page.wait_for_selector(".loc-found:has-text('A scan would find')")
+    # and a file pattern on the raw location's last level
+    page.click(".loc-list li >> nth=0")
+    page.locator(".loc-level").last.locator(".loc-add-file").click()
+    page.locator(".loc-level").last.locator("input[name=fileName]").last.fill("notes")
+    page.locator(".loc-level").last.locator("input[name=filePattern]").last.fill("\\.txt$")
+    page.click(".loc-dialog .dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".data-locations td:has-text('Analysis')")
+    after = json.loads(config_file.read_text())
+    added = after["dataLocations"][-1]
+    assert added["displayName"] == "Analysis" and added["access"] == "readwrite" and added["dataCategory"] == "processed"
+    assert added["derivedFrom"] == [first["identifier"]] and added["filesystemSource"]["rootStoragePaths"][0]["path"] == "data/analysis"
+    assert added["filesystemSource"]["pathTemplate"].startswith("{rootPath}/")
+    assert [lvl["entityType"] for lvl in added["filesystemSource"]["entityLayout"]] == \
+        [lvl["entityType"] for lvl in first["filesystemSource"]["entityLayout"] if lvl.get("entityType")]
+    assert after["dataLocations"][0]["filesystemSource"]["entityLayout"][-1]["filePatterns"][-1] == {"name": "notes", "pattern": "\\.txt$", "cardinality": "one"}
+    unchanged = {k: v for k, v in after.items() if k != "dataLocations"}
+    assert unchanged == {k: v for k, v in before.items() if k != "dataLocations"}   # the rest of the config is kept
+
+    # what DSM refuses is not saved
+    page.click(".data-locations .edit-config")
+    page.wait_for_selector(".loc-dialog .loc-list li")
+    page.fill(".loc-form input[name=identifier]", "")
+    page.click(".loc-dialog .dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".loc-dialog .form-message:not(.hidden)")
+    assert json.loads(config_file.read_text()) == after
 
 
 def test_hold_reorder_and_change_queued_tasks(empty_app, page):

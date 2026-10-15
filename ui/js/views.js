@@ -1353,7 +1353,7 @@
         h("div.card.data-locations", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
           dataset ? h("span.muted", `environment: ${dataset.environment || "default"}`) : null,
           dataset ? h("button.btn.small.edit-config", { title: "Edit the dataset config: locations, folder levels, file patterns, naming rules",
-            on: { click: () => datasetConfigDialog(app) } }, N.icon("edit", 14), "Edit config") : null),
+            on: { click: () => N.views.dataLocations(app) } }, N.icon("edit", 14), "Edit locations") : null),
           dataset ? h("table.simple", h("thead", h("tr", ["Location", "Category", "Access", "Root", "", ""].map((t) => h("th", t)))),
             h("tbody", dataset.roots.map((root) => {
               const loc = dataset.locations.find((l) => l.id === root.dataLocation) || {};
@@ -1762,11 +1762,12 @@
   }
 
   /* The DSM config as text. DSM checks it before it is written, so a config it refuses is never kept. */
-  async function datasetConfigDialog(app) {
+  /** The dataset config as text, for what the location forms do not show; text, when given, is the forms' edits so far. */
+  N.views.datasetJson = async function (app, text) {
     let got;
     try { got = await app.client.request("dataset.get"); } catch (error) { N.showError(error, "Could not read the dataset config"); return; }
     const editor = h("textarea.input.mono.config-text", { spellcheck: false, style: { width: "100%", height: "52vh", resize: "vertical", fontSize: "12.5px", lineHeight: "1.45", tabSize: "2" } });
-    editor.value = got.text;
+    editor.value = text || got.text;
     const message = h("div.form-message.hidden");
     const status = h("span.muted.config-status");
     const check = () => {
@@ -1805,7 +1806,7 @@
       ],
     });
     editor.focus();
-  }
+  };
 
   /* The modules the project can list: those in its modules folder and the built-in ones. */
   async function modulesDialog(app) {

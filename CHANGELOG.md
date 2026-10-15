@@ -23,6 +23,8 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - Importing a dev project brings its pipelines across, with the tasks that have a method here and their rules for new sessions; tasks and option presets that cannot come across are named in the report.
 - dev's two-photon data comes across: its binary stacks (`ophys.binary_stack`, read and written), its RoiGroup files with their classifications (read and written), and its ROI signals and `Default` `.mat` variables, as named variables of a file (`variableInFile`, new on data variables), which the importer maps them to.
 
+- The Data page edits the data locations in forms, as dev's data location dialogs: name, category, access, roots, folder levels with their file patterns, naming rules, and a processed location written by methods, made from the raw one's levels. Test shows what a scan would find; the JSON stays one click away.
+
 **Methods and tasks**
 
 - Added modules, which provide fragments, methods, file adapters and pipelines. Added the built-in `core` module: notes, file statistics, export, backup and wait methods, an inspect pipeline, and the demo ([modules](docs/reference/modules.md)).
