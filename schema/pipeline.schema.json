@@ -29,6 +29,24 @@
           "options": { "type": "object", "description": "Option values over the preset (or the defaults)." }
         }
       }
+    },
+    "assignWhen": {
+      "type": "array",
+      "description": "Rows added by a sync get this pipeline when they pass every filter (as a view's filters, on the row's values and the attributes read from its names), unless a pipeline before it in the project's order takes them. Needs the core.pipeline column.",
+      "items": {
+        "type": "object",
+        "required": ["column", "op"],
+        "additionalProperties": false,
+        "properties": {
+          "column": { "type": "string" },
+          "op": { "enum": ["in", "range", "is", "contains", "empty", "notEmpty"] },
+          "values": { "type": "array", "items": { "type": ["string", "number", "boolean", "null"] } },
+          "min": { "type": ["string", "number"] },
+          "max": { "type": ["string", "number"] },
+          "value": { "type": "boolean" },
+          "text": { "type": "string" }
+        }
+      }
     }
   }
 }

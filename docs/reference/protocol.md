@@ -77,7 +77,7 @@ Events flow from the core to the frontend:
 | `project.scan` | `listing?` (a DSM DirectoryListing, instead of the file system) | `{scannedAt, records{type: count}, roots, unmatched}` |
 | `scan.unmatched` | `limit?` (default 1000) | `{scannedAt, total, entries[{dataLocation, rootStoragePath, path, reason, detail}]}`: what the last scan found that no entity accounts for, by location and path. Entries a scan skipped on purpose (reason `excluded`) are left out, here and in `project.scan`'s `unmatched` count |
 | `dataset.exclude` | `dataLocation`, `path` (as `scan.unmatched` gives it) | `{dataLocation, level, pattern}`: an `excludePatterns` entry for the entry's exact name is added at its level of the DSM config (once; the text keeps its formatting), and the last scan forgets the entry |
-| `project.sync` | `entityType?` | `{added{type: [keys]}}` |
+| `project.sync` | `entityType?` | `{added{type: [keys]}}`; added rows get the first pipeline whose `assignWhen` filters they pass |
 | `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute\|progress, editable, choices?}], rows[{key, inStore, inTable, values, issues?, progress?}]}; with `core.pipeline`, a `progress` column (the fraction of the pipeline done) and each row's `progress {pipeline, title, done, total}` |
 | `entities.get` | `entityType`, `key` | A row plus `locations`, `issueDetails`, `data` (data variable status), and `pipeline` when it has one: `{pipeline, title, steps[{title, method, queueable, done, finishedAt}], done, total}` |
 | `entities.update` | `entityType`, `key`, `values` | The updated row; key and computed columns are `read-only-column` |

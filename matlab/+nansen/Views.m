@@ -69,6 +69,56 @@ classdef Views
     end
 
     methods (Static)
+        function tf = passes(value, filter)
+            %passes Whether a value passes one filter of a view (as the dashboard applies them); none is [] or empty text
+            if isstring(value) && isscalar(value) && ismissing(value)
+                value = [];
+            end
+            none = isempty(value) || ((ischar(value) || isstring(value)) && strlength(string(value)) == 0) ...
+                || (isnumeric(value) && isscalar(value) && isnan(value));
+            switch string(filter.op)
+                case "in"
+                    tf = false;
+                    for v = asCellRow(nansen.internal.getField(filter, "values", {}))
+                        candidate = v{1};
+                        if isempty(candidate) && ~ischar(candidate) && ~isstring(candidate)
+                            tf = none;
+                        else
+                            tf = ~none && sameValue(candidate, value);
+                        end
+                        if tf
+                            return
+                        end
+                    end
+                case "range"
+                    tf = ~none;
+                    for bound = ["min", "max"]
+                        if ~tf || ~isfield(filter, bound) || isempty(filter.(bound))
+                            continue
+                        end
+                        b = filter.(bound);
+                        if isnumeric(b) && isnumeric(value) && ~islogical(value)
+                            ok = (bound == "min" && value >= b) || (bound == "max" && value <= b);
+                        elseif (ischar(b) || isstring(b)) && (ischar(value) || isstring(value))
+                            ok = (bound == "min" && string(value) >= string(b)) || (bound == "max" && string(value) <= string(b));
+                        else
+                            ok = false;
+                        end
+                        tf = ok;
+                    end
+                case "is"
+                    tf = islogical(value) && isscalar(value) && value == logical(filter.value);
+                case "contains"
+                    tf = ~none && contains(lower(string(value)), lower(string(nansen.internal.getField(filter, "text", ""))));
+                case "empty"
+                    tf = none;
+                case "notEmpty"
+                    tf = ~none;
+                otherwise
+                    tf = true;
+            end
+        end
+
         function view = normalize(view)
             %normalize Give a decoded view the shapes that write back as JSON arrays
             if isfield(view, "keys")
@@ -131,5 +181,17 @@ function items = asCellRow(value)
                 items{i} = [];   % jsondecode makes null in a number array NaN
             end
         end
+    end
+end
+
+function tf = sameValue(a, b)
+    if (ischar(a) || isstring(a)) && (ischar(b) || isstring(b))
+        tf = string(a) == string(b);
+    elseif islogical(a) && islogical(b)
+        tf = a == b;
+    elseif isnumeric(a) && isnumeric(b) && ~islogical(a) && ~islogical(b)
+        tf = a == b;
+    else
+        tf = false;
     end
 end

@@ -115,6 +115,8 @@ A pipeline (`nansen.pipeline`) is an ordered list of method steps, each with an 
 
 An entity can also be assigned a pipeline, as in dev: the `pipeline` column of the `core.pipeline` fragment (`pipelines.assign`). Every method run that completes, in the queue or in the foreground, appends a line per entity to `runs/<entityType>.runs.jsonl`; a step is done for an entity once its method has completed on it. That gives each entity's progress (a column in the table, the steps in its drawer), and `pipelines.queueNext` queues the steps from the first not done on. Entities whose steps are queued or running already are left alone.
 
+A pipeline can also be given to new rows by rule: its `assignWhen` holds filters, as a view's (`in`, `range`, `is`, `contains`, `empty`, `notEmpty`), and when a sync adds rows, each gets the first pipeline (in id order) whose filters it passes, on its key, the attributes read from its folder names and the columns' defaults.
+
 A project's own pipelines are in `pipelines/` and can be made and changed in the dashboard (`pipelines.save`, `pipelines.delete`). One with the id of a module's pipeline is used instead of it.
 
 ## Tasks

@@ -57,3 +57,40 @@ class Views:
             raise NansenError("unknown-view", f"{self.entity_type} has no view {name!r}")
         document["views"] = kept
         write_json(self.path, check_document(document, "nansen.views"))
+
+
+def filter_passes(value: Any, view_filter: dict) -> bool:
+    """Whether a value passes one filter of a view (as the dashboard applies them): none is null or empty text."""
+    none = value is None or value == ""
+    op = view_filter["op"]
+    if op == "in":
+        return any(none if v is None else (v == value and type(v) is type(value) or _same_number(v, value))
+                   for v in view_filter.get("values", []))
+    if op == "range":
+        if none:
+            return False
+        for bound, ok in (("min", lambda b: value >= b), ("max", lambda b: value <= b)):
+            b = view_filter.get(bound)
+            if b is None:
+                continue
+            if not (_numbers(value, b) or (isinstance(value, str) and isinstance(b, str))) or not ok(b):
+                return False
+        return True
+    if op == "is":
+        return value is view_filter.get("value") or (isinstance(value, bool) and value == view_filter.get("value"))
+    if op == "contains":
+        return not none and str(view_filter.get("text", "")).lower() in str(value).lower()
+    if op == "empty":
+        return none
+    if op == "notEmpty":
+        return not none
+    return True
+
+
+def _numbers(*values: Any) -> bool:
+    return all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values)
+
+
+def _same_number(a: Any, b: Any) -> bool:
+    return _numbers(a, b) and a == b
+

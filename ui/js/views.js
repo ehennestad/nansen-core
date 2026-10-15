@@ -773,6 +773,25 @@
     }
     entityType.addEventListener("change", renderSteps);
     await renderSteps();
+    // Rules: rows a sync adds get this pipeline when they pass every one (assignWhen)
+    const RULE_OPS = [["in", "is one of"], ["contains", "contains"], ["empty", "is empty"], ["notEmpty", "is not empty"]];
+    const otherRules = (doc.assignWhen || []).filter((f) => !RULE_OPS.some(([op]) => op === f.op));   // kept as they are
+    let rules = (doc.assignWhen || []).filter((f) => RULE_OPS.some(([op]) => op === f.op)).map((f) => ({
+      column: f.column, op: f.op, text: f.op === "in" ? (f.values || []).filter((v) => v !== null).join(", ") : f.text || "" }));
+    const rulesEl = h("ul.rule-editor", { style: { listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "6px" } });
+    function renderRules() {
+      N.fill(rulesEl, rules.map((rule, i) => {
+        const column = h("input.input.rule-column", { value: rule.column, placeholder: "column, e.g. subject_id", on: { input: (e) => { rule.column = e.target.value.trim(); } } });
+        const op = h("select.input.rule-op", { on: { change: (e) => { rule.op = e.target.value; renderRules(); } } },
+          RULE_OPS.map(([v, label]) => h("option", { value: v, selected: v === rule.op }, label)));
+        const text = h("input.input.rule-text", { value: rule.text, placeholder: rule.op === "in" ? "values, separated by commas" : "text",
+          on: { input: (e) => { rule.text = e.target.value; } } });
+        return h("li", { style: { display: "grid", gridTemplateColumns: "1fr 140px 1fr auto", gap: "6px" } }, column, op,
+          rule.op === "in" || rule.op === "contains" ? text : h("span"),
+          h("button.btn.ghost.icon.small", { type: "button", title: "Remove this rule", on: { click: () => { rules.splice(i, 1); renderRules(); } } }, N.icon("x", 13)));
+      }), h("li", h("button.btn.small.add-rule", { type: "button", on: { click: () => { rules.push({ column: "", op: "in", text: "" }); renderRules(); } } }, N.icon("plus", 14), "Add a rule")));
+    }
+    renderRules();
     const say = (text) => { message.textContent = text; message.classList.toggle("hidden", !text); };
     const field = (label, input, help) => h("div.field", h("label.name", label), input, help ? h("div.help", help) : null);
     N.dialog({
@@ -780,7 +799,10 @@
       content: h("div.form-body", { style: { padding: "18px 20px", display: "grid", gap: "12px" } },
         existing && existing.source !== "project" ? h("div.muted", "The project gets its own copy, used instead of the module's.") : null,
         field("Id", id, "Lower case letters, digits, _ and dots"), field("Title", title), field("Description", description),
-        field("Entity type", entityType), h("div.field", h("label.name", "Steps"), stepsEl), message),
+        field("Entity type", entityType), h("div.field", h("label.name", "Steps"), stepsEl),
+        h("div.field", h("label.name", "Assign to new rows where"), rulesEl,
+          h("div.help", "When a sync adds rows, each gets the first pipeline whose rules it passes: on its key, the values read from its folder names, and the columns' defaults. No rules: assigned by hand only.")),
+        message),
       buttons: [{ label: "Cancel", onClick: (close) => close() }, { label: "Save pipeline", kind: "primary", onClick: async (close) => {
         const chosen = steps.filter((s) => s.method);
         if (!id.value.trim()) return say("Give the pipeline an id");
@@ -790,6 +812,12 @@
           steps: chosen.map((s) => Object.assign({ method: s.method }, s.title ? { title: s.title } : {}, s.preset ? { preset: s.preset } : {}, s.options ? { options: s.options } : {})) };
         if (title.value.trim()) document.title = title.value.trim();
         if (description.value.trim()) document.description = description.value.trim();
+        const filled = rules.filter((r) => r.column);
+        if (filled.some((r) => (r.op === "in" || r.op === "contains") && !r.text.trim())) return say("A rule needs its values or text");
+        if (filled.length || otherRules.length) {
+          document.assignWhen = otherRules.concat(filled.map((r) => r.op === "in" ? { column: r.column, op: "in", values: r.text.split(",").map((v) => v.trim()).filter(Boolean) }
+            : r.op === "contains" ? { column: r.column, op: "contains", text: r.text.trim() } : { column: r.column, op: r.op }));
+        }
         try {
           await app.client.request("pipelines.save", { document });
           close();

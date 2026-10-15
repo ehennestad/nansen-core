@@ -883,3 +883,21 @@ def test_start_a_file_adapter(empty_app, page):
     assert (folder / "python" / "tiff_stack_adapter.py").is_file() and (folder / "matlab" / "TiffStackAdapter.m").is_file()
     options = api.handle({"id": 2, "method": "dataVariables.options", "params": {"entityType": "session"}})["result"]
     assert "tiff_stack" in options["fileAdapters"]
+
+
+def test_a_pipeline_rule_for_new_rows(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/pipelines")
+    page.click(".hero button:has-text('New pipeline')")
+    page.fill(".dialog .field:has-text('Id') input", "m110_only")
+    page.select_option(".dialog .field:has-text('Entity type') select", "session")
+    page.click(".dialog .step-editor button:has-text('Add a step')")
+    page.select_option(".dialog .step-editor li:first-child select", "core.file_stats")
+    page.click(".dialog .add-rule")
+    page.fill(".dialog .rule-column", "subject_id")
+    page.fill(".dialog .rule-text", "m110, m111")
+    page.click(".dialog-foot button:has-text('Save pipeline')")
+    page.wait_for_selector(".card.pipeline[data-id='m110_only']")
+    saved = next(p for p in api.handle({"id": 2, "method": "pipelines.list", "params": {"entityType": "session"}})["result"] if p["id"] == "m110_only")
+    assert saved["assignWhen"] == [{"column": "subject_id", "op": "in", "values": ["m110", "m111"]}]

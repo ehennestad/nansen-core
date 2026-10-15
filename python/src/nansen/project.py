@@ -497,12 +497,24 @@ class Project:
 
     def sync(self, entity_type: str, scan: Optional[Scan] = None) -> List[Dict[str, Any]]:
         """Add a table row for every entity found in the stores but not in the table. Returns their keys."""
+        from .views import filter_passes
+
         table = self.table(entity_type)
+        rules = [p for p in self.pipelines(entity_type) if p.get("assignWhen")] \
+            if "core.pipeline" in self.entity_type(entity_type).get("fragments", []) else []
         added = []
         for entity in self.entities(entity_type, scan):
             if entity.in_table or any(i["code"] == "incomplete-key" for i in entity.issues):
                 continue
-            table.add(dict(entity.key))
+            row = dict(entity.key)
+            if rules:  # the first pipeline whose rule the new row passes, as dev assigns pipelines to new sessions
+                values = dict(table.defaults)
+                values.update(entity.attributes)
+                values.update(entity.key)
+                chosen = next((p for p in rules if all(filter_passes(values.get(f["column"]), f) for f in p["assignWhen"])), None)
+                if chosen is not None:
+                    row["pipeline"] = chosen["id"]
+            table.add(row)
             added.append(dict(entity.key))
         if added:
             table.write()

@@ -1,0 +1,272 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.attach",
+        "id": 2,
+        "params": {
+          "entityType": "session",
+          "fragmentId": "core.pipeline"
+        }
+      },
+      "expect": {
+        "result": {
+          "entityType": "session"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.save",
+        "id": 3,
+        "params": {
+          "document": {
+            "schemaType": "nansen.pipeline",
+            "schemaVersion": "0.1.0",
+            "id": "m110_review",
+            "version": "1.0.0",
+            "title": "m110 review",
+            "entityType": "session",
+            "steps": [
+              {
+                "method": "core.file_stats"
+              }
+            ],
+            "assignWhen": [
+              {
+                "column": "subject_id",
+                "op": "in",
+                "values": [
+                  "m110"
+                ]
+              },
+              {
+                "column": "session_id",
+                "op": "notEmpty"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "m110_review",
+          "assignWhen": [
+            {
+              "column": "subject_id"
+            },
+            {
+              "column": "session_id"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.save",
+        "id": 4,
+        "params": {
+          "document": {
+            "schemaType": "nansen.pipeline",
+            "schemaVersion": "0.1.0",
+            "id": "rest",
+            "version": "1.0.0",
+            "title": "The rest",
+            "entityType": "session",
+            "steps": [
+              {
+                "method": "core.file_stats"
+              }
+            ],
+            "assignWhen": [
+              {
+                "column": "session_id",
+                "op": "contains",
+                "text": "-2025"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "rest"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.save",
+        "id": 5,
+        "params": {
+          "document": {
+            "schemaType": "nansen.pipeline",
+            "schemaVersion": "0.1.0",
+            "id": "never",
+            "version": "1.0.0",
+            "title": "Never",
+            "entityType": "session",
+            "steps": [
+              {
+                "method": "core.file_stats"
+              }
+            ],
+            "assignWhen": [
+              {
+                "column": "session_id",
+                "op": "empty"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "never"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 6,
+        "params": {
+          "listing": "${listing}"
+        }
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 3,
+            "session": 4
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.sync",
+        "id": 7,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "added": {
+            "session": [
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-002"
+              },
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-003"
+              },
+              {
+                "subject_id": "m222",
+                "session_id": "m222-20250524-001"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "id": 8,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "rows": [
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              },
+              "values": {
+                "pipeline": null
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-002"
+              },
+              "values": {
+                "pipeline": "m110_review"
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-003"
+              },
+              "values": {
+                "pipeline": "m110_review"
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m222",
+                "session_id": "m222-20250524-001"
+              },
+              "values": {
+                "pipeline": "rest"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.save",
+        "id": 9,
+        "params": {
+          "document": {
+            "schemaType": "nansen.pipeline",
+            "schemaVersion": "0.1.0",
+            "id": "bad",
+            "version": "1.0.0",
+            "title": "Bad",
+            "entityType": "session",
+            "steps": [
+              {
+                "method": "core.file_stats"
+              }
+            ],
+            "assignWhen": [
+              {
+                "column": "session_id",
+                "op": "near"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "schema-validation"
+      }
+    }
+  ]
+}

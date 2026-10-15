@@ -1,0 +1,4 @@
+{
+  "description": "Pipelines given to new rows by rule, as dev assigns pipelines to new sessions: a sync gives each row it adds the first pipeline (in the project's order) whose assignWhen filters it passes, on its key and the attributes read from its names; rows already in the table, and rows no rule takes, keep none.",
+  "steps": 9
+}

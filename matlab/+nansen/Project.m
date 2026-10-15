@@ -676,16 +676,43 @@ classdef Project < handle
                 scan = []
             end
             table = obj.table(entityType);
+            rules = {};
+            listed = string(nansen.internal.asCellstr(nansen.internal.getField(obj.entityType(entityType), "fragments", {})));
+            if ismember("core.pipeline", listed)
+                for pipeline = obj.pipelines(entityType)
+                    if isfield(pipeline{1}, "assignWhen") && ~isempty(pipeline{1}.assignWhen)
+                        rule = pipeline{1};
+                        rule.assignWhen = nansen.internal.asCellOfStructs(rule.assignWhen);
+                        rules{end + 1} = rule; %#ok<AGROW>
+                    end
+                end
+            end
             added = {};
+            rows = {};
             for candidate = obj.entities(entityType, scan)
                 entity = candidate{1};
                 if entity.inTable() || any(cellfun(@(i) string(i.code) == "incomplete-key", entity.Issues))
                     continue
                 end
                 added{end + 1} = entity.Key; %#ok<AGROW>
+                row = entity.Key;
+                if ~isempty(rules)   % the first pipeline whose rule the new row passes, as dev assigns pipelines to new sessions
+                    values = nansen.internal.mergeStructs(nansen.internal.mergeStructs(table.Defaults, entity.attributes()), entity.Key);
+                    for r = 1:numel(rules)
+                        matched = true;
+                        for f = rules{r}.assignWhen
+                            matched = matched && nansen.Views.passes(nansen.internal.getField(values, f{1}.column, []), f{1});
+                        end
+                        if matched
+                            row.pipeline = char(string(rules{r}.id));
+                            break
+                        end
+                    end
+                end
+                rows{end + 1} = row; %#ok<AGROW>
             end
-            if ~isempty(added)
-                table.addRows(added);   % at once: one row at a time grows the table quadratically
+            if ~isempty(rows)
+                table.addRows(rows);   % at once: one row at a time grows the table quadratically
                 table.write()
             end
         end
