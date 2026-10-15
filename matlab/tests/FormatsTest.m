@@ -242,6 +242,31 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyDocument(ophys.Suite2pRois().read(fullfile(testCase.Files, "Fall.mat")), testCase.Expected.suite2p);
         end
 
+        function readsSuite2pOutputFolders(testCase)   % stat.npy (pickled, read without Python), iscell.npy and ops.npy
+            folder = fullfile(testCase.Files, "suite2p");
+            testCase.verifyDocument(ophys.Suite2pRois().read(fullfile(folder, "plane0", "stat.npy")), testCase.Expected.suite2pNpy);
+            testCase.verifyDocument(ophys.Suite2pRois().read(fullfile(folder, "plane0")), testCase.Expected.suite2pNpy);
+            % the output folder: every plane (plane1's files are pickled with protocol 2), each cell with its plane
+            testCase.verifyDocument(ophys.Suite2pRois().read(folder), testCase.Expected.suite2pFolder);
+            % suite2p's stat.npy holds NumPy arrays and scalars, lists and floats; ops.npy an object that is not read
+            stat = ophys.internal.readPickledNpy(fullfile(folder, "plane1", "stat.npy"));
+            testCase.verifyEqual(size(stat), [1, 1]);
+            testCase.verifyEqual(stat{1}.ypix, int32([3; 3; 4]));
+            testCase.verifyEqual(stat{1}.lam, single([1; 0.75; 0.5]));
+            testCase.verifyEqual(stat{1}.npix, int64(3));
+            testCase.verifyEqual(stat{1}.med, {3, 5});
+            testCase.verifyEqual(stat{1}.overlap, false(3, 1));
+            ops = ophys.internal.readPickledNpy(fullfile(folder, "plane1", "ops.npy"));
+            testCase.verifyEqual([ops{1}.Ly, ops{1}.Lx, ops{1}.fs], [9, 7, 15]);
+            testCase.verifyEmpty(ops{1}.date_proc);
+            iscell_ = ophys.internal.readPickledNpy(fullfile(folder, "plane1", "iscell.npy"));   % numbers: as Npy reads them
+            testCase.verifyEqual(iscell_, [1, 0.9]);
+        end
+
+        function readsVhlabCells(testCase)   % outlines as Polygon ROIs, in dev's 512 x 512
+            testCase.verifyDocument(ophys.VhlabRois().read(fullfile(testCase.Files, "vhlab.mat")), testCase.Expected.vhlab);
+        end
+
         function readsCaimanComponents(testCase)
             testCase.verifyDocument(ophys.CaimanRois().read(fullfile(testCase.Files, "caiman.hdf5")), testCase.Expected.caiman);
         end
@@ -340,6 +365,16 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyError(@() ophys.Suite2pRois().read(fullfile(testCase.Files, "extract.mat")), "nansen:InvalidData");
             testCase.verifyError(@() ophys.ExtractRois().read(fullfile(testCase.Files, "Fall.mat")), "nansen:InvalidData");
             testCase.verifyError(@() ophys.NansenRoiArray().read(fullfile(testCase.Files, "Fall.mat")), "nansen:InvalidData");
+            testCase.verifyError(@() ophys.VhlabRois().read(fullfile(testCase.Files, "Fall.mat")), "nansen:InvalidData");
+            testCase.verifyError(@() ophys.Suite2pRois().read(fullfile(testCase.Files, "images")), "nansen:InvalidData");   % no suite2p planes
+            folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
+            copyfile(fullfile(testCase.Files, "suite2p", "plane1", "stat.npy"), fullfile(folder, "stat.npy"));
+            testCase.verifyError(@() ophys.Suite2pRois().read(fullfile(folder, "stat.npy")), "nansen:InvalidData");   % no ops.npy beside it
+            fid = fopen(fullfile(folder, "cut.npy"), "w");   % a pickle cut off
+            bytes = readBytes(fullfile(testCase.Files, "suite2p", "plane0", "stat.npy"));
+            fwrite(fid, bytes(1:end - 40));
+            fclose(fid);
+            testCase.verifyError(@() ophys.internal.readPickledNpy(fullfile(folder, "cut.npy")), "nansen:InvalidData");
         end
     end
 

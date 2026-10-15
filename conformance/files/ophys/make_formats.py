@@ -29,8 +29,8 @@ def round6(value):
     return math.floor(value * 1e6 + 0.5) / 1e6
 
 
-def roi(number, pixels, classification=None):
-    pixels = sorted({(int(r), int(c)) for r, c in pixels if 0 <= r < HEIGHT and 0 <= c < WIDTH})
+def roi(number, pixels, classification=None, height=HEIGHT, width=WIDTH):
+    pixels = sorted({(int(r), int(c)) for r, c in pixels if 0 <= r < height and 0 <= c < width})
     out = {"id": number, "area": len(pixels),
            "center": [math.floor(np.mean([p[0] for p in pixels]) * 100 + 0.5) / 100, math.floor(np.mean([p[1] for p in pixels]) * 100 + 0.5) / 100],
            "pixels": [list(p) for p in pixels]}
@@ -315,6 +315,69 @@ def suite2p_rois(expected):
                            "rois": [roi(k + 1, zip(ys, xs), None if c else "rejected") for k, (ys, xs, c) in enumerate(cells)]}
 
 
+def suite2p_npy(expected):
+    """suite2p's output folder of .npy files, beside suite2p_binary's data.bin: in plane0 and plane1, stat.npy (an array
+    of a dict per cell, pickled as numpy.save pickles it: ypix and xpix with suite2p's other entries, NumPy arrays and
+    scalars, lists and floats), iscell.npy (cell or not, and the classifier's probability) and ops.npy (a dict with Ly
+    and Lx). plane1's are pickled with protocol 2 (bytes as _codecs.encode), and its ops has a datetime, which readers
+    leave as an unread object. A pixel outside the 9 x 7 image is left out. Read as one plane (plane0/stat.npy), and as
+    the folder: every plane, each cell with its plane."""
+    import datetime
+    import pickle
+    height, width = 9, 7
+    planes = [
+        [([1, 1, 2, 2], [1, 2, 1, 2], 1), ([5, 6, 6, 9], [4, 4, 5, 3], 0)],   # (9, 3) is outside the image
+        [([3, 3, 4], [5, 6, 5], 1)],
+    ]
+    folder = HERE / "suite2p"
+    for number, cells in enumerate(planes):
+        stat = np.empty(len(cells), dtype=object)
+        for k, (ys, xs, _) in enumerate(cells):
+            stat[k] = {"ypix": np.array(ys, dtype=np.int32), "xpix": np.array(xs, dtype=np.int32),
+                       "lam": np.linspace(1, 0.5, len(ys)).astype(np.float32), "med": [float(np.median(ys)), float(np.median(xs))],
+                       "npix": np.int64(len(ys)), "skew": 1.25, "compact": np.float64(1.1), "iplane": number,
+                       "overlap": np.zeros(len(ys), dtype=bool), "neuropil_mask": np.array([0, 3, 8], dtype=np.int64)}
+        iscell = np.array([[c, 0.9 if c else 0.2] for *_, c in cells], dtype=np.float64)
+        plane = folder / f"plane{number}"
+        plane.mkdir(parents=True, exist_ok=True)
+        if number == 0:   # as numpy.save writes it; plane0's ops.npy is suite2p_binary's
+            np.save(plane / "stat.npy", stat)
+        else:             # pickle protocol 2, as older NumPy and Python 2 wrote it
+            ops = {"Ly": height, "Lx": width, "nplanes": 2, "date_proc": datetime.datetime(2024, 5, 1, 12, 30), "fs": 15.0}
+            for name, value in (("stat.npy", stat), ("ops.npy", np.array(ops, dtype=object))):
+                with open(plane / name, "wb") as f:
+                    np.lib.format.write_array_header_1_0(f, {"descr": "|O", "fortran_order": False, "shape": value.shape})
+                    pickle.dump(value, f, protocol=2)
+        np.save(plane / "iscell.npy", iscell)
+    rows = [(ys, xs, c, number + 1) for number, cells in enumerate(planes) for ys, xs, c in cells]
+    expected["suite2pNpy"] = {"imageSize": [height, width], "rois": [
+        roi(k + 1, zip(ys, xs), None if c else "rejected", height, width) for k, (ys, xs, c, _) in enumerate(rows[:len(planes[0])])]}
+    expected["suite2pFolder"] = {"imageSize": [height, width], "rois": [
+        dict(roi(k + 1, zip(ys, xs), None if c else "rejected", height, width), plane=plane, channel=1)
+        for k, (ys, xs, c, plane) in enumerate(rows)]}
+
+
+def vhlab_rois(expected):
+    """dev's VHLab ROI file: cellstructs, a struct array of each cell's outline xi, yi (1-based x and y), with the
+    other fields analyzetpstack saves (type, labels, pixelinds). Read as Polygon ROIs in a 512 x 512 image: the pixels
+    whose centre is inside, by the even-odd rule; the second has a notch, the third is a triangle."""
+    fields = ["dirname", "pixelinds", "xi", "yi", "type", "labels", "index"]
+    outlines = [
+        ([10.5, 14.5, 14.5, 10.5], [20.5, 20.5, 23.5, 23.5]),
+        ([100.2, 108.7, 108.7, 104.0, 100.2], [50.0, 50.0, 57.5, 53.0, 57.5]),
+        ([300.0, 306.0, 303.0], [400.0, 400.0, 406.0]),
+    ]
+    records = np.empty((1, len(outlines)), dtype=[(f, "O") for f in fields])
+    for k, (xs, ys) in enumerate(outlines):
+        records[0, k] = ("t00001", np.array([[1.0]]), np.array([xs]), np.array([ys]), "cell", "", float(k + 1))
+    scipy.io.savemat(HERE / "vhlab.mat", {"cellstructs": records})
+    rois = []
+    for k, (xs, ys) in enumerate(outlines):
+        inside = [(r, c) for r in range(512) for c in range(512) if in_polygon(xs, ys, c + 1, r + 1)]
+        rois.append(roi(k + 1, inside, height=512, width=512))
+    expected["vhlab"] = {"imageSize": [512, 512], "rois": rois}
+
+
 def weights_roi(number, weights, threshold=0.2):
     """The 8-connected area around the peak of pixels whose weight is at least threshold times the peak's."""
     peak = np.unravel_index(np.argmax(weights), weights.shape)
@@ -502,6 +565,8 @@ def main():
     tiff_channels(expected)
     tsm(expected)
     suite2p_rois(expected)
+    suite2p_npy(expected)
+    vhlab_rois(expected)
     caiman_rois(expected)
     extract_rois(expected)
     prairie(expected)

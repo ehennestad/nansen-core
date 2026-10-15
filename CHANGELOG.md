@@ -149,6 +149,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 **Import**
 
 - Added the importer for NANSEN dev projects: `nansen.legacy.importProject` in MATLAB, and `nansen import-legacy` in Python for an exported project ([legacy import](docs/reference/legacy-import.md)).
+- suite2p's ROIs are read from its output folder too (`plane*/stat.npy` with `iscell.npy` and `ops.npy`, a plane or all planes), the pickled `stat.npy` without running anything in it and, in MATLAB, without Python; dev's VHLab ROI files are read as `ophys.vhlab_rois`; an ROI import (`rois.update`) takes a folder for an adapter that reads folders. File adapters are imported from a document or a folder with their code (`adapters.import`, dev's Import File Adapter), and columns from a code file: dev's table variable functions and classes, or a method that computes them (`columns.import`, dev's Import Table Variable); both on the dashboard.
 
 **Tests**
 

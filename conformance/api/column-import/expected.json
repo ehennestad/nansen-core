@@ -1,0 +1,4 @@
+{
+  "description": "Importing a column from a code file (dev's Import Table Variable). dev's table variable function (value = numFrames(sessionObject)) becomes a computed column numFrames, filled by a MATLAB method num_frames that calls dev's function, copied beside it as num_frames_value.m, its type that of the default value it starts with; dev's table variable class becomes a column typed in, with the type and default of its DEFAULT_VALUE and the choices of its LIST_ALTERNATIVES. A method of the rebuild (Python with run, MATLAB with entity, options and context) is copied as the method of a computed column of the file's name, or of the columns given, under its own name or the id given. Columns or fragments the project has, an id that is not lower case, files that are none of these, a missing file, an unknown entity type and an unknown column type are refused.",
+  "steps": 17
+}

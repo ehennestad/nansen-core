@@ -60,7 +60,8 @@
     "adapters/norpix_seq.fileAdapter.nansen.json",
     "adapters/tsm_stack.fileAdapter.nansen.json",
     "adapters/tiff_stack.fileAdapter.nansen.json",
-    "adapters/video_file.fileAdapter.nansen.json"
+    "adapters/video_file.fileAdapter.nansen.json",
+    "adapters/vhlab_rois.fileAdapter.nansen.json"
   ],
   "pipelines": [
     "pipelines/preprocess.pipeline.nansen.json"

@@ -163,5 +163,68 @@ classdef MethodsTest < matlab.unittest.TestCase
         function unknownModule(testCase)
             testCase.verifyError(@() testCase.Project.addModule("nope"), "nansen:UnknownModule");
         end
+
+        function columnsAreImportedFromDevTableVariables(testCase)   % dev's Import Table Variable
+            project = testCase.Project;
+            dev = fullfile(nansen.internal.repoRoot(), "conformance", "api", "column-import", "data", "dev");
+            [fragment, method, files] = project.importColumn("session", fullfile(dev, "numFrames.m"));
+            testCase.verifyEqual(string(files), ["fragments/num_frames.fragment.nansen.json", "methods/num_frames.method.nansen.json", ...
+                "matlab/num_frames.m", "matlab/num_frames_value.m"]);
+            testCase.verifyEqual(method.Languages, "matlab");
+            testCase.verifyEqual(string(fragment.Document.compute.method), "num_frames");
+            testCase.verifyEqual([fragment.Columns.Name], "numFrames");
+            copied = string(nansen.internal.readText(fullfile(project.Folder, "matlab", "num_frames_value.m")));
+            testCase.verifyEqual(copied, replace(string(nansen.internal.readText(fullfile(dev, "numFrames.m"))), ...
+                "function value = numFrames(", "function value = num_frames_value("));
+            % dev's function, given the entity, computes the column: the length of the session id
+            summary = project.updateFragment("session", "num_frames");
+            testCase.verifyEqual(summary.updated, 3);
+            testCase.verifyEqual(project.table("session").Data.numFrames, [6; 6; 6]);
+            [fragment, method] = project.importColumn("session", fullfile(dev, "Quality.m"), Title="Recording quality");
+            testCase.verifyTrue(isnumeric(method) && isnan(method));   % typed in: no method
+            testCase.verifyFalse(isfield(fragment.Document, "compute"));
+            column = nansen.internal.asCellOfStructs(fragment.Document.columns);
+            testCase.verifyEqual(string(column{1}.choices)', ["good", "fair", "poor"]);
+            testCase.verifyEqual(string(column{1}.title), "Recording quality");
+            fragment = project.importColumn("subject", fullfile(dev, "Reviewed.m"));
+            column = nansen.internal.asCellOfStructs(fragment.Document.columns);
+            testCase.verifyEqual([string(column{1}.dataType), string(column{1}.default)], ["boolean", "false"]);
+            testCase.verifyError(@() project.importColumn("session", fullfile(dev, "numFrames.m")), "nansen:ColumnExists");
+            % a method of the rebuild, under another id: its function is named as its file
+            rebuild = fullfile(fileparts(dev), "rebuild");
+            [~, method, files] = project.importColumn("session", fullfile(rebuild, "stack_size.m"), Id="size_of_stack", ...
+                Columns={struct("name", "height", "dataType", "integer"), struct("name", "width", "dataType", "integer")});
+            testCase.verifyEqual(string(files{end}), "matlab/size_of_stack.m");
+            testCase.verifyEqual(method.Id, "size_of_stack");
+            testCase.verifyTrue(startsWith(string(nansen.internal.readText(fullfile(project.Folder, "matlab", "size_of_stack.m"))), ...
+                "function result = size_of_stack(entity, options, context)"));
+            project.updateFragment("session", "size_of_stack");
+            testCase.verifyEqual(project.table("session").Data.width, [6; 6; 6]);
+            testCase.verifyError(@() project.importColumn("session", fullfile(rebuild, "script.m")), "nansen:InvalidParams");
+            testCase.verifyError(@() project.importColumn("session", fullfile(rebuild, "notes.txt")), "nansen:InvalidParams");
+            testCase.verifyError(@() project.importColumn("session", fullfile(rebuild, "missing.m")), "nansen:FileNotFound");
+        end
+
+        function adaptersAreImportedWithTheirCode(testCase)   % dev's Import File Adapter
+            project = testCase.Project;
+            data = fullfile(nansen.internal.repoRoot(), "conformance", "api", "adapter-import", "data");
+            result = project.importAdapter(fullfile(data, "single", "thing.fileAdapter.nansen.json"));
+            testCase.verifyEqual(string(result.adapters{1}.files), ["file-adapters/thing.fileAdapter.nansen.json", ...
+                "python/thing_reader.py", "matlab/ThingReader.m"]);
+            file = fullfile(testCase.Folder, "a.thing");
+            nansen.internal.writeText(file, 'one two three');
+            testCase.verifyEqual(project.adapters().get("thing").read(file), {'one', 'two', 'three'});
+            result = project.importAdapter(fullfile(data, "bundle"));
+            testCase.verifyEqual(string(cellfun(@(a) a.id, result.adapters, UniformOutput=false)), ["three", "lab_two"]);
+            testCase.verifyEqual(string(result.adapters{2}.files), ["file-adapters/lab_two.fileAdapter.nansen.json", ...
+                "python/lab/two.py", "matlab/+lab/TwoAdapter.m"]);
+            rows = fullfile(testCase.Folder, "rows.txt");
+            nansen.internal.writeText(rows, sprintf('1 2 3\n4 5 6\n'));
+            testCase.verifyEqual(project.adapters().get("lab_two").read(rows), {{'1', '2'}; {'4', '5'}});
+            testCase.verifyError(@() project.importAdapter(fullfile(data, "single")), "nansen:AdapterExists");
+            testCase.verifyError(@() project.importAdapter(fullfile(data, "broken", "nocode.fileAdapter.nansen.json")), "nansen:FileNotFound");
+            testCase.verifyError(@() project.importAdapter(fullfile(data, "broken", "halfway.fileAdapter.nansen.json")), "nansen:InvalidParams");
+            testCase.verifyFalse(isfile(fullfile(project.Folder, "matlab", "HalfwayAdapter.m")));   % nothing copied
+        end
     end
 end

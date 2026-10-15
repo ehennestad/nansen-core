@@ -180,3 +180,72 @@ def test_a_method_started_from_the_templates_runs_and_is_reloaded_when_edited(pr
     batch = project.create_method("summarize", "", batch_mode="batch", languages=["python"])
     assert (batch.title, batch.batch_mode, batch.languages) == ("summarize", "batch", ["python"])
     assert "def run(entities, options, context):" in (project.folder / "python" / "summarize.py").read_text()
+
+
+CASES = Path(__file__).resolve().parents[2] / "conformance" / "api"
+
+
+def test_a_column_imported_from_a_python_method_is_computed(project):
+    imported = project.import_column("session", CASES / "column-import" / "data" / "rebuild" / "frame_rate.py", title="Frame rate")
+    assert imported["files"] == ["fragments/frame_rate.fragment.nansen.json", "methods/frame_rate.method.nansen.json", "python/frame_rate.py"]
+    assert project.update_fragment("session", "frame_rate") == {"updated": 3, "failed": []}
+    assert {e.key["session_id"]: e.row["frame_rate"] for e in sessions(project)} == {"m1-001": 30.0, "m1-002": 15.0, "m2-001": 30.0}
+
+
+def test_columns_imported_from_dev_table_variables(project, tmp_path):
+    dev = CASES / "column-import" / "data" / "dev"
+    imported = project.import_column("session", dev / "numFrames.m")
+    assert imported["method"].languages == ["matlab"] and imported["fragment"].document["compute"] == {"method": "num_frames"}
+    wrapper = (project.folder / "matlab" / "num_frames.m").read_text()
+    assert wrapper.startswith("function result = num_frames(entity, options, context)")
+    assert "value = num_frames_value(entity);" in wrapper and 'result = struct("numFrames", {value});' in wrapper
+    copied = (project.folder / "matlab" / "num_frames_value.m").read_text()
+    assert copied == (dev / "numFrames.m").read_text().replace("function value = numFrames(", "function value = num_frames_value(", 1)
+    quality = project.import_column("session", dev / "Quality.m")["fragment"].document
+    assert quality["columns"] == [{"name": "Quality", "dataType": "string", "choices": ["good", "fair", "poor"]}] and "compute" not in quality
+    assert [e.row["Quality"] for e in sessions(project)] == [None, None, None]   # typed in
+    reviewed = project.import_column("subject", dev / "Reviewed.m")["fragment"].document["columns"]
+    assert reviewed == [{"name": "Reviewed", "dataType": "boolean", "default": False}]
+    # a function with CRLF line ends, its default a datetime, named in camel case with an abbreviation
+    (tmp_path / "recordedAtUTC.m").write_bytes(b"function value = recordedAtUTC(sessionObject)\r\n    value = NaT;\r\n"
+                                               b"    if nargin < 1; return; end\r\nend\r\n")
+    imported = project.import_column("session", tmp_path / "recordedAtUTC.m")
+    assert imported["fragment"].id == "recorded_at_utc" and imported["fragment"].document["columns"][0]["dataType"] == "datetime"
+    assert b"\r" not in (project.folder / "matlab" / "recorded_at_utc_value.m").read_bytes()
+
+
+def test_adapters_imported_with_their_code_read_files(project, tmp_path):
+    data = CASES / "adapter-import" / "data"
+    result = project.import_adapter(data / "single" / "thing.fileAdapter.nansen.json")
+    assert [a["id"] for a in result["adapters"]] == ["thing"]
+    (tmp_path / "a.thing").write_text("one two three")
+    assert project.adapters.get("thing").read(tmp_path / "a.thing") == ["one", "two", "three"]
+    project.import_adapter(data / "bundle")
+    (tmp_path / "rows.txt").write_text("1 2 3\n4 5 6\n")
+    assert project.adapters.get("three").read(tmp_path / "rows.txt") == [["1", "2", "3"], ["4", "5", "6"]]
+    assert project.adapters.get("lab_two").read(tmp_path / "rows.txt") == [["1", "2"], ["4", "5"]]
+    # a folder whose second adapter cannot be imported: nothing of it is copied
+    mixed = tmp_path / "mixed"
+    (mixed / "python").mkdir(parents=True)
+    for name, module in (("alpha", "alpha_reader:AlphaReader"), ("beta", "beta_reader:BetaReader")):
+        (mixed / f"{name}.fileAdapter.nansen.json").write_text(json.dumps({
+            "schemaType": "nansen.fileAdapter", "schemaVersion": "0.1.0", "id": name, "version": "1.0.0",
+            "implementations": {"python": module}}))
+    code = "class AlphaReader:\n    def read(self, path):\n        return 1\n\n    def write(self, path, data):\n        pass\n"
+    (mixed / "python" / "alpha_reader.py").write_text(code)
+    with pytest.raises(NansenError) as error:
+        project.import_adapter(mixed)
+    assert error.value.code == "file-not-found"
+    assert not (project.folder / "python" / "alpha_reader.py").exists() and "alpha" not in project.adapters.ids
+    (mixed / "python" / "beta_reader.py").write_text(code.replace("Alpha", "Beta"))
+    assert [a["id"] for a in project.import_adapter(mixed)["adapters"]] == ["alpha", "beta"]
+    # other code where an adapter's would be copied is a clash
+    again = tmp_path / "again"
+    again.mkdir()
+    (again / "gamma.fileAdapter.nansen.json").write_text(json.dumps({
+        "schemaType": "nansen.fileAdapter", "schemaVersion": "0.1.0", "id": "gamma", "version": "1.0.0",
+        "implementations": {"python": "alpha_reader:AlphaReader"}}))
+    (again / "alpha_reader.py").write_text(code.replace("return 1", "return 2"))
+    with pytest.raises(NansenError) as error:
+        project.import_adapter(again)
+    assert error.value.code == "adapter-exists"

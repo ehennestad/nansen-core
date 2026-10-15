@@ -1,0 +1,225 @@
+{
+  "schemaVersion": "0.1.0",
+
+  "entityTypes": [
+    {
+      "name": "subject",
+      "description": "An experimental animal",
+      "isPrimary": true,
+      "identifierRef": "subject_id"
+    },
+    {
+      "name": "session",
+      "description": "One two-photon imaging session",
+      "identifierRef": "session_id"
+    }
+  ],
+
+  "entityRelationships": [
+    {
+      "sourceEntity": "subject",
+      "targetEntity": "session",
+      "relationType": "oneToMany",
+      "relationName": "hasSessions"
+    }
+  ],
+
+  "metadataDefinitions": {
+    "subject_id": {
+      "name": "subject_id",
+      "title": "Subject ID",
+      "dataType": "string",
+      "ofEntity": "subject",
+      "validation": { "pattern": "^m\\d{3}$" }
+    },
+    "session_id": {
+      "name": "session_id",
+      "title": "Session ID",
+      "description": "Subject, date and running number, e.g. m110-20250523-001. Same value in every location.",
+      "dataType": "string",
+      "ofEntity": "session",
+      "validation": { "pattern": "^m\\d{3}-\\d{8}-\\d{3}$" }
+    },
+    "session_date": {
+      "name": "session_date",
+      "title": "Session date",
+      "dataType": "date",
+      "ofEntity": "session"
+    },
+    "session_time": {
+      "name": "session_time",
+      "title": "Session start time",
+      "dataType": "time",
+      "ofEntity": "session"
+    }
+  },
+
+  "dataLocations": [
+    {
+      "identifier": "raw",
+      "uuid": "6f2b7c1e-3d4a-4f8e-9a0b-1c2d3e4f5a61",
+      "displayName": "Raw two-photon data",
+      "description": "As written by the acquisition software: a date folder, then one folder per session named by the acquisition timestamp and the session id.",
+      "dataCategory": "raw",
+      "access": "read",
+      "sourceType": "filesystem",
+      "filesystemSource": {
+        "rootStoragePaths": [
+          {
+            "identifier": "lab-windows",
+            "uuid": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+            "path": "D:\\Data\\TwoPhoton",
+            "volumeName": "DATA",
+            "storageType": "local",
+            "environment": "windows-lab",
+            "priority": 1
+          },
+          {
+            "identifier": "analysis-mac",
+            "uuid": "5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9",
+            "path": "/Volumes/DATA/TwoPhoton",
+            "volumeName": "DATA",
+            "storageType": "external",
+            "environment": "mac-analysis",
+            "priority": 1
+          }
+        ],
+        "entityLayout": [
+          {
+            "name": "dates",
+            "matchPattern": "^\\d{4}_\\d{2}_\\d{2}$",
+            "customProperties": { "examplePath": "2025_05_23" }
+          },
+          {
+            "name": "sessions",
+            "entityType": "session",
+            "matchPattern": "^\\d{4}_\\d{2}_\\d{2}_\\d{2}_\\d{2}_\\d{2}_m\\d{3}-\\d{8}-\\d{3}$",
+            "excludePatterns": ["^\\..*"],
+            "filePatterns": [
+              {
+                "name": "two_photon_movie",
+                "pattern": "\\.raw$",
+                "isRequired": true,
+                "cardinality": "one"
+              },
+              {
+                "name": "acquisition_config",
+                "pattern": "\\.ini$",
+                "cardinality": "one"
+              }
+            ],
+            "customProperties": { "examplePath": "2025_05_23_10_00_00_m110-20250523-001" }
+          }
+        ],
+        "metadataMapping": [
+          {
+            "metadataRef": "session_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "_(m\\d{3}-\\d{8}-\\d{3})$",
+              "entityLayoutLevel": "sessions"
+            }
+          },
+          {
+            "metadataRef": "subject_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "_(m\\d{3})-\\d{8}-\\d{3}$",
+              "entityLayoutLevel": "sessions"
+            }
+          },
+          {
+            "metadataRef": "session_date",
+            "extraction": {
+              "method": "substring",
+              "pattern": ":",
+              "valueFormat": "yyyy_MM_dd",
+              "entityLayoutLevel": "dates"
+            }
+          },
+          {
+            "metadataRef": "session_time",
+            "extraction": {
+              "method": "regex",
+              "pattern": "^\\d{4}_\\d{2}_\\d{2}_(\\d{2}_\\d{2}_\\d{2})_",
+              "valueFormat": "HH_mm_ss",
+              "entityLayoutLevel": "sessions"
+            }
+          }
+        ],
+        "pathTemplate": "{rootPath}/{session_date}/{session_date}_{session_time}_{session_id}"
+      }
+    },
+    {
+      "identifier": "processed",
+      "uuid": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
+      "displayName": "Processed two-photon data",
+      "description": "Written by the analysis tool: one folder per subject, one per session. Folder names are generated from the templates.",
+      "dataCategory": "processed",
+      "access": "readwrite",
+      "sourceType": "filesystem",
+      "derivedFrom": ["raw"],
+      "filesystemSource": {
+        "rootStoragePaths": [
+          {
+            "identifier": "analysis-mac",
+            "path": "/Volumes/DATA/Processed/TwoPhoton",
+            "volumeName": "DATA",
+            "storageType": "external",
+            "environment": "mac-analysis"
+          }
+        ],
+        "entityLayout": [
+          {
+            "name": "subjects",
+            "entityType": "subject",
+            "pathComponentTemplate": "subject-{subject_id}",
+            "matchPattern": "^subject-m\\d{3}$"
+          },
+          {
+            "name": "sessions",
+            "entityType": "session",
+            "pathComponentTemplate": "session-{session_id}",
+            "filePatterns": [
+              {
+                "name": "motion_corrected",
+                "pattern": "^{session_id}_two_photon_motion_corrected\\.tif$",
+                "cardinality": "one"
+              },
+              {
+                "name": "roi_signals",
+                "pattern": "^{session_id}_roi_signals_.+\\.mat$",
+                "cardinality": "many"
+              }
+            ]
+          }
+        ],
+        "metadataMapping": [
+          {
+            "metadataRef": "subject_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "^subject-(.+)$",
+              "entityLayoutLevel": "subjects"
+            }
+          },
+          {
+            "metadataRef": "session_id",
+            "extraction": {
+              "method": "regex",
+              "pattern": "^session-(.+)$",
+              "entityLayoutLevel": "sessions"
+            }
+          }
+        ],
+        "additionalFolders": ["logs"],
+        "pathTemplate": "{rootPath}/subject-{subject_id}/session-{session_id}"
+      }
+    }
+  ],
+
+  "preferences": {
+    "defaultDataLocationIdentifier": "processed",
+    "environmentIdentifier": "mac-analysis"
+  }
+}

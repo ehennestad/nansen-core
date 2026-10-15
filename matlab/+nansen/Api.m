@@ -51,7 +51,7 @@ classdef Api < handle
             names = ["app.info", "app.openUrl", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "view.updateRois", "view.detect", "view.methods", "view.run", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "rois.neuropil", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "columns.import", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "view.updateRois", "view.detect", "view.methods", "view.run", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "adapters.import", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "rois.neuropil", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.setHidden", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.comment", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
@@ -1259,6 +1259,34 @@ classdef Api < handle
                 "fragments", {nansen.internal.asCellstr(nansen.internal.getField(entry, "fragments", {}))});
         end
 
+        function result = apiColumnsImport(obj, params)
+            % A column of an entity type imported from a code file (dev's Import Table Variable): dev's table variable
+            % function or class, or a method of the rebuild that computes it
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            path = nansen.internal.getField(params, "path", "");
+            if ~(ischar(path) || (isstring(path) && isscalar(path))) || strlength(string(path)) == 0
+                nansen.internal.throwError("invalid-params", "columns.import needs the path of a .m or .py file")
+            end
+            path = string(path);
+            if ~nansen.internal.isAbsolutePath(path)   % relative: to the project
+                path = string(fullfile(project.Folder, path));
+            end
+            dataType = nansen.internal.getField(params, "dataType", "");
+            if isempty(dataType)
+                dataType = "";
+            end
+            [fragment, method, files] = project.importColumn(entityType, path, DataType=string(dataType), ...
+                Title=string(nansen.internal.getField(params, "title", "")), Columns=nansen.internal.getField(params, "columns", {}), ...
+                Id=string(nansen.internal.getField(params, "id", "")));
+            obj.emit("project", struct("name", char(project.Name)));
+            obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
+            if isa(method, "nansen.Method")
+                method = method.summary();
+            end
+            result = struct("fragment", nansen.Api.fragmentSummary(fragment), "method", method, "files", {files});
+        end
+
         function result = apiColumnsReset(obj, params)
             project = obj.requireProject();
             entityType = string(nansen.Api.param(params, "entityType"));
@@ -1319,6 +1347,22 @@ classdef Api < handle
             extensions = string(nansen.internal.asCellstr(nansen.internal.getField(params, "extensions", {})));
             result = project.createAdapter(string(nansen.Api.param(params, "id")), ...
                 Title=string(nansen.internal.getField(params, "title", "")), Extensions=reshape(extensions, 1, []), Languages=languages);
+            obj.emit("project", struct("name", char(project.Name)));
+        end
+
+        function result = apiAdaptersImport(obj, params)
+            % File adapters copied into the project from a document file or a folder, with their code (dev's Import
+            % File Adapter)
+            project = obj.requireProject();
+            path = nansen.internal.getField(params, "path", "");
+            if ~(ischar(path) || (isstring(path) && isscalar(path))) || strlength(string(path)) == 0
+                nansen.internal.throwError("invalid-params", "adapters.import needs the path of a file adapter document or a folder")
+            end
+            path = string(path);
+            if ~nansen.internal.isAbsolutePath(path)   % relative: to the project
+                path = string(fullfile(project.Folder, path));
+            end
+            result = project.importAdapter(path);
             obj.emit("project", struct("name", char(project.Name)));
         end
 
@@ -1677,7 +1721,8 @@ classdef Api < handle
 
         function value = importedRois(obj, project, entity, spec)
             % The ROIs rois.update imports: another ROI variable of the entity, or a file (as files.resolve takes it)
-            % read by a file adapter (the json adapter for a .json file, when none is given)
+            % read by a file adapter (the json adapter for a .json file, when none is given), or a folder read by the
+            % adapter given, as ophys.suite2p_rois reads suite2p's output folder
             variable = nansen.internal.getField(spec, "variable", "");
             if ~isempty(variable) && string(variable) ~= ""
                 value = project.load(entity, string(variable));
@@ -1688,21 +1733,34 @@ classdef Api < handle
                 nansen.internal.throwError("invalid-params", "import names an ROI variable or a file's path")
             end
             resolved = obj.apiFilesResolve(spec);
-            if ~resolved.exists || resolved.isFolder
-                nansen.internal.throwError("file-not-found", "%s is not a file", resolved.path)
+            if ~resolved.exists
+                nansen.internal.throwError("file-not-found", "%s is not a file or folder", resolved.path)
             end
             [~, name, extension] = fileparts(string(resolved.path));
             adapterId = nansen.internal.getField(spec, "adapter", "");
             if isempty(adapterId) || string(adapterId) == ""
                 adapterId = "";
-                if lower(extension) == ".json"
+                if lower(extension) == ".json" && ~resolved.isFolder
                     adapterId = "json";
                 end
             end
             if string(adapterId) == ""
                 nansen.internal.throwError("invalid-params", "which file adapter reads %s? Give the import's adapter", name + extension)
             end
-            value = project.adapters().get(string(adapterId)).read(string(resolved.path));
+            reader = project.adapters().get(string(adapterId));
+            if ~resolved.isFolder
+                value = reader.read(string(resolved.path));
+                return
+            end
+            try
+                value = reader.read(string(resolved.path));
+            catch err
+                if isa(err, "nansen.NansenError") && err.Code ~= "file-not-found"
+                    rethrow(err)
+                end
+                % an adapter of files, given a folder: it cannot open it
+                nansen.internal.throwError("invalid-data", "%s does not read the folder %s", adapterId, name + extension)
+            end
         end
 
         function result = apiRoisDetect(obj, params)

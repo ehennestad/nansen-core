@@ -1188,6 +1188,21 @@ class Api:
         self.emit("entities", {"entityTypes": [params["entityType"]]})
         return {"reset": count}
 
+    def columns__import(self, params: dict) -> dict:
+        """A column of an entity type imported from a code file (dev's Import Table Variable): dev's table variable
+        function or class, or a method of the rebuild that computes it."""
+        project = self._require_project()
+        if not isinstance(params.get("path"), str) or not params["path"]:
+            raise NansenError("invalid-params", "columns.import needs the path of a .m or .py file")
+        path = Path(params["path"]).expanduser()
+        imported = project.import_column(params["entityType"], path if path.is_absolute() else project.folder / path,
+                                         params.get("dataType"), params.get("title", ""), params.get("columns"), params.get("id"))
+        self.emit("project", {"name": project.name})
+        self.emit("entities", {"entityTypes": [params["entityType"]]})
+        method = imported["method"]
+        return {"fragment": self._fragment_summary(imported["fragment"]), "method": method.summary() if method else None,
+                "files": imported["files"]}
+
     def fragments__update(self, params: dict) -> dict:
         project = self._require_project()
         summary = project.update_fragment(params["entityType"], params["fragmentId"], params.get("keys"))
@@ -1216,6 +1231,17 @@ class Api:
         project = self._require_project()
         result = project.create_adapter(params["id"], params.get("title", ""), params.get("extensions", []),
                                         params.get("languages", ["python", "matlab"]))
+        self.emit("project", {"name": project.name})
+        return result
+
+    def adapters__import(self, params: dict) -> dict:
+        """File adapters copied into the project from a document file or a folder, with their code (dev's Import File
+        Adapter)."""
+        project = self._require_project()
+        if not isinstance(params.get("path"), str) or not params["path"]:
+            raise NansenError("invalid-params", "adapters.import needs the path of a file adapter document or a folder")
+        path = Path(params["path"]).expanduser()
+        result = project.import_adapter(path if path.is_absolute() else project.folder / path)   # relative: to the project
         self.emit("project", {"name": project.name})
         return result
 
@@ -1393,19 +1419,28 @@ class Api:
 
     def _imported_rois(self, project, entity, spec: dict) -> Any:
         """The ROIs rois.update imports: another ROI variable of the entity, or a file (as files.resolve takes it) read
-        by a file adapter (the json adapter for a .json file, when none is given)."""
+        by a file adapter (the json adapter for a .json file, when none is given), or a folder read by the adapter
+        given, as ophys.suite2p_rois reads suite2p's output folder."""
         if spec.get("variable"):
             return project.load(entity, spec["variable"])
         if not spec.get("path"):
             raise NansenError("invalid-params", "import names an ROI variable or a file's path")
         resolved = self.files__resolve(spec)
-        if not resolved["exists"] or resolved["isFolder"]:
-            raise NansenError("file-not-found", f"{resolved['path']} is not a file")
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} is not a file or folder")
         path = Path(resolved["path"])
-        adapter = spec.get("adapter") or ("json" if path.suffix.lower() == ".json" else None)
+        adapter = spec.get("adapter") or ("json" if path.suffix.lower() == ".json" and not resolved["isFolder"] else None)
         if not adapter:
             raise NansenError("invalid-params", f"which file adapter reads {path.name}? Give the import's adapter")
-        return project.adapters.get(adapter).read(path)
+        if not resolved["isFolder"]:
+            return project.adapters.get(adapter).read(path)
+        reader = project.adapters.get(adapter)
+        try:
+            return reader.read(path)
+        except Exception as error:   # an adapter of files, given a folder: it cannot open it
+            if isinstance(error, NansenError) and error.code != "file-not-found":
+                raise
+            raise NansenError("invalid-data", f"{adapter} does not read the folder {path.name}") from None
 
     @staticmethod
     def _rois_of(project, entity, name, cached=True):

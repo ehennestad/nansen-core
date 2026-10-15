@@ -1,0 +1,11 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "lab_two",
+  "version": "1.0.0",
+  "title": "Two-column files",
+  "implementations": {
+    "python": "lab.two:TwoAdapter",
+    "matlab": "lab.TwoAdapter"
+  }
+}

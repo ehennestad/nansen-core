@@ -213,7 +213,8 @@
       const available = (app.fragments || []).filter((f) => !type.fragments.includes(f.id) && !f.computed);
       if (grid.order || Object.keys(grid.widths).length) items.push({ label: "Reset the column order and widths", icon: "refresh", onClick: () => grid.resetLayout() });
       items.push({ heading: "Add" }, { label: "Add a column…", icon: "plus", onClick: () => addColumnDialog(app, entityType) },
-        { label: "Add a computed column…", icon: "zap", onClick: () => computedColumnDialog(app, entityType) });
+        { label: "Add a computed column…", icon: "zap", onClick: () => computedColumnDialog(app, entityType) },
+        { label: "Import a column from a file…", icon: "download", onClick: () => importColumnDialog(app, entityType) });
       for (const f of available) {
         items.push({ label: `${f.title} (${f.columns.map((c) => c.name).join(", ")})`, icon: "layers", onClick: async () => {
           try {
@@ -1657,6 +1658,11 @@
             }))) : h("div.card-body.muted", "No dataset.")),
         h("div.card.data-variables", h("div.card-head", N.icon("file"), h("h3", "Data variables"), h("div.spacer"), cacheInfo, clearCache,
           h("button.btn.small.ghost.new-adapter", { title: "Start a file adapter of the project, for a file format NANSEN cannot read yet", on: { click: () => newAdapterDialog(app) } }, N.icon("file"), "New file adapter"),
+          h("button.btn.small.ghost.import-adapter", { title: "Copy a file adapter and its code into the project",
+            on: { click: (event) => N.menu(event.currentTarget, [{ heading: "Import a file adapter" },
+              { label: "From a file…", icon: "file", onClick: () => importAdapterDialog(app, "file") },
+              { label: "From a folder…", icon: "folder", onClick: () => importAdapterDialog(app, "folder") }]) } },
+            N.icon("download"), "Import file adapter"),
           dataset && project.entityTypes.length ? h("button.btn.small.add-variable", { on: { click: () => dataVariableDialog(app) } }, N.icon("plus"), "Add data variable") : null),
           variables.length ? h("table.simple", h("thead", h("tr", ["Name", "Entity", "Location", "File", "Adapter", ""].map((t) => h("th", t)))),
             h("tbody", variables.map((v) => h("tr", { dataset: { variable: v.name } }, h("td", h("b", v.title || v.name), v.title ? h("div.muted.mono", v.name) : null),
@@ -2173,6 +2179,28 @@
     });
   }
 
+  /* Copy file adapters into the project (dev's Import File Adapter, From File and From Folder): a document with its
+     code, or every one in a folder. */
+  function importAdapterDialog(app, kind) {
+    formDialog({
+      title: kind === "file" ? "Import a file adapter" : "Import file adapters from a folder",
+      intro: kind === "file"
+        ? "Give a file adapter document (.fileAdapter.nansen.json). Its code, found beside it or in the python/ and matlab/ folders there or beside its folder, is copied with it into the project's python/ and matlab/ folders."
+        : "Every file adapter document in the folder, and in its file-adapters/ and adapters/ folders (a project's or a module's), is copied into the project with its code. Nothing is copied if one of them cannot be.",
+      label: "Import",
+      required: ["path"],
+      schema: { type: "object", properties: {
+        path: { type: "string", title: kind === "file" ? "File adapter document" : "Folder", description: "A full path, or one relative to the project folder" },
+      } },
+      submit: async (values) => {
+        const result = await app.client.request("adapters.import", { path: values.path });
+        app.render();
+        N.toast(result.adapters.length === 1 ? "File adapter imported" : `${result.adapters.length} file adapters imported`,
+          result.adapters.map((a) => a.id).join(", "), "success", 8000);
+      },
+    });
+  }
+
   /* Start a project method: its document and a file per language to fill in. */
   function newMethodDialog(app) {
     const types = app.project.entityTypes.map((t) => t.name);
@@ -2313,6 +2341,35 @@
         await app.reloadProject();
         app.render();
         N.toast("Computed column added", result.files.join(" · "), "success", 8000);
+      },
+    });
+  }
+
+  /* Import a column from a code file (dev's Import Table Variable): dev's table variable function or class, or a method
+     that computes it, in MATLAB or Python. */
+  function importColumnDialog(app, entityType) {
+    formDialog({
+      title: "Import a column",
+      intro: "Give a code file. A table variable of NANSEN's dev version (a function value = name(sessionObject), or a class " +
+        "that derives from TableVariable) becomes the column of its name: computed by its function, which is copied into the " +
+        "project's matlab/ folder and given the entity, or typed in, with the class's default and list of values. A method " +
+        "(Python's run(entity, options, context), or a MATLAB function of the file's name with those arguments) is copied " +
+        "into the project and computes a column of the file's name.",
+      label: "Import",
+      required: ["path"],
+      schema: { type: "object", properties: {
+        path: { type: "string", title: "File (.m or .py)", description: "A full path, or one relative to the project folder" },
+        title: { type: "string", title: "Title" },
+        dataType: { type: "string", title: "Type", enum: ["", "number", "integer", "string", "boolean", "date", "datetime"],
+          enumTitles: ["As the file says (else number)", "number", "integer", "string", "boolean", "date", "datetime"], default: "" },
+      } },
+      submit: async (values) => {
+        const result = await app.client.request("columns.import", { entityType, path: values.path, title: values.title || "",
+          ...(values.dataType ? { dataType: values.dataType } : {}) });
+        await app.reloadProject();
+        app.render();
+        N.toast(result.method ? "Computed column imported" : "Column imported",
+          `${result.fragment.columns.map((c) => c.name).join(", ")} · ${result.files.join(" · ")}`, "success", 8000);
       },
     });
   }

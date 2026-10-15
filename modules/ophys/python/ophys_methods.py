@@ -2138,7 +2138,9 @@ def suite2p(entity, options, context):
                     "min_neuropil_pixels": int(options["minNeuropilPixels"])})
         s2p.run_s2p(ops=ops, db={"data_path": [str(folder)], "tiff_list": ["input.tif"], "save_path0": str(folder)})
     plane = folder / "suite2p" / "plane0"
-    stat = np.load(plane / "stat.npy", allow_pickle=True)
+    from nansen.adapters import load_object
+    # unpickled as ophys.suite2p_rois reads it (only NumPy's classes), so CI's real suite2p checks that reader too
+    stat = load_object("ophys_adapters:read_pickled_npy", Path(__file__).resolve().parent)(plane / "stat.npy")
     keep = np.load(plane / "iscell.npy")[:, 0] > 0 if options["onlyCells"] else np.ones(len(stat), dtype=bool)
     rois = [_roi(n + 1, sorted(zip(cell["ypix"].tolist(), cell["xpix"].tolist())))
             for n, cell in enumerate(c for c, k in zip(stat, keep) if k)]

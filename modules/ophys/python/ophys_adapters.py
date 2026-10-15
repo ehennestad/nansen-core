@@ -5,6 +5,7 @@ The stacks of the microscopes' files carry what the files tell about the recordi
 """
 
 import math
+import pickle
 import re
 from pathlib import Path
 
@@ -1075,29 +1076,189 @@ def _circle_pixels(x, y, r):
 
 
 class Suite2pRois:
-    """suite2p's Fall.mat: stat (each cell's 0-based ypix and xpix), iscell (what suite2p's classifier keeps)
-    and ops (Ly, Lx). Cells the classifier leaves out are classified rejected."""
+    """suite2p's cells: stat (each cell's 0-based ypix and xpix), iscell (what suite2p's classifier keeps) and ops
+    (Ly, Lx), from its Fall.mat, or from its output folder of .npy files as dev's Suite2p ROI converter collects them
+    (stat.npy, with iscell.npy and ops.npy beside it). A folder is a plane's (it has stat.npy), or suite2p's output
+    folder (or one holding it, suite2p/) of plane0, plane1, ...: all its planes, each cell with its plane (planeN is
+    plane N + 1) and channel 1. stat.npy is a pickled array of dicts, read by read_pickled_npy, which runs nothing in
+    it; Ly and Lx are found in ops.npy's bytes, as Suite2pBinary finds them. Cells the classifier leaves out are
+    classified rejected."""
 
-    extensions = [".mat"]
+    extensions = [".mat", ".npy"]
 
     def read(self, path):
+        path = Path(path)
+        if path.is_dir():
+            return self._folder(path)
+        if path.suffix.lower() == ".npy":
+            return roi_document(*self._plane(path))
         data = _mat(path)
         if "stat" not in data or "ops" not in data:
             raise NansenError("invalid-data", f"{path} is not suite2p's Fall.mat (no stat or ops)")
         stat = data["stat"]
         stat = [stat] if isinstance(stat, dict) else list(stat)
-        iscell = np.atleast_2d(np.asarray(data.get("iscell", np.ones((len(stat), 1))), dtype=float))
         ops = data["ops"]
+        return roi_document([ops["Ly"], ops["Lx"]], self._cells(stat, data.get("iscell")))
+
+    @staticmethod
+    def _cells(stat, iscell):
+        """Each cell's (pixels, classification): rejected where iscell's first column is 0."""
+        iscell = np.atleast_2d(np.asarray(iscell if iscell is not None else np.ones((len(stat), 1)), dtype=float))
         rois = []
         for k, cell in enumerate(stat):
+            if not isinstance(cell, dict) or "ypix" not in cell or "xpix" not in cell:
+                raise NansenError("invalid-data", f"suite2p's stat has no ypix and xpix for cell {k + 1}")
             ys = np.atleast_1d(np.asarray(cell["ypix"])).ravel()
             xs = np.atleast_1d(np.asarray(cell["xpix"])).ravel()
             kept = iscell[k, 0] if k < iscell.shape[0] else 1
             rois.append((list(zip(ys, xs)), None if kept else "rejected"))
-        return roi_document([ops["Ly"], ops["Lx"]], rois)
+        return rois
+
+    @classmethod
+    def _plane(cls, path):
+        """A plane's stat.npy, with the iscell.npy (if any) and ops.npy beside it: (image size, cells)."""
+        path = Path(path)
+        ops = path.with_name("ops.npy")
+        if not ops.is_file():
+            raise NansenError("invalid-data", f"{path}: there is no ops.npy beside it, which has the image size")
+        stat = read_pickled_npy(path)
+        if not isinstance(stat, np.ndarray) or stat.dtype != object:
+            raise NansenError("invalid-data", f"{path} is not suite2p's stat (an array of each cell's dict)")
+        iscell = path.with_name("iscell.npy")
+        labels = np.load(iscell, allow_pickle=False) if iscell.is_file() else None
+        size = [_pickled_int(ops.read_bytes(), key, ops) for key in ("Ly", "Lx")]
+        return size, cls._cells(list(stat.ravel()), labels)
+
+    @classmethod
+    def _folder(cls, folder):
+        if (folder / "stat.npy").is_file():
+            return roi_document(*cls._plane(folder / "stat.npy"))
+        if not _plane_folders(folder) and (folder / "suite2p").is_dir():
+            folder = folder / "suite2p"
+        planes = _plane_folders(folder)
+        if not planes:
+            raise NansenError("invalid-data", f"{folder} has no stat.npy, nor suite2p's plane folders with one")
+        size, rois, places = None, [], []
+        for number, plane in planes:
+            plane_size, cells = cls._plane(plane / "stat.npy")
+            size = size if size is not None else plane_size
+            rois += cells
+            places += [(number + 1, 1)] * len(cells)
+        return roi_document(size, rois, places)
 
     def write(self, path, data):
         raise NansenError("invalid-params", "suite2p's files are written by suite2p; ROIs are saved as JSON")
+
+
+def _plane_folders(folder):
+    """suite2p's plane folders (planeN) with a stat.npy in a folder, as (N, path) in the order of N."""
+    found = []
+    for path in folder.iterdir():
+        match = re.fullmatch(r"plane(\d+)", path.name)
+        if match and path.is_dir() and (path / "stat.npy").is_file():
+            found.append((int(match.group(1)), path))
+    return sorted(found)
+
+
+def read_pickled_npy(path):
+    """The value of a .npy file, of objects too (NumPy's allow_pickle), as suite2p's stat.npy: an array of objects is
+    unpickled with only NumPy's array, dtype and scalar classes (and _codecs.encode, which pickle protocol 2 uses for
+    bytes, and NumPy's _frombuffer, which protocol 5 uses for arrays), so a file cannot run code; any other class read
+    is made an empty placeholder. MATLAB's ophys.internal.readPickledNpy reads the same values of what suite2p's files
+    hold (dicts of NumPy arrays and scalars, numbers, text and lists)."""
+    import ast
+    with open(path, "rb") as f:
+        if f.read(6) != b"\x93NUMPY":
+            raise NansenError("invalid-data", f"{path} is not a .npy file")
+        major = f.read(2)[0]
+        length = int.from_bytes(f.read(2 if major == 1 else 4), "little")
+        try:
+            header = ast.literal_eval(f.read(length).decode("latin1"))
+            descr = header["descr"]
+        except (ValueError, SyntaxError, KeyError, TypeError):
+            raise NansenError("invalid-data", f"{path} has a .npy header this reader does not understand") from None
+        if descr not in ("|O", "O"):
+            f.seek(0)
+            return np.load(f, allow_pickle=False)
+        try:
+            return _NumpyUnpickler(f, encoding="latin1").load()
+        except NansenError:
+            raise
+        except Exception as error:   # a cut-off or malformed pickle
+            raise NansenError("invalid-data", f"{path}: its objects cannot be read ({type(error).__name__}: {error})") from None
+
+
+class _Opaque:
+    """What a pickled object of a class read_pickled_npy does not allow becomes: nothing of it is run or kept."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __setstate__(self, state):
+        pass
+
+
+def _numpy_class(module, name):
+    """The NumPy and codecs callables a pickled NumPy array needs, else None."""
+    import codecs
+    core = getattr(np, "_core", None) or np.core
+    if module in ("numpy._core.multiarray", "numpy.core.multiarray") and name in ("_reconstruct", "scalar"):
+        return getattr(core.multiarray, name)
+    if module in ("numpy._core.numeric", "numpy.core.numeric") and name == "_frombuffer":   # protocol 5's arrays
+        return core.numeric._frombuffer
+    if module == "numpy" and name in ("ndarray", "dtype"):
+        return getattr(np, name)
+    if (module, name) == ("_codecs", "encode"):
+        return codecs.encode
+    return None
+
+
+class _NumpyUnpickler(pickle.Unpickler):
+    """pickle's reader with only the classes _numpy_class gives; others are _Opaque."""
+
+    def find_class(self, module, name):
+        return _numpy_class(module, name) or _Opaque
+
+
+class VhlabRois:
+    """dev's VHLab ROI files (.mat, as the VH lab's analyzetpstack saves them): cellstructs, a struct array whose xi
+    and yi are each cell's outline (1-based x, y). Read as dev's dataconvert.roi.vhlab reads them: Polygon ROIs, the
+    pixels whose centre is inside by the even-odd rule (as NansenRoiArray's Polygon ROIs), in a 512 x 512 image, the
+    size dev gives them (the file has none). Read only."""
+
+    extensions = [".mat"]
+    IMAGE_SIZE = (512, 512)
+
+    def read(self, path):
+        data = _mat(path)
+        cells = data.get("cellstructs")
+        if cells is None:
+            raise NansenError("invalid-data", f"{path} has no cellstructs of VHLab's ROIs")
+        cells = [cells] if isinstance(cells, dict) or hasattr(cells, "_fieldnames") else list(np.asarray(cells, dtype=object).ravel())
+        height, width = self.IMAGE_SIZE
+        rois = []
+        for k, cell in enumerate(_plain(c) for c in cells):
+            if not isinstance(cell, dict) or "xi" not in cell or "yi" not in cell:
+                raise NansenError("invalid-data", f"{path}: cell {k + 1} of cellstructs has no xi and yi")
+            xs = np.asarray(cell["xi"], dtype=np.float64).ravel()
+            ys = np.asarray(cell["yi"], dtype=np.float64).ravel()
+            rois.append((polygon_pixels(xs, ys, height, width), None))
+        return roi_document(self.IMAGE_SIZE, rois)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "VHLab's ROI files are written by its own tools; ROIs are saved as JSON")
+
+
+def polygon_pixels(xs, ys, height, width):
+    """The 0-based (row, column) pixels of the image whose centre (1-based x column + 1, y row + 1) is inside the
+    polygon of vertices (xs, ys), by the even-odd rule; only the pixels around its bounding box are tried. MATLAB's
+    ophys.internal.polygonPixels gives the same."""
+    if not len(xs):
+        return []
+    first_row, last_row = max(0, int(np.floor(min(ys))) - 2), min(height - 1, int(np.ceil(max(ys))))
+    first_column, last_column = max(0, int(np.floor(min(xs))) - 2), min(width - 1, int(np.ceil(max(xs))))
+    return [(r, c) for r in range(first_row, last_row + 1) for c in range(first_column, last_column + 1)
+            if in_polygon(xs, ys, c + 1, r + 1)]
 
 
 class CaimanRois:

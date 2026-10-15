@@ -1,0 +1,27 @@
+{
+  "steps": [
+    {"request": {"method": "project.open", "id": 1, "params": {"path": "${project}"}}, "expect": {"result": {"name": "TwoPhoton"}}},
+    {"request": {"method": "adapters.import", "id": 2, "params": {"path": "${scratch}/data/single/thing.fileAdapter.nansen.json"}},
+     "expect": {"result": {"adapters": [{"id": "thing", "title": "Thing files", "extensions": [".thing"],
+       "implementations": {"python": "thing_reader:ThingReader", "matlab": "ThingReader"},
+       "files": ["file-adapters/thing.fileAdapter.nansen.json", "python/thing_reader.py", "matlab/ThingReader.m"]}]}}},
+    {"request": {"method": "files.list", "id": 3, "params": {"path": "matlab"}}, "expect": {"result": {"entries": [{"name": "ThingReader.m", "isFolder": false}]}}},
+    {"request": {"method": "adapters.import", "id": 4, "params": {"path": "${scratch}/data/single/thing.fileAdapter.nansen.json"}}, "expect": {"error": "adapter-exists"}},
+    {"request": {"method": "adapters.import", "id": 5, "params": {"path": "${scratch}/data/bundle"}},
+     "expect": {"result": {"adapters": [
+       {"id": "three", "implementations": {"python": "lab.two:ThreeAdapter"}, "files": ["file-adapters/three.fileAdapter.nansen.json", "python/lab/two.py"]},
+       {"id": "lab_two", "files": ["file-adapters/lab_two.fileAdapter.nansen.json", "python/lab/two.py", "matlab/+lab/TwoAdapter.m"]}]}}},
+    {"request": {"method": "files.list", "id": 6, "params": {"path": "file-adapters"}},
+     "expect": {"result": {"entries": [{"name": "lab_two.fileAdapter.nansen.json"}, {"name": "thing.fileAdapter.nansen.json"}, {"name": "three.fileAdapter.nansen.json"}]}}},
+    {"request": {"method": "adapters.import", "id": 7, "params": {"path": "${scratch}/data/broken/nocode.fileAdapter.nansen.json"}}, "expect": {"error": "file-not-found"}},
+    {"request": {"method": "adapters.import", "id": 8, "params": {"path": "${scratch}/data/broken/halfway.fileAdapter.nansen.json"}}, "expect": {"error": "invalid-params"}},
+    {"request": {"method": "adapters.import", "id": 9, "params": {"path": "${scratch}/data/broken/invalid.fileAdapter.nansen.json"}}, "expect": {"error": "schema-validation"}},
+    {"request": {"method": "adapters.import", "id": 10, "params": {"path": "${scratch}/data/broken/json.fileAdapter.nansen.json"}}, "expect": {"error": "adapter-exists"}},
+    {"request": {"method": "adapters.import", "id": 11, "params": {"path": "${scratch}/data/empty"}}, "expect": {"error": "invalid-params"}},
+    {"request": {"method": "adapters.import", "id": 12, "params": {"path": "${scratch}/data/no_such_folder"}}, "expect": {"error": "file-not-found"}},
+    {"request": {"method": "adapters.import", "id": 13, "params": {"path": ""}}, "expect": {"error": "invalid-params"}},
+    {"request": {"method": "files.list", "id": 14, "params": {"path": "file-adapters"}},
+     "expect": {"result": {"entries": [{"name": "lab_two.fileAdapter.nansen.json"}, {"name": "thing.fileAdapter.nansen.json"}, {"name": "three.fileAdapter.nansen.json"}]}}},
+    {"request": {"method": "adapters.create", "id": 15, "params": {"id": "lab_two"}}, "expect": {"error": "adapter-exists"}}
+  ]
+}

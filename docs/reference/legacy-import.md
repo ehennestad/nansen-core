@@ -64,7 +64,7 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 
 ## Not carried over
 
-- Session methods, table variable functions and custom file adapters. They are code: port them as module methods, computed fragments and adapters.
+- Session methods, table variable functions and custom file adapters. They are code: port them as module methods, computed fragments and adapters. Table variable files can be brought in one at a time with `columns.import`, which wraps a table variable function in a method and makes a class's column ([modules](modules.md#importing-columns-and-file-adapters)).
 - Each session's pipeline progress (dev's `Progress` column), the task list and per-user preferences. Sessions start with no pipeline; a sync assigns one by its rules, or one can be assigned from the table.
 - Option presets: dev's options are not the methods' here (see above).
 - Local root path overrides. Set up the new project's per-machine roots with DSM environments.

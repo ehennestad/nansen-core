@@ -1,0 +1,9 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "json",
+  "version": "1.0.0",
+  "implementations": {
+    "python": "thing_reader:ThingReader"
+  }
+}

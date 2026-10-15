@@ -26,6 +26,9 @@ def adapter(name):
     ("NansenRoiArray", "rois_nansen.mat", "nansen"),     # Mask, Circle and Polygon ROIs of dev's roimanager
     ("NansenRoiArray", "rois_group.mat", "roiGroup"),    # dev's RoiGroup of two planes: classified, an IMask, each ROI with its plane
     ("Suite2pRois", "Fall.mat", "suite2p"),               # suite2p's cells, those it left out rejected
+    ("Suite2pRois", "suite2p/plane0/stat.npy", "suite2pNpy"),   # a plane's stat.npy, with iscell.npy and ops.npy beside it
+    ("Suite2pRois", "suite2p", "suite2pFolder"),          # suite2p's output folder: every plane, each cell with its plane
+    ("VhlabRois", "vhlab.mat", "vhlab"),                  # VHLab's cell outlines, as Polygon ROIs in 512 x 512
     ("CaimanRois", "caiman.hdf5", "caiman"),              # CaImAn's sparse spatial components
     ("ExtractRois", "extract.mat", "extract"),            # EXTRACT's spatial weights
 ])
@@ -33,6 +36,57 @@ def test_roi_files_read_as_the_roi_document(name, file, key):
     if key == "caiman":
         pytest.importorskip("h5py")
     assert adapter(name).read(FILES / file) == EXPECTED[key]
+
+
+def write_suite2p_plane(folder, cells, protocol=4, extra=None, size=(9, 7)):
+    """A tiny suite2p plane folder: stat.npy pickled with the protocol, iscell.npy and ops.npy."""
+    import pickle
+    folder.mkdir(parents=True, exist_ok=True)
+    stat = np.empty(len(cells), dtype=object)
+    for k, (ys, xs) in enumerate(cells):
+        stat[k] = dict({"ypix": np.array(ys, dtype=np.int32), "xpix": np.array(xs, dtype=np.int32), "npix": np.int64(len(ys)),
+                        "med": [1.0, 2.0], "lam": np.ones(len(ys), dtype=np.float32)}, **(extra or {}))
+    with open(folder / "stat.npy", "wb") as f:
+        np.lib.format.write_array_header_1_0(f, {"descr": "|O", "fortran_order": False, "shape": stat.shape})
+        pickle.dump(stat, f, protocol=protocol)
+    np.save(folder / "iscell.npy", np.array([[1.0, 0.8]] * len(cells)))
+    np.save(folder / "ops.npy", np.array({"Ly": size[0], "Lx": size[1], "nplanes": 1}, dtype=object))
+
+
+@pytest.mark.parametrize("protocol", [2, 3, 4, 5])
+def test_suite2p_output_folders_read_with_any_pickle_protocol(tmp_path, protocol):
+    write_suite2p_plane(tmp_path / "session" / "suite2p" / "plane0", [([0, 0, 1], [2, 3, 2])], protocol)
+    write_suite2p_plane(tmp_path / "session" / "suite2p" / "plane1", [([4], [4]), ([8, 9], [6, 6])], protocol)
+    expected = {"imageSize": [9, 7], "rois": [
+        {"id": 1, "area": 3, "center": [0.33, 2.33], "pixels": [[0, 2], [0, 3], [1, 2]], "plane": 1, "channel": 1},
+        {"id": 2, "area": 1, "center": [4.0, 4.0], "pixels": [[4, 4]], "plane": 2, "channel": 1},
+        {"id": 3, "area": 1, "center": [8.0, 6.0], "pixels": [[8, 6]], "plane": 2, "channel": 1}]}   # row 9 is outside
+    for path in (tmp_path / "session" / "suite2p", tmp_path / "session"):   # the output folder, or the one holding it
+        assert adapter("Suite2pRois").read(path) == expected
+    plane = adapter("Suite2pRois").read(tmp_path / "session" / "suite2p" / "plane1")   # a plane's folder: no places
+    assert [r["pixels"] for r in plane["rois"]] == [[[4, 4]], [[8, 6]]] and "plane" not in plane["rois"][0]
+
+
+def test_a_suite2p_stat_runs_nothing_it_holds(tmp_path):
+    marker = tmp_path / "ran"
+
+    class Payload:
+        def __reduce__(self):
+            import os
+            return (os.system, (f"touch {marker}",))
+    write_suite2p_plane(tmp_path / "plane0", [([1], [1])], extra={"payload": Payload()})
+    assert adapter("Suite2pRois").read(tmp_path / "plane0" / "stat.npy")["rois"][0]["pixels"] == [[1, 1]]
+    assert not marker.exists()
+
+
+def test_suite2p_files_that_cannot_be_read_are_refused(tmp_path):
+    write_suite2p_plane(tmp_path / "plane0", [([1], [1])])
+    (tmp_path / "plane0" / "ops.npy").unlink()
+    np.save(tmp_path / "numbers.npy", np.zeros(3))
+    for path in (tmp_path / "plane0" / "stat.npy", tmp_path, tmp_path / "numbers.npy"):
+        with pytest.raises(NansenError) as error:
+            adapter("Suite2pRois").read(path)
+        assert error.value.code == "invalid-data"
 
 
 def test_a_prairie_view_t_series_is_read_a_frame_at_a_time():

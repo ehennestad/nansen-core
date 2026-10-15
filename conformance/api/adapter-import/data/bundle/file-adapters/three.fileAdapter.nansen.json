@@ -1,0 +1,10 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "three",
+  "version": "1.0.0",
+  "title": "Three-column files",
+  "implementations": {
+    "python": "lab.two:ThreeAdapter"
+  }
+}
