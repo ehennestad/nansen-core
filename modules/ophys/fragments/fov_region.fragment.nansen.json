@@ -1,0 +1,18 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.fov_region",
+  "version": "1.0.0",
+  "title": "FOV region",
+  "description": "The atlas region at the FOV's position. Computed by ophys.fov_region.",
+  "columns": [
+    {
+      "name": "brain_region",
+      "dataType": "string",
+      "title": "Brain region"
+    }
+  ],
+  "compute": {
+    "method": "ophys.fov_region"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.fov_region",
+  "version": "1.0.0",
+  "title": "Brain region of the FOV",
+  "category": "Two-photon/FOV map",
+  "entityType": "*",
+  "description": "The region of the mouse dorsal cortex atlas (Paxinos, as in dev's fovmanager) at the FOV's position (fov_ml, fov_ap): fills the ophys.fov_region column. Empty when the position is not set or outside the atlas.",
+  "implementations": {
+    "python": "ophys_methods:fov_region",
+    "matlab": "ophys.fovRegion"
+  },
+  "options": {
+    "type": "object",
+    "properties": {}
+  }
+}

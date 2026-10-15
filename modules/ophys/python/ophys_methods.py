@@ -5,7 +5,9 @@ MATLAB, and .npy files keep that indexing. The MATLAB implementations in matlab/
 same values the same way; numbers that are returned are rounded with round_to, as there.
 """
 
+import json
 import math
+from pathlib import Path
 
 import numpy as np
 
@@ -485,6 +487,35 @@ def _image(data):
     return image
 
 
+ATLAS = Path(__file__).resolve().parents[1] / "atlas" / "dorsal_cortex.json"
+
+
+def fov_region(entity, options, context):
+    """The atlas region at the entity's FOV position (fov_ml, fov_ap)."""
+    ml, ap = entity.get("fov_ml"), entity.get("fov_ap")
+    if ml is None or ap is None:
+        return {"brain_region": None}
+    with open(ATLAS, encoding="utf-8") as f:
+        atlas = json.load(f)
+    return {"brain_region": atlas_region(atlas, float(ml), float(ap))}
+
+
+def atlas_region(atlas, ml, ap):
+    """The label of the region at (ml, ap) mm, or None outside every region."""
+    column = math.floor((ml - atlas["origin"][0]) * atlas["pixelsPerMm"])
+    row = math.floor((ap - atlas["origin"][1]) * atlas["pixelsPerMm"])
+    if not (0 <= row < atlas["height"] and 0 <= column < atlas["width"]):
+        return None
+    runs = atlas["rows"][row]
+    end = 0
+    for k in range(0, len(runs), 2):
+        end += runs[k + 1]
+        if column < end:
+            labels = {region["index"]: region["label"] for region in atlas["regions"]}
+            return labels.get(runs[k])
+    return None
+
+
 VARIABLES = [
     ("TwoPhotonSeries_Corrected", "Motion-corrected stack", "two_photon_series_corrected.npy", "npy", "ImageStack"),
     ("TwoPhotonSeries_Downsampled", "Downsampled stack", "two_photon_series_downsampled.npy", "npy", "ImageStack"),
@@ -528,9 +559,12 @@ def setup_variables(project, options, context):
             created.append(document["name"])
     columns = []
     if options["addColumns"]:
-        for fragment_id in ("ophys.imaging", "ophys.image_stats"):
-            if fragment_id not in project.entity_type(entity_type).get("fragments", []):
-                project.attach_fragment(entity_type, fragment_id)
+        wanted = [(entity_type, f) for f in ("ophys.imaging", "ophys.image_stats", "ophys.fov_position", "ophys.fov_region")]
+        if options["subjectType"] in project.entity_types:
+            wanted.append((options["subjectType"], "ophys.cranial_window"))
+        for owner, fragment_id in wanted:
+            if fragment_id not in project.entity_type(owner).get("fragments", []):
+                project.attach_fragment(owner, fragment_id)
                 columns.append(fragment_id)
     context.log(f"added {len(created)} data variables to {entity_type}")
     return {"created": created, "existing": existing, "fragments": columns}

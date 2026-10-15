@@ -1,4 +1,4 @@
 {
-  "description": "The ophys module on synthetic recordings with known shifts and cells: SciScan raw, TIFF and multi-ROI ScanImage files are read, the data variables are set up by the module's tool, and motion correction, image statistics (a computed fragment), ROI detection, signal extraction, ΔF/F, deconvolution, denoising, downsampling, aligning sessions, ROI curation and the viewer's frames give the values of the ground truth, which make_data.py computes from the scenes directly (the deconvolution with a general optimiser).",
-  "steps": 43
+  "description": "The ophys module on synthetic recordings with known shifts and cells: SciScan raw, TIFF and multi-ROI ScanImage files are read, the data variables are set up by the module's tool, and motion correction, image statistics (a computed fragment), ROI detection, signal extraction, ΔF/F, deconvolution, denoising, downsampling, aligning sessions, ROI curation, the viewer's frames and the brain region at a FOV's position give the values of the ground truth, which make_data.py computes from the scenes directly (the deconvolution with a general optimiser). The module's dashboard page and its atlas are served by app.plugins and modules.resource.",
+  "steps": 56
 }

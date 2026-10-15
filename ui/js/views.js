@@ -433,7 +433,10 @@
     }
 
     function updateMenu(anchor) {
-      N.menu(anchor, [{ heading: "Recompute" }].concat(computed.map((f) => ({
+      // what the project has now: the toolbar may be older than the last reload
+      const now = app.project.entityTypes.find((t) => t.name === entityType) || type;
+      const current = (app.fragments || []).filter((f) => f.computed && now.fragments.includes(f.id));
+      N.menu(anchor, [{ heading: "Recompute" }].concat(current.map((f) => ({
         label: f.title, icon: "zap", onClick: async () => {
           const rows = grid.selectedRows();
           const params = { entityType, fragmentId: f.id };

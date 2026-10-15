@@ -39,10 +39,10 @@ classdef Api < handle
             end
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
-            names = ["app.info", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
+            names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.send", "rois.update", "modules.list", "modules.add", "modules.remove", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.send", "rois.update", "modules.list", "modules.add", "modules.remove", "modules.resource", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -846,6 +846,45 @@ classdef Api < handle
             project.deleteDataVariable(name);
             obj.emit("project", struct("name", char(project.Name)));
             result = struct("removed", char(name));
+        end
+
+        function result = apiAppPlugins(obj, ~)
+            % The dashboard scripts of the project's modules ({} with no project open)
+            result = {};
+            if isempty(obj.Project)
+                return
+            end
+            for module = obj.Project.modules()
+                for relative = reshape(string(nansen.internal.asCellstr(nansen.internal.getField(module.Document, "dashboard", {}))), 1, [])
+                    result{end + 1} = struct("module", char(module.Id), "path", char(relative), ...
+                        "code", nansen.internal.readText(fullfile(module.Folder, relative))); %#ok<AGROW>
+                end
+            end
+        end
+
+        function result = apiModulesResource(obj, params)
+            % A text file in the folder of one of the project's modules, such as a dashboard page's data
+            project = obj.requireProject();
+            id = string(nansen.Api.param(params, "module"));
+            found = [];
+            for module = project.modules()
+                if module.Id == id
+                    found = module;
+                end
+            end
+            if isempty(found)
+                nansen.internal.throwError("unknown-module", "the project does not use a module '%s'", id)
+            end
+            relative = string(nansen.Api.param(params, "path"));
+            parts = split(replace(relative, "\", "/"), "/");
+            if startsWith(relative, ["/", "\"]) || contains(relative, ":") || any(parts == "..")
+                nansen.internal.throwError("invalid-params", "'%s' is not a path inside the module", relative)
+            end
+            path = fullfile(found.Folder, parts{:});
+            if ~isfile(path)
+                nansen.internal.throwError("file-not-found", "module %s has no %s", found.Id, relative)
+            end
+            result = struct("module", char(found.Id), "path", char(relative), "text", nansen.internal.readText(path));
         end
 
         function result = apiModulesList(obj, ~)

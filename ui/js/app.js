@@ -67,12 +67,30 @@
         this.project = await this.client.request("project.info");
         [this.fragments, this.methods] = await Promise.all([
           this.client.request("fragments.list"), this.client.request("methods.list")]);
+        await this.loadPlugins();
       } catch (error) {
         if (error.code !== "no-project") N.showError(error);
         this.project = null;
+        N.pages = {};
+        this.pluginSignature = null;
       }
       this.renderNav();
       await this.refreshTaskCount();
+    },
+
+    /** Run the dashboard scripts of the project's modules (again only when they changed); they add pages. */
+    async loadPlugins() {
+      let plugins = [];
+      try { plugins = await this.client.request("app.plugins"); } catch (error) { plugins = []; }
+      const signature = JSON.stringify(plugins);
+      if (signature === this.pluginSignature) return;
+      this.pluginSignature = signature;
+      N.pages = {};
+      for (const plugin of plugins) {
+        try {
+          new Function("N", "module", plugin.code)(N, plugin.module);  // eslint-disable-line no-new-func
+        } catch (error) { N.showError(error, `The ${plugin.module} module's ${plugin.path} failed`); }
+      }
     },
 
     async refreshTaskCount() {
@@ -212,6 +230,8 @@
         link("#/data", "database", "Data"),
         link("#/pipelines", "layers", "Pipelines"),
         link("#/notes", "note", "Notes"),
+        Object.keys(N.pages).length ? [h("div.nav-section", "Modules"),
+          Object.values(N.pages).map((page) => link(`#/page/${page.id}`, page.icon || "puzzle", page.title))] : null,
         h("div.nav-section", "App"),
         link("#/projects", "folder", "Projects"),
         link("#/settings", "settings", "Settings")]);
@@ -243,10 +263,12 @@
       this.renderNav();
       N.clear(this.topActions);
       const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", notes: "Notes", pipelines: "Pipelines", projects: "Projects", settings: "Settings" };
-      const title = this.route.name === "entities" ? this.typeTitle(arg) : crumbs[this.route.name] || "";
+      const title = this.route.name === "entities" ? this.typeTitle(arg)
+        : this.route.name === "page" ? (N.pages[arg] ? N.pages[arg].title : "") : crumbs[this.route.name] || "";
       N.fill(this.crumbsEl, this.project ? h("span.sub", this.project.title) : null, this.project ? h("span.sep", "/") : null, h("span", title));
       if (!this.project && !["projects", "settings"].includes(this.route.name)) { this.go("#/projects"); return; }
-      const view = { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, pipelines: N.views.pipelines, projects: N.views.projects, settings: N.views.settings }[this.route.name];
+      const page = this.route.name === "page" && N.pages[arg] ? (app, el) => N.pages[arg].render(app, el) : null;
+      const view = page || { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, pipelines: N.views.pipelines, projects: N.views.projects, settings: N.views.settings }[this.route.name];
       if (!view) { this.go("#/overview"); return; }
       // Each render draws into a new container, shown when it is done, unless a later render has started:
       // views load their data first, and one that finishes late must not draw over the page now shown.

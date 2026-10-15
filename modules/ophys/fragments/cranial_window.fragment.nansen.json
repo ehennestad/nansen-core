@@ -1,0 +1,40 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.cranial_window",
+  "version": "1.0.0",
+  "title": "Cranial window",
+  "description": "A subject's cranial window on the cortex, in mm from bregma, as dev's fovmanager keeps it. Placed on the FOV map page.",
+  "columns": [
+    {
+      "name": "window_ml",
+      "dataType": "number",
+      "title": "Window ML",
+      "unit": "mm"
+    },
+    {
+      "name": "window_ap",
+      "dataType": "number",
+      "title": "Window AP",
+      "unit": "mm"
+    },
+    {
+      "name": "window_shape",
+      "dataType": "string",
+      "title": "Window shape",
+      "choices": [
+        "round 2.5 mm",
+        "round 3 mm",
+        "round 4 mm",
+        "round 5 mm",
+        "trapezoid 3 x 5 mm"
+      ]
+    },
+    {
+      "name": "window_rotation",
+      "dataType": "number",
+      "title": "Window rotation",
+      "unit": "°"
+    }
+  ]
+}

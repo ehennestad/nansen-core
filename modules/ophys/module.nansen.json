@@ -6,6 +6,9 @@
   "title": "Two-photon imaging",
   "description": "Motion correction, ROI detection, signal extraction and ΔF/F for two-photon recordings, native in both languages; SciScan and TIFF readers; and suite2p, NoRMCorre and imviewer where they are installed.",
   "fragments": [
+    "fragments/cranial_window.fragment.nansen.json",
+    "fragments/fov_position.fragment.nansen.json",
+    "fragments/fov_region.fragment.nansen.json",
     "fragments/image_stats.fragment.nansen.json",
     "fragments/imaging.fragment.nansen.json"
   ],
@@ -20,6 +23,7 @@
     "methods/extract.method.nansen.json",
     "methods/extract_signals.method.nansen.json",
     "methods/flowreg.method.nansen.json",
+    "methods/fov_region.method.nansen.json",
     "methods/image_stats.method.nansen.json",
     "methods/motion_correction.method.nansen.json",
     "methods/normcorre.method.nansen.json",
@@ -37,5 +41,8 @@
   ],
   "presets": [
     "presets/motion_correction.thorough.options.nansen.json"
+  ],
+  "dashboard": [
+    "dashboard/fovmap.js"
   ]
 }

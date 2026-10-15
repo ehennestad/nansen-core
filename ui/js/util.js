@@ -39,6 +39,13 @@
   N.append = append;
 
   /** Replace an element's children; arrays are flattened and null/false skipped. */
+  /** Pages that modules add to the dashboard: {id, title, icon, render(app, el)}, shown under Modules in the sidebar. */
+  N.pages = {};
+  N.registerPage = function (page) {
+    if (!page || !page.id || typeof page.render !== "function") throw new Error("a page needs an id and a render function");
+    N.pages[page.id] = page;
+  };
+
   N.fill = function (el, ...children) {
     N.clear(el);
     append(el, children);

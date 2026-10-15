@@ -56,6 +56,7 @@ Events flow from the core to the frontend:
 | Method | Params | Result |
 |---|---|---|
 | `app.info` | | `{name, language, version, protocolVersion, methods, workspace}`; `workspace` says whether `workspace.send` has somewhere to put entities |
+| `app.plugins` | | `[{module, path, code}]`: the dashboard scripts of the project's modules (`dashboard` in `module.nansen.json`); `[]` with no project open. The dashboard runs each with `N` and the module id; a script adds pages with `N.registerPage({id, title, icon, render(app, el)})`, listed under Modules in the sidebar |
 | `workspace.send` | `entityType`, `keys?`, `name?` (default `entities`) | `{name, count}`: the entities are put in the workspace the app was opened from, as a variable of that name: MATLAB's base workspace (a cell row of `nansen.Entity`), or in Python the namespace given to `nansen.server.open_app` (a list of `Entity`). `no-workspace` when there is none |
 | `catalog.list` | | Projects in the catalog, most recently opened first |
 | `catalog.relocate` | `path` (as the catalog has it), `newPath` | The catalog, with the entry pointing at the folder the project was moved to; the project there must have the entry's name (`invalid-params`), and must be there (`file-not-found`) |
@@ -106,6 +107,7 @@ Events flow from the core to the frontend:
 | `dataVariables.save` | `document` (a `nansen.dataVariable`) | The data variable, written into the project (replacing one of the same name) |
 | `dataVariables.delete` | `name` | `{removed}` (`unknown-data-variable` if there is none) |
 | `modules.list` | | `[{id, version, title, description, ..., listed}]`: the modules in the project's `modules/` folder and the built-in ones, and any listed elsewhere; `listed` says whether the project lists it |
+| `modules.resource` | `module`, `path` (relative, inside the module's folder) | `{module, path, text}`: a text file of one of the project's modules, such as a dashboard page's data. `unknown-module` for a module the project does not use, `invalid-params` for a path that leaves the folder, `file-not-found` |
 | `modules.add` | `id`, `path?` | `project.info`: the project with the module listed (`unknown-module` if it cannot be found) |
 | `modules.remove` | `id` | `project.info`; `module-in-use` while a fragment, data variable or project pipeline of the project uses the module |
 | `data.status` | `entityType`, `key` | `[{name, dataLocation, fileAdapter, dataType, files}]`: `files` are those that exist, where a scan found the entity's folders or, for a folder made since, where `save` wrote |

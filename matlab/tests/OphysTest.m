@@ -163,6 +163,13 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyError(@() nansen.internal.updateRois(document, [], [], struct("pixels", [20, 20])), "nansen:InvalidParams");
         end
 
+        function findsTheRegionOfAFov(testCase)
+            atlas = jsondecode(nansen.internal.readText(fullfile(nansen.internal.repoRoot(), "modules", "ophys", "atlas", "dorsal_cortex.json")));
+            testCase.verifyEqual(ophys.internal.atlasRegion(atlas, 2.3, -3.6), 'V1');
+            testCase.verifyEqual(ophys.internal.atlasRegion(atlas, 1, 1), 'M2');
+            testCase.verifyEmpty(ophys.internal.atlasRegion(atlas, 9, 9));
+        end
+
         function wrappersSayWhatIsMissing(testCase)
             if exist("normcorre", "file") ~= 2
                 testCase.verifyError(@() ophys.normcorre(struct(), struct(), []), "nansen:DependencyMissing");

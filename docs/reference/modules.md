@@ -12,6 +12,7 @@ A **module** is a folder that adds fragments, methods, file adapters and pipelin
   adapters/<name>.fileAdapter.nansen.json
   pipelines/<name>.pipeline.nansen.json
   presets/<name>.options.nansen.json    option presets of its methods (or of other modules' methods)
+  dashboard/<name>.js                pages it adds to the dashboard
   python/                            Python code, imported from here without changing sys.path
   matlab/                            MATLAB code, put on the path when one of the module's methods or adapters is first used
 ```
@@ -45,6 +46,7 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 | `ophys.deconvolve` | Spikes and denoised calcium by OASIS for an AR(1) model, natively: the exact optimum of 1/2 |c - y|² + λ Σ s with s ≥ 0, g from `tauDecay` and the frame rate (`frameRate`, or the entity's `frame_rate`), λ = `sparsity` times the trace's noise |
 | `ophys.denoise` | Gaussian smoothing in space and time, renormalised at the edges (dev used DeepInterpolation, which needs a trained network) |
 | `ophys.align_sessions` | Batch: aligns the selected entities' FOV images to the first one's and copies its ROIs, moved, to the others (dev's migrateRoisToFovs) |
+| `ophys.fov_region` | Computes the `brain_region` column: the atlas region at the FOV's position |
 | `ophys.caiman_deconvolution` | CaImAn's constrained foopsi (Python) or deconvolveCa (MATLAB), when installed |
 | `ophys.extract` | MATLAB: cells and traces by EXTRACT, when it is on the path |
 | `ophys.flowreg` | MATLAB: non-rigid motion correction by Flow-Registration, when it is on the path |
@@ -54,7 +56,13 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 
 A method that needs a package that is not installed fails with `dependency-missing`. The file adapters are `ophys.sciscan_raw` (a SciScan `.raw` file and its `.ini` file, as written by the microscope: big-endian, one channel after the other in each frame), `ophys.tiff_stack` (multi-page TIFF) and `ophys.scanimage_tiff` (ScanImage TIFF files, read only: channels and planes from the metadata, and multi-ROI recordings with their ROIs side by side, without flyback lines; height x width x channels x planes x frames when there is more than one plane). The fragments are `ophys.imaging` (field of view, depth, indicator and frame rate, typed in) and `ophys.image_stats` (computed). The pipeline `ophys.preprocess` runs motion correction, image statistics, ROI detection, signal extraction, ΔF/F and deconvolution.
 
+The ophys module's **FOV map** page (dev's fovmanager) draws the subjects' cranial windows and the sessions' fields of view on the mouse dorsal cortex atlas from fovmanager, in mm from bregma, and places them with a click: select a session and Place FOV, or a subject and Place window. Positions are the columns of `ophys.fov_position` and `ophys.cranial_window`, so they can be typed in, filtered and exported as well; `ophys.fov_region` fills the brain region at each FOV, in both languages. `ophys.setup_variables` adds the columns.
+
 In the dashboard, an entity's image variables (data type `Image` or `ImageStack`, or arrays without a data type) have a View button in its drawer: frames one by one or played, the average or maximum over frames, contrast limits, and the ROIs of a variable of data type `RoiArray` drawn over them. ROIs are curated there, as in dev's roimanager and roiclassifier: select one in the image or the list, accept (a), reject (r), clear (u) or delete it, or add a round one by clicking (`rois.update`). `ophys.extract_signals` and `ophys.align_sessions` leave rejected ROIs out.
+
+## Dashboard pages
+
+A module can add pages to the dashboard: scripts listed under `dashboard` in `module.nansen.json`. When a project that uses the module is open, the dashboard runs each one with `N` (its toolkit: `N.h` to build elements, `N.icon`, `N.dialog`, …) and `module` (the module's id). A script calls `N.registerPage({id, title, icon, render(app, el)})`; the page is listed under Modules in the sidebar, and `render` fills `el`, asking the backend for what it needs with `app.client.request(method, params)`. Files of the module, such as data a page draws, are read with `modules.resource`. A page works the same with either backend, since it only uses the protocol.
 
 ## Methods
 

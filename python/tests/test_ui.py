@@ -831,6 +831,7 @@ def test_add_a_computed_column(empty_app, page):
     page.select_option(".dialog .field:has-text('Type') select", "integer")
     page.click(".dialog-foot button:has-text('Create')")
     page.wait_for_selector(".grid-table th:has-text('Frames')")
+    page.wait_for_selector(".toast:has-text('Computed column added')")  # the toolbar is drawn again by then
     code = folder / "python" / "n_frames.py"
     code.write_text(code.read_text().replace('"n_frames": None', '"n_frames": 42'))
     page.click(".toolbar button:has-text('Update')")
@@ -945,7 +946,8 @@ def test_a_column_drawn_as_a_badge_with_an_action(empty_app, page):
     page.wait_for_selector(".toast:has-text('Done')")
 
 
-def test_view_a_stack_with_its_rois(empty_app, page):
+def ophys_project(empty_app, steps=()):
+    """The ophys conformance project, opened and set up, with the given further requests made."""
     pytest.importorskip("numpy")
     pytest.importorskip("tifffile")
     import shutil
@@ -954,13 +956,19 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     api = empty_app["api"]
     folder = empty_app["folder"] / "ophys"
     shutil.copytree(Path(__file__).resolve().parents[2] / "conformance" / "api" / "ophys" / "project", folder)
-    s1 = [{"subject_id": "m1", "session_id": "s1"}]
     for number, (method, params) in enumerate([
             ("project.open", {"path": str(folder)}), ("project.scan", {}), ("project.sync", {}),
-            ("tools.run", {"methodId": "ophys.setup_variables", "options": {"rawFilePattern": "recording"}}),
-            ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}}),
-            ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": s1, "options": {"threshold": 0.25, "border": 4}})]):
-        assert "result" in api.handle({"id": number, "method": method, "params": params}), method
+            ("tools.run", {"methodId": "ophys.setup_variables", "options": {"rawFilePattern": "recording"}}), *steps]):
+        response = api.handle({"id": number, "method": method, "params": params})
+        assert "result" in response, (method, response)
+    return api
+
+
+def test_view_a_stack_with_its_rois(empty_app, page):
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    api = ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}}),
+        ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": s1, "options": {"threshold": 0.25, "border": 4}})])
     page.goto(empty_app["server"].url + "#/entities/session")
     page.wait_for_selector(".grid-table tbody td.key")
     page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
@@ -1000,3 +1008,27 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
     document = api.project.load(api.project.entity("session", s1[0]), "RoiArray", cached=False)
     assert [(r["id"], r.get("classification")) for r in document["rois"]] == [(1, None), (2, "rejected"), (3, None)]
+
+
+def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
+    api = ophys_project(empty_app)
+    page.goto(empty_app["server"].url + "#/overview")
+    page.wait_for_selector(".sidebar a[href='#/page/ophys.fovmap']")
+    page.click(".sidebar a[href='#/page/ophys.fovmap']")
+    page.wait_for_selector(".fov-canvas")
+    assert page.locator(".fov-side").nth(1).locator("li").count() == 4
+    box = page.locator(".fov-canvas").bounding_box()
+    at = lambda ml, ap: (box["x"] + box["width"] * (ml + 6) / 12, box["y"] + box["height"] * (7 - ap) / 16)
+    page.mouse.move(*at(2.31, -3.61))
+    page.wait_for_selector(".fov-where:has-text('V1')")
+    page.click(".fov-list li[data-session='m1 / s1']")
+    page.click(".place-fov")
+    page.mouse.click(*at(2.305, -3.605))
+    page.wait_for_selector(".fov-list li[data-session='m1 / s1'] .sub:has-text('V1')")
+    row = api.project.table("session").get({"subject_id": "m1", "session_id": "s1"})
+    assert abs(row["fov_ml"] - 2.3) < 0.03 and abs(row["fov_ap"] + 3.6) < 0.03
+    page.click(".fov-list li[data-subject='m1']")
+    page.click(".place-window")
+    page.mouse.click(*at(2, -2))
+    wait_until(lambda: api.project.table("subject").get({"subject_id": "m1"}).get("window_ml") is not None)
+    page.wait_for_selector(".fov-list li[data-subject='m1'] .pill")

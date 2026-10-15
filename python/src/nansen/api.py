@@ -187,6 +187,28 @@ class Api:
 
     # -- app and catalog -------------------------------------------------------------------------
 
+    def app__plugins(self, params: dict) -> list:
+        """The dashboard scripts of the project's modules ([] with no project open)."""
+        if self.project is None:
+            return []
+        return [{"module": module.id, "path": relative, "code": (module.folder / relative).read_text(encoding="utf-8")}
+                for module in self.project.modules for relative in module.document.get("dashboard", [])]
+
+    def modules__resource(self, params: dict) -> dict:
+        """A text file in the folder of one of the project's modules, such as a dashboard page's data."""
+        project = self._require_project()
+        module = next((m for m in project.modules if m.id == params["module"]), None)
+        if module is None:
+            raise NansenError("unknown-module", f"the project does not use a module {params['module']!r}")
+        relative = str(params["path"])
+        parts = relative.replace("\\", "/").split("/")
+        if relative.startswith(("/", "\\")) or ":" in relative or ".." in parts:
+            raise NansenError("invalid-params", f"{relative!r} is not a path inside the module")
+        path = module.folder.joinpath(*parts)
+        if not path.is_file():
+            raise NansenError("file-not-found", f"module {module.id} has no {relative}")
+        return {"module": module.id, "path": relative, "text": path.read_text(encoding="utf-8")}
+
     def app__info(self, params: dict) -> dict:
         return {"name": "nansen", "language": "python", "version": __version__, "protocolVersion": PROTOCOL_VERSION,
                 "methods": self.method_names, "workspace": self.workspace is not None}

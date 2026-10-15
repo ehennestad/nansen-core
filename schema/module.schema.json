@@ -18,9 +18,15 @@
     "methods": { "$ref": "#/definitions/paths" },
     "fileAdapters": { "$ref": "#/definitions/paths" },
     "pipelines": { "$ref": "#/definitions/paths" },
+    "dashboard": { "$ref": "#/definitions/scripts", "description": "Scripts the dashboard runs when a project uses the module: each adds pages with N.registerPage. Files of the module they need are read with modules.resource." },
     "presets": { "$ref": "#/definitions/paths", "description": "Option presets (nansen.options documents) of the module's or other modules' methods. A project's own preset of the same name is used instead." }
   },
   "definitions": {
+    "scripts": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[^/\\\\][^\\\\]*\\.js$" }
+    },
     "paths": {
       "type": "array",
       "uniqueItems": true,
