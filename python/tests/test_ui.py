@@ -1058,6 +1058,105 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     assert [(r["id"], r.get("classification")) for r in document["rois"]] == [(1, None), (2, "rejected"), (3, None)]
 
 
+def test_draw_detect_merge_and_move_rois_in_the_viewer(empty_app, page):
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    api = ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}}),
+        ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": s1, "options": {"threshold": 0.25, "border": 4}})])
+
+    def rois():   # the file, once the server has finished writing it
+        for _ in range(50):
+            try:
+                return api.project.load(api.project.entity("session", s1[0]), "RoiArray", cached=False)["rois"]
+            except ValueError:
+                time.sleep(0.05)
+        raise AssertionError("the ROI file stays unreadable")
+    pixels = lambda roi: sorted(tuple(p) for p in roi["pixels"])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.click(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32 · 3 ROIs')")
+    page.select_option(".viewer-mode", "mean")
+    page.wait_for_selector(".viewer-frame:text-is('40 frames')")
+    box = page.locator(".viewer-canvas").bounding_box()
+    at = lambda row, column: (box["x"] + box["width"] * column / 32, box["y"] + box["height"] * row / 32)
+
+    # draw: a square from (25, 2) to (30, 7) around pixel centres takes rows and columns 25..29 in
+    page.click(".viewer-draw")
+    page.mouse.move(*at(25, 2))
+    page.mouse.down()
+    for row, column in [(25, 7), (30, 7), (30, 2), (25, 2)]:
+        page.mouse.move(*at(row, column), steps=4)
+    page.mouse.up()
+    page.wait_for_selector(".viewer-roi-list li[data-roi='4'].selected")
+    assert pixels(rois()[3]) == [(r, c) for r in range(25, 30) for c in range(2, 7)]
+    page.click(".viewer-draw")
+
+    # detect: a click on the third cell finds the same pixels as rois.detect does
+    page.click(".viewer-detect")
+    page.mouse.click(*at(22.5, 9.5))
+    page.wait_for_selector(".viewer-roi-list li[data-roi='5'].selected")
+    found = api.handle({"id": 9, "method": "rois.detect", "params": {"entityType": "session", "key": s1[0], "variable": "TwoPhotonSeries_Corrected",
+                                                                       "point": [22, 9], "radius": 6}})["result"]
+    assert pixels(rois()[4]) == sorted(tuple(p) for p in found["pixels"]) and len(found["pixels"]) > 4
+    page.keyboard.press("Escape")   # leaves the tool, not the viewer
+    assert page.locator(".viewer-dialog").count() == 1
+    assert page.locator(".viewer-detect.active").count() == 0
+
+    # merge ROIs 4 and 5 (Ctrl-click selects several); the merged ROI keeps id 4
+    page.click(".viewer-roi-list li[data-roi='4']")
+    page.click(".viewer-roi-list li[data-roi='5']", modifiers=["Control"])
+    assert page.locator(".viewer-roi-list li.selected").count() == 2
+    expected = sorted(set(pixels(rois()[3])) | set(pixels(rois()[4])))
+    page.click(".roi-merge")
+    wait_until(lambda: page.locator(".viewer-roi-list li").count() == 4)
+    assert [r["id"] for r in rois()] == [1, 2, 3, 4] and pixels(rois()[3]) == expected
+
+    # move ROI 1 by dragging it: two rows down, one column left
+    page.click(".viewer-roi-list li[data-roi='1']")
+    before = pixels(rois()[0])
+    row, column = before[len(before) // 2]
+    page.mouse.move(*at(row + 0.5, column + 0.5))
+    page.mouse.down()
+    page.mouse.move(*at(row + 2.5, column - 0.5), steps=6)
+    page.mouse.up()
+    wait_until(lambda: pixels(rois()[0]) == [(r + 2, c - 1) for r, c in before])
+    page.keyboard.press("Alt+ArrowUp")   # and back up a row with the keys
+    wait_until(lambda: pixels(rois()[0]) == [(r + 1, c - 1) for r, c in before])
+
+    # zoom with the wheel and back with a double-click; save the image
+    page.mouse.move(*at(16, 16))
+    page.mouse.wheel(0, -300)
+    page.wait_for_selector(".viewer-zoom:visible")
+    assert page.locator(".viewer-canvas").bounding_box()["width"] > box["width"] * 1.2
+    page.locator(".viewer-canvas").dblclick()
+    wait_until(lambda: abs(page.locator(".viewer-canvas").bounding_box()["width"] - box["width"]) < 2)
+    with page.expect_download() as download:
+        page.click(".viewer-export")
+    assert download.value.suggested_filename.endswith("_TwoPhotonSeries_Corrected_mean.png")
+
+    # the gallery: a tile per ROI, sorted largest first; keys classify the selected one
+    page.click(".viewer-gallery")
+    page.wait_for_selector(".roi-gallery-dialog .roi-tile")
+    assert page.locator(".roi-tile").count() == 4
+    page.select_option(".roi-gallery-sort", "area")
+    sizes = sorted(((len(r["pixels"]), -r["id"]) for r in rois()), reverse=True)
+    wait_until(lambda: page.eval_on_selector_all(".roi-tile", "els => els.map(e => Number(e.dataset.roi))") == [-i for _, i in sizes])
+    first, second = [-i for _, i in sizes[:2]]
+    page.click(f".roi-tile[data-roi='{first}']")
+    page.keyboard.press("a")
+    page.wait_for_selector(f".roi-tile[data-roi='{first}'].accepted")
+    page.keyboard.press("ArrowRight")
+    page.keyboard.press("r")
+    page.wait_for_selector(f".roi-tile[data-roi='{second}'].rejected")
+    page.keyboard.press("Escape")   # closes the gallery only
+    wait_until(lambda: page.locator(".roi-gallery-dialog").count() == 0)
+    assert page.locator(".viewer-dialog").count() == 1
+    classes = {r["id"]: r.get("classification") for r in rois()}
+    assert classes[first] == "accepted" and classes[second] == "rejected"
+
+
 def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     run = lambda method, options=None: ("methods.run", {"methodId": method, "entityType": "session", "keys": s1, "options": options or {}})

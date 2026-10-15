@@ -231,6 +231,28 @@ def main():
                     second_channel[y, x, k] = frame[y + dy, x + dx]   # moved back by the shift; 0 outside
     expected["secondChannelStats"] = {"n_frames": FRAMES // 2, "height": HEIGHT, "width": WIDTH,
                                       "mean_intensity": round_to(second_channel.mean(), 4), "max_intensity": float(second_channel.max())}
+    # ROI curation at the end: ROI 3 moved by (1, -1), then merged into ROI 1
+    pixels = lambda d: [[int(y), int(x)] for y, x in zip(*np.nonzero(d))]
+    moved = sorted([y + 1, x - 1] for y, x in pixels(disks[2]))
+    expected["movedRois"] = [{"id": 1, "pixels": pixels(disks[0])}, {"id": 2, "pixels": pixels(disks[1]), "classification": "rejected"},
+                             {"id": 3, "pixels": moved}]
+    expected["mergedRois"] = [{"id": 1, "pixels": sorted(pixels(disks[0]) + moved)}, {"id": 2, "pixels": pixels(disks[1]), "classification": "rejected"}]
+    # the viewer's Detect tool on the average of the aligned stack, at (10, 13) with radius 4: in the square around
+    # the point, half way from its 20th percentile to the brightest within the radius; the 4-connected area around the
+    # brightest pixel within 2 of the point, holes filled (found here with SciPy, not with either reader's code)
+    from scipy import ndimage
+    average = aligned.astype(float).mean(axis=2)
+    (py, px), r = (10, 13), 4
+    rows, columns = np.mgrid[0:HEIGHT, 0:WIDTH]
+    near = (rows - py) ** 2 + (columns - px) ** 2
+    square = (abs(rows - py) <= r) & (abs(columns - px) <= r)
+    low, high = np.percentile(average[square], 20), average[near <= r * r].max()
+    mask = (near <= r * r) & (average >= low + 0.5 * (high - low))
+    candidates = np.flatnonzero((near <= 4).ravel())
+    seed = candidates[np.argmax(average.ravel()[candidates])]
+    labels, _ = ndimage.label(mask)
+    area = ndimage.binary_fill_holes(labels == labels.ravel()[seed])
+    expected["detected"] = [[int(y), int(x)] for y, x in zip(*np.nonzero(area))]
     expected["scanimage"] = {"height": 16, "width": 64, "frames": 3, "frame": 2,
                              **frame_bytes(scanimage[:, :, 1, 1, 2].astype(float))}
     print(json.dumps(expected, indent=1))

@@ -1,4 +1,9 @@
-/* The stack viewer: frames and projections of an image variable, with ROIs drawn over them (data.frame). */
+/* The stack viewer: frames and projections of an image variable, with ROIs drawn over them (data.frame).
+ *
+ * ROIs are curated here, as in dev's roimanager: selected (Ctrl-click for several), classified (a, r, u), deleted,
+ * moved by dragging, merged, and added: as a circle, drawn freehand, or detected around a click (rois.detect).
+ * The wheel zooms and dragging the image pans it; the image can be saved as PNG, and the ROIs shown as a gallery.
+ */
 (function () {
   "use strict";
   const N = window.N;
@@ -6,6 +11,7 @@
 
   const IMAGE_TYPES = ["Image", "ImageStack"];
   const ARRAY_ADAPTERS = ["npy", "mat", "ophys.tiff_stack", "ophys.sciscan_raw"];
+  const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
   /** Whether a data.status entry can be shown in the viewer. */
   N.isImageVariable = function (d) {
@@ -14,8 +20,8 @@
   };
 
   /** Decode a data.frame result onto a canvas of its own size, gray, with ROIs filled over it.
-   * Rejected ROIs are dimmed (or left out with hideRejected); the selected ROI is drawn in full color. */
-  function paint(canvas, frame, rois, showRois, selected = null, hideRejected = false) {
+   * Rejected ROIs are dimmed (or left out with hideRejected); selected ROIs are drawn in full color. */
+  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false) {
     canvas.width = frame.width;
     canvas.height = frame.height;
     const ctx = canvas.getContext("2d");
@@ -30,7 +36,7 @@
         const rejected = roi.classification === "rejected";
         if (rejected && hideRejected) return;
         const [r, g, b] = rejected ? [200, 60, 60] : roiColor(n);
-        const share = roi.id === selected ? 1 : rejected ? 0.25 : 0.5;
+        const share = selected.has(roi.id) ? 1 : rejected ? 0.25 : 0.5;
         roi.pixels.forEach(([y, x]) => {
           if (y < 0 || y >= frame.height || x < 0 || x >= frame.width) return;
           const i = 4 * (y * frame.width + x);
@@ -47,14 +53,49 @@
     const [r, g, b] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : hue < 180 ? [0, c, x] : hue < 240 ? [0, x, c] : hue < 300 ? [x, 0, c] : [c, 0, x];
     return [r, g, b].map((v) => Math.round(v * 255));
   }
+  N.roiColor = roiColor;
+
+  /** Even-odd rule: is (px, py) inside the polygon of points [[x, y], ...]? */
+  function inPolygon(points, px, py) {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const [xi, yi] = points[i], [xj, yj] = points[j];
+      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  /** The pixels [row, column] whose centre is inside a polygon drawn in image coordinates (pixel [r, c] spans c..c+1, r..r+1). */
+  N.polygonPixels = function (points, height, width) {
+    if (points.length < 3) return [];
+    const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+    const pixels = [];
+    for (let r = Math.max(0, Math.floor(Math.min(...ys))); r <= Math.min(height - 1, Math.ceil(Math.max(...ys))); r++) {
+      for (let c = Math.max(0, Math.floor(Math.min(...xs))); c <= Math.min(width - 1, Math.ceil(Math.max(...xs))); c++) {
+        if (inPolygon(points, c + 0.5, r + 0.5)) pixels.push([r, c]);
+      }
+    }
+    return pixels;
+  };
+
+  /** The pixels of an ROI on its edge: those with a side not in the ROI. */
+  function edge(roi) {
+    const inside = new Set(roi.pixels.map(([y, x]) => `${y},${x}`));
+    return roi.pixels.filter(([y, x]) => SIDES.some(([a, b]) => !inside.has(`${y + a},${x + b}`)));
+  }
 
   /**
-   * Open the viewer on a variable of an entity. roiVariables are the entity's variables that hold ROIs.
+   * Open the viewer on a variable of an entity. roiVariables are the entity's variables that hold ROIs, and
+   * signalVariables its signals, shown for the selected ROI.
    */
   N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = []) {
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
-      playing: false, busy: false, pending: false, selected: null, adding: false, radius: 3, hideRejected: false, channel: 0, plane: 0 };
+      playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
+      zoom: 1, drag: null };
     const canvas = h("canvas.viewer-canvas");
+    const overlay = h("canvas.viewer-overlay");
+    const holder = h("div.viewer-holder", canvas, overlay);
+    const stage = h("div.viewer-stage", holder);
     const slider = h("input.viewer-slider", { type: "range", min: 0, max: 0, value: 0, on: { input: () => { state.frame = Number(slider.value); show(); } } });
     const frameLabel = h("span.viewer-frame.mono", "");
     const playButton = h("button.btn.ghost.icon.small.viewer-play", { title: "Play", on: { click: () => toggle() } }, N.icon("play", 14));
@@ -64,7 +105,7 @@
     const high = h("input.input.viewer-high", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.high = Number(high.value); show(); } } });
     const auto = h("input", { type: "checkbox", checked: true, on: { change: () => { state.auto = auto.checked; show(); } } });
     const roiToggle = h("input.viewer-rois", { type: "checkbox", checked: state.showRois, on: { change: () => { state.showRois = roiToggle.checked; show(); } } });
-    const roiPick = roiVariables.length > 1 ? h("select.input", { on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; show(); } } },
+    const roiPick = roiVariables.length > 1 ? h("select.input", { on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; select(null); show(); } } },
       roiVariables.map((v) => h("option", { value: v }, v))) : null;
     // channel and plane pickers, shown once the stack turns out to have more than one
     const channelPick = h("select.input.viewer-channel", { style: { display: "none" }, on: { change: () => { state.channel = Number(channelPick.value); show(); } } });
@@ -73,54 +114,194 @@
       if (select.options.length !== count) N.fill(select, Array.from({ length: count }, (_, i) => h("option", { value: i, selected: i === value }, `${label} ${i + 1}`)));
       select.style.display = count > 1 ? "" : "none";
     };
+    const exportButton = h("button.btn.ghost.icon.small.viewer-export", { title: "Save the image as PNG", on: { click: () => saveImage() } }, N.icon("download", 14));
+    const zoomLabel = h("button.btn.ghost.small.viewer-zoom.mono", { title: "Fit the image (double-click it)", style: { display: "none" }, on: { click: () => zoomTo(1) } }, "");
     const status = h("div.viewer-status.muted", "Loading…");
     const where = h("span.viewer-where.mono.muted", "");
     let last = null;
 
-    const pixelAt = (event) => {
+    // --- where the pointer is: image coordinates (fractional) and pixels -------------------------------------------
+    const pointAt = (event) => {
       const rect = canvas.getBoundingClientRect();
-      return [Math.floor((event.clientY - rect.top) / rect.height * last.height), Math.floor((event.clientX - rect.left) / rect.width * last.width)];
+      return [(event.clientY - rect.top) / rect.height * last.height, (event.clientX - rect.left) / rect.width * last.width];
     };
-    const roiAt = (y, x) => state.showRois && state.rois ? state.rois.find((r) => !(state.hideRejected && r.classification === "rejected") &&
-      r.pixels.some(([py, px]) => py === y && px === x)) : null;
+    const pixelAt = (event) => pointAt(event).map(Math.floor);
+    const visible = () => (state.rois || []).filter((r) => !(state.hideRejected && r.classification === "rejected"));
+    const roiAt = (y, x) => state.showRois && state.rois ? visible().find((r) => r.pixels.some(([py, px]) => py === y && px === x)) || null : null;
+
+    // --- size: the image fits the stage, times the zoom ---------------------------------------------------------------
+    function layout() {
+      if (!last) return;
+      const room = Math.max(120, stage.clientWidth - 24);
+      const tall = Math.max(120, window.innerHeight * (signalPanel ? 0.44 : 0.62) - 24);
+      const fit = Math.min(room, 640, tall * last.width / last.height);
+      const width = Math.round(fit * state.zoom), height = Math.round(fit * state.zoom * last.height / last.width);
+      holder.style.width = `${width}px`;
+      holder.style.height = `${height}px`;
+      zoomLabel.textContent = `${Math.round(state.zoom * 100)}%`;
+      zoomLabel.style.display = state.zoom > 1 ? "" : "none";
+      stage.classList.toggle("zoomed", state.zoom > 1);
+      drawOverlay();
+    }
+    /** Zoom to a factor (1 fits the image), keeping the image point under (clientX, clientY) where it is. */
+    function zoomTo(zoom, clientX, clientY) {
+      zoom = Math.min(16, Math.max(1, zoom));
+      if (!last || zoom === state.zoom) return;
+      const before = canvas.getBoundingClientRect();
+      if (clientX === undefined) { clientX = before.left + before.width / 2; clientY = before.top + before.height / 2; }
+      const fx = (clientX - before.left) / before.width, fy = (clientY - before.top) / before.height;
+      state.zoom = zoom;
+      layout();
+      const after = canvas.getBoundingClientRect();
+      stage.scrollLeft += after.left + fx * after.width - clientX;
+      stage.scrollTop += after.top + fy * after.height - clientY;
+    }
+    stage.addEventListener("wheel", (event) => {
+      if (!last) return;
+      event.preventDefault();
+      zoomTo(state.zoom * (event.deltaY < 0 ? 1.25 : 0.8), event.clientX, event.clientY);
+    }, { passive: false });
+    canvas.addEventListener("dblclick", (event) => { if (!state.tool) zoomTo(state.zoom > 1 ? 1 : 4, event.clientX, event.clientY); });
+    const resizing = new ResizeObserver(() => layout());
+    resizing.observe(stage);
+
+    // --- the overlay: a line being drawn, an ROI being moved, the outlines of a selection ---------------------------
+    function drawOverlay() {
+      if (!last) return;
+      const ratio = window.devicePixelRatio || 1;
+      const width = overlay.clientWidth || 1, height = overlay.clientHeight || 1;
+      overlay.width = Math.round(width * ratio);
+      overlay.height = Math.round(height * ratio);
+      const ctx = overlay.getContext("2d");
+      ctx.setTransform(ratio * width / last.width, 0, 0, ratio * height / last.height, 0, 0);   // image coordinates
+      ctx.clearRect(0, 0, last.width, last.height);
+      const drag = state.drag;
+      if (drag && drag.kind === "draw" && drag.points.length > 1) {
+        ctx.strokeStyle = "rgba(255, 210, 60, 0.95)";
+        ctx.lineWidth = 2 * last.width / width;
+        ctx.beginPath();
+        drag.points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.stroke();
+      }
+      if (drag && drag.kind === "move" && (drag.dy || drag.dx)) {
+        ctx.fillStyle = "rgba(255, 210, 60, 0.55)";
+        drag.roi.pixels.forEach(([y, x]) => ctx.fillRect(x + drag.dx, y + drag.dy, 1, 1));
+      }
+      if (state.selection.size > 1 && state.showRois && state.rois) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+        state.rois.filter((r) => state.selection.has(r.id)).forEach((roi) => edge(roi).forEach(([y, x]) => ctx.fillRect(x, y, 1, 1)));
+      }
+    }
+
+    // --- the mouse: tools, selection, moving an ROI and panning -----------------------------------------------------
     canvas.addEventListener("mousemove", (event) => {
       if (!last) return;
       const [y, x] = pixelAt(event);
       const roi = roiAt(y, x);
       where.textContent = `row ${y}, column ${x}` + (roi ? ` · ROI ${roi.id}` : "");
+      canvas.classList.toggle("over-selected", !state.tool && roi !== null && roi.id === state.selected);
     });
-    canvas.addEventListener("click", (event) => {
-      if (!last || !state.rois) return;
+    canvas.addEventListener("mouseleave", () => { where.textContent = ""; });
+    const several = (event) => event.ctrlKey || event.metaKey || event.shiftKey;
+    canvas.addEventListener("mousedown", (event) => {
+      if (!last || event.button !== 0) return;
+      const [py, px] = pointAt(event);
+      const roi = roiAt(Math.floor(py), Math.floor(px));
+      if (state.tool === "draw") {
+        if (state.rois) state.drag = { kind: "draw", points: [[px, py]] };
+      } else if (state.tool) {
+        return;   // circle and detect act on the click
+      } else if (roi && roi.id === state.selected && !several(event)) {
+        state.drag = { kind: "move", roi, from: [Math.floor(py), Math.floor(px)], dy: 0, dx: 0 };
+      } else {
+        state.drag = { kind: "pan", from: [event.clientX, event.clientY], scroll: [stage.scrollLeft, stage.scrollTop], moved: false };
+      }
+      event.preventDefault();
+    });
+    const onMove = (event) => {
+      const drag = state.drag;
+      if (!drag || !last) return;
+      if (drag.kind === "draw") {
+        const [py, px] = pointAt(event);
+        drag.points.push([Math.min(last.width, Math.max(0, px)), Math.min(last.height, Math.max(0, py))]);
+      } else if (drag.kind === "move") {
+        const [y, x] = pixelAt(event);
+        drag.dy = y - drag.from[0];
+        drag.dx = x - drag.from[1];
+      } else {
+        const dx = event.clientX - drag.from[0], dy = event.clientY - drag.from[1];
+        if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+        stage.scrollLeft = drag.scroll[0] - dx;
+        stage.scrollTop = drag.scroll[1] - dy;
+        stage.classList.toggle("panning", drag.moved);
+      }
+      drawOverlay();
+    };
+    const onUp = (event) => {
+      const drag = state.drag;
+      if (!drag) return;
+      state.drag = null;
+      stage.classList.remove("panning");
+      drawOverlay();
+      if (drag.kind === "draw") {
+        const pixels = N.polygonPixels(drag.points, last.height, last.width);
+        if (pixels.length) edit({ add: [{ pixels }] });
+        else status.textContent = "Draw around the cell: the ROI is the pixels inside the line";
+      } else if (drag.kind === "move" && (drag.dy || drag.dx)) {
+        edit({ move: [{ id: drag.roi.id, rows: drag.dy, columns: drag.dx }] });
+      } else if (!(drag.kind === "pan" && drag.moved)) {
+        const [y, x] = pixelAt(event);
+        const roi = roiAt(y, x);
+        select(roi ? roi.id : null, several(event));
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    canvas.addEventListener("click", async (event) => {
+      if (!last || !state.rois || (state.tool !== "circle" && state.tool !== "detect")) return;
       const [y, x] = pixelAt(event);
-      if (state.adding) {
+      if (state.tool === "circle") {
         const pixels = [];
         const r = state.radius;
         for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dy * dy + dx * dx <= r * r) pixels.push([y + dy, x + dx]);
         edit({ add: [{ pixels }] });
         return;
       }
-      const roi = roiAt(y, x);
-      select(roi ? roi.id : null);
+      try {
+        status.textContent = "Detecting…";
+        const found = await app.client.request("rois.detect", { entityType, key, variable, point: [y, x], radius: Math.max(2 * state.radius, 4),
+          channel: state.channel, plane: state.plane });
+        if (found.pixels.length) edit({ add: [{ pixels: found.pixels }] });
+        else status.textContent = "No cell found there: click on its bright middle, or draw it";
+      } catch (error) { N.showError(error, "Could not detect an ROI"); }
     });
 
-    // ROI curation: the list, its buttons and keys
-    const roiList = h("ul.viewer-roi-list");
-    const addButton = h("button.btn.small.viewer-add", { title: "Click on the image to add a round ROI", on: { click: () => {
-      state.adding = !state.adding;
-      addButton.classList.toggle("active", state.adding);
-      canvas.classList.toggle("adding", state.adding);
-    } } }, N.icon("plus", 13), "Add ROI");
-    const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of an added ROI (px)",
-      on: { change: () => { state.radius = Math.max(1, Math.round(Number(radius.value) || 1)); } } });
-    const hide = h("input", { type: "checkbox", on: { change: () => { state.hideRejected = hide.checked; redraw(); renderList(); } } });
+    // --- the ROI panel: actions, tools, the list --------------------------------------------------------------------
     const actions = [
       ["accept", "check", "Accept (a)", () => classify("accepted")],
       ["reject", "x", "Reject (r)", () => classify("rejected")],
       ["clear", "retry", "Clear (u)", () => classify(null)],
       ["delete", "trash", "Delete (Delete)", () => remove()],
     ].map(([name, icon, title, run]) => h(`button.btn.ghost.icon.small.roi-${name}`, { title, on: { click: run } }, N.icon(icon, 13)));
+    const mergeButton = h("button.btn.ghost.icon.small.roi-merge", { title: "Merge the selected ROIs into one (m); Ctrl-click selects several", on: { click: () => merge() } }, N.icon("merge", 13));
+    const galleryButton = h("button.btn.ghost.icon.small.viewer-gallery", { title: "Show the ROIs as a gallery", on: { click: () => gallery() } }, N.icon("grid", 13));
+    const tools = [["circle", "circle", "Add a round ROI where you click", ".viewer-add"],
+      ["draw", "freehand", "Draw an ROI: drag around the cell", ".viewer-draw"],
+      ["detect", "crosshair", "Detect the cell around where you click", ".viewer-detect"]].map(([name, icon, title, cls]) =>
+      h(`button.btn.ghost.icon.small${cls}`, { title, dataset: { tool: name }, on: { click: () => setTool(state.tool === name ? null : name) } }, N.icon(icon, 13)));
+    function setTool(name) {
+      state.tool = name;
+      tools.forEach((b) => b.classList.toggle("active", b.dataset.tool === name));
+      canvas.classList.toggle("adding", name === "circle" || name === "detect");
+      canvas.classList.toggle("drawing", name === "draw");
+    }
+    const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of a round ROI (px); Detect looks twice as far",
+      on: { change: () => { state.radius = Math.max(1, Math.round(Number(radius.value) || 1)); } } });
+    const hide = h("input", { type: "checkbox", on: { change: () => { state.hideRejected = hide.checked; redraw(); renderList(); } } });
+    const roiList = h("ul.viewer-roi-list");
     const roiPanel = h("div.viewer-roi-panel",
-      h("div.viewer-roi-actions", actions, h("div.spacer"), addButton, radius),
+      h("div.viewer-roi-actions", actions, mergeButton, h("div.spacer"), galleryButton),
+      h("div.viewer-roi-actions.viewer-roi-tools", tools, h("div.spacer"), radius),
       h("label.viewer-hide", hide, "Hide rejected"),
       roiList);
 
@@ -157,53 +338,168 @@
     }
 
     function renderList() {
-      const rois = (state.rois || []).filter((r) => !(state.hideRejected && r.classification === "rejected"));
-      N.fill(roiList, rois.map((roi) => h("li" + (roi.id === state.selected ? ".selected" : ""), { dataset: { roi: roi.id },
-        on: { click: () => select(roi.id) } },
+      N.fill(roiList, visible().map((roi) => h("li" + (state.selection.has(roi.id) ? ".selected" : ""), { dataset: { roi: roi.id },
+        on: { click: (event) => select(roi.id, several(event)) } },
         h("span.swatch", { style: { background: roi.classification === "rejected" ? "rgb(200,60,60)" : `rgb(${roiColor(state.rois.indexOf(roi)).join(",")})` } }),
         h("span.grow", `ROI ${roi.id}`), h("span.muted", `${roi.pixels.length} px`),
         roi.classification ? h("span.pill." + (roi.classification === "accepted" ? "good" : "bad"), roi.classification) : null)));
-      actions.forEach((b) => { b.disabled = state.selected === null; });
+      actions.forEach((b) => { b.disabled = state.selection.size === 0; });
+      mergeButton.disabled = state.selection.size < 2;
+      galleryButton.disabled = !state.rois || !state.rois.length;
       roiPanel.style.display = state.rois && state.showRois ? "" : "none";
     }
-    function redraw() { if (last) paint(canvas, last, state.rois, state.showRois, state.selected, state.hideRejected); }
-    function select(id) {
-      state.selected = id;
+    function redraw() { if (last) paint(canvas, last, state.rois, state.showRois, state.selection, state.hideRejected); drawOverlay(); }
+    let onSelect = null;   // the gallery, while it is open
+    /** Select an ROI (null for none); with add, add it to the selection, or take it out. */
+    function select(id, add = false) {
+      if (add && id !== null) {
+        if (state.selection.has(id)) state.selection.delete(id); else state.selection.add(id);
+        state.selected = state.selection.has(id) ? id : [...state.selection].pop() ?? null;
+      } else {
+        state.selection = new Set(id === null ? [] : [id]);
+        state.selected = id;
+      }
       redraw();
       renderList();
       showSignal();
-      const item = roiList.querySelector(`li[data-roi="${id}"]`);
+      const item = roiList.querySelector(`li[data-roi="${state.selected}"]`);
       if (item) item.scrollIntoView({ block: "nearest" });
+      if (onSelect) onSelect();
     }
     async function edit(change) {
       try {
         const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, ...change });
         state.rois = result.rois;
-        if (result.added.length) state.selected = result.added[0];
-        if (!state.rois.some((r) => r.id === state.selected)) state.selected = null;
+        if (result.added.length) { state.selected = result.added[0]; state.selection = new Set([state.selected]); }
+        state.selection = new Set([...state.selection].filter((id) => state.rois.some((r) => r.id === id)));
+        if (!state.selection.has(state.selected)) state.selected = [...state.selection].pop() ?? null;
         redraw();
         renderList();
         showSignal();
+        if (onSelect) onSelect();
+        status.textContent = `${last.height} × ${last.width} · ${state.rois.length} ROIs`;
       } catch (error) { N.showError(error, "Could not change the ROIs"); }
     }
-    function classify(label) { if (state.selected !== null) edit({ classify: [{ id: state.selected, classification: label }] }); }
-    function remove() { if (state.selected !== null) edit({ remove: [state.selected] }); }
+    const selectedIds = () => [...state.selection].sort((a, b) => a - b);
+    function classify(label) { if (state.selection.size) edit({ classify: selectedIds().map((id) => ({ id, classification: label })) }); }
+    function remove() { if (state.selection.size) edit({ remove: selectedIds() }); }
+    function merge() {
+      if (state.selection.size < 2) return;
+      const ids = selectedIds();
+      state.selection = new Set([ids[0]]);   // the merged ROI keeps the first id
+      state.selected = ids[0];
+      edit({ merge: [ids] });
+    }
     function onKey(event) {
-      if (event.target.tagName === "INPUT" || event.target.tagName === "SELECT" || !state.rois) return;
-      const order = state.rois.filter((r) => !(state.hideRejected && r.classification === "rejected")).map((r) => r.id);
+      if (event.target.tagName === "INPUT" || event.target.tagName === "SELECT" || !state.rois || !document.body.contains(canvas)) return;
+      if (onSelect) return;   // the gallery has the keys
+      const order = visible().map((r) => r.id);
       const at = order.indexOf(state.selected);
-      if (event.key === "a") classify("accepted");
+      if (event.key === "Escape" && state.tool) { setTool(null); event.stopPropagation(); }
+      else if (event.ctrlKey || event.metaKey) return;
+      else if (event.key === "a") classify("accepted");
       else if (event.key === "r") classify("rejected");
       else if (event.key === "u") classify(null);
+      else if (event.key === "m") merge();
       else if (event.key === "Delete" || event.key === "Backspace") remove();
-      else if (event.key === "ArrowDown" || event.key === "j") select(order[Math.min(order.length - 1, at + 1)] ?? null);
+      else if (event.altKey && event.key.startsWith("Arrow")) {   // move the selected ROI a pixel
+        if (state.selected === null) return;
+        const [rows, columns] = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[event.key];
+        edit({ move: [{ id: state.selected, rows, columns }] });
+      } else if (event.key === "ArrowDown" || event.key === "j") select(order[Math.min(order.length - 1, at + 1)] ?? null);
       else if (event.key === "ArrowUp" || event.key === "k") select(order[Math.max(0, at - 1)] ?? null);
       else return;
       event.preventDefault();
     }
-    document.addEventListener("keydown", onKey);
-    canvas.addEventListener("mouseleave", () => { where.textContent = ""; });
+    document.addEventListener("keydown", onKey, true);
 
+    // --- saving the image, and the gallery of ROIs ------------------------------------------------------------------
+    function saveImage() {
+      if (!last) return;
+      const scale = Math.max(1, Math.floor(1024 / Math.max(last.width, last.height)));
+      const out = document.createElement("canvas");
+      out.width = last.width * scale;
+      out.height = last.height * scale;
+      const ctx = out.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(canvas, 0, 0, out.width, out.height);
+      const name = `${N.fmt.key(key)}_${variable}_${state.mode === "frame" ? `frame${state.frame + 1}` : state.mode}.png`.replace(/[^\w.-]+/g, "_");
+      const link = h("a", { href: out.toDataURL("image/png"), download: name });
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      N.toast("Image saved", name, "success", 2500);
+    }
+
+    /** The ROIs as tiles of the image around each, for going through them by eye: sorted, selected, classified. */
+    function gallery() {
+      if (!last || !state.rois) return;
+      const bytes = atob(last.pixels);
+      const value = (y, x) => (y >= 0 && y < last.height && x >= 0 && x < last.width ? bytes.charCodeAt(y * last.width + x) : 0);
+      const brightness = (roi) => roi.pixels.reduce((sum, [y, x]) => sum + value(y, x), 0) / Math.max(1, roi.pixels.length);
+      const sorts = { id: (r) => r.id, area: (r) => -r.pixels.length, brightness: (r) => -brightness(r) };
+      let sortBy = "id";
+      const grid = h("div.roi-gallery");
+      const sortPick = h("select.input.roi-gallery-sort", { on: { change: () => { sortBy = sortPick.value; render(); } } },
+        h("option", { value: "id" }, "By id"), h("option", { value: "area" }, "Largest first"), h("option", { value: "brightness" }, "Brightest first"));
+      const ordered = () => visible().slice().sort((a, b) => sorts[sortBy](a) - sorts[sortBy](b) || a.id - b.id);
+      function tile(roi) {
+        const half = 8, size = 2 * half + 1;
+        const ys = roi.pixels.map((p) => p[0]), xs = roi.pixels.map((p) => p[1]);
+        const top = Math.round((Math.min(...ys) + Math.max(...ys)) / 2) - half, left = Math.round((Math.min(...xs) + Math.max(...xs)) / 2) - half;
+        const crop = h("canvas.roi-tile-image");
+        crop.width = size;
+        crop.height = size;
+        const ctx = crop.getContext("2d");
+        const image = ctx.createImageData(size, size);
+        for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+          const v = value(top + y, left + x), i = 4 * (y * size + x);
+          image.data[i] = v; image.data[i + 1] = v; image.data[i + 2] = v; image.data[i + 3] = 255;
+        }
+        const [r, g, b] = roi.classification === "rejected" ? [230, 70, 70] : roi.classification === "accepted" ? [70, 200, 110] : [255, 196, 0];
+        edge(roi).forEach(([y, x]) => {
+          if (y < top || y >= top + size || x < left || x >= left + size) return;
+          const i = 4 * ((y - top) * size + x - left);
+          image.data[i] = r; image.data[i + 1] = g; image.data[i + 2] = b;
+        });
+        ctx.putImageData(image, 0, 0);
+        return h("button.roi-tile" + (state.selection.has(roi.id) ? ".selected" : "") + (roi.classification ? "." + roi.classification : ""),
+          { dataset: { roi: roi.id }, title: `ROI ${roi.id}: ${roi.pixels.length} px`, on: { click: (event) => select(roi.id, several(event)) } },
+          crop, h("span.roi-tile-label", `ROI ${roi.id}`));
+      }
+      function render() {
+        N.fill(grid, ordered().map(tile));
+        const chosen = grid.querySelector(`.roi-tile[data-roi="${state.selected}"]`);
+        if (chosen) chosen.scrollIntoView({ block: "nearest" });
+      }
+      const keys = (event) => {
+        if (event.target.tagName === "SELECT") return;
+        const list = ordered().map((r) => r.id);
+        const at = list.indexOf(state.selected);
+        const perRow = Math.max(1, Math.round(grid.clientWidth / (grid.firstElementChild ? grid.firstElementChild.offsetWidth + 8 : 100)));
+        const go = (i) => { if (list.length) select(list[Math.min(list.length - 1, Math.max(0, i))]); };
+        if (event.key === "Escape") view.close();
+        else if (event.key === "a") classify("accepted");
+        else if (event.key === "r") classify("rejected");
+        else if (event.key === "u") classify(null);
+        else if (event.key === "ArrowRight") go(at + 1);
+        else if (event.key === "ArrowLeft") go(at - 1);
+        else if (event.key === "ArrowDown") go(at < 0 ? 0 : at + perRow);
+        else if (event.key === "ArrowUp") go(at - perRow);
+        else return;
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      document.addEventListener("keydown", keys, true);
+      onSelect = render;
+      const view = N.dialog({ title: `ROIs · ${N.fmt.key(key)}`, content: h("div.roi-gallery-body",
+        h("div.roi-gallery-bar", sortPick, h("span.muted", "Click a tile to select it; a, r and u classify it, the arrow keys go through them.")), grid),
+        onClose: () => { document.removeEventListener("keydown", keys, true); onSelect = null; } });
+      view.el.classList.add("roi-gallery-dialog");
+      render();
+    }
+
+    // --- the frame --------------------------------------------------------------------------------------------------
     async function show() {
       if (state.busy) { state.pending = true; return; }
       state.busy = true;
@@ -214,6 +510,7 @@
       try {
         const frame = await app.client.request("data.frame", params);
         if (frame.rois) state.rois = frame.rois;
+        const resized = !last || last.width !== frame.width || last.height !== frame.height;
         last = frame;
         fillPick(channelPick, frame.channels || 1, "Channel", state.channel);
         fillPick(planePick, frame.planes || 1, "Plane", state.plane);
@@ -223,7 +520,8 @@
         playButton.disabled = slider.disabled;
         if (state.auto) { state.low = frame.low; state.high = frame.high; low.value = String(frame.low); high.value = String(frame.high); }
         frameLabel.textContent = state.mode === "frame" ? `${state.frame + 1} / ${frame.frames}` : `${frame.frames} frames`;
-        paint(canvas, frame, state.rois, state.showRois, state.selected, state.hideRejected);
+        paint(canvas, frame, state.rois, state.showRois, state.selection, state.hideRejected);
+        if (resized) layout(); else drawOverlay();
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
         status.textContent = `${frame.height} × ${frame.width}` + (state.rois && state.showRois ? ` · ${state.rois.length} ROIs` : "");
@@ -255,11 +553,17 @@
       h("div.viewer-bar",
         playButton, slider, frameLabel, mode, channelPick, planePick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick),
-      h("div.viewer-main", h("div.viewer-stage", canvas), roiVariables.length ? roiPanel : null),
+        roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, exportButton),
+      h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,
-      h("div.viewer-foot", status, h("div.spacer"), where));
-    const dialog = N.dialog({ title: `${variable} · ${N.fmt.key(key)}`, content, onClose: () => { state.playing = false; document.removeEventListener("keydown", onKey); } });
+      h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel));
+    const dialog = N.dialog({ title: `${variable} · ${N.fmt.key(key)}`, content, onClose: () => {
+      state.playing = false;
+      resizing.disconnect();
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    } });
     dialog.el.classList.add("viewer-dialog");
     show();
     return dialog;

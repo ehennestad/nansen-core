@@ -23,7 +23,7 @@ from .dataset import Dataset
 from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
-from .frames import image_frame, roi_outlines, signal_traces, update_rois
+from .frames import _mean as mean_image, _pick as pick_channel, detect_roi, image_frame, roi_outlines, signal_traces, update_rois
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -885,9 +885,20 @@ class Api:
         project = self._require_project()
         entity = self._entity(params)
         document, added = update_rois(project.load(entity, params["variable"], cached=False), params.get("classify"),
-                                      params.get("remove"), params.get("add"))
+                                      params.get("remove"), params.get("add"), params.get("move"), params.get("merge"))
         project.save(entity, params["variable"], document)
         return {"rois": roi_outlines(document), "added": added}
+
+    def rois__detect(self, params: dict) -> dict:
+        """The pixels of an ROI found around a point of an image variable (a stack's mean projection)."""
+        project = self._require_project()
+        entity = self._entity(params)
+        point = params.get("point")
+        if not isinstance(point, list) or len(point) != 2:
+            raise NansenError("invalid-params", "point is [row, column]")
+        stack, _, _ = pick_channel(project.open_stack(entity, params["variable"]), int(params.get("channel", 0)), int(params.get("plane", 0)))
+        image = mean_image(stack)
+        return {"pixels": detect_roi(image, point, int(params.get("radius", 6)))}
 
     def methods__list(self, params: dict) -> list:
         project = self._require_project()

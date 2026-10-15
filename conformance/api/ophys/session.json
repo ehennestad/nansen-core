@@ -2838,8 +2838,546 @@
     },
     {
       "request": {
-        "method": "methods.run",
+        "method": "rois.detect",
         "id": 72,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "point": [
+            10,
+            13
+          ],
+          "radius": 4
+        }
+      },
+      "expect": {
+        "result": {
+          "pixels": [
+            [
+              8,
+              12
+            ],
+            [
+              9,
+              11
+            ],
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              10
+            ],
+            [
+              10,
+              11
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              10,
+              13
+            ],
+            [
+              10,
+              14
+            ],
+            [
+              11,
+              11
+            ],
+            [
+              11,
+              12
+            ],
+            [
+              11,
+              13
+            ],
+            [
+              12,
+              12
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.detect",
+        "id": 73,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "point": [
+            40,
+            13
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 74,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "move": [
+            {
+              "id": 3,
+              "rows": 1,
+              "columns": -1
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [],
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": "rejected"
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  21,
+                  8
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  23,
+                  6
+                ],
+                [
+                  23,
+                  7
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  7
+                ],
+                [
+                  24,
+                  8
+                ],
+                [
+                  24,
+                  9
+                ],
+                [
+                  25,
+                  8
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 75,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "merge": [
+            [
+              1,
+              3
+            ]
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [],
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  23,
+                  6
+                ],
+                [
+                  23,
+                  7
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  7
+                ],
+                [
+                  24,
+                  8
+                ],
+                [
+                  24,
+                  9
+                ],
+                [
+                  25,
+                  8
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": "rejected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 76,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "merge": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 77,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "move": [
+            {
+              "id": 2,
+              "rows": 100,
+              "columns": 0
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 78,
         "params": {
           "methodId": "ophys.deinterleave",
           "entityType": "session",
@@ -2869,7 +3407,7 @@
     {
       "request": {
         "method": "data.frame",
-        "id": 73,
+        "id": 79,
         "params": {
           "entityType": "session",
           "key": {
@@ -2898,7 +3436,7 @@
     {
       "request": {
         "method": "methods.run",
-        "id": 74,
+        "id": 80,
         "params": {
           "methodId": "ophys.motion_correction",
           "entityType": "session",
@@ -2932,7 +3470,7 @@
     {
       "request": {
         "method": "methods.run",
-        "id": 75,
+        "id": 81,
         "params": {
           "methodId": "ophys.image_stats",
           "entityType": "session",

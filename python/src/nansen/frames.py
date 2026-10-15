@@ -26,6 +26,43 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         import numpy as np
     except ImportError:
         raise NansenError("adapter-unavailable", 'viewing arrays needs NumPy: pip install "nansen-core[npy]"') from None
+    stack, channels, planes = _pick(data, channel, plane)
+    height, width, frames = stack.shape
+    if projection == "mean":
+        image, frame = _mean(stack), None
+    elif projection == "max":
+        image = None
+        for start in range(0, frames, CHUNK):
+            peak = stack.frames(start, start + CHUNK).max(axis=2)
+            image = peak if image is None else np.maximum(image, peak)
+        image, frame = image.astype(np.float64), None
+    elif projection is None:
+        if not 0 <= frame < frames:
+            raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
+        image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
+    else:
+        raise NansenError("invalid-params", f"projection is mean or max, not {projection!r}")
+    if limits is not None:
+        low, high = float(limits[0]), float(limits[1])
+    else:
+        finite = image[np.isfinite(image)]
+        low, high = (float(finite.min()), float(finite.max())) if finite.size else (0.0, 0.0)
+    scaled = np.zeros((height, width), dtype=np.uint8)
+    if high > low:
+        with np.errstate(invalid="ignore"):
+            values = np.floor((image - low) / (high - low) * 255 + 0.5)
+        scaled = np.clip(np.nan_to_num(values, nan=0.0), 0, 255).astype(np.uint8)
+    return {"height": height, "width": width, "frames": frames, "channels": channels, "planes": planes, "frame": frame,
+            "low": _number(low), "high": _number(high),
+            "pixels": base64.b64encode(scaled.tobytes()).decode("ascii")}
+
+
+CHUNK = 100   # frames read at a time for a projection
+
+
+def _pick(data: Any, channel: int = 0, plane: int = 0):
+    """(height x width x frames stack, channels, planes): the channel and plane (0-based) of an image or stack."""
+    import numpy as np
     from .stacks import Stack, from_array
     stack = data if isinstance(data, Stack) else None
     if stack is None:
@@ -50,38 +87,17 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         if not 0 <= channel < stack.shape[2]:
             raise NansenError("invalid-params", f"there are {stack.shape[2]} channels; channel {channel} is not one")
         stack = stack.select(slice(None), slice(None), channel)
+    return stack, channels, planes
+
+
+def _mean(stack) -> Any:
+    """The mean over the frames of a height x width x frames stack, a chunk at a time."""
+    import numpy as np
     height, width, frames = stack.shape
-    chunk = 100   # frames read at a time for a projection
-    if projection == "mean":
-        total = np.zeros((height, width))
-        for start in range(0, frames, chunk):
-            total += stack.frames(start, start + chunk).astype(np.float64).sum(axis=2)
-        image, frame = total / frames, None
-    elif projection == "max":
-        image = None
-        for start in range(0, frames, chunk):
-            peak = stack.frames(start, start + chunk).max(axis=2)
-            image = peak if image is None else np.maximum(image, peak)
-        image, frame = image.astype(np.float64), None
-    elif projection is None:
-        if not 0 <= frame < frames:
-            raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
-        image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
-    else:
-        raise NansenError("invalid-params", f"projection is mean or max, not {projection!r}")
-    if limits is not None:
-        low, high = float(limits[0]), float(limits[1])
-    else:
-        finite = image[np.isfinite(image)]
-        low, high = (float(finite.min()), float(finite.max())) if finite.size else (0.0, 0.0)
-    scaled = np.zeros((height, width), dtype=np.uint8)
-    if high > low:
-        with np.errstate(invalid="ignore"):
-            values = np.floor((image - low) / (high - low) * 255 + 0.5)
-        scaled = np.clip(np.nan_to_num(values, nan=0.0), 0, 255).astype(np.uint8)
-    return {"height": height, "width": width, "frames": frames, "channels": channels, "planes": planes, "frame": frame,
-            "low": _number(low), "high": _number(high),
-            "pixels": base64.b64encode(scaled.tobytes()).decode("ascii")}
+    total = np.zeros((height, width))
+    for start in range(0, frames, CHUNK):
+        total += stack.frames(start, start + CHUNK).astype(np.float64).sum(axis=2)
+    return total / frames
 
 
 def roi_outlines(value: Any) -> List[Dict[str, Any]]:
@@ -102,19 +118,38 @@ CLASSES = ("accepted", "rejected")
 
 
 def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[list] = None,
-                add: Optional[list] = None) -> Any:
-    """The ROI file with ROIs classified, removed and added; returns (document, ids of the added ROIs).
+                add: Optional[list] = None, move: Optional[list] = None, merge: Optional[list] = None) -> Any:
+    """The ROI file with ROIs classified, moved, merged, removed and added; returns (document, ids of the added ROIs).
 
-    classify is [{id, classification}] with classification accepted, rejected or null (none). An added ROI is
-    {pixels}; it gets the next free id, its area and its center, and pixels outside imageSize are left out.
+    classify is [{id, classification}] with classification accepted, rejected or null (none). move is
+    [{id, rows, columns}]: the ROI's pixels shifted by whole pixels, those leaving the image left out. merge is
+    [[id, id, ...]]: the first ROI of each group takes the pixels of all of them (and keeps its id and
+    classification), the others are removed. An added ROI is {pixels}; it gets the next free id. A changed or
+    added ROI gets its area and center again, and pixels outside imageSize are left out.
     """
     roi_outlines(value)  # checks the shape
     rois = [dict(roi, id=roi.get("id", number)) for number, roi in enumerate(value.get("rois", []), start=1)]
     by_id = {roi["id"]: roi for roi in rois}
+    size = value.get("imageSize")
+    inside = lambda p: size is None or (0 <= p[0] < size[0] and 0 <= p[1] < size[1])
+
+    def find(roi_id):
+        if roi_id not in by_id:
+            raise NansenError("invalid-params", f"there is no ROI {roi_id!r}")
+        return by_id[roi_id]
+
+    def measure(roi, pixels):
+        pixels = sorted(set(pixels))
+        if not pixels:
+            raise NansenError("invalid-params", f"ROI {roi['id']} would have no pixels inside the image")
+        roi.update(area=len(pixels), center=[_round2(sum(p[0] for p in pixels) / len(pixels)), _round2(sum(p[1] for p in pixels) / len(pixels))],
+                   pixels=[list(p) for p in pixels])
+
+    def pixels_of(roi):
+        return [(int(p[0]), int(p[1])) for p in roi_outlines({"rois": [roi]})[0]["pixels"]]
+
     for change in classify or []:
-        roi = by_id.get(change.get("id"))
-        if roi is None:
-            raise NansenError("invalid-params", f"there is no ROI {change.get('id')!r}")
+        roi = find(change.get("id"))
         label = change.get("classification")
         if label is None:
             roi.pop("classification", None)
@@ -122,25 +157,97 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
             roi["classification"] = label
         else:
             raise NansenError("invalid-params", f"an ROI is accepted or rejected, not {label!r}")
+    for change in move or []:
+        roi = find(change.get("id"))
+        dy, dx = int(change.get("rows", 0)), int(change.get("columns", 0))
+        measure(roi, [(r + dy, c + dx) for r, c in pixels_of(roi) if inside((r + dy, c + dx))])
+    gone = set()
+    for group in merge or []:
+        if not isinstance(group, list) or len(group) < 2 or len(set(group)) != len(group):
+            raise NansenError("invalid-params", "a merge is a list of two or more different ROI ids")
+        first = find(group[0])
+        pixels = pixels_of(first)
+        for roi_id in group[1:]:
+            pixels += pixels_of(find(roi_id))
+            gone.add(roi_id)
+        measure(first, pixels)
     for roi_id in remove or []:
-        if roi_id not in by_id:
-            raise NansenError("invalid-params", f"there is no ROI {roi_id!r}")
-    rois = [roi for roi in rois if roi["id"] not in set(remove or [])]
-    size = value.get("imageSize")
+        find(roi_id)
+    gone |= set(remove or [])
+    rois = [roi for roi in rois if roi["id"] not in gone]
     next_id = max([int(i) for i in by_id] + [0]) + 1
     added = []
     for new in add or []:
-        pixels = sorted({(int(p[0]), int(p[1])) for p in new.get("pixels", [])
-                         if size is None or (0 <= p[0] < size[0] and 0 <= p[1] < size[1])})
-        if not pixels:
-            raise NansenError("invalid-params", "an added ROI needs pixels inside the image")
-        rows = sum(p[0] for p in pixels) / len(pixels)
-        columns = sum(p[1] for p in pixels) / len(pixels)
-        rois.append({"id": next_id, "area": len(pixels), "center": [_round2(rows), _round2(columns)],
-                     "pixels": [list(p) for p in pixels]})
+        roi = {"id": next_id}
+        try:
+            measure(roi, [(int(p[0]), int(p[1])) for p in new.get("pixels", []) if inside(p)])
+        except NansenError:
+            raise NansenError("invalid-params", "an added ROI needs pixels inside the image") from None
+        rois.append(roi)
         added.append(next_id)
         next_id += 1
     return dict(value, rois=rois), added
+
+
+def detect_roi(image: Any, point: List[int], radius: int = 6) -> List[List[int]]:
+    """An ROI found around a point of an image (height x width), as the viewer's Detect tool does.
+
+    In the square of radius pixels around the point, the threshold is halfway from the 20th percentile of the
+    square to the brightest pixel within radius of the point (square distance, counted as dy^2 + dx^2 <= radius^2).
+    The ROI is the 4-connected area of pixels within radius that reach it, around the brightest pixel within 2
+    of the point (the first in row-major order of equal ones), with its holes filled. 0-based [row, column]
+    pixels in row-major order. MATLAB's nansen.internal.detectRoi finds the same.
+    """
+    import numpy as np
+    image = np.asarray(image, dtype=np.float64)
+    if image.ndim != 2:
+        raise NansenError("invalid-data", "an ROI is detected in an image (height x width)")
+    height, width = image.shape
+    y, x = int(point[0]), int(point[1])
+    if not (0 <= y < height and 0 <= x < width):
+        raise NansenError("invalid-params", f"the point {point} is not in the {height} x {width} image")
+    radius = max(1, int(radius))
+    top, bottom, left, right = max(0, y - radius), min(height, y + radius + 1), max(0, x - radius), min(width, x + radius + 1)
+    window = image[top:bottom, left:right]
+    rows, columns = np.mgrid[top:bottom, left:right]
+    near = (rows - y) ** 2 + (columns - x) ** 2
+    values = np.sort(window[np.isfinite(window)])
+    if values.size == 0:
+        return []
+    position = (values.size - 1) * 0.2
+    low = values[int(np.floor(position))] + (position - np.floor(position)) * (values[min(int(np.floor(position)) + 1, values.size - 1)] - values[int(np.floor(position))])
+    disk = near <= radius * radius
+    high = window[disk & np.isfinite(window)].max()
+    mask = disk & (window >= low + 0.5 * (high - low))
+    seed, best = None, -np.inf
+    for r, c in zip(*np.nonzero(near <= 4)):   # row-major
+        if window[r, c] > best:
+            seed, best = (r, c), window[r, c]
+    if seed is None or not mask[seed]:
+        return []
+    area, todo = {seed}, [seed]
+    while todo:
+        r, c = todo.pop()
+        for n in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+            if 0 <= n[0] < mask.shape[0] and 0 <= n[1] < mask.shape[1] and mask[n] and n not in area:
+                area.add(n)
+                todo.append(n)
+    region = np.zeros_like(mask)
+    for r, c in area:
+        region[r, c] = True
+    # holes: pixels not reachable from the window's edge through pixels outside the region
+    outside = np.zeros_like(mask)
+    todo = [(r, c) for r in range(mask.shape[0]) for c in range(mask.shape[1])
+            if (r in (0, mask.shape[0] - 1) or c in (0, mask.shape[1] - 1)) and not region[r, c]]
+    for r, c in todo:
+        outside[r, c] = True
+    while todo:
+        r, c = todo.pop()
+        for n in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+            if 0 <= n[0] < mask.shape[0] and 0 <= n[1] < mask.shape[1] and not region[n] and not outside[n]:
+                outside[n] = True
+                todo.append(n)
+    return [[int(r + top), int(c + left)] for r, c in zip(*np.nonzero(~outside))]
 
 
 def _round2(value: float) -> float:

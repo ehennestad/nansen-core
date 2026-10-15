@@ -13,53 +13,12 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
     if nargin < 6
         plane = 0;
     end
-    if isa(data, "nansen.Stack")
-        stack = data;
-        if ndims(stack) == 2
-            stack.MaxFrames = Inf;   % an image's columns are not frames
-            stack = nansen.Stack.fromArray(stack.all(), 3);   % an image: one frame
-        end
-    else
-        if ~(isnumeric(data) || islogical(data)) || ~isreal(data) || ndims(data) > 5 || isscalar(data)
-            nansen.internal.throwError("invalid-data", "the data is not an image or a stack of images")
-        end
-        stack = nansen.Stack.fromArray(data, max(3, ndims(data)));
-    end
-    if ndims(stack) > 5 || ~ismember(stack.ClassName, ["logical", "uint8", "int8", "uint16", "int16", ...
-            "uint32", "int32", "uint64", "int64", "single", "double"])
-        nansen.internal.throwError("invalid-data", "the data is not an image or a stack of images")
-    end
-    channels = 1;
-    planes = 1;
-    if ndims(stack) >= 4
-        channels = size(stack, 3);
-    end
-    if ndims(stack) == 5
-        planes = size(stack, 4);
-    end
-    if ndims(stack) == 5
-        if plane < 0 || plane >= size(stack, 4)
-            nansen.internal.throwError("invalid-params", "there are %d planes; plane %d is not one", size(stack, 4), plane)
-        end
-        stack = stack.select(4, plane + 1);
-    elseif plane ~= 0
-        nansen.internal.throwError("invalid-params", "there is 1 plane; plane %d is not one", plane)
-    end
-    if ndims(stack) == 4
-        if channel < 0 || channel >= size(stack, 3)
-            nansen.internal.throwError("invalid-params", "there are %d channels; channel %d is not one", size(stack, 3), channel)
-        end
-        stack = stack.select(3, channel + 1);
-    end
+    [stack, channels, planes] = nansen.internal.pickChannel(data, channel, plane);
     [height, width, frames] = size(stack);
     chunk = 100;   % frames read at a time for a projection
     switch projection
         case "mean"
-            total = zeros(height, width);
-            for start = 1:chunk:frames
-                total = total + sum(double(stack.frames(start, start + chunk - 1)), 3);
-            end
-            image = total / frames;
+            image = nansen.internal.meanImage(stack);
             frame = [];
         case "max"
             image = [];

@@ -541,6 +541,19 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .grid-table thead th.drop { box-shadow: inset 2px 0 0 var(--accent); }
 
 /* Stack viewer */
+.dialog.roi-gallery-dialog { width: 860px; }
+.roi-gallery-body { display: flex; flex-direction: column; }
+.roi-gallery-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.roi-gallery-bar .input { width: auto; padding: 4px 8px; }
+.roi-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; padding: 12px 16px; max-height: 62vh; overflow: auto; }
+.roi-tile { display: flex; flex-direction: column; gap: 4px; padding: 4px; border: 2px solid transparent; border-radius: 8px; background: var(--surface-2); cursor: pointer; font: inherit; color: inherit; }
+.roi-tile:hover { border-color: var(--border); }
+.roi-tile.selected { border-color: var(--accent); background: var(--accent-soft); }
+.roi-tile.rejected .roi-tile-image { opacity: .45; }
+.roi-tile-image { width: 100%; aspect-ratio: 1; image-rendering: pixelated; border-radius: 4px; background: #0b0d12; }
+.roi-tile-label { font-size: 11px; text-align: center; }
+.roi-tile.accepted .roi-tile-label { color: var(--good); }
+.roi-tile.rejected .roi-tile-label { color: var(--bad); }
 .dialog.viewer-dialog { width: 1080px; }
 .viewer { display: flex; flex-direction: column; }
 .viewer-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
@@ -550,11 +563,20 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .viewer-bar input.input[type=number] { width: 90px; }
 .viewer-bar label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .viewer-main { display: flex; min-height: 320px; }
-.viewer-stage { background: #0b0d12; display: flex; align-items: center; justify-content: center; padding: 12px; flex: 1; min-width: 0; }
-.viewer-canvas.adding { cursor: copy; }
+.viewer-stage { background: #0b0d12; display: flex; padding: 12px; flex: 1; min-width: 0; overflow: auto; max-height: 62vh; overscroll-behavior: contain; }
+.viewer.with-signal .viewer-stage { max-height: 44vh; }
+.viewer-holder { position: relative; margin: auto; flex: none; }
+.viewer-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
+.viewer-stage.zoomed .viewer-canvas { cursor: grab; }
+.viewer-stage.panning .viewer-canvas { cursor: grabbing; }
+.viewer-stage .viewer-canvas.over-selected { cursor: move; }
+.viewer-stage .viewer-canvas.adding { cursor: copy; }
+.viewer-stage .viewer-canvas.drawing { cursor: crosshair; }
+.viewer-zoom { font-size: 12px; padding: 2px 8px; }
 .viewer-roi-panel { width: 240px; border-left: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface-2); }
 .viewer-roi-actions { display: flex; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid var(--border); }
 .viewer-roi-actions .spacer { flex: 1; }
+.viewer-roi-tools { padding-top: 6px; padding-bottom: 6px; }
 .viewer-roi-actions .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
 .viewer-radius.input { width: 52px; padding: 4px 6px; }
 .viewer-hide { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 10px; color: var(--muted); border-bottom: 1px solid var(--border); }
@@ -564,9 +586,8 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .viewer-roi-list li.selected { background: var(--accent-soft); }
 .viewer-roi-list .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .viewer-roi-list .grow { flex: 1; }
-.viewer-canvas { image-rendering: pixelated; width: min(640px, 100%); max-height: 62vh; object-fit: contain; aspect-ratio: auto; cursor: crosshair; border-radius: 4px; }
+.viewer-canvas { image-rendering: pixelated; display: block; width: 100%; height: 100%; cursor: crosshair; border-radius: 4px; }
 .viewer-signal { border-top: 1px solid var(--border); padding: 6px 12px 8px; }
-.viewer.with-signal .viewer-canvas { max-height: 44vh; }
 .viewer.with-signal .viewer-roi-list { max-height: 34vh; }
 .viewer-signal-bar { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 4px; }
 .viewer-signal-bar .input { width: auto; padding: 3px 6px; }
