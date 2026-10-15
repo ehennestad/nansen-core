@@ -446,7 +446,12 @@ class AdapterRegistry:
             return self._adapters[adapter_id]
         if adapter_id not in self._declarations:
             raise NansenError("unknown-file-adapter", f"no file adapter {adapter_id!r}")
-        implementation = self._declarations[adapter_id]["implementations"].get("python")
+        declaration = self._declarations[adapter_id]
+        implementation = declaration["implementations"].get("python")
+        if implementation is None and "legacyFileAdapter" in declaration:
+            from .legacyadapters import unavailable
+
+            raise unavailable(declaration)   # dev's MATLAB code, which only MATLAB runs
         if implementation is None:
             raise NansenError("adapter-unavailable", f"file adapter {adapter_id!r} has no Python implementation")
         adapter = load_object(implementation, self._roots[adapter_id])()

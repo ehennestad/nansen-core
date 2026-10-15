@@ -201,6 +201,30 @@
       "fileAdapter": "ImageStack"
     },
     {
+      "name": "RunningSpeed",
+      "dataLocation": "Processed",
+      "subfolder": "",
+      "fileNameExpression": "speed",
+      "fileType": ".speed",
+      "fileAdapter": "SpeedTrace"
+    },
+    {
+      "name": "Licks",
+      "dataLocation": "Rawdata",
+      "subfolder": "behaviour",
+      "fileNameExpression": "licks",
+      "fileType": ".lick",
+      "fileAdapter": "LickLog"
+    },
+    {
+      "name": "Whisking",
+      "dataLocation": "Processed",
+      "subfolder": "",
+      "fileNameExpression": "whisk",
+      "fileType": ".wsk",
+      "fileAdapter": "WhiskTracker"
+    },
+    {
       "name": "SessionData",
       "dataLocation": "Processed",
       "isInternal": true
@@ -250,8 +274,42 @@
         }
       ],
       "skippedColumns": [
-        "DataLocation",
-        "Progress"
+        "DataLocation"
+      ],
+      "progress": [
+        {
+          "row": 0,
+          "pipeline": "Two-photon preprocessing",
+          "tasks": [
+            {
+              "function": "nansen.module.ophys.twophoton.sessionmethod.process.motionCorrection.normcorre",
+              "finishedAt": "2025-05-24T08:00:00"
+            },
+            {
+              "function": "nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats",
+              "finishedAt": "2025-05-24T08:30:00"
+            },
+            {
+              "function": "nansen.module.ophys.twophoton.sessionmethod.process.autoSegmentation.Quicky",
+              "finishedAt": null
+            }
+          ]
+        },
+        {
+          "row": 1,
+          "pipeline": "Retired pipeline",
+          "tasks": []
+        },
+        {
+          "row": 3,
+          "pipeline": "Two-photon preprocessing",
+          "tasks": [
+            {
+              "function": "nansen.module.ophys.twophoton.sessionmethod.process.motionCorrection.normcorre",
+              "finishedAt": "2025-05-20T08:00:00"
+            }
+          ]
+        }
       ],
       "rows": [
         {
@@ -470,15 +528,6 @@
       ]
     }
   ],
-  "presets": [
-    {
-      "function": "nansen.wrapper.normcorre.Processor",
-      "names": [
-        "fast",
-        "thorough"
-      ]
-    }
-  ],
   "sessionMethods": [
     {
       "file": "code/+RatNav/+sessionmethod/+plot/PlotSpeed.m",
@@ -492,5 +541,320 @@
       "file": "code/+RatNav/+sessionmethod/+process/countTrials.m",
       "text": "function varargout = countTrials(sessionObject, varargin)\n%COUNTTRIALS Count the trials of a session from its running speed.\n\n    params = getDefaultParameters();\n    ATTRIBUTES = {'batch', 'queueable'};\n\n    import nansen.session.SessionMethod\n    fcnAttributes = SessionMethod.setAttributes(params, ATTRIBUTES{:});\n    if ~nargin && nargout > 0\n        varargout = {fcnAttributes};   return\n    end\n    params = utility.parsenvpairs(params, [], varargin);\n\n    for i = 1:numel(sessionObject)\n        speed = sessionObject(i).loadData('RunningSpeed');\n        sessionObject(i).saveData('TrialCount', sum(speed > params.MinDuration))\n    end\nend\n\nfunction params = getDefaultParameters()\n    params = struct();\n    params.MinDuration = 2.5; % seconds\n    params.Method = 'peaks';\n    params.Method_ = {'peaks', 'threshold'};\n    params.Folder = fullfile(tempdir, 'trials');\nend\n"
     }
-  ]
+  ],
+  "fileAdapters": [
+    {
+      "file": "code/+RatNav/+fileadapter/+LickLog/fileadapter.json",
+      "text": "{\n    \"_type\": \"FileAdapter\",\n    \"_description\": \"Defines a file adapter\",\n    \"_version\": \"1.0.0\",\n    \"Properties\": {\n        \"Name\": \"LickLog\",\n        \"Description\": \"Lick times from the behaviour rig\",\n        \"SupportedFileTypes\": [\n            \".lick\"\n        ],\n        \"FileExpression\": \"\",\n        \"DataType\": \"double\",\n        \"IsGeneral\": false,\n        \"ReadFunction\": \"\",\n        \"WriteFunction\": \"\",\n        \"ViewFunction\": \"\"\n    }\n}\n"
+    },
+    {
+      "file": "code/+RatNav/+fileadapter/+LickLog/read.m",
+      "text": "function data = read(filename)\n%READ Lick times, one per line.\n    data = sscanf(fileread(filename), '%f');\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+fileadapter/SpeedTrace.m",
+      "text": "classdef SpeedTrace < nansen.dataio.FileAdapter\n%SPEEDTRACE Running speed, one sample per line.\n\n    properties (Constant)\n        DataType = 'double'\n        Description = 'Running speed in cm/s, one sample per line'\n    end\n\n    properties (Constant, Hidden, Access = protected)\n        SUPPORTED_FILE_TYPES = {'speed'}\n    end\n\n    methods (Access = protected)\n        function data = readData(obj, varargin)\n            data = reshape(sscanf(fileread(obj.Filename), '%f'), 1, []);\n        end\n\n        function writeData(obj, data, varargin)\n            fid = fopen(obj.Filename, 'w');\n            fprintf(fid, '%g\\n', data);\n            fclose(fid);\n        end\n    end\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+fileadapter/parseHeader.m",
+      "text": "function header = parseHeader(text)\n%PARSEHEADER The first line of a rig file; not a file adapter.\n    header = strtok(text, newline);\nend\n"
+    }
+  ],
+  "presets": [
+    {
+      "function": "nansen.wrapper.normcorre.Processor",
+      "names": [
+        "fast",
+        "thorough"
+      ],
+      "entries": [
+        {
+          "name": "fast",
+          "description": "Quick rigid pass",
+          "options": {
+            "Configuration": {
+              "numRows": 1,
+              "numCols": 1,
+              "patchOverlap": [
+                32,
+                32,
+                16
+              ],
+              "gridUpsampling": [
+                4,
+                4,
+                1
+              ]
+            },
+            "Template": {
+              "initialBatchSize": 100,
+              "updateTemplate": true,
+              "binWidth": 50
+            },
+            "Correction": {
+              "maximumShift": [
+                30,
+                30,
+                5
+              ],
+              "maximumDeviation": [
+                10,
+                10,
+                1
+              ],
+              "subpixelUpsampling": 20,
+              "numIterations": 1,
+              "shiftsMethod": "FFT",
+              "boundary": "copy",
+              "phaseFlag": false
+            },
+            "Misc": {
+              "Verbose": false,
+              "UseParallell": true
+            }
+          }
+        },
+        {
+          "name": "thorough",
+          "options": {
+            "Configuration": {
+              "numRows": 6,
+              "numCols": 6,
+              "patchOverlap": [
+                32,
+                32,
+                16
+              ]
+            },
+            "Correction": {
+              "maximumShift": [
+                40,
+                40,
+                5
+              ],
+              "numIterations": 2
+            }
+          }
+        }
+      ],
+      "defaultName": "thorough"
+    },
+    {
+      "function": "RatNav.sessionmethod.process.countTrials",
+      "names": [
+        "Strict",
+        "Default",
+        "Broken"
+      ],
+      "entries": [
+        {
+          "name": "Strict",
+          "description": "Longer trials only",
+          "options": {
+            "MinDuration": 4,
+            "Method": "threshold",
+            "Folder": "/data/trials"
+          }
+        },
+        {
+          "name": "Default",
+          "options": {
+            "MinDuration": 3
+          }
+        },
+        {
+          "name": "Broken",
+          "options": {
+            "MinDuration": "long",
+            "Method": "peaks"
+          },
+          "skippedOptions": [
+            "Callback"
+          ]
+        }
+      ],
+      "defaultName": "Strict"
+    },
+    {
+      "function": "RatNav.sessionmethod.plot.PlotSpeed",
+      "names": [
+        "Fast"
+      ],
+      "entries": [
+        {
+          "name": "Fast",
+          "options": {
+            "Smooth": false,
+            "Window": [
+              0,
+              30
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "function": "nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.extractSignals",
+      "names": [
+        "Wide neuropil"
+      ],
+      "entries": [
+        {
+          "name": "Wide neuropil",
+          "options": {
+            "Neuropil": {
+              "Width": 8
+            }
+          }
+        }
+      ]
+    },
+    {
+      "function": "RatNav.sessionmethod.process.retired",
+      "names": [
+        "Old"
+      ],
+      "entries": [
+        {
+          "name": "Old",
+          "options": {
+            "A": 1
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": {
+    "queue": [
+      {
+        "function": "RatNav.sessionmethod.process.countTrials",
+        "name": "m110-001",
+        "entities": [
+          "m110-001"
+        ],
+        "options": {
+          "MinDuration": 4,
+          "Method": "threshold",
+          "Folder": "/data/trials"
+        },
+        "preset": "Strict",
+        "createdAt": "2025-06-01T10:00:00",
+        "comment": "after the rerun"
+      },
+      {
+        "function": "nansen.module.ophys.twophoton.sessionmethod.process.motionCorrection.normcorre",
+        "name": "m110-002",
+        "entities": [
+          "m110-002"
+        ],
+        "options": {
+          "Configuration": {
+            "numRows": 1,
+            "numCols": 1
+          },
+          "Correction": {
+            "maximumShift": [
+              25,
+              25,
+              5
+            ]
+          }
+        },
+        "preset": "Rigid",
+        "createdAt": "2025-06-01T10:05:00"
+      },
+      {
+        "function": "RatNav.sessionmethod.plot.PlotSpeed",
+        "name": "m110-001",
+        "entities": [
+          "m110-001"
+        ],
+        "options": {
+          "Smooth": true,
+          "Window": [
+            0,
+            60
+          ]
+        },
+        "createdAt": "2025-06-01T10:06:00"
+      },
+      {
+        "function": "nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats",
+        "name": "m110-001",
+        "entities": [
+          "m110-001"
+        ],
+        "createdAt": "2025-06-01T10:07:00"
+      },
+      {
+        "function": "RatNav.sessionmethod.process.countTrials",
+        "name": "Multisession",
+        "entities": [
+          "m110-001",
+          "m999-001"
+        ],
+        "options": {
+          "MinDuration": 2,
+          "Method": "fast"
+        },
+        "createdAt": "2025-06-01T10:08:00"
+      },
+      {
+        "function": "RatNav.sessionmethod.process.countTrials",
+        "name": "Multisession",
+        "entities": [],
+        "createdAt": "2025-06-01T10:09:00"
+      }
+    ],
+    "history": [
+      {
+        "function": "nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.extractSignals",
+        "name": "m110-001",
+        "entities": [
+          "m110-001"
+        ],
+        "status": "Completed",
+        "finishedAt": "2025-05-30T12:00:00"
+      },
+      {
+        "function": "RatNav.sessionmethod.process.countTrials",
+        "name": "m110-002",
+        "entities": [
+          "m110-002"
+        ],
+        "status": "Failed",
+        "finishedAt": "2025-05-30T12:10:00"
+      },
+      {
+        "function": "nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats",
+        "name": "m110-001",
+        "entities": [
+          "m110-001"
+        ],
+        "status": "Completed",
+        "finishedAt": "2025-05-30T12:20:00"
+      }
+    ]
+  },
+  "settings": {
+    "MetadataTable": {
+      "ShowIgnoredEntries": true,
+      "AllowTableEdits": true,
+      "AutosaveMetaTable": true,
+      "AutosaveMetadataToDataFolders": true,
+      "TableFontSize": 10
+    },
+    "Session": {
+      "SessionObjectWorkspaceName": "sessionObjects",
+      "OptionEditMode": "Only once",
+      "SessionTaskDebug": false
+    },
+    "TaskProcessor": {
+      "RunTasksWhenQueued": false,
+      "RunTasksOnStartup": false
+    },
+    "General": {
+      "MonitorDrives": true
+    }
+  }
 }

@@ -108,7 +108,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         with open(args.export, encoding="utf-8") as f:
             report = convert_legacy(json.load(f), args.folder)
         counts = ", ".join(f"{n} {name}(s)" for name, n in report["rows"].items()) or "no rows"
-        print(f"Created {args.folder}: {counts}, {len(report['dataVariables'])} data variable(s)")
+        print(f"Created {args.folder}: {counts}, {len(report['dataVariables'])} data variable(s), "
+              f"{len(report['fileAdapters'])} file adapter(s), {len(report['methods'])} method(s), "
+              f"{len(report['presets'])} preset(s), {report['tasks']} queued task(s) on hold, "
+              f"{report['runs']} completed run(s)")
+        if report["settings"]:   # app settings are the app's: legacy.import saves them, this command only names them
+            print(f"  dev's preferences as settings (save them in the app's Settings): {json.dumps(report['settings'])}")
         for warning in report["warnings"]:
             print(f"  note: {warning}")
         return 0

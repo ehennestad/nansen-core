@@ -1144,11 +1144,25 @@ class Project:
         project's python/ and matlab/ folders at the same place. Everything is checked before anything is copied:
         file-not-found for a path or code that is not there, invalid-params for a folder with no document or code
         without the class or its read and write, adapter-exists for an id the project has or a file of other content
-        where one would be copied. {adapters: [document, with its files]}. MATLAB's importAdapter is the same."""
+        where one would be copied. {adapters: [document, with its files]}. MATLAB's importAdapter is the same.
+
+        NANSEN dev's file adapters come in too (legacyadapters.import_into): the .m file of a class that subclasses
+        nansen.dataio.FileAdapter, a function-based adapter's folder (with fileadapter.json), or a folder of them
+        (such as a dev project's +fileadapter) with no document in it. The result then also has warnings, naming
+        the files of a folder that are not dev file adapters."""
+        from . import legacyadapters
+
         path = Path(path)
+        legacy = path.is_file() and path.suffix == ".m"
         if path.is_dir():
             documents = [p for folder in (path, path / "file-adapters", path / "adapters") if folder.is_dir()
                          for p in sorted(folder.glob("*.fileAdapter.nansen.json"), key=lambda p: p.name)]
+            legacy = not documents and bool(legacyadapters.sources_at(path))
+        if legacy:
+            result = legacyadapters.import_into(self, path)
+            self._adapters = None
+            return result
+        if path.is_dir():
             if not documents:
                 raise NansenError("invalid-params", f"{path} holds no file adapter document (*.fileAdapter.nansen.json)")
         elif path.is_file():
@@ -1163,8 +1177,10 @@ class Project:
                 raise NansenError("adapter-exists", f"the project already has a file adapter {document['id']!r}")
             taken.add(document["id"])
             files = [(self.folder / "file-adapters" / f"{document['id']}.fileAdapter.nansen.json", document_path)]
+            legacy = document.get("legacyFileAdapter", {}).get("kind")
             for language, reference in sorted(document["implementations"].items(), key=lambda item: item[0] != "python"):
-                source, relative = _adapter_code(document_path.parent, language, reference)
+                source, relative = _adapter_code(document_path.parent, language, reference,
+                                                 legacy if language == "matlab" else None)
                 files.append((self.folder / language / relative, source))
             for destination, source in files:
                 if copies.get(destination, source) != source:
@@ -1674,11 +1690,22 @@ _CODE_PATTERNS = {
 }
 
 
-def _adapter_code(folder: Path, language: str, reference: str) -> Tuple[Path, str]:
+def _adapter_code(folder: Path, language: str, reference: str, legacy: Optional[str] = None) -> Tuple[Path, str]:
     """Where an adapter's code in a language is, for a document in folder: (source, path relative to the language's
     folder, in / form). Python's 'a.b:Class' is a/b.py or the package a/b/; MATLAB's 'pkg.Class' is +pkg/Class.m or
     the class folder +pkg/@Class/. Looked for in folder, its <language>/ folder, and the <language>/ folder beside it.
-    file-not-found when it is in none of them, invalid-params when it has not got the class with read and write."""
+    file-not-found when it is in none of them, invalid-params when it has not got the class with read and write.
+    legacy, the kind of a dev file adapter (legacyFileAdapter): its class file +pkg/Class.m, or the package folder
+    +pkg/+Name of a function-based one; dev's code has no read and write to look for."""
+    if legacy is not None:
+        parts = reference.split(".")
+        packages = "".join(f"+{p}/" for p in parts[:-1])
+        relative = f"{packages}{parts[-1]}.m" if legacy == "class" else f"{packages}+{parts[-1]}"
+        for root in (folder, folder / language, folder.parent / language):
+            source = root / relative
+            if source.is_file() if legacy == "class" else source.is_dir():
+                return source, relative
+        raise NansenError("file-not-found", f"there is no {relative} for {reference} ({language}) beside {folder}")
     if language == "python":
         module, name = reference.split(":")
         parts = module.split(".")

@@ -99,7 +99,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `adapter-exists` | The project has a file adapter of that id, or a file a new adapter would be written to |
 | `unknown-file-adapter` | No file adapter has that id |
 | `unknown-file-pattern` | A data variable names a file pattern that its entity's level does not have |
-| `adapter-unavailable` | The file adapter needs a package that is not installed (for example SciPy for `mat`) |
+| `adapter-unavailable` | The file adapter needs a package that is not installed (for example SciPy for `mat`), or has no implementation in this language (NANSEN dev's file adapters, imported, read and write in MATLAB only) |
 | `dependency-missing` | The method needs a package or toolbox that is not installed (for example suite2p for `ophys.suite2p`) |
 | `unknown-addon` | No module of the project declares an add-on of that id |
 | `install-failed` | An add-on or a shared project could not be installed or removed (the message says why, or how to install it) |

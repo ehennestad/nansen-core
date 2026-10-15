@@ -71,7 +71,7 @@
     },
     "presets": {
       "type": "array",
-      "description": "dev's option presets (configurations/custom_options/*.mat), by the function they are for; listed, not carried over.",
+      "description": "dev's option presets (OptionsManager's files: configurations/custom_options/*.mat of the project, and custom_options/*.mat of the user's preferences), by the function they are for.",
       "items": {
         "type": "object",
         "required": [
@@ -87,7 +87,43 @@
             "type": "array",
             "items": {
               "type": "string"
+            },
+            "description": "The names of the presets a user made (Type Custom)."
+          },
+          "entries": {
+            "type": "array",
+            "description": "The presets a user made, with their values.",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "options"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "options": {
+                  "type": "object",
+                  "description": "The preset's Options, as JSON values."
+                },
+                "skippedOptions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Options (as paths a.b) whose values have no JSON form (objects, function handles)."
+                }
+              }
             }
+          },
+          "defaultName": {
+            "type": "string",
+            "description": "DefaultOptionsName: the preset the function runs with when none is chosen."
           }
         }
       }
@@ -113,6 +149,51 @@
           }
         }
       }
+    },
+    "fileAdapters": {
+      "type": "array",
+      "description": "The project's own file adapters (the .m files of code/+<package>/+fileadapter and its packages, and the fileadapter.json of dev's function-based adapters), with their text.",
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "pattern": "^([^/\\\\]+/)*([A-Za-z][A-Za-z0-9_]*\\.m|fileadapter\\.json)$",
+            "description": "The file's path in the dev project folder, '/'-separated, e.g. code/+RatNav/+fileadapter/SpeedTrace.m."
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "description": "dev's task list (task_list.mat in the user's preferences, projects/<name>/), with the entities as dev's ids.",
+      "additionalProperties": false,
+      "properties": {
+        "queue": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/queuedTask"
+          }
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/finishedTask"
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "dev's app preferences (settings/nansen_app_settings.mat in the user's preferences): groups MetadataTable, Session, TaskProcessor and General, as JSON values."
     }
   },
   "definitions": {
@@ -380,6 +461,52 @@
               }
             }
           }
+        },
+        "progress": {
+          "type": "array",
+          "description": "The Progress column: per row (its index in rows, from 0) the pipeline dev assigned and the tasks of it dev marked finished. The column itself is not listed in columns or skippedColumns.",
+          "items": {
+            "type": "object",
+            "required": [
+              "row",
+              "pipeline",
+              "tasks"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "row": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pipeline": {
+                "type": "string",
+                "description": "PipelineName."
+              },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "function",
+                    "finishedAt"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "function": {
+                      "type": "string"
+                    },
+                    "finishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -439,6 +566,77 @@
               }
             }
           }
+        }
+      }
+    },
+    "queuedTask": {
+      "type": "object",
+      "required": [
+        "function",
+        "entities"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "function": {
+          "type": "string",
+          "description": "The method's function (func2str of the task's method)."
+        },
+        "name": {
+          "type": "string",
+          "description": "The task's name: the session's id, or Multisession."
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The ids of its sessions."
+        },
+        "options": {
+          "type": "object",
+          "description": "The options it was queued with, as JSON values."
+        },
+        "preset": {
+          "type": "string",
+          "description": "The name of the option preset they came from (parameters)."
+        },
+        "createdAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
+        },
+        "comment": {
+          "type": "string"
+        }
+      }
+    },
+    "finishedTask": {
+      "type": "object",
+      "required": [
+        "function",
+        "entities",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "function": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string",
+          "description": "Completed, Failed or Canceled."
+        },
+        "finishedAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
         }
       }
     }

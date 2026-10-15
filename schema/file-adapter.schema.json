@@ -33,9 +33,22 @@
         "matlab": {
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
-          "description": "Name of a class with read(obj, path) and write(obj, path, data) methods, on the path while the declaring module is in use."
+          "description": "Name of a class with read(obj, path) and write(obj, path, data) methods, on the path while the declaring module is in use. With legacyFileAdapter: dev's class, or the package of dev's function-based adapter."
         }
       }
+    },
+    "legacyFileAdapter": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "description": "The MATLAB implementation is a file adapter of NANSEN dev, imported unchanged (adapters.import, the legacy importer): a subclass of nansen.dataio.FileAdapter (kind class), read with load and written with save, or dev's function-based adapter (kind function), a folder with fileadapter.json whose read and write functions are named here. Only MATLAB reads and writes with it (nansen.legacy.FileAdapterShim); elsewhere it is adapter-unavailable.",
+      "properties": {
+        "kind": { "type": "string", "enum": ["class", "function"] },
+        "read": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]*$", "description": "kind function: the function that reads a file, data = read(filename)." },
+        "write": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]*$", "description": "kind function: the function that writes one, write(filename, data); none: the adapter only reads." }
+      }
     }
-  }
+  },
+  "if": { "required": ["legacyFileAdapter"] },
+  "then": { "properties": { "implementations": { "required": ["matlab"] } } }
 }

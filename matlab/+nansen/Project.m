@@ -958,10 +958,18 @@ classdef Project < handle
             %   and write, adapter-exists for an id the project has or a file of
             %   other content where one would be copied. struct with adapters:
             %   each document, with its files. Python's import_adapter is the same.
+            %
+            %   NANSEN dev's file adapters come in too (nansen.legacy.importFileAdapters):
+            %   the .m file of a class that subclasses nansen.dataio.FileAdapter, a
+            %   function-based adapter's folder (with fileadapter.json), or a folder
+            %   of them (such as a dev project's +fileadapter) with no document in
+            %   it. The result then also has warnings, naming the files of a folder
+            %   that are not dev file adapters.
             arguments
                 obj
                 path (1,1) string
             end
+            legacy = isfile(path) && endsWith(path, ".m");
             if isfolder(path)
                 documents = strings(1, 0);
                 for folder = [path, string(fullfile(path, "file-adapters")), string(fullfile(path, "adapters"))]
@@ -974,6 +982,14 @@ classdef Project < handle
                         documents(end + 1) = string(fullfile(folder, name)); %#ok<AGROW>
                     end
                 end
+                legacy = isempty(documents) && nansen.Project.holdsDevAdapters(path);
+            end
+            if legacy
+                result = nansen.legacy.importFileAdapters(obj, path);
+                obj.AdapterCache = [];
+                return
+            end
+            if isfolder(path)
                 if isempty(documents)
                     nansen.internal.throwError("invalid-params", "%s holds no file adapter document (*.fileAdapter.nansen.json)", path)
                 end
@@ -995,10 +1011,18 @@ classdef Project < handle
                 taken(end + 1) = adapterId; %#ok<AGROW>
                 files = "file-adapters/" + adapterId + ".fileAdapter.nansen.json";
                 fileSources = documents(d);
+                kind = "";
+                if isfield(document, "legacyFileAdapter")
+                    kind = string(document.legacyFileAdapter.kind);
+                end
                 for language = ["python", "matlab"]
                     if isfield(document.implementations, language)
+                        legacy = "";
+                        if language == "matlab"
+                            legacy = kind;   % dev's code is found by its kind
+                        end
                         [source, relative] = nansen.Project.adapterCode(string(fileparts(documents(d))), language, ...
-                            string(document.implementations.(language)));
+                            string(document.implementations.(language)), legacy);
                         files(end + 1) = language + "/" + relative; %#ok<AGROW>
                         fileSources(end + 1) = source; %#ok<AGROW>
                     end
@@ -2643,12 +2667,50 @@ classdef Project < handle
             key = string(adapterId) + "|" + string(path);
         end
 
-        function [source, relative] = adapterCode(folder, language, reference)
+        function tf = holdsDevAdapters(folder)
+            % Whether a folder or its package folders (+name) hold a .m file or a fileadapter.json: what NANSEN dev's
+            % file adapters are made of (as Python's legacyadapters.sources_at finds some)
+            tf = false;
+            for item = reshape(dir(folder), 1, [])
+                name = string(item.name);
+                if ~item.isdir && (endsWith(name, ".m") || name == "fileadapter.json")
+                    tf = true;
+                elseif item.isdir && startsWith(name, "+") && strlength(name) > 1
+                    tf = nansen.Project.holdsDevAdapters(string(fullfile(folder, name)));
+                end
+                if tf
+                    return
+                end
+            end
+        end
+
+        function [source, relative] = adapterCode(folder, language, reference, legacy)
             % Where a file adapter's code in a language is, for a document in folder: its path, and the path relative to
             % the language's folder (with /). Python's 'a.b:Class' is a/b.py or the package a/b/; MATLAB's 'pkg.Class'
             % is +pkg/Class.m or the class folder +pkg/@Class/. Looked for in folder, its <language>/ folder and the
             % <language>/ folder beside it. file-not-found when it is in none of them, invalid-params when it has not
             % got the class with read and write. As Python's project._adapter_code, with the same regular expressions.
+            % legacy, the kind of a dev file adapter (legacyFileAdapter): its class file +pkg/Class.m, or the package
+            % folder +pkg/+Name of a function-based one; dev's code has no read and write to look for.
+            if nargin > 3 && legacy ~= ""
+                parts = split(reference, ".")';
+                packages = "";
+                for part = parts(1:end - 1)
+                    packages = packages + "+" + part + "/";
+                end
+                if legacy == "class"
+                    relative = packages + parts(end) + ".m";
+                else
+                    relative = packages + "+" + parts(end);
+                end
+                for root = [string(folder), string(fullfile(folder, language)), string(fullfile(fileparts(folder), language))]
+                    source = string(fullfile(root, relative));
+                    if (legacy == "class" && isfile(source)) || (legacy ~= "class" && isfolder(source))
+                        return
+                    end
+                end
+                nansen.internal.throwError("file-not-found", "there is no %s for %s (%s) beside %s", relative, reference, language, folder)
+            end
             if language == "python"
                 parts = split(reference, ":");
                 name = parts(end);

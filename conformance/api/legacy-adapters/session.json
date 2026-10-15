@@ -1,0 +1,250 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.import",
+        "id": 2,
+        "params": {
+          "path": "${scratch}/data/+lab/+fileadapter/parseHeader.m"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.import",
+        "id": 3,
+        "params": {
+          "path": "${scratch}/data/+other/+fileadapter/TiffPlus.m"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.import",
+        "id": 4,
+        "params": {
+          "path": "${scratch}/data/+lab/+fileadapter/Missing.m"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.import",
+        "id": 5,
+        "params": {
+          "path": "${scratch}/data/+lab/+fileadapter/SpeedTrace.m"
+        }
+      },
+      "expect": {
+        "result": {
+          "adapters": [
+            {
+              "schemaType": "nansen.fileAdapter",
+              "schemaVersion": "0.1.0",
+              "id": "legacy.speed_trace",
+              "version": "1.0.0",
+              "title": "SpeedTrace",
+              "description": "Running speed, one sample per line.",
+              "extensions": [
+                ".speed",
+                ".spd"
+              ],
+              "dataType": "double",
+              "implementations": {
+                "matlab": "lab.fileadapter.SpeedTrace"
+              },
+              "legacyFileAdapter": {
+                "kind": "class"
+              },
+              "files": [
+                "file-adapters/legacy.speed_trace.fileAdapter.nansen.json",
+                "matlab/+lab/+fileadapter/SpeedTrace.m"
+              ]
+            }
+          ],
+          "warnings": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.import",
+        "id": 6,
+        "params": {
+          "path": "${scratch}/data/+lab/+fileadapter/SpeedTrace.m"
+        }
+      },
+      "expect": {
+        "error": "adapter-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.import",
+        "id": 7,
+        "params": {
+          "path": "${scratch}/data/+lab/+fileadapter"
+        }
+      },
+      "expect": {
+        "error": "adapter-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.import",
+        "id": 8,
+        "params": {
+          "path": "${scratch}/data/+lab/+fileadapter/+LickLog"
+        }
+      },
+      "expect": {
+        "result": {
+          "adapters": [
+            {
+              "schemaType": "nansen.fileAdapter",
+              "schemaVersion": "0.1.0",
+              "id": "legacy.lick_log",
+              "version": "1.0.0",
+              "title": "LickLog",
+              "description": "Lick times from the behaviour rig",
+              "extensions": [
+                ".lick"
+              ],
+              "dataType": "double",
+              "implementations": {
+                "matlab": "lab.fileadapter.LickLog"
+              },
+              "legacyFileAdapter": {
+                "kind": "function",
+                "read": "lab.fileadapter.LickLog.read",
+                "write": "lab.fileadapter.LickLog.write"
+              },
+              "files": [
+                "file-adapters/legacy.lick_log.fileAdapter.nansen.json",
+                "matlab/+lab/+fileadapter/+LickLog/fileadapter.json",
+                "matlab/+lab/+fileadapter/+LickLog/read.m",
+                "matlab/+lab/+fileadapter/+LickLog/write.m"
+              ]
+            }
+          ],
+          "warnings": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.import",
+        "id": 9,
+        "params": {
+          "path": "${scratch}/data/+other/+fileadapter"
+        }
+      },
+      "expect": {
+        "result": {
+          "adapters": [
+            {
+              "schemaType": "nansen.fileAdapter",
+              "schemaVersion": "0.1.0",
+              "id": "legacy.bin_trace",
+              "version": "1.0.0",
+              "title": "BinTrace",
+              "description": "Doubles, little-endian, one after the other",
+              "extensions": [
+                ".bin"
+              ],
+              "dataType": "double",
+              "implementations": {
+                "matlab": "other.fileadapter.BinTrace"
+              },
+              "legacyFileAdapter": {
+                "kind": "class"
+              },
+              "files": [
+                "file-adapters/legacy.bin_trace.fileAdapter.nansen.json",
+                "matlab/+other/+fileadapter/BinTrace.m"
+              ]
+            }
+          ],
+          "warnings": [
+            "file adapter +other/+fileadapter/TiffPlus.m: TiffPlus.m is a class that does not subclass nansen.dataio.FileAdapter, so it is not a dev file adapter; left out",
+            "file adapter +other/+fileadapter/helper.m: helper.m is not a class, so it is not a dev file adapter; left out"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 10,
+        "params": {
+          "path": "matlab/+lab/+fileadapter"
+        }
+      },
+      "expect": {
+        "result": {
+          "entries": [
+            {
+              "name": "+LickLog",
+              "isFolder": true
+            },
+            {
+              "name": "SpeedTrace.m",
+              "isFolder": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 11,
+        "params": {
+          "path": "file-adapters"
+        }
+      },
+      "expect": {
+        "result": {
+          "entries": [
+            {
+              "name": "legacy.bin_trace.fileAdapter.nansen.json",
+              "isFolder": false
+            },
+            {
+              "name": "legacy.lick_log.fileAdapter.nansen.json",
+              "isFolder": false
+            },
+            {
+              "name": "legacy.speed_trace.fileAdapter.nansen.json",
+              "isFolder": false
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

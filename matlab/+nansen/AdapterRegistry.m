@@ -142,6 +142,11 @@ classdef AdapterRegistry < handle
             if ~isempty(folder) && ~contains(path, folder)
                 addpath(folder);
             end
+            if isfield(obj.Declarations(adapterId), "legacyFileAdapter")   % dev's own code, run through dev's base class
+                adapter = nansen.legacy.FileAdapterShim(obj.Declarations(adapterId));
+                obj.Adapters(adapterId) = adapter;
+                return
+            end
             className = char(implementations.matlab);
             if ~exist(className, "class")
                 nansen.internal.throwError("adapter-unavailable", "class %s is not on the path", className)

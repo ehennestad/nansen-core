@@ -138,6 +138,104 @@ classdef LegacyTest < matlab.unittest.TestCase
             nansen.internal.writeText(fullfile(methods_, "+process", "noteZoom.m"), strjoin(lines', newline) + newline);
             nansen.internal.writeText(fullfile(methods_, "describe.m"), "function d = describe(s)" + newline + "    d = s;" + newline + "end" + newline);
         end
+
+        function writeDevExtras(folder, userFolder)
+            % What else a dev user has: the project's own file adapters and the variables read with them, a preset
+            % of its session method, the Progress column; and in the user's preferences (dev's nansen.prefdir) a
+            % preset of dev's NoRMCorre, the task list and the app's settings
+            adapters = fullfile(folder, "code", "+RatNav", "+fileadapter");
+            mkdir(fullfile(adapters, "+LickLog"));
+            lines = [
+                "classdef SpeedTrace < nansen.dataio.FileAdapter"
+                "%SPEEDTRACE Running speed, one sample per line."
+                ""
+                "    properties (Constant)"
+                "        DataType = 'double'"
+                "    end"
+                ""
+                "    properties (Constant, Hidden, Access = protected)"
+                "        SUPPORTED_FILE_TYPES = {'speed'}"
+                "    end"
+                ""
+                "    methods (Access = protected)"
+                "        function data = readData(obj, varargin)"
+                "            data = reshape(sscanf(fileread(obj.Filename), '%f'), 1, []);"
+                "        end"
+                ""
+                "        function writeData(obj, data, varargin)"
+                "            fid = fopen(obj.Filename, 'w');"
+                "            fprintf(fid, '%g\n', data);"
+                "            fclose(fid);"
+                "        end"
+                "    end"
+                "end"
+                ];
+            nansen.internal.writeText(fullfile(adapters, "SpeedTrace.m"), strjoin(lines', newline) + newline);
+            nansen.internal.writeText(fullfile(adapters, "+LickLog", "fileadapter.json"), ...   % as dev writes it
+                ['{"_type": "FileAdapter", "_version": "1.0.0", "Properties": {"Name": "LickLog", "Description": "Lick times", ', ...
+                '"SupportedFileTypes": [".lick"], "DataType": "double", "ReadFunction": "", "WriteFunction": ""}}']);
+            nansen.internal.writeText(fullfile(adapters, "+LickLog", "read.m"), "function data = read(filename)" + newline + ...
+                "    data = sscanf(fileread(filename), '%f');" + newline + "end" + newline);
+            S = load(fullfile(folder, "configurations", "filepath_settings.mat"));
+            added = S.Data(1:2);
+            [added.VariableName] = deal('RunningSpeed', 'Licks');
+            [added.DataLocation] = deal('Rawdata', 'Rawdata');
+            [added.Subfolder] = deal('', '');
+            [added.FileNameExpression] = deal('speed', 'licks');
+            [added.FileType] = deal('.speed', '.lick');
+            [added.FileAdapter] = deal('SpeedTrace', 'LickLog');
+            S.Data = [S.Data, added];
+            save(fullfile(folder, "configurations", "filepath_settings.mat"), "-struct", "S");
+
+            % the session method's preset a user made, which dev runs it with
+            OptionsEntries = struct("Name", {'Default', 'Big'}, "Type", {'Preset', 'Custom'}, ...
+                "Description", {'', 'Four times'}, "Options", {struct("FileName", 'zoom.txt', "Factor", 1), ...
+                struct("FileName", 'zoom.txt', "Factor", 4)});
+            DefaultOptionsName = 'Big';
+            save(fullfile(folder, "configurations", "custom_options", "RatNav.sessionmethod.process.noteZoom.mat"), ...
+                "OptionsEntries", "DefaultOptionsName");
+
+            % the Progress column: m110-001 follows Signals, whose signal extraction dev marked finished
+            S = load(fullfile(folder, "metadata", "tables", "sessions.mat"));
+            tasks = struct("TaskName", {'Extract signals', 'Note zoom'}, ...
+                "FunctionName", {'nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.extractSignals', ...
+                'RatNav.sessionmethod.process.noteZoom'}, "OptionsName", {'Default', ''}, "IsManual", {false, false}, ...
+                "WasAborted", {false, false}, "IsFinished", {true, false}, ...
+                "DateFinished", {datetime(2025, 5, 24, 8, 0, 0), datetime.empty})';
+            S.MetaTableEntries.Progress = {struct("Uuid", 'p1', "PipelineName", 'Signals', "TaskList", tasks); []; []};
+            save(fullfile(folder, "metadata", "tables", "sessions.mat"), "-struct", "S");
+
+            % the user's preferences
+            mkdir(fullfile(userFolder, "custom_options"));
+            OptionsEntries = struct("Name", 'fast', "Type", 'Custom', "Description", '', "Options", ...
+                struct("Configuration", struct("numRows", 1, "numCols", 1, "patchOverlap", [32, 32, 16]), ...
+                "Correction", struct("maximumShift", [30, 30, 5], "shiftsMethod", 'FFT'), "Misc", struct("Callback", @disp)));
+            DefaultOptionsName = 'fast';
+            save(fullfile(userFolder, "custom_options", "nansen.wrapper.normcorre.Processor.mat"), ...
+                "OptionsEntries", "DefaultOptionsName");
+            mkdir(fullfile(userFolder, "projects", "RatNav"));
+            task = @(name, method, args, parameters) struct("name", name, "method", str2func(method), ...
+                "methodName", 'Task', "status", 'Uninitialized', "numOut", 0, "args", {args}, "entityId", {{}}, ...
+                "timeCreated", '2025.06.01 10:00:00', "timeStarted", '', "elapsedTime", '', "timeFinished", '', ...
+                "parameters", parameters, "comments", 'again', "Diary", '', "ErrorStack", []);
+            taskListQueue = [ ...
+                task('m110-001', 'RatNav.sessionmethod.process.noteZoom', ...
+                    {struct("sessionID", 'm110-001'), struct("FileName", 'zoom.txt', "Factor", 2)}, 'Big'), ...
+                task('m110-002', 'nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats', {uint32(5), struct()}, ''), ...
+                task('Multisession', 'RatNav.sessionmethod.process.noteZoom', ...
+                    {[struct("sessionID", 'm110-001'), struct("sessionID", 'm110-002')], struct("Factor", 3)}, '')];
+            done = task('m110-002', 'nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.extractSignals', ...
+                {struct()}, 'Default');
+            done.entityId = {'m110-002'};
+            done.status = 'Completed';
+            done.timeFinished = '2025.05.30 12:00:00';
+            taskListHistory = done;
+            save(fullfile(userFolder, "projects", "RatNav", "task_list.mat"), "taskListQueue", "taskListHistory");
+            mkdir(fullfile(userFolder, "settings"));
+            settings = struct("MetadataTable", struct("AutosaveMetadataToDataFolders", true, "TableFontSize", 10), ...
+                "TaskProcessor", struct("RunTasksWhenQueued", false, "RunTasksOnStartup", true));
+            save(fullfile(userFolder, "settings", "nansen_app_settings.mat"), "settings");
+        end
     end
 
     methods (Test)
@@ -222,6 +320,95 @@ classdef LegacyTest < matlab.unittest.TestCase
             project.run("legacy.note_zoom", {first}, Options=struct("Factor", 3));
             written = fullfile(testCase.Folder, "raw", "m110", "2025_05_23", "session-m110-001", "zoom.txt");
             testCase.verifyEqual(string(nansen.internal.readText(written)), "6");
+        end
+
+        function exportReadsTheUsersPreferences(testCase)
+            user = fullfile(testCase.Folder, "prefs");
+            LegacyTest.writeDevExtras(testCase.Legacy, user);
+            export = nansen.legacy.exportProject(testCase.Legacy, UserFolder=user);
+            files = string(cellfun(@(f) f.file, nansen.internal.asCellOfStructs(export.fileAdapters), UniformOutput=false));
+            testCase.verifyEqual(files, ["code/+RatNav/+fileadapter/+LickLog/fileadapter.json", ...
+                "code/+RatNav/+fileadapter/+LickLog/read.m", "code/+RatNav/+fileadapter/SpeedTrace.m"]);
+            presets = nansen.internal.asCellOfStructs(export.presets);
+            functions = string(cellfun(@(p) p.function, presets, UniformOutput=false));
+            testCase.verifyEqual(functions, ["RatNav.sessionmethod.process.noteZoom", "normcorre", ...
+                "nansen.wrapper.normcorre.Processor"]);   % the project's, then the user's
+            entries = nansen.internal.asCellOfStructs(presets{1}.entries);
+            testCase.verifyEqual(entries{1}.options.Factor, 4);
+            testCase.verifyEqual(string(presets{1}.defaultName), "Big");
+            fast = nansen.internal.asCellOfStructs(presets{3}.entries);
+            testCase.verifyEqual(string(fast{1}.skippedOptions), "Misc.Callback");   % a function handle has no JSON form
+            queue = nansen.internal.asCellOfStructs(export.tasks.queue);
+            testCase.verifyEqual(string(queue{1}.entities), "m110-001");   % the sessionID of the session it was given
+            testCase.verifyEqual(string(queue{1}.createdAt), "2025-06-01T10:00:00");
+            testCase.verifyEqual(string(queue{1}.preset), "Big");
+            testCase.verifyEqual(string(queue{2}.entities), "m110-002");   % the task's name, as dev names it
+            testCase.verifyEqual(string(queue{3}.entities)', ["m110-001", "m110-002"]);
+            history = nansen.internal.asCellOfStructs(export.tasks.history);
+            testCase.verifyEqual(string(history{1}.finishedAt), "2025-05-30T12:00:00");
+            sessions = nansen.internal.asCellOfStructs(export.tables);
+            progress = nansen.internal.asCellOfStructs(sessions{1}.progress);
+            testCase.verifyEqual(progress{1}.row, 0);
+            testCase.verifyEqual(string(progress{1}.pipeline), "Signals");
+            testCase.verifyEqual(string(sessions{1}.skippedColumns), "DataLocation");   % Progress is read, not skipped
+            testCase.verifyTrue(export.settings.MetadataTable.AutosaveMetadataToDataFolders);
+        end
+
+        function importBringsAdaptersPresetsTasksAndProgress(testCase)
+            user = fullfile(testCase.Folder, "prefs");
+            LegacyTest.writeDevExtras(testCase.Legacy, user);
+            session = fullfile(testCase.Folder, "raw", "m110", "2025_05_23", "session-m110-001");
+            nansen.internal.writeText(fullfile(session, "m110-001_speed.speed"), "1" + newline + "2" + newline);
+            nansen.internal.writeText(fullfile(session, "m110-001_licks.lick"), "0.5" + newline + "1.5" + newline);
+            target = fullfile(testCase.Folder, "imported");
+            report = nansen.legacy.importProject(testCase.Legacy, target, UserFolder=user);
+            testCase.verifyEqual(string(report.fileAdapters), ["legacy.lick_log", "legacy.speed_trace"]);
+            testCase.verifyEqual(report.tasks, 2);
+            testCase.verifyEqual(report.runs, 2);
+            testCase.verifyEqual(report.settings, struct("tables", struct("saveToDataFolders", true), ...
+                "queue", struct("autoStart", true)));
+            warnings = string(report.warnings);
+            testCase.verifyTrue(any(contains(warnings, "option preset 'fast' of nansen.wrapper.normcorre.Processor: Misc.Callback")));
+            testCase.verifyTrue(any(contains(warnings, "queued task 'm110-002' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here")));
+
+            project = nansen.Project.open(target);
+            entities = project.entities("session", project.scan());
+            ids = string(cellfun(@(e) e.Key.session_id, entities, UniformOutput=false));
+            first = entities{ids == "m110-001"};
+            % dev's adapters read and write with dev's code, unchanged: the class's readData and writeData, the read function
+            testCase.verifyEqual(project.load(first, "RunningSpeed"), [1, 2]);
+            testCase.verifyEqual(project.load(first, "Licks"), [0.5; 1.5]);
+            adapter = project.adapters().get("legacy.speed_trace");
+            file = fullfile(testCase.Folder, "out.speed");
+            adapter.write(file, [4, 5]);
+            testCase.verifyEqual(adapter.read(file), [4, 5]);
+            testCase.verifyError(@() project.adapters().get("legacy.lick_log").write(file, 1), "nansen:Legacy:ReadOnlyAdapter");
+
+            % presets, and the one dev ran each method with
+            testCase.verifyEqual(project.preset("legacy.note_zoom", "Big").Factor, 4);
+            testCase.verifyEqual(project.preferredPreset("legacy.note_zoom"), "Big");
+            fast = project.preset("ophys.normcorre", "fast");
+            testCase.verifyEqual([fast.patches, fast.overlap, fast.maxShift], [1, 32, 30]);
+            testCase.verifyEqual(project.preferredPreset("ophys.normcorre"), "fast");
+
+            % the queued tasks wait on hold, in dev's order, with dev's options over their preset's
+            listing = dir(fullfile(target, "tasks", "*.task.nansen.json"));
+            tasks = arrayfun(@(f) nansen.internal.readJson(fullfile(f.folder, f.name)), listing, UniformOutput=false);
+            [~, order] = sort(cellfun(@(t) t.order, tasks));
+            tasks = tasks(order);
+            testCase.verifyEqual(cellfun(@(t) t.onHold, tasks), true(numel(tasks), 1));
+            testCase.verifyEqual(string(tasks{1}.options.preset), "Big");
+            testCase.verifyEqual(tasks{1}.options.values.Factor, 2);
+            testCase.verifyEqual(string(tasks{1}.language), "matlab");
+            testCase.verifyNumElements(tasks{2}.entities, 2);
+
+            % the Progress column: the session's pipeline, and what dev finished in the run journal with the history
+            testCase.verifyEqual(string(first.Row.pipeline), "legacy.signals");
+            journal = splitlines(strtrim(string(nansen.internal.readText(fullfile(target, "runs", "session.runs.jsonl")))));
+            runs = arrayfun(@(line) jsondecode(char(line)), journal);
+            testCase.verifyEqual(string({runs.finishedAt}), ["2025-05-24T08:00:00", "2025-05-30T12:00:00"]);
+            testCase.verifyEqual(string(arrayfun(@(r) r.method.id, runs, UniformOutput=false))', ...
+                ["ophys.extract_signals", "ophys.extract_signals"]);
         end
 
         function importNeedsAnEmptyFolder(testCase)

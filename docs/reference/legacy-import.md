@@ -21,8 +21,20 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 | `configurations/filepath_settings.mat` | Variables: name, data location, subfolder, file name expression, file type, file adapter |
 | `metadata/tables/*.mat` | MetaTables: `MetaTableEntries`, `MetaTableClass`, `MetaTableName`, `IsMaster` |
 | `configurations/pipeline_settings.mat` | Pipelines: name, tasks (name, function, option preset), session properties that assign it |
-| `configurations/custom_options/*.mat` | Option presets a user made (`Custom`), by function: listed in the warnings only |
+| `configurations/custom_options/*.mat` | Option presets a user made (`OptionsEntries` of `Type` `Custom`: name, description, `Options`), by function, and `DefaultOptionsName` |
 | `code/+<name>/+sessionmethod/**/*.m` | The project's own session methods: each file's path and text |
+| `code/+<name>/+fileadapter/**` | The project's own file adapters: each `.m` file, and each `fileadapter.json` of a function-based adapter, with its path and text |
+| `metadata/tables/*.mat`, the `Progress` column | Each session's pipeline (`PipelineName`) and the tasks of it marked finished (`TaskList`: `FunctionName`, `IsFinished`, `DateFinished`) |
+
+and, from the user's own preferences (dev's `nansen.prefdir`; `UserFolder=` of `exportProject` and `importProject`, `userFolder` of `legacy.import`; by default `prefdir/Nansen/default`, dev's default user):
+
+| dev file | Contents used |
+|---|---|
+| `custom_options/*.mat` | Option presets a user made of dev's own methods (OptionsManager keeps those of `+nansen` functions here, such as `nansen.wrapper.normcorre.Processor`), as above |
+| `projects/<name>/task_list.mat` | The task list (`<name>` is the project's package, `code/+<name>`): queued tasks (`method`, `name`, `entityId` or the sessions in `args`, the options in `args`, `parameters`, `timeCreated`, `comments`) and the history (`method`, `entityId`, `status`, `timeFinished`) |
+| `settings/nansen_app_settings.mat` | `nansen.App`'s preferences (`settings`) |
+
+Values become JSON where they have a JSON form (structs, text, numbers, logicals, cells of text); options that have none (function handles, objects) are named in the export (`skippedOptions`) and in the warnings. dev's session objects in a queued task do not load without dev: its sessions are then its name, the session id dev names a task of one session by.
 
 ## How it maps
 
@@ -45,24 +57,51 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 - The master table of sessions becomes the `session` table, keyed by `subject_id` and `session_id`. The master table of subjects becomes the `subject` table, keyed by `subject_id`. A filtered (non-master) table holds a subset of the master's rows; it becomes a saved view of the entity type with the keys of its rows. A row that holds only part of the key, such as the session id, is found in the master table; rows that are not found are left out of the view, with a warning.
 - `Ignore` and `Description` go to the `core.notes` fragment.
 - `Date` and `Time` are left out of the session table when the dataset reads them from folder names: they are DSM attributes now.
-- Every other column with a table type goes to a fragment `legacy.<entityType>` in the project. Columns holding structs or objects, such as `DataLocation` and `Progress`, are left out and listed.
+- Every other column with a table type goes to a fragment `legacy.<entityType>` in the project. Columns holding structs or objects, such as `DataLocation`, are left out and listed. The `Progress` column is read for the sessions' pipelines ([below](#pipeline-progress-and-the-task-list)).
 - Rows without a complete key are left out. A row whose key appears twice is left out after the first.
 - An entity type the dataset has but dev kept no table of gets an empty table with `core.notes`. Fill it with `project.sync`.
 - The notes in a `Notebook` column go into the entity type's [notebook](project-layout.md), on the entity of their row and in the order they were written. Their author, time, title and text are kept. Their type maps to `informal`, `important`, `todo` or `question`; any other type becomes `informal`, with a warning. Their tags are found again from the `#words`. Notes on rows that were left out, and notes without a time, are left out and counted in the warnings.
 
 **Variables → data variables.**
 
-- Each variable becomes a data variable of sessions in its location, when its file adapter has an equivalent. `Default` maps by file type (`.mat`, `.json`, `.txt`), and `MatFile`, `Json` and `Text` map to the adapter of the same name. dev's ROI files (`RoiArray`, `RoiGroup`) map to the ophys module's `ophys.nansen_roi_array`, which keeps their classifications, and `ImageStack` by file type to `ophys.tiff_stack` (`.tif`), `ophys.binary_stack` (`.raw`, `.bin`, `.dat`: dev's own binary stacks, such as its motion-corrected recordings, and SciScan's), `ophys.hdf5_stack` (`.h5`) or `npy`; the project then lists the ophys module. A variable dev kept as a named variable of a `.mat` file, through its `Default` adapter or `RoiSignalArray` (which keeps every ROI signal in one file), gets `variableInFile`: it loads that variable of the file, as dev did, and saving it keeps the file's other variables. Variables of other adapters are left out, named in the warnings.
+- Each variable becomes a data variable of sessions in its location, when its file adapter has an equivalent. `Default` maps by file type (`.mat`, `.json`, `.txt`), and `MatFile`, `Json` and `Text` map to the adapter of the same name. dev's ROI files (`RoiArray`, `RoiGroup`) map to the ophys module's `ophys.nansen_roi_array`, which keeps their classifications, and `ImageStack` by file type to `ophys.tiff_stack` (`.tif`), `ophys.binary_stack` (`.raw`, `.bin`, `.dat`: dev's own binary stacks, such as its motion-corrected recordings, and SciScan's), `ophys.hdf5_stack` (`.h5`) or `npy`; the project then lists the ophys module. A variable read by one of the project's own file adapters (by its name, any case) gets that adapter as imported ([below](#file-adapters)). A variable dev kept as a named variable of a `.mat` file, through its `Default` adapter or `RoiSignalArray` (which keeps every ROI signal in one file), gets `variableInFile`: it loads that variable of the file, as dev did, and saving it keeps the file's other variables. Variables of other adapters are left out, named in the warnings.
 - The file name follows dev's: `{session_id}_<expression><file type>`. Without an expression, the variable name is used in snake case.
 - A variable without a subfolder also gets a DSM file pattern on the session level. Existing files are then found by the end of their name, as dev did.
 - Internal variables are left out.
 
 ### Pipelines
 
-- Each pipeline becomes a pipeline of sessions (`legacy.<name>`) with the tasks whose session method has an equivalent here: dev's NoRMCorre and Flow-Registration motion correction, Quicky, suite2p and EXTRACT segmentation, signal extraction, ΔF/F, CaImAn deconvolution, downsampling, DeepInterpolation denoising and backup. Tasks without one (plots, viewers, ROI curation apps) are left out, named in the warnings, and so is a pipeline left with no task. A Quicky or NoRMCorre task keeps its preset as the ophys module's preset of dev's values: Quicky's Soma, Soma_Virus and Axon (and Default, which is Soma's values) as `soma`, `soma_virus` and `axon`, NoRMCorre's Default (4 x 4 nonrigid) and Rigid as `nonrigid` and `rigid`. Other presets are named in the warnings, and those steps use the method's defaults.
+- Each pipeline becomes a pipeline of sessions (`legacy.<name>`) with the tasks whose session method has an equivalent here: dev's NoRMCorre and Flow-Registration motion correction, Quicky, suite2p and EXTRACT segmentation, signal extraction, ΔF/F, CaImAn deconvolution, downsampling, DeepInterpolation denoising and backup. Tasks without one (plots, viewers, ROI curation apps) are left out, named in the warnings, and so is a pipeline left with no task. A Quicky or NoRMCorre task keeps its preset as the ophys module's preset of dev's values: Quicky's Soma, Soma_Virus and Axon (and Default, which is Soma's values) as `soma`, `soma_virus` and `axon`, NoRMCorre's Default (4 x 4 nonrigid) and Rigid as `nonrigid` and `rigid`. A preset a user made keeps its name, as imported ([below](#option-presets)). Other presets are named in the warnings, and those steps use the method's defaults.
 - A task that calls one of the project's own session methods (by its full function name) becomes a step of that method as imported (see below).
 - Its session properties become `assignWhen` rules: `contains` stays `contains`, `match` becomes `in`, on the column the variable was imported to. The session table gets `core.pipeline`, which keeps each session's pipeline and progress.
-- A task's option preset other than `Default` is named in the warnings: dev's options are not the methods' here, so the step starts from the method's defaults. The presets users made are listed in the warnings for the same reason.
+
+### Option presets
+
+The presets users made (OptionsManager's `Custom` entries, of the project's functions and of the user's) become presets of the method here, `options/<method>/<name>.options.nansen.json`, with dev's description:
+
+- of the project's own session methods: dev's options as they are (the method runs dev's code, which takes them);
+- of NoRMCorre (`nansen.wrapper.normcorre.Processor`) and Quicky (`nansen.wrapper.quicky.Processor`): dev's options mapped to the ophys method's: `Configuration.numRows` (and `numCols`) is `patches`, `patchOverlap` `overlap`, `Template.initialBatchSize`, `updateTemplate` and `binWidth` the same, `Correction.maximumShift` `maxShift`, `maximumDeviation` `maxDeviation`, `subpixelUpsampling` `upsampling`, `numIterations` `iterations` (of a row such as `[40, 40, 5]`, the first); Quicky's (flufinder's) `General.RoiDiameter`, `Preprocessing.BinningSize` and `SmoothingSigma`, `Detection.PrctileForBinarization`, `NumObservationsRequired`, `MaxNumRois`, `UseShapeDetection`, `InnerRadius` and `OuterRadius` are `roiDiameter`, `binSize`, `smoothingSigma`, `binarizationPercentile`, `observationsRequired`, `maxRois`, `useShapeDetection`, `innerRadius` and `outerRadius`. dev's other options of them are named in the warnings.
+
+A name keeps letters, digits, `_`, `.` and `-` (others become `_`); `Default`, the method's own defaults here, becomes `Default_dev`. An option whose value does not fit the method's options schema is left out of the preset, with a warning. dev's `DefaultOptionsName`, when it is one of these presets or one of dev's that the module has (NoRMCorre's `Rigid`), becomes the method's preferred preset (`presets.setDefault`): the one it runs with when none is chosen, as in dev.
+
+### Pipeline progress and the task list
+
+- **Progress column.** A session that follows one of the imported pipelines gets it in `core.pipeline`. The tasks of it dev marked finished (`IsFinished`, with `DateFinished`) become lines of the run journal (`runs/session.runs.jsonl`): the step is done, as the drawer and the table's progress show. A session whose pipeline was left out gets none; finished tasks of a method not here, or without a date, are counted in the warnings.
+- **Queued tasks** become queued tasks of the method here, in dev's order (`order`), **on hold**, so nothing runs before they are released on the Tasks page. Their sessions are found in the session table by their ids. The options are dev's (mapped as presets are, for NoRMCorre and Quicky) over the preset the task was queued with (dev's `parameters`: a preset imported, or the module's of dev's values); a method only one language has gets that language. Tasks of a method not here, of sessions not here, or of a method that cannot run in the background are left out, named in the warnings.
+- **History.** Each completed task of a method here, on sessions here, is a line of the run journal at the time it finished. Failed and cancelled tasks, and those of methods or sessions not here, are counted in the warnings; their logs (`Diary`, `ErrorStack`) are not carried over.
+
+### File adapters
+
+The project's own file adapters (`code/+<name>/+fileadapter`) come in as `adapters.import` brings dev's ([modules](modules.md#importing-columns-and-file-adapters)): a class that subclasses `nansen.dataio.FileAdapter`, or a function-based adapter's folder (`fileadapter.json`, `read.m`, `write.m`), is copied into `matlab/` in its packages and gets a document `file-adapters/legacy.<name in snake case>.fileAdapter.nansen.json` with `legacyFileAdapter`. The variables dev read with it become data variables of that adapter. MATLAB reads and writes them with dev's code, unchanged (`nansen.legacy.FileAdapterShim`, with `matlab/devcompat`'s `nansen.dataio.FileAdapter`), and so do the session methods (`loadData`, `saveData`). Python cannot run dev's MATLAB code: reading one there is `adapter-unavailable`, naming MATLAB. Other files there (functions, classes built on dev's other adapters) are left out and named.
+
+### The user's preferences
+
+dev's app preferences that are settings here come back in the report's `settings` (as `settings.save` takes them); `legacy.import` saves them to the app's settings:
+
+| dev (`nansen.App` settings) | Here |
+|---|---|
+| `MetadataTable.AutosaveMetadataToDataFolders` | `tables.saveToDataFolders` |
+| `TaskProcessor.RunTasksWhenQueued`, `TaskProcessor.RunTasksOnStartup` | `queue.autoStart`: true when either is (the worker starts with the app and takes tasks as they are queued) |
 
 ### Session methods
 
@@ -113,7 +152,11 @@ A class method's `loadData`, `saveData`, `getDataFilePath` and `getTargetFolder`
 
 ## Not carried over
 
-- Table variable functions and custom file adapters. They are code: port them as computed fragments and adapters, or bring table variable files in one at a time with `columns.import`, which wraps a table variable function in a method and makes a class's column ([modules](modules.md#importing-columns-and-file-adapters)). Session methods that need more of dev than `nansen.legacy.SessionShim` and `matlab/devcompat` give (other classes of dev's `nansen`, such as its motion correction and segmentation bases) are left out; the ophys module has their equivalents.
-- Each session's pipeline progress (dev's `Progress` column), the task list and per-user preferences. Sessions start with no pipeline; a sync assigns one by its rules, or one can be assigned from the table.
-- Option presets: dev's options are not the methods' here (see above).
+What is left out is named in the report's warnings, except the preferences below, which have no place here.
+
+- **Code that needs more of dev than `matlab/devcompat` gives.** Session methods and file adapters that subclass other classes of dev's `nansen` (its motion correction and segmentation bases, its `ImageStack` adapter) are left out; the ophys module has their equivalents. Code that calls the rest of dev at run time fails there, as it would without dev. An adapter's metadata files (`setMetadata`), `view` and dev's `.npy` conversion are not kept. Table variable functions come in one at a time, with `columns.import` ([modules](modules.md#importing-columns-and-file-adapters)).
+- **dev's options of its own methods that have no equivalent here:** presets and queued options of methods other than NoRMCorre and Quicky (their options are not dev's: the steps and tasks start from the method's defaults, or from the module's preset of dev's values), dev's options of NoRMCorre and Quicky not listed above, and options with no JSON form (function handles, objects).
+- **Tasks:** those of methods or sessions not here; a queued task's sessions when it holds dev's session objects and is named Multisession (they do not load without dev); the history's failed and cancelled tasks and every task's log; the task list dev kept per user rather than per project (`settings/task_list.mat` of older versions). A task that was running is queued again, on hold.
+- **Progress** of tasks of methods not here or without a date, and dev's `IsManual` and `WasAborted` flags (a method's `queueable` says the first).
+- **Preferences with no equivalent:** `MetadataTable.ShowIgnoredEntries`, `AllowTableEdits` and `TableFontSize` (the table's filters, edits and the browser's zoom do this), `AutosaveMetaTable` (every edit is saved), `Session.SessionObjectWorkspaceName` (`workspace.send` takes the name each time), `OptionEditMode` (the run dialog edits the options of each run), `SessionTaskDebug`, `General.MonitorDrives`; the user session's `CurrentProjectName`, `InteractionMode` and `UserdataDirectory` (the catalog keeps the projects); the table's column widths and order, and the menus' visibility (`methods.setHidden` does this here).
 - Local root path overrides. Set up the new project's per-machine roots with DSM environments.

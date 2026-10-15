@@ -4,7 +4,9 @@ function report = convert(export, folder)
 %   report = nansen.legacy.convert(export, folder) takes the export as a
 %   struct (from nansen.legacy.exportProject, or decoded from its JSON file)
 %   and returns a struct with fields project, rows, notes, dataVariables,
-%   methods, pipelines and warnings. The rules are those of the Python nansen.legacy module, and
+%   fileAdapters, methods, presets, pipelines, tasks (how many), runs (how
+%   many), settings (dev's app preferences as settings.save takes them) and
+%   warnings. The rules are those of the Python nansen.legacy module, and
 %   the cases in conformance/legacy hold the two to the same result:
 %
 %   - data locations, with their roots, folder levels and metadata rules,
@@ -19,7 +21,16 @@ function report = convert(export, folder)
 %   - filtered (non-master) tables become views of their entity type;
 %   - the project's own session methods (sessionMethods) become methods of
 %     sessions that run dev's code unchanged (nansen.legacy.SessionShim),
-%     and pipeline tasks that call them become steps.
+%     and pipeline tasks that call them become steps;
+%   - the project's own file adapters (fileAdapters) become file adapters
+%     that run dev's code unchanged (nansen.legacy.FileAdapterShim), and the
+%     variables read with them data variables;
+%   - the option presets users made become presets of the methods here,
+%     and dev's chosen default preset the method's preferred one;
+%   - the queued tasks of dev's task list become queued tasks, on hold, in
+%     dev's order; its completed tasks and the finished tasks of the
+%     Progress column go into the run journal, and the column's pipeline
+%     into core.pipeline.
 %
 %   Whatever cannot be mapped is left out and named in report.warnings.
     arguments
@@ -38,6 +49,7 @@ function report = convert(export, folder)
     nansen.internal.writeJson(fullfile(folder, "dataset.dsm.json"), plan.dataset)
     project = nansen.Project.create(folder, plan.name, Title=plan.title, Dataset="dataset.dsm.json", ...
         Description=plan.description);
+    nansen.legacy.writeFileAdapters(folder, plan.fileAdapters);   % before the modules, whose adding reads the adapters again
     for module = plan.modules
         project.addModule(module);
     end
@@ -78,11 +90,116 @@ function report = convert(export, folder)
     end
     nansen.legacy.writeSessionMethods(folder, plan.methods);
     methodIds = cellfun(@(m) m.document.id, plan.methods, UniformOutput=false);
+    warnings = plan.warnings;
+    presets = {};
+    for i = 1:numel(plan.presets)
+        preset = plan.presets{i};
+        method = project.method(preset.method);
+        where = sprintf("option preset '%s' of %s", preset.name, method.Id);
+        [values, warnings] = fitting(method, preset.values, where, warnings);
+        project.savePreset(method.Id, preset.name, values, preset.description);
+        presets{end + 1} = char(method.Id + "/" + preset.name); %#ok<AGROW>
+    end
+    for i = 1:numel(plan.preferredPresets)
+        project.setPreferredPreset(plan.preferredPresets{i}.method, plan.preferredPresets{i}.preset);
+    end
     pipelineIds = {};
     for i = 1:numel(plan.pipelines)
         project.savePipeline(plan.pipelines{i});
         pipelineIds{end + 1} = plan.pipelines{i}.id; %#ok<AGROW>
     end
+    [tasks, warnings] = writeTasks(project, plan.tasks, warnings);
+    writeRuns(project, plan.runs);
+    adapterIds = cellfun(@(a) a.document.id, plan.fileAdapters, UniformOutput=false);
     report = struct("project", char(folder), "rows", rows, "notes", notes, "dataVariables", {names}, ...
-        "methods", {methodIds}, "pipelines", {pipelineIds}, "warnings", {plan.warnings});
+        "fileAdapters", {adapterIds}, "methods", {methodIds}, "presets", {presets}, "pipelines", {pipelineIds}, ...
+        "tasks", tasks, "runs", numel(plan.runs), "settings", plan.settings, "warnings", {warnings});
+end
+
+function [kept, warnings] = fitting(method, values, where, warnings)
+    % The values of the options the method's options schema has, or does not name, less those of a value it refuses
+    declared = nansen.internal.getField(method.optionsSchema(), "properties", struct());
+    kept = struct();
+    for name = reshape(string(fieldnames(values)), 1, [])
+        if isfield(declared, name) && ...
+                ~isempty(nansen.internal.schemaValidationErrors(nansen.internal.jsonRoundTrip(values.(name)), declared.(name)))
+            warnings{end + 1} = sprintf("%s: option '%s' does not fit the method's options; left out", where, name); %#ok<AGROW>
+            continue
+        end
+        kept.(name) = values.(name);
+    end
+end
+
+function [count, warnings] = writeTasks(project, planned, warnings)
+    % dev's queued tasks as queued tasks on hold, in dev's queue order, so nothing runs before it is released
+    count = 0;
+    folder = fullfile(project.Folder, "tasks");
+    for i = 1:numel(planned)
+        item = planned{i};
+        method = project.method(item.method);
+        where = sprintf("queued task '%s' (%s)", item.name, method.Id);
+        if ~method.Queueable
+            warnings{end + 1} = sprintf("%s: %s cannot run as a background task; left out", where, method.Id); %#ok<AGROW>
+            continue
+        end
+        base = struct();   % dev's options over its preset's
+        if isfield(item, "preset")
+            base = project.preset(method.Id, item.preset);
+        end
+        [values, warnings] = fitting(method, item.values, where, warnings);
+        values = method.resolveOptions(nansen.internal.mergeStructs(base, values));
+        optionsEntry = struct("values", values);
+        if isfield(item, "preset")
+            optionsEntry.preset = char(item.preset);
+        end
+        createdAt = char(nansen.internal.timestamp());
+        if isfield(item, "createdAt")
+            createdAt = char(item.createdAt);
+        end
+        references = cellfun(@(key) struct("entityType", 'session', "key", key), item.entities, UniformOutput=false);
+        entry = nansen.internal.schemaEntry("nansen.task");
+        task = struct("schemaType", 'nansen.task', "schemaVersion", char(entry.version), ...
+            "id", char(nansen.internal.uuid4()), ...
+            "method", struct("id", char(method.Id), "version", char(method.Version)), ...
+            "entities", {references}, "options", optionsEntry, "status", 'queued', "createdAt", createdAt, "progress", 0);
+        languages = string(method.Languages);
+        if isscalar(languages)   % only that language's worker takes it
+            task.language = char(languages);
+        end
+        task.order = count;
+        task.onHold = true;
+        if isfield(item, "comment")
+            task.comment = char(item.comment);
+        end
+        task = nansen.checkDocument(task, ExpectedType="nansen.task");
+        if ~isfolder(folder)
+            mkdir(folder);
+        end
+        nansen.internal.writeJson(fullfile(folder, string(task.id) + ".task.nansen.json"), task)
+        count = count + 1;
+    end
+end
+
+function writeRuns(project, planned)
+    % What dev recorded as done (its task history and Progress column) as lines of the run journal
+    if isempty(planned)
+        return
+    end
+    entry = nansen.internal.schemaEntry("nansen.run");
+    text = "";
+    for i = 1:numel(planned)
+        run = planned{i};
+        line = struct("schemaType", 'nansen.run', "schemaVersion", char(entry.version), ...
+            "method", struct("id", char(run.method), "version", char(project.method(run.method).Version)), ...
+            "key", run.key, "finishedAt", char(run.finishedAt));
+        nansen.checkDocument(line, ExpectedType="nansen.run");
+        text = text + string(jsonencode(line)) + newline;
+    end
+    folder = fullfile(project.Folder, "runs");
+    if ~isfolder(folder)
+        mkdir(folder);
+    end
+    fid = fopen(fullfile(folder, "session.runs.jsonl"), "a", "n", "UTF-8");
+    fwrite(fid, char(text), "char");
+    fclose(fid);
 end

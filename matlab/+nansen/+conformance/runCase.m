@@ -153,8 +153,36 @@ function actual = evaluateLegacy(folder)
         tables.(name) = struct("key", {cellstr(table.Key)}, "columns", {cellstr(table.columnNames())}, ...
             "rows", {table.toJsonRows()});
     end
+    presets = {};   % options/<method>/<name>.options.nansen.json, in order of that path
+    listing = dir(fullfile(target, "options", "**", "*.options.nansen.json"));
+    if ~isempty(listing)
+        paths = strings(1, numel(listing));
+        for i = 1:numel(listing)
+            [~, name, extension] = fileparts(listing(i).folder);   % the method's id, such as ophys.normcorre
+            paths(i) = string(name) + string(extension) + "/" + string(listing(i).name);
+        end
+        [~, order] = sort(paths);
+        for i = reshape(order, 1, [])
+            presets{end + 1} = nansen.internal.readJson(fullfile(listing(i).folder, listing(i).name)); %#ok<AGROW>
+        end
+    end
+    tasks = readAll(fullfile(target, "tasks"), "*.task.nansen.json");   % in their queue order, without their ids
+    if ~isempty(tasks)
+        [~, order] = sort(cellfun(@(t) double(t.order), tasks));
+        tasks = cellfun(@(t) rmfield(t, "id"), tasks(order), UniformOutput=false);
+    end
+    runs = {};
+    journal = fullfile(target, "runs", "session.runs.jsonl");
+    if isfile(journal)
+        lines = splitlines(string(nansen.internal.readText(journal)));
+        for line = reshape(lines(strlength(lines) > 0), 1, [])
+            runs{end + 1} = jsondecode(char(line)); %#ok<AGROW>
+        end
+    end
     actual = struct( ...
         "project", nansen.internal.readJson(fullfile(target, "project.nansen.json")), ...
+        "fileAdapters", {readAll(fullfile(target, "file-adapters"), "*.fileAdapter.nansen.json")}, ...
+        "presets", {presets}, "tasks", {tasks}, "runs", {runs}, "settings", report.settings, ...
         "dataset", nansen.internal.readJson(fullfile(target, "dataset.dsm.json")), ...
         "fragments", {readAll(fullfile(target, "fragments"), "*.fragment.nansen.json")}, ...
         "dataVariables", {readAll(fullfile(target, "data-variables"), "*.dataVariable.nansen.json")}, ...
