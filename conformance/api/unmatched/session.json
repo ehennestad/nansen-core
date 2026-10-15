@@ -185,6 +185,357 @@
       "expect": {
         "error": "invalid-params"
       }
+    },
+    {
+      "request": {
+        "method": "scan.unmatched",
+        "id": 13,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "total": 2,
+          "entries": [
+            {
+              "dataLocation": "processed",
+              "path": "subject-m110/scratch/",
+              "entityType": "session",
+              "key": {
+                "subject_id": "m110",
+                "session_id": null
+              }
+            },
+            {
+              "dataLocation": "raw",
+              "path": "2025_05_23/notes.txt",
+              "entityType": null,
+              "key": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assignments",
+        "id": 14,
+        "params": {}
+      },
+      "expect": {
+        "result": []
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assign",
+        "id": 15,
+        "params": {
+          "dataLocation": "processed",
+          "path": "subject-m110/scratch",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-002"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "dataLocation": "processed",
+          "path": "subject-m110/scratch/",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-002"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assignments",
+        "id": 16,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "path": "subject-m110/scratch/",
+            "key": {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-002"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 17,
+        "params": {
+          "listing": "${listing}"
+        }
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 3,
+            "session": 4
+          },
+          "unmatched": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "scan.unmatched",
+        "id": 18,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "total": 1,
+          "entries": [
+            {
+              "path": "2025_05_23/notes.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 19,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-002"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "inStore": true,
+          "locations": [
+            {
+              "dataLocationIdentifier": "raw",
+              "paths": [
+                "2025_05_23/2025_05_23_14_30_00_m110-20250523-002/"
+              ]
+            },
+            {
+              "dataLocationIdentifier": "processed",
+              "paths": [
+                "subject-m110/scratch/"
+              ],
+              "files": {
+                "motion_corrected": [],
+                "roi_signals": []
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assign",
+        "id": 20,
+        "params": {
+          "dataLocation": "processed",
+          "path": "subject-m110/scratch/",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-009"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-009"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assignments",
+        "id": 21,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "path": "subject-m110/scratch/",
+            "key": {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-009"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 22,
+        "params": {
+          "listing": "${listing}"
+        }
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 3,
+            "session": 5
+          },
+          "unmatched": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 23,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-009"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "inStore": true,
+          "inTable": false,
+          "locations": [
+            {
+              "dataLocationIdentifier": "processed",
+              "paths": [
+                "subject-m110/scratch/"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.unassign",
+        "id": 24,
+        "params": {
+          "dataLocation": "processed",
+          "path": "subject-m110/scratch/"
+        }
+      },
+      "expect": {
+        "result": {
+          "removed": {
+            "path": "subject-m110/scratch/",
+            "entityType": "session",
+            "key": {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-009"
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assignments",
+        "id": 25,
+        "params": {}
+      },
+      "expect": {
+        "result": []
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 26,
+        "params": {
+          "listing": "${listing}"
+        }
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 3,
+            "session": 4
+          },
+          "unmatched": 2
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.unassign",
+        "id": 27,
+        "params": {
+          "dataLocation": "processed",
+          "path": "subject-m110/scratch/"
+        }
+      },
+      "expect": {
+        "error": "unknown-assignment"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assign",
+        "id": 28,
+        "params": {
+          "dataLocation": "raw",
+          "path": "calibration/",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-002"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assign",
+        "id": 29,
+        "params": {
+          "dataLocation": "processed",
+          "path": "subject-m110/scratch/",
+          "key": {
+            "session_id": "m110-20250523-002"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.assign",
+        "id": 30,
+        "params": {
+          "dataLocation": "nowhere",
+          "path": "x/",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-002"
+          }
+        }
+      },
+      "expect": {
+        "error": "unknown-location"
+      }
     }
   ]
 }

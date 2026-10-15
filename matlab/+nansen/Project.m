@@ -327,6 +327,70 @@ classdef Project < handle
             result = struct("dataLocation", char(dataLocation), "level", char(levelName), "pattern", char(pattern));
         end
 
+        % -- entries matched to entities by hand ----------------------------------------------
+
+        function path = assignmentsPath(obj)
+            path = string(fullfile(obj.Folder, "dataset.assignments.nansen.json"));
+        end
+
+        function assignments = assignments(obj)
+            %assignments The entries of the data locations matched to an entity by hand, in the order
+            %   they were first made: a cell row of structs {dataLocation, path, entityType, key}
+            assignments = {};
+            if isfile(obj.assignmentsPath())
+                document = nansen.readDocument(obj.assignmentsPath(), ExpectedType="nansen.assignments");
+                assignments = nansen.internal.asCellOfStructs(document.assignments);
+            end
+        end
+
+        function assignment = assignEntry(obj, dataLocation, path, key)
+            %assignEntry Match an entry of a data location to the entity with this key, whatever its name
+            %
+            %   From the next scan on (dev's FolderMatcherDialog). It must be at a
+            %   level that holds an entity type; one assigned before is assigned
+            %   anew, in its place.
+            dataset = obj.requireDataset();
+            dataLocation = string(dataLocation);
+            [path, ~, entityType] = dataset.assignmentTarget(dataLocation, path);
+            assignment = struct("dataLocation", char(dataLocation), "path", char(path), ...
+                "entityType", char(entityType), "key", dataset.checkKey(entityType, key));
+            assignments = obj.assignments();
+            index = [];
+            for i = 1:numel(assignments)
+                if string(assignments{i}.dataLocation) == dataLocation && string(assignments{i}.path) == path
+                    index = i;
+                    break
+                end
+            end
+            if isempty(index)
+                assignments{end + 1} = assignment;
+            else
+                assignments{index} = assignment;
+            end
+            obj.writeAssignments(assignments);
+        end
+
+        function removed = unassignEntry(obj, dataLocation, path)
+            %unassignEntry Undo an assignment (unknown-assignment if there is none)
+            names = nansen.Dataset.entryParts(path);
+            assignments = obj.assignments();
+            index = [];
+            for i = 1:numel(assignments)
+                if string(assignments{i}.dataLocation) == string(dataLocation) ...
+                        && isequal(nansen.Dataset.entryParts(assignments{i}.path), names)
+                    index = i;
+                    break
+                end
+            end
+            if isempty(index)
+                nansen.internal.throwError("unknown-assignment", "'%s' of '%s' is not assigned to an entity", ...
+                    string(path), string(dataLocation))
+            end
+            removed = assignments{index};
+            assignments(index) = [];
+            obj.writeAssignments(assignments);
+        end
+
         function document = parseDatasetText(~, text)
             %parseDatasetText A DSM config from its text, as DSM accepts it (dataset-invalid otherwise)
             try
@@ -605,11 +669,11 @@ classdef Project < handle
                 options.Save (1,1) logical = true
             end
             dataset = obj.requireDataset();
-            if isempty(options.Registry)
-                result = dataset.scan(listing);
-            else
-                result = dataset.scan(listing, options.Registry);
+            registry = options.Registry;
+            if isempty(registry)
+                registry = dsm.ExtractorRegistry();
             end
+            result = dataset.scan(listing, registry, obj.assignments());
             if options.Save
                 result.write(obj.scanPath())
             end
@@ -2092,6 +2156,14 @@ classdef Project < handle
             nansen.internal.writeJson(fullfile(obj.Folder, nansen.Project.ProjectFile), document)
             document.entityTypes = nansen.internal.asCellOfStructs(document.entityTypes);
             obj.Document = document;
+        end
+
+        function writeAssignments(obj, assignments)
+            entry = nansen.internal.schemaEntry("nansen.assignments");
+            document = struct("schemaType", 'nansen.assignments', "schemaVersion", char(entry.version), ...
+                "assignments", {reshape(assignments, 1, [])});
+            nansen.checkDocument(document, ExpectedType="nansen.assignments");
+            nansen.internal.writeJson(obj.assignmentsPath(), document)
         end
     end
 

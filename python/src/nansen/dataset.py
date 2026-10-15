@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import dsm
 
@@ -224,18 +225,219 @@ class Dataset:
         return dsm.Listing(roots, self.environment), summary
 
     def scan(self, listing: Optional[dsm.Listing] = None, registry: Optional[dsm.ExtractorRegistry] = None,
-             now: Optional[dt.datetime] = None) -> Scan:
-        """Walk the stores. Pass a listing to walk a snapshot instead of the file system."""
+             now: Optional[dt.datetime] = None, assignments: Sequence[Mapping[str, Any]] = ()) -> Scan:
+        """Walk the stores. Pass a listing to walk a snapshot instead of the file system.
+
+        ``assignments`` are entries matched to an entity by hand (``nansen.assignments``): each is that entity,
+        whatever its name, and what lies below it is walked as usual. Those that no longer fit the config
+        (another level, another key) are left out.
+        """
         if listing is None:
             listing, summary = self.listing()
         else:
             summary = [{"dataLocation": r.data_location, "rootStoragePath": r.root_storage_path,
                         "available": True, "entries": len(r.entries)} for r in listing.roots]
+        plans = self._assignment_plans(assignments)
+        derived: List[Tuple[dict, dsm.Root]] = []
+        if plans:
+            listing, derived = self._split_listing(listing, plans)
         result = dsm.walk(self.config, listing, registry)
         stamp = (now or dt.datetime.now()).replace(microsecond=0).isoformat()
         document = result.to_dict(include_detail=True)
-        return Scan(document["records"], document["unmatched"], summary,
-                    listing.environment or self.environment, stamp)
+        records, unmatched = document["records"], document["unmatched"]
+        key_columns: Dict[str, List[str]] = {}
+        for plan, root in derived:
+            walked = dsm.walk(self._assignment_config(plan), dsm.Listing([root], listing.environment), registry)
+            part = walked.to_dict(include_detail=True)
+            for record in part["records"]:
+                below = record["entityType"] == plan["entityType"] or \
+                    any(p["entityType"] == plan["entityType"] for p in record["parents"])
+                if below:  # the assigned entity, and what is below it
+                    self._merge_record(records, record, key_columns)
+                else:  # an entity above it: its folders are the walk of the rest's, so it adds only an entity not found
+                    self._merge_record(records, dict(record, locations=[]), key_columns, only_new=True)
+            unmatched.extend(part["unmatched"])
+        return Scan(records, unmatched, summary, listing.environment or self.environment, stamp)
+
+    # -- entries matched by hand -------------------------------------------------------------
+
+    def assignment_target(self, data_location: str, path: str) -> Tuple[str, int, str]:
+        """(path as a scan lists it, level index, entity type) of an entry that can be matched to an entity:
+        one at a level of the location that holds an entity type."""
+        parts = entry_parts(path)
+        if data_location not in self.config.location_ids:
+            raise NansenError("unknown-location", f"the dataset has no data location {data_location!r}")
+        levels = self.config.layout(data_location)
+        if len(parts) > len(levels):
+            raise NansenError("invalid-params", f"{path!r} is deeper than the levels of {data_location!r}")
+        level = levels[len(parts) - 1]
+        if not level.get("entityType"):
+            raise NansenError("invalid-params", f"level {level['name']!r} of {data_location!r} holds no entity type")
+        folder = level.get("fileSystemType", "folder") == "folder"
+        return "/".join(parts) + ("/" if folder else ""), len(parts) - 1, level["entityType"]
+
+    def check_key(self, entity_type: str, key: Any) -> Dict[str, Any]:
+        """The key of an entity of the type, its values typed by the key columns (invalid-params otherwise)."""
+        columns = self.key_columns(entity_type)
+        names = [n for n, _ in columns]
+        if not isinstance(key, dict) or sorted(key) != sorted(names):
+            raise NansenError("invalid-params", f"the key of {entity_type} has the columns {', '.join(names)}")
+        typed: Dict[str, Any] = {}
+        for name, data_type in columns:
+            value = key[name]
+            if data_type == "integer":
+                if isinstance(value, str) and re.fullmatch(r"\s*-?\d+\s*", value):
+                    value = int(value)
+                elif isinstance(value, float) and value.is_integer():
+                    value = int(value)
+                if not isinstance(value, int) or isinstance(value, bool):
+                    raise NansenError("invalid-params", f"{name} is an integer, not {key[name]!r}")
+            else:
+                if not isinstance(value, str) or not value.strip():
+                    raise NansenError("invalid-params", f"{name} is a text that is not empty, not {key[name]!r}")
+                value = value.strip()
+            typed[name] = value
+        return typed
+
+    def suggested_key(self, data_location: str, root_storage_path: str,
+                      path: str) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """For an entry a scan did not match: the entity type of its level and what the naming rules read of
+        its key from its path (None for a value they cannot read). (None, None) if it cannot be matched."""
+        from dsm.extract import evaluate_fields
+
+        try:
+            relative, _, entity_type = self.assignment_target(data_location, path)
+        except NansenError:
+            return None, None
+        if relative.endswith("/") != str(path).endswith("/"):  # a file where a folder is expected, or the reverse
+            return None, None
+        try:
+            root = str(self.config.root_storage_path(data_location, root_storage_path)["path"])
+        except KeyError:
+            root = ""
+        full_path = re.sub(r"[/\\]+$", "", root) + "/" + relative.rstrip("/")
+        registry = dsm.ExtractorRegistry()
+        key: Dict[str, Any] = {}
+        seed: Dict[str, Any] = {}
+        for owner in self.ancestor_types(entity_type) + [entity_type]:
+            values: Dict[str, Any] = {}
+            if self.config.rules_for(data_location, owner):
+                try:
+                    values, _ = evaluate_fields(self.config, data_location, relative, owner, dict(seed), registry, full_path)
+                except Exception:  # a rule that cannot be read on this path reads nothing
+                    values = {}
+            for name in self.identity_keys(owner):
+                key[name] = values.get(name)
+                if key[name] is not None:
+                    seed[name] = key[name]
+        return entity_type, key
+
+    def _assignment_plans(self, assignments: Sequence[Mapping[str, Any]]) -> List[dict]:
+        """The assignments that still fit the config, with their path, level and typed key."""
+        plans = []
+        for assignment in assignments:
+            try:
+                path, level, entity_type = self.assignment_target(assignment["dataLocation"], assignment["path"])
+                if entity_type != assignment["entityType"]:
+                    continue
+                key = self.check_key(entity_type, assignment["key"])
+            except NansenError:
+                continue
+            plans.append({"dataLocation": assignment["dataLocation"], "path": path, "level": level,
+                          "entityType": entity_type, "key": key})
+        return plans
+
+    def _split_listing(self, listing: dsm.Listing,
+                       plans: List[dict]) -> Tuple[dsm.Listing, List[Tuple[dict, dsm.Root]]]:
+        """The listing without the assigned entries and what lies below them; and for each assignment found
+        in a root, a root of its entries (with the folders they are in). An entry belongs to the innermost
+        assignment that holds it."""
+        roots: List[dsm.Root] = []
+        derived: List[Tuple[dict, dsm.Root]] = []
+        for root in listing.roots:
+            mine = [p for p in plans if p["dataLocation"] == root.data_location]
+            owned: List[List[str]] = [[] for _ in mine]
+            rest: List[str] = []
+            for entry in root.entries:
+                best = -1
+                for i, plan in enumerate(mine):
+                    if within(entry, plan["path"]) and (best < 0 or len(plan["path"]) > len(mine[best]["path"])):
+                        best = i
+                if best < 0:
+                    rest.append(entry)
+                else:
+                    owned[best].append(entry)
+            roots.append(dsm.Root(root.data_location, root.root_storage_path, rest))
+            for plan, entries in zip(mine, owned):
+                if entries:
+                    derived.append((plan, dsm.Root(root.data_location, root.root_storage_path,
+                                                   dsm.listing.normalize_entries(entries))))
+        return dsm.Listing(roots, listing.environment), derived
+
+    def _assignment_config(self, plan: dict) -> dsm.Config:
+        """The config with only the assignment's location, in which the names on its path are taken as they
+        are and the fields of its key have the assigned values."""
+        document = copy.deepcopy(self.config.doc)
+        location = copy.deepcopy(self.config.location(plan["dataLocation"]))
+        source = location["filesystemSource"]
+        names = plan["path"].rstrip("/").split("/")
+        layout = list(source["entityLayout"])
+        for i in range(plan["level"] + 1):
+            level = {k: v for k, v in layout[i].items()
+                     if k not in ("excludePatterns", "matchPattern", "isVariable", "fixedName")}
+            level["isVariable"] = False
+            level["fixedName"] = names[i]
+            layout[i] = level
+        source["entityLayout"] = layout
+        mapping = [item for item in source.get("metadataMapping", []) if item["metadataRef"] not in plan["key"]]
+        mapping += [{"metadataRef": name, "extraction": {"method": "fixed", "value": value}}
+                    for name, value in plan["key"].items()]
+        source["metadataMapping"] = mapping
+        document["dataLocations"] = [location]
+        return dsm.Config(document, self.config.source)
+
+    def _merge_record(self, records: List[dict], record: dict, key_columns: Dict[str, List[str]],
+                      only_new: bool = False) -> None:
+        """Add a record found under an assigned entry to the record of the same entity, or as a new record."""
+        entity_type = record["entityType"]
+        if entity_type not in key_columns:
+            key_columns[entity_type] = [n for n, _ in self.key_columns(entity_type)]
+        names = key_columns[entity_type]
+        wanted = [self.record_key(record).get(n) for n in names]
+        existing = next((r for r in records if r["entityType"] == entity_type
+                         and [self.record_key(r).get(n) for n in names] == wanted), None)
+        if existing is None:
+            records.append(record)
+            return
+        if only_new:
+            return
+        issues = list(existing.get("issues", []))
+        for entry in record["locations"]:
+            same = next((e for e in existing["locations"]
+                         if e["dataLocationIdentifier"] == entry["dataLocationIdentifier"]
+                         and e["rootStoragePathIdentifier"] == entry["rootStoragePathIdentifier"]), None)
+            if same is None:
+                existing["locations"].append(entry)
+                continue
+            same["paths"] = sorted(set(same["paths"]) | set(entry["paths"]))
+            if "files" in entry:
+                files = same.setdefault("files", {})
+                for name, paths in entry["files"].items():
+                    files[name] = sorted(set(files.get(name, [])) | set(paths))
+            if "isComplete" in entry:
+                same["isComplete"] = bool(same.get("isComplete", True)) and bool(entry["isComplete"])
+            if same["fileSystemType"] == "folder" and len(same["paths"]) > 1:
+                issues.append({"code": "duplicate-entity", "message": f"{len(same['paths'])} folders in "
+                               f"'{same['dataLocationIdentifier']}' are this entity: {', '.join(same['paths'])}"})
+        order = self.config.location_ids
+        existing["locations"].sort(key=lambda e: (order.index(e["dataLocationIdentifier"]), e["rootStoragePathIdentifier"]))
+        for name, value in record["metadata"].items():
+            existing["metadata"].setdefault(name, value)
+        for issue in record.get("issues", []):
+            if issue["code"] in ("missing-required-file", "cardinality-violation") and issue not in issues:
+                issues.append(issue)
+        if issues:
+            existing["issues"] = issues
 
     # -- writing --------------------------------------------------------------------------
 
@@ -247,6 +449,19 @@ class Dataset:
 
     def absolute(self, data_location: str, relative: str, root_storage_path: Optional[str] = None) -> Path:
         return self.root(data_location, root_storage_path).path / relative
+
+
+def entry_parts(path: str) -> List[str]:
+    """The names of an entry's path in a data location (invalid-params for none, or a '.' or '..')."""
+    parts = [p for p in str(path).replace("\\", "/").split("/") if p]
+    if not parts or any(p in (".", "..") for p in parts):
+        raise NansenError("invalid-params", f"{path!r} is not a path in the data location")
+    return parts
+
+
+def within(entry: str, path: str) -> bool:
+    """Whether a listing entry is the entry at path, or below it (a folder's path ends with '/')."""
+    return entry == path or (path.endswith("/") and entry.startswith(path))
 
 
 def copy_dataset(source, target: Path) -> None:

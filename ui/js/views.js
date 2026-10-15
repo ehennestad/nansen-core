@@ -49,9 +49,10 @@
 
   N.views.overview = async function (app, content) {
     const project = app.project;
-    const [tasks, unmatched] = await Promise.all([
+    const [tasks, unmatched, assignments] = await Promise.all([
       app.client.request("tasks.list").catch(() => []),
-      project.dataset ? app.client.request("scan.unmatched", { limit: 200 }).catch(() => null) : null]);
+      project.dataset ? app.client.request("scan.unmatched", { limit: 200 }).catch(() => null) : null,
+      project.dataset ? app.client.request("dataset.assignments").catch(() => []) : []]);
     const counts = {};
     await Promise.all(project.entityTypes.map(async (type) => {
       const data = await app.client.request("entities.list", { entityType: type.name }).catch(() => null);
@@ -102,6 +103,8 @@
         h("div.grow", h("div.title.mono", { style: { fontSize: "12.5px" } }, u.path), h("div.sub", `${u.dataLocation} · ${u.detail || u.reason}`)),
         h("button.btn.ghost.icon.small", { title: "Show in the file browser", on: { click: () => app.client.request("files.reveal",
           { dataLocation: u.dataLocation, rootStoragePath: u.rootStoragePath, path: u.path }).catch((error) => N.showError(error, "Could not open the folder")) } }, N.icon("folder", 13)),
+        u.entityType ? h("button.btn.small.assign-entry", { title: `Say which ${u.entityType} this is: scans then match it to that ${u.entityType}, whatever its name`,
+          on: { click: () => assignDialog(app, u) } }, "Assign to…") : null,
         h("button.btn.small.ignore-entry", { title: "Have scans skip this name at its level (an exclude pattern in the dataset config)", on: { click: async () => {
           try {
             const result = await app.client.request("dataset.exclude", { dataLocation: u.dataLocation, path: u.path });
@@ -113,9 +116,24 @@
       draw(false);
       return h("div.card.unmatched-card", h("div.card-head", N.icon("alert"), h("h3", "Not matched by the last scan"), h("div.spacer"),
         h("span.pill.warn", String(unmatched.total))),
-        h("div.card-body.muted", { style: { paddingBottom: 0 } }, "Folders and files in the data locations that no subject or session accounts for. Fix the names, change the dataset config, or have scans ignore them."),
+        h("div.card-body.muted", { style: { paddingBottom: 0 } }, "Folders and files in the data locations that no subject or session accounts for. Fix the names, change the dataset config, assign them to the entity they are, or have scans ignore them."),
         list);
     })() : null;
+
+    // Folders matched to an entity by hand (dataset.assign), each with Undo
+    const assignedCard = assignments && assignments.length ? h("div.card.assigned-card",
+      h("div.card-head", N.icon("link"), h("h3", "Matched by hand"), h("div.spacer"), h("span.pill.plain", String(assignments.length))),
+      h("ul.list", assignments.map((a) => h("li", { dataset: { path: a.path, location: a.dataLocation } },
+        h("span.dot.good"),
+        h("div.grow", h("div.title.mono", { style: { fontSize: "12.5px" } }, a.path),
+          h("div.sub", `${a.dataLocation} · ${a.entityType} ${Object.values(a.key).join(" / ")}`)),
+        h("button.btn.small.unassign-entry", { title: "Match it by its name again, from the next scan on", on: { click: async () => {
+          try {
+            await app.client.request("dataset.unassign", { dataLocation: a.dataLocation, path: a.path });
+            N.toast("Assignment undone", a.path, "success");
+            await app.scan();
+          } catch (error) { N.showError(error, "Could not undo it"); }
+        } } }, "Undo"))))) : null;
 
     const tools = (app.methods || []).filter((m) => m.tool);
     const toolsCard = tools.length ? h("div.card.tools-card", h("div.card-head", N.icon("zap"), h("h3", "Tools")),
@@ -144,7 +162,7 @@
         h("div.grid",
           h("div.card", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
             h("span.muted", dataset ? `Last scan ${N.fmt.ago(project.lastScan)}` : "")), roots),
-          unmatchedCard),
+          unmatchedCard, assignedCard),
         h("div.grid",
           h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Recent tasks"), h("div.spacer"),
             h("a", { href: "#/tasks" }, "All tasks")), taskList),
@@ -1950,6 +1968,57 @@
   }
 
   /* The project's title and description, and what its tables are called. */
+  /* Match a folder a scan did not match to an entity of its level's type (dev's FolderMatcherDialog):
+     pick one the project knows, or type the key, filled in from what the naming rules read of its path. */
+  async function assignDialog(app, u) {
+    const type = u.entityType;
+    const names = Object.keys(u.key || {});
+    const data = app.project.entityTypes.some((t) => t.name === type)
+      ? await app.client.request("entities.list", { entityType: type }).catch(() => null) : null;
+    const integer = new Set(((data && data.columns) || []).filter((c) => c.source === "key" && c.dataType === "integer").map((c) => c.name));
+    const rows = (data && data.rows) || [];
+    const inputs = {};
+    const fields = names.map((name) => {
+      const known = [...new Set(rows.map((r) => r.key[name]).filter((v) => v !== null && v !== undefined).map(String))];
+      const listId = `assign-${name}-choices`;
+      inputs[name] = h("input.input", { value: u.key[name] === null || u.key[name] === undefined ? "" : String(u.key[name]),
+        list: listId, dataset: { column: name }, style: { width: "100%" } });
+      return h("div.field", h("label.name", name), inputs[name], h("datalist", { id: listId }, known.map((v) => h("option", { value: v }))));
+    });
+    const label = (key) => names.map((n) => key[n]).join(" / ");
+    const pick = rows.length ? h("select.input.pick-entity", { style: { width: "100%" }, on: { change: (e) => {
+      const row = rows[Number(e.target.value)];
+      if (row) for (const name of names) inputs[name].value = String(row.key[name]);
+    } } }, h("option", { value: "" }, `Choose a ${type}…`), rows.map((row, i) => h("option", { value: String(i) }, label(row.key)))) : null;
+    const message = h("div.form-message.hidden");
+    N.dialog({
+      title: `Assign to a ${type}`, narrow: true,
+      content: h("div", { style: { padding: "16px 20px" } },
+        h("p.muted", { style: { marginTop: 0 } }, h("span.mono", u.path), ` in ${u.dataLocation}: the next scans take it as this ${type}, whatever its name.`),
+        pick ? h("div.field", h("label.name", `An existing ${type}`), pick) : null,
+        fields, message),
+      buttons: [
+        { label: "Cancel" },
+        { label: "Assign", kind: "primary", onClick: async (close) => {
+          const key = {};
+          for (const name of names) {
+            const text = inputs[name].value.trim();
+            key[name] = integer.has(name) && /^-?\d+$/.test(text) ? Number(text) : text;
+          }
+          try {
+            await app.client.request("dataset.assign", { dataLocation: u.dataLocation, path: u.path, key });
+            close();
+            N.toast("Assigned", `${u.path} is ${type} ${label(key)}`, "success");
+            await app.scan();
+          } catch (error) {
+            message.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error));
+            message.classList.remove("hidden");
+          }
+        } },
+      ],
+    });
+  }
+
   function editProjectDialog(app) {
     const project = app.project;
     const properties = {

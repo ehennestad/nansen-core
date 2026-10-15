@@ -196,6 +196,53 @@ classdef EntitiesTest < matlab.unittest.TestCase
             testCase.verifyFalse(ghost.inStore());
         end
 
+        function foldersMatchedToEntitiesByHand(testCase)
+            project = testCase.Project;
+            raw = fullfile(testCase.Folder, "data", "raw");
+            mkdir(fullfile(raw, "sub-m1", "odd"));
+            nansen.internal.writeText(fullfile(raw, "sub-m1", "odd", "movie.tif"), "x");
+            mkdir(fullfile(raw, "Mouse2", "ses-m2-009"));
+            nansen.internal.writeText(fullfile(raw, "Mouse2", "ses-m2-009", "movie.tif"), "x");
+            scan = project.scan();
+            paths = sort(string(cellfun(@(u) u.path, scan.Unmatched, UniformOutput=false)));
+            testCase.verifyEqual(paths, ["Mouse2/", "sub-m1/odd/"]);
+            dataset = project.dataset();
+            [entityType, key] = dataset.suggestedKey("raw", "here", "sub-m1/odd/");
+            testCase.verifyEqual(entityType, 'session');
+            testCase.verifyEqual(key.subject_id, 'm1');
+            testCase.verifyTrue(isnan(key.session_id));
+            [entityType, key] = dataset.suggestedKey("raw", "here", "sub-m1/odd");   % a file where a folder is expected
+            testCase.verifyTrue(isnan(entityType) && isnan(key));
+
+            assignment = project.assignEntry("raw", "sub-m1\odd", struct("subject_id", 'm1', "session_id", ' m1-002 '));
+            testCase.verifyEqual(assignment.path, 'sub-m1/odd/');
+            testCase.verifyEqual(assignment.entityType, 'session');
+            testCase.verifyEqual(assignment.key, struct("subject_id", 'm1', "session_id", 'm1-002'));
+            project.assignEntry("raw", "Mouse2/", struct("subject_id", 'm2'));
+            testCase.verifyEqual(string(cellfun(@(a) a.path, project.assignments(), UniformOutput=false)), ["sub-m1/odd/", "Mouse2/"]);
+            scan = project.scan();
+            testCase.verifyEmpty(scan.Unmatched);
+            % a folder given to a session found elsewhere: one more folder of it, with its files
+            m1 = project.entity("session", struct("session_id", "m1-002"));
+            testCase.verifyEqual(string(m1.location("raw").paths)', ["sub-m1/odd/", "sub-m1/ses-m1-002/"]);
+            testCase.verifyEqual(m1.files("raw", "movie"), ["sub-m1/odd/movie.tif", "sub-m1/ses-m1-002/movie.tif"]);
+            testCase.verifyTrue(ismember("duplicate-entity", m1.issueCodes()));
+            % a subject's folder: what is below it is walked as usual, with the subject as its parent
+            m2 = project.entity("session", struct("session_id", "m2-009"));
+            testCase.verifyEqual(string(m2.Key.subject_id), "m2");
+            testCase.verifyEqual(string(m2.location("raw").paths), "Mouse2/ses-m2-009/");
+            testCase.verifyEqual(m2.attributes().session_number, 9);
+            testCase.verifyEqual(numel(project.entities("session")), 4);
+
+            removed = project.unassignEntry("raw", "sub-m1/odd");
+            testCase.verifyEqual(removed.key.session_id, 'm1-002');
+            testCase.verifyError(@() project.unassignEntry("raw", "sub-m1/odd/"), "nansen:UnknownAssignment");
+            testCase.verifyError(@() project.assignEntry("raw", "sub-m1/odd/", struct("subject_id", 'm1')), "nansen:InvalidParams");
+            testCase.verifyError(@() project.assignEntry("lab", "sub-m1/", struct("subject_id", 'm1')), "nansen:UnknownLocation");
+            scan = project.scan();
+            testCase.verifyEqual(string(cellfun(@(u) u.path, scan.Unmatched, UniformOutput=false)), "sub-m1/odd/");
+        end
+
         function generatePath(testCase)
             dataset = testCase.Project.dataset();
             testCase.verifyEqual(dataset.generatePath("processed", "session", ...

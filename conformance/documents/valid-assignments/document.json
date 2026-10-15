@@ -1,0 +1,24 @@
+{
+  "schemaType": "nansen.assignments",
+  "schemaVersion": "0.1.0",
+  "assignments": [
+    {
+      "dataLocation": "processed",
+      "path": "subject-m110/scratch/",
+      "entityType": "session",
+      "key": {
+        "subject_id": "m110",
+        "session_id": "m110-20250523-002"
+      }
+    },
+    {
+      "dataLocation": "raw",
+      "path": "rat7/day 3/",
+      "entityType": "session",
+      "key": {
+        "subject_id": "rat7",
+        "day": 3
+      }
+    }
+  ]
+}

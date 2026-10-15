@@ -1,0 +1,5 @@
+{
+  "description": "Folders matched to an entity by hand, with keys of text and integer values.",
+  "valid": true,
+  "schemaType": "nansen.assignments"
+}

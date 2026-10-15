@@ -878,6 +878,42 @@ def test_review_and_ignore_what_a_scan_did_not_match(empty_app, page):
     assert api.handle({"id": 4, "method": "project.scan"})["result"]["unmatched"] == 0
 
 
+def test_assign_a_folder_a_scan_did_not_match_to_a_session_and_undo_it(empty_app, page):
+    from pathlib import Path
+
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    processed = Path(api.handle({"id": 2, "method": "files.resolve", "params": {"dataLocation": "processed", "path": ""}})["result"]["path"])
+    (processed / "subject-m110" / "redo").mkdir(parents=True)
+    api.handle({"id": 3, "method": "project.scan"})
+    page.goto(empty_app["server"].url + "#/overview")
+    entry = ".unmatched-card li[data-path='subject-m110/redo/']"
+    page.wait_for_selector(entry)
+    page.click(entry + " .assign-entry")
+    page.wait_for_selector(".dialog .pick-entity")
+    # filled in from the names: the subject from its folder, the session left to say
+    assert page.input_value(".dialog input[data-column='subject_id']") == "m110"
+    assert page.input_value(".dialog input[data-column='session_id']") == ""
+    page.click(".dialog-foot button:has-text('Assign')")   # no session: refused, and the dialog stays
+    page.wait_for_selector(".dialog .form-message:has-text('invalid-params')")
+    page.select_option(".dialog .pick-entity", label="m110 / m110-20250523-002")
+    assert page.input_value(".dialog input[data-column='session_id']") == "m110-20250523-002"
+    page.click(".dialog-foot button:has-text('Assign')")
+    page.wait_for_selector(".assigned-card li[data-path='subject-m110/redo/']")
+    page.wait_for_selector(entry, state="detached")
+    detail = api.handle({"id": 4, "method": "entities.get", "params": {
+        "entityType": "session", "key": {"subject_id": "m110", "session_id": "m110-20250523-002"}}})["result"]
+    paths = {loc["dataLocationIdentifier"]: loc["paths"] for loc in detail["locations"]}
+    assert "subject-m110/redo/" in paths["processed"]
+    assert (folder / "dataset.assignments.nansen.json").is_file()
+
+    page.click(".assigned-card li[data-path='subject-m110/redo/'] .unassign-entry")
+    page.wait_for_selector(".assigned-card", state="detached")
+    page.wait_for_selector(entry)
+    assert api.handle({"id": 5, "method": "dataset.assignments"})["result"] == []
+
+
 def test_keep_one_of_two_folders_of_a_session(empty_app, page):
     import shutil
     from pathlib import Path

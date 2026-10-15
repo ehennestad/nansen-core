@@ -530,10 +530,37 @@ class Api:
                          # excluded entries were skipped on purpose; the readers emit the rest in their own order
                          key=lambda u: (u.get("dataLocationIdentifier") or "", u.get("path") or ""))
         limit = int(params.get("limit", 1000))
-        return {"scannedAt": scan.scanned_at if scan is not None else None, "total": len(entries),
-                "entries": [{"dataLocation": u.get("dataLocationIdentifier"), "rootStoragePath": u.get("rootStoragePathIdentifier"),
-                             "path": u.get("path", ""), "reason": u.get("reason", ""), "detail": u.get("detail", "")}
-                            for u in entries[:limit]]}
+        dataset = project.dataset
+        shown = []
+        for u in entries[:limit]:
+            entry = {"dataLocation": u.get("dataLocationIdentifier"), "rootStoragePath": u.get("rootStoragePathIdentifier"),
+                     "path": u.get("path", ""), "reason": u.get("reason", ""), "detail": u.get("detail", ""),
+                     "entityType": None, "key": None}
+            if dataset is not None:  # what it could be matched to by hand, and what its names say of the key
+                entry["entityType"], entry["key"] = dataset.suggested_key(entry["dataLocation"] or "",
+                                                                          entry["rootStoragePath"] or "", entry["path"])
+            shown.append(entry)
+        return {"scannedAt": scan.scanned_at if scan is not None else None, "total": len(entries), "entries": shown}
+
+    def dataset__assign(self, params: dict) -> dict:
+        """Match an entry of a data location to an entity by hand, from the next scan on (dev's FolderMatcherDialog)."""
+        project = self._require_project()
+        if not isinstance(params.get("key"), dict):
+            raise NansenError("invalid-params", "key is an object of the entity's key values")
+        result = project.assign_entry(params["dataLocation"], params["path"], params["key"])
+        self.emit("project", {"name": project.name})
+        return result
+
+    def dataset__unassign(self, params: dict) -> dict:
+        """Undo the matching of an entry to an entity by hand."""
+        project = self._require_project()
+        removed = project.unassign_entry(params["dataLocation"], params["path"])
+        self.emit("project", {"name": project.name})
+        return {"removed": removed}
+
+    def dataset__assignments(self, params: dict) -> list:
+        """The entries matched to an entity by hand."""
+        return self._require_project().assignments()
 
     def dataset__exclude(self, params: dict) -> dict:
         """Skip an unmatched entry in later scans, by its exact name at its level."""
