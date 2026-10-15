@@ -6,7 +6,7 @@
   "title": "Detect ROIs (Quicky)",
   "category": "Two-photon/Segmentation",
   "entityType": "*",
-  "description": "dev's Quicky (flufinder) detection, natively in both languages: frames are binned by their maximum, the smooth and slow background taken out, each bin thresholded at a percentile and cleaned with disk-shaped morphology, and the places where the thresholded areas come back in at least observationsRequired bins become ROIs. With shape detection, somata are also found by their shape in the mean image: a ring template is correlated with it, and each candidate's mask is found by where the image rises and falls along 48 directions from its centre. Saved as ophys.detect_rois saves them. Areas are compared deterministically (by centroids within 3 px of their median), where flufinder clusters them, and shape detection follows flufinder's steps at the image's own resolution; ophys.flufinder runs flufinder itself.",
+  "description": "dev's Quicky (flufinder) detection, natively in both languages: frames are binned by their maximum, the smooth and slow background taken out, each bin thresholded at a percentile and cleaned with disk-shaped morphology, and the places where the thresholded areas come back in at least observationsRequired bins become ROIs. With shape detection, somata are also found by their shape in the mean image: a ring template is correlated with it, and each candidate's mask is found by where the image rises and falls along 48 directions from its centre. Saved as ophys.detect_rois saves them. Areas are compared deterministically (by centroids within 3 px of their median), where flufinder clusters them, and shape detection follows flufinder's steps, each candidate's patch upsampled 4 times (upsampling) as flufinder does; ophys.flufinder runs flufinder itself.",
   "implementations": {
     "python": "ophys_methods:quicky",
     "matlab": "ophys.quicky"
@@ -80,6 +80,14 @@
         "default": 5,
         "minimum": 2,
         "title": "Soma radius (px)"
+      },
+      "upsampling": {
+        "type": "integer",
+        "default": 4,
+        "minimum": 1,
+        "maximum": 16,
+        "title": "Upsampling of candidates",
+        "description": "Shape detection finds each candidate soma's edge in its patch upsampled this many times (bicubic, as flufinder's imresize by 4): sampled every upsampled pixel and pushed out by 2 of them. 1 works at the image's own resolution."
       },
       "firstFrame": {
         "type": "integer",

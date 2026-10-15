@@ -1,11 +1,13 @@
-function pixels = roiNeuropil(value, roi, options, height, width)
+function [pixels, slices] = roiNeuropil(value, roi, options, height, width)
 %roiNeuropil The neuropil pixels of an ROI of an ROI file, as ophys.extractSignals takes them
 %
 %   An N-by-2 matrix of [row, column] (0-based, row-major) of the neuropil
 %   of the ROI of id roi (nansen.internal.neuropilMasks): among the file's
 %   ROIs, less those rejected unless options.includeRejected, and the ROI
 %   itself always. Pixels outside the height x width image are left out.
-%   As Python's nansen.frames.roi_neuropil.
+%   slices is the slice (from 1) of each pixel (nansen.internal.neuropilSlices,
+%   options.numNeuropilSlices; all 1 with one slice). As Python's
+%   nansen.frames.roi_neuropil.
     rois = nansen.internal.roiOutlines(value);
     at = 0;
     for i = 1:numel(rois)
@@ -36,6 +38,12 @@ function pixels = roiNeuropil(value, roi, options, height, width)
         end
     end
     neuropil = nansen.internal.neuropilMasks(masks, options, own);
+    parts = nansen.internal.neuropilSlices(neuropil{1}, masks{own}, double(nansen.internal.getField(options, "numNeuropilSlices", 1)));
+    labels = zeros(height, width);
+    for k = 1:numel(parts)
+        labels(parts{k}) = k;
+    end
     [rows, columns] = find(neuropil{1});
-    pixels = sortrows([rows, columns] - 1);
+    [pixels, order] = sortrows([rows, columns] - 1);
+    slices = labels(sub2ind([height, width], rows(order), columns(order)));
 end

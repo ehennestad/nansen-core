@@ -333,6 +333,9 @@ def main():
          "expect": {"result": {"width": 48, "height": 48, "rois": moved}}},
         # somata that are never active are found by their shape; the activity part finds nothing in a still recording
         {**run(11, "ophys.quicky", [S5], {"stack": "TwoPhotonSeries_Original", "roiDiameter": 10}), "expect": {"result": {"results": [shaped]}}},
+        # each candidate's edge found in its patch upsampled 4 times (the default, as flufinder), or at the image's own resolution
+        {**run(1101, "ophys.quicky", [S5], {"stack": "TwoPhotonSeries_Original", "roiDiameter": 10, "upsampling": 1, "output": ""}),
+         "expect": {"result": {"results": [shaped]}}},
         {**run(12, "ophys.quicky", [S5], {"stack": "TwoPhotonSeries_Original", "roiDiameter": 10, "useShapeDetection": False}),
          "expect": {"result": {"results": [{"rois": 0, "areas": []}]}}},
         # a resonant-scanner recording: flyback rows left out, the back lines' offset found once, the frames aligned,
@@ -410,7 +413,7 @@ def main():
     (HERE / "session.json").write_text(json.dumps({"steps": steps}, indent=2) + "\n", encoding="utf-8")
     expected = {"description": "Motion correction finer than whole pixels: subpixel shifts on a texture moved by half pixels, piecewise rigid "
                                "correction (patches) of a texture whose quadrants move apart, and sessions aligned with a rotation and piecewise (a field that bends), whose ROIs "
-                               "land where the ground truth puts them, and ROI edits mirrored between them through the alignment; and Quicky's shape detection finding somata that are never active; run again with skipCompleted, the sessions it already corrected are left out. make_data.py writes the recordings and the steps from the ground truth.",
+                               "land where the ground truth puts them, and ROI edits mirrored between them through the alignment; and Quicky's shape detection finding somata that are never active, their patches upsampled as flufinder does or not; run again with skipCompleted, the sessions it already corrected are left out. make_data.py writes the recordings and the steps from the ground truth.",
                 "steps": len(steps)}
     (HERE / "expected.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
     print(json.dumps([first, second]))

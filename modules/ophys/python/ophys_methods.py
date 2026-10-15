@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from nansen.errors import NansenError
-from nansen.frames import neuropil_masks
+from nansen.frames import neuropil_masks, neuropil_slices
 from nansen.stacks import as_stack
 
 SMOOTHING = 1.15  # pixels: the phase correlation is smoothed by a Gaussian of this width, as suite2p does
@@ -672,28 +672,29 @@ def _quicky(stack, options, context):
     shaped = []
     if shape_wanted:   # somata seen by their shape in the mean image, first
         context.progress(0.8, "shape detection")
-        shaped = shape_rois(average, int(options.get("innerRadius", 3)), int(options.get("outerRadius", 5)))
+        shaped = shape_rois(average, int(options.get("innerRadius", 3)), int(options.get("outerRadius", 5)), int(options.get("upsampling", 4)))
         rois = (shaped + [r for r in rois if not any(overlap(r, s) > 0.75 for s in shaped)])[:options["maxRois"]]
     return rois, len(shaped), len(areas), data.shape[2]
 
 
 SHAPE_ANGLES = 48      # directions a soma's edge is looked for in
-SHAPE_STEP = 0.25      # px between samples along each direction
-SHAPE_SAMPLES = 40     # samples along each direction after the centre: 10 px
+SHAPE_REACH = 10       # px a soma's edge is looked for out to, along each direction
 SHAPE_MARGIN = 15      # px a soma's centre is from the edge at least
+SHAPE_HALF = 10        # a candidate's patch is 2 * SHAPE_HALF + 1 px square, as flufinder's 21 x 21 box
 
 
-def shape_rois(image, inner, outer):
+def shape_rois(image, inner, outer, upsampling=4):
     """Somata found by their shape in an image, as flufinder's shapeDetection: (row, column) pixels per ROI.
 
     The image, scaled to 0..1, is correlated (Pearson, in a window the size of the template, the image 0
     outside) with a ring template: a nucleus of radius inner at the image's 5th percentile, a ring to radius
     outer at its 99th and the rest at its 50th, blurred by a Gaussian of 1 px. Where the correlation is above
     sqrt(0.2) of its largest, areas (8-connected) of 5 pixels or more are candidates, at their centroid,
-    rounded half up, SHAPE_MARGIN px from the edge or more. Candidates whose 21 x 21 patch correlates with
-    the candidates' mean patch by 0.1 or less are left out. Each one's mask is found from the centre
-    outwards (soma_mask) and kept when the ring is brighter than both its edges in more than 60 % of
-    directions and it does not overlap a soma kept before it by more than 75 %.
+    rounded half up, SHAPE_MARGIN px from the edge or more. Each candidate's 21 x 21 patch is upsampled
+    upsampling times (upsample_cubic, as flufinder's imresize by 4); candidates whose upsampled patch, cut to
+    0..1, correlates with the mean of them by 0.1 or less are left out. Each one's mask is found from the centre
+    outwards in its upsampled patch (soma_mask) and kept when the ring is brighter than both its edges in more
+    than 60 % of directions and it does not overlap a soma kept before it by more than 75 %.
     """
     im = np.asarray(image, dtype=np.float64)
     im = im - im.min()
@@ -718,15 +719,45 @@ def shape_rois(image, inner, outer):
             centres.append((cy, cx))
     if not centres:
         return []
-    patches = [im[cy - 10:cy + 11, cx - 10:cx + 11] for cy, cx in centres]
-    mean_patch = sum(patches) / len(patches)
-    centres = [c for c, patch in zip(centres, patches) if _pearson(mean_patch, patch) > 0.1]
+    patches = [upsample_cubic(im[cy - SHAPE_HALF:cy + SHAPE_HALF + 1, cx - SHAPE_HALF:cx + SHAPE_HALF + 1], upsampling) for cy, cx in centres]
+    clipped = [np.clip(patch, 0.0, 1.0) for patch in patches]
+    mean_patch = sum(clipped) / len(clipped)
     rois = []
-    for cy, cx in centres:
-        pixels, ridge = soma_mask(im, cy, cx)
+    for (cy, cx), patch, cut in zip(centres, patches, clipped):
+        if not _pearson(mean_patch, cut) > 0.1:
+            continue
+        pixels, ridge = soma_mask(patch, upsampling, cy, cx, height, width)
         if ridge > 0.6 and pixels and not any(overlap(pixels, r) > 0.75 for r in rois):
             rois.append(pixels)
     return rois
+
+
+def upsample_cubic(image, factor):
+    """An image upsampled factor times by bicubic interpolation, as MATLAB's imresize does it: Keys' kernel (a = -0.5),
+    output pixel j (from 0) at (j + 0.5) / factor - 0.5 of the input, the edges mirrored (half-sample symmetric),
+    the weights of the four nearest pixels normalised to their sum; down the rows, then along them. MATLAB's
+    ophys.internal.upsampleCubic does the same."""
+    return _cubic_along(_cubic_along(np.asarray(image, dtype=np.float64), factor, 0), factor, 1)
+
+
+def _cubic_along(values, factor, axis):
+    size = values.shape[axis]
+    moved = np.moveaxis(values, axis, 0)
+    out = np.zeros((size * factor,) + moved.shape[1:])
+    mirror = list(range(size)) + list(range(size - 1, -1, -1))   # half-sample symmetric, as imresize
+    for j in range(size * factor):
+        x = (j + 0.5) / factor - 0.5
+        left = int(math.floor(x)) - 1
+        weights = []
+        for k in range(4):
+            s = abs(x - (left + k))
+            s2 = s * s
+            s3 = s2 * s
+            weights.append(1.5 * s3 - 2.5 * s2 + 1 if s <= 1 else -0.5 * s3 + 2.5 * s2 - 4 * s + 2 if s <= 2 else 0.0)
+        total = weights[0] + weights[1] + weights[2] + weights[3]
+        rows = [moved[mirror[(left + k) % (2 * size)]] for k in range(4)]
+        out[j] = weights[0] / total * rows[0] + weights[1] / total * rows[1] + weights[2] / total * rows[2] + weights[3] / total * rows[3]
+    return np.moveaxis(out, 0, axis)
 
 
 def ring_kernel(im, inner, outer, sigma=1):
@@ -790,26 +821,30 @@ def _circular_mean(values, window):
     return np.array([sum(values[(j + k) % n] for k in range(-half, half + 1)) / window for j in range(n)])
 
 
-def soma_mask(im, cy, cx):
-    """A soma's pixels around (cy, cx), from where the image rises (the nucleus's edge) and then falls (the
-    soma's edge) along SHAPE_ANGLES directions, as flufinder's findSomaMaskByEdgeDetection; and the share of
-    directions in which the ring between them is brighter than both edges.
+def soma_mask(patch, upsampling, cy, cx, height, width):
+    """A soma's pixels around (cy, cx) of a height x width image, from where its patch (21 x 21 around the centre,
+    upsampled upsampling times) rises (the nucleus's edge) and then falls (the soma's edge) along SHAPE_ANGLES
+    directions, as flufinder's findSomaMaskByEdgeDetection; and the share of directions in which the ring between
+    them is brighter than both edges.
 
-    The image is sampled bilinearly every SHAPE_STEP px out to SHAPE_SAMPLES samples and blurred (1 sample,
-    along each direction and across directions). The nucleus's edge is the largest rise in each direction,
-    smoothed over 5 directions; it counts when the mean of those rises is more than 1.5 times their spread
-    (standard deviation), and is the centre otherwise. The soma's edge is the largest fall beyond it, within
-    1.2 times the nucleus's mean radius, smoothed the same way. The mask is the pixels whose centre is inside
-    the polygon of the soma's edge, half a pixel further out.
+    The upsampled patch is sampled bilinearly every upsampled pixel (1 / upsampling px) out to SHAPE_REACH px
+    and blurred (1 sample, along each direction and across directions). The nucleus's edge is the largest rise in
+    each direction, smoothed over 5 directions; it counts when the mean of those rises is more than 1.5 times their
+    spread (standard deviation), and is the centre otherwise. The soma's edge is the largest fall beyond it, within
+    1.2 times the nucleus's mean radius, smoothed the same way. The mask is the pixels whose centre is inside the
+    polygon of the soma's edge, 2 upsampled pixels further out (flufinder's 2 / us).
     """
-    count = SHAPE_SAMPLES
+    count = SHAPE_REACH * upsampling
     angles = 2 * math.pi * np.arange(SHAPE_ANGLES) / SHAPE_ANGLES
-    radii = SHAPE_STEP * np.arange(count + 1)
-    y = cy + np.outer(radii, np.sin(angles))
-    x = cx + np.outer(radii, np.cos(angles))
+    radii = np.arange(count + 1, dtype=np.float64)
+    centre = (SHAPE_HALF + 0.5) * upsampling - 0.5   # the patch's centre pixel, in the upsampled patch
+    y = centre + np.outer(radii, np.sin(angles))
+    x = centre + np.outer(radii, np.cos(angles))
     y0, x0 = np.floor(y).astype(int), np.floor(x).astype(int)
     fy, fx = y - y0, x - x0
-    profile = (1 - fy) * ((1 - fx) * im[y0, x0] + fx * im[y0, x0 + 1]) + fy * ((1 - fx) * im[y0 + 1, x0] + fx * im[y0 + 1, x0 + 1])
+    side = patch.shape[0]
+    y0, y1, x0, x1 = (np.clip(v, 0, side - 1) for v in (y0, y0 + 1, x0, x0 + 1))   # the weight past an edge is 0
+    profile = (1 - fy) * ((1 - fx) * patch[y0, x0] + fx * patch[y0, x1]) + fy * ((1 - fx) * patch[y1, x0] + fx * patch[y1, x1])
     profile = _blur(_blur(profile, 0), 1, circular=True)
     rise = np.diff(profile, axis=0)   # rise[i] is between samples i and i + 1
     first = rise.argmax(axis=0)
@@ -834,11 +869,11 @@ def soma_mask(im, cy, cx):
     ring = profile[middle, columns]
     ridge = float(np.mean((ring > profile[np.floor(nucleus + 0.5).astype(int), columns]) &
                           (ring > profile[np.minimum(np.floor(edge + 0.5).astype(int) + 1, count), columns])))
-    radius = (edge + 0.5) * SHAPE_STEP + 0.5
+    radius = (edge + 0.5 + 2) / upsampling
     polygon = np.stack([cx + radius * np.cos(angles), cy + radius * np.sin(angles)], axis=1)   # (x, y)
     reach = int(math.ceil(radius.max()))
     pixels = [(r, c) for r in range(cy - reach, cy + reach + 1) for c in range(cx - reach, cx + reach + 1)
-              if 0 <= r < im.shape[0] and 0 <= c < im.shape[1] and _inside(polygon, c, r)]
+              if 0 <= r < height and 0 <= c < width and _inside(polygon, c, r)]
     return pixels, ridge
 
 
@@ -1043,49 +1078,61 @@ def extract_signals(entity, options, context):
     The neuropil is a ring (neuropilGap pixels from the ROI, neuropilWidth wide), or with neuropilMethod "expansion"
     dev's: grown from the ROI until it covers neuropilExpansionFactor times the ROI's area outside every ROI (and
     neuropilSeparation pixels around them), by dilations that alternate between the four sides and the four
-    diagonals, as FISSA does. With plane 0, each ROI's signal is read from its own plane (its place; the ROIs of the
-    other channels are left out), and the ROIs of a plane are those every ROI and neuropil is reckoned with: the
-    columns are the ROIs in the file's order, whatever their planes, as data.traces and the viewer read them."""
+    diagonals, as FISSA does; with numNeuropilSlices above 1 it is split in slices around the ROI (dev's
+    splitNeuropilMasks) and the neuropil signal is the mean of the slices' means, as dev's ΔF/F methods take its
+    slices. With plane 0, each ROI's signal is read from its own plane, and with channel 0 (dev's
+    extractSignalsMultiChannel) from its own channel (its place; with one of them, the ROIs of the other planes or
+    channels are left out). The ROIs of a plane and channel are those every ROI and neuropil is reckoned with, and
+    the columns are the ROIs in the file's order, whatever their places, as data.traces and the viewer read them."""
     from nansen.frames import rois_at
-    _, stacks, every = _plane_stacks(entity, options["stack"], context, options)
-    height, width, frames = stacks[0].shape
-    channel = int(options.get("channel", 1))
+    whole = _open_whole(entity, options["stack"], context, options)
+    channel, plane = int(options.get("channel", 1)), int(options.get("plane", 1))
+    channels = whole.shape[2] if whole.ndim >= 4 else 1
+    planes = whole.shape[3] if whole.ndim == 5 else 1
+    every_plane, every_channel = plane == 0 and whole.ndim == 5, channel == 0
+    plane = plane or 1
     value = context.project.load(entity, options["rois"])
-    if every:   # the ROIs of the channel used, each on its plane
-        document = dict(value, rois=[roi for roi in value.get("rois", []) if roi.get("channel", channel) == channel])
+    if every_plane or every_channel:   # the ROIs of the channel or plane used, if one is, each at its place
+        document = dict(value, rois=[roi for roi in value.get("rois", []) if (every_channel or roi.get("channel", channel) == channel)
+                                     and (every_plane or roi.get("plane", plane) == plane)])
     else:   # the ROIs of the plane and channel used, when they have places (dev's RoiGroup of several)
-        document = rois_at(value, options.get("plane", 1), channel)
+        document = rois_at(value, plane, channel)
     kept = [roi for roi in document.get("rois", []) if options["includeRejected"] or roi.get("classification") != "rejected"]
-    places = [_roi_plane(roi, len(stacks), options["rois"]) if every else 1 for roi in kept]
+    places = [(_roi_place(roi, "channel", channels, options["rois"]) if every_channel else channel,
+               _roi_place(roi, "plane", planes, options["rois"]) if every_plane else plane) for roi in kept]
+    frames = _pick(whole, options["stack"], channel or 1, plane).shape[2]   # invalid-options for a channel or plane it has not
     signals = np.full((frames, len(kept)), np.nan)
     neuropil = np.full((frames, len(kept)), np.nan)
-    counts = []
-    for number, stack in enumerate(stacks):
-        columns = [i for i, place in enumerate(places) if place == number + 1]
-        counts.append(len(columns))
-        progress = lambda stop: context.progress((number + stop / frames) / len(stacks), f"frame {stop}/{frames}")
-        signals[:, columns], neuropil[:, columns] = _signals(stack, dict(document, rois=[kept[i] for i in columns]), options, context, progress)
+    taken = sorted(set(places))   # channel by channel, plane by plane
+    for number, (c, p) in enumerate(taken):
+        columns = [i for i, place in enumerate(places) if place == (c, p)]
+        progress = lambda stop: context.progress((number + stop / frames) / len(taken), f"frame {stop}/{frames}")
+        signals[:, columns], neuropil[:, columns] = _signals(_pick(whole, options["stack"], c, p), dict(document, rois=[kept[i] for i in columns]),
+                                                             options, context, progress)
     _save(entity, options["output"], signals, context)
     _save(entity, options["neuropilOutput"], neuropil, context)
     context.log(f"{_name(entity)}: signals of {len(kept)} ROIs in {frames} frames")
     result = {"rois": len(kept), "frames": frames, "ids": [roi.get("id", n + 1) for n, roi in enumerate(kept)],
               "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
               "meanNeuropil": [round_to(v, 4) for v in neuropil.mean(axis=0)]}
-    if every:
-        result["planes"] = [{"plane": n + 1, "rois": count} for n, count in enumerate(counts)]
+    if every_channel:
+        result["channels"] = [{"channel": n, "rois": sum(c == n for c, _ in places)} for n in range(1, channels + 1)]
+    if every_plane:
+        result["planes"] = [{"plane": n, "rois": sum(p == n for _, p in places)} for n in range(1, planes + 1)]
     return result
 
 
-def _roi_plane(roi, planes, name):
-    """The plane (from 1) of an ROI extracted with every plane: its place, or the one plane of a stack of one."""
-    plane = roi.get("plane")
-    if plane is None and planes == 1:
+def _roi_place(roi, axis, count, name):
+    """The plane or channel (axis, from 1) of an ROI extracted with every one of them: its place, or the one of a
+    stack of one."""
+    place = roi.get(axis)
+    if place is None and count == 1:
         return 1
-    if plane is None:
-        raise NansenError("invalid-data", f"ROI {roi.get('id')} of {name} has no plane, so it is of every plane: extract its signals one plane at a time")
-    if not 1 <= int(plane) <= planes:
-        raise NansenError("invalid-data", f"ROI {roi.get('id')} of {name} is of plane {plane}; the stack has {planes}")
-    return int(plane)
+    if place is None:
+        raise NansenError("invalid-data", f"ROI {roi.get('id')} of {name} has no {axis}, so it is of every {axis}: extract its signals one {axis} at a time")
+    if not 1 <= int(place) <= count:
+        raise NansenError("invalid-data", f"ROI {roi.get('id')} of {name} is of {axis} {place}; the stack has {count}")
+    return int(place)
 
 
 def _signals(stack, document, options, context, progress):
@@ -1099,7 +1146,9 @@ def _signals(stack, document, options, context, progress):
         covered += mask
     own = [mask & (covered == 1) for mask in masks] if options.get("excludeOverlaps", False) else masks
     inside = [np.flatnonzero(mask) for mask in own]
-    rings = [np.flatnonzero(ring) for ring in neuropil_masks(masks, options)]   # the core's, as rois.neuropil shows it
+    count = int(options.get("numNeuropilSlices", 1))
+    rings = [[np.flatnonzero(part) for part in neuropil_slices(ring, mask, count) if part.any()]   # the core's, as rois.neuropil shows it
+             for ring, mask in zip(neuropil_masks(masks, options), masks)]
     for start in range(0, frames, CHUNK):
         context.check_cancelled()
         stop = min(start + CHUNK, frames)
@@ -1107,8 +1156,11 @@ def _signals(stack, document, options, context, progress):
         for i in range(len(masks)):
             if inside[i].size:
                 signals[start:stop, i] = flat[inside[i]].astype(np.float64).mean(axis=0)
-            if rings[i].size:
-                neuropil[start:stop, i] = flat[rings[i]].astype(np.float64).mean(axis=0)
+            if rings[i]:   # the mean of the slices' means
+                total = np.zeros(stop - start)
+                for part in rings[i]:
+                    total = total + flat[part].astype(np.float64).mean(axis=0)
+                neuropil[start:stop, i] = total / len(rings[i])
         progress(stop)
     return signals, neuropil
 
@@ -1224,12 +1276,17 @@ def downsample(entity, options, context):
 
 
 def deconvolve(entity, options, context):
-    """Spikes and denoised calcium of each trace by OASIS for an AR(1) model (Friedrich et al. 2017)."""
+    """Spikes and denoised calcium of each trace by OASIS (Friedrich et al. 2017), for an AR(1) model or, as dev's
+    default (getDeconvolutionParameters), an AR(2) model of a rise and a decay: the decay factor d = exp(-1 / (tauDecay
+    * frameRate)) and the rise factor r = exp(-1 / (tauRise * frameRate)) give the coefficients as dev's exp2ar does,
+    g1 = d + r and g2 = -d r."""
     traces = _as_traces(context.project.load(entity, options["signals"]))
     rate = options["frameRate"] or entity.get("frame_rate")
     if not rate:
         raise NansenError("invalid-options", "give frameRate, or fill in the entity's frame_rate")
+    order = int(options.get("order", 2))
     g = math.exp(-1.0 / (options["tauDecay"] * float(rate)))
+    rise = math.exp(-1.0 / (options.get("tauRise", 0.18) * float(rate))) if order == 2 else 0.0
     frames, rois = traces.shape
     spikes = np.full(traces.shape, np.nan)
     calcium = np.full(traces.shape, np.nan)
@@ -1240,11 +1297,17 @@ def deconvolve(entity, options, context):
         sigma = noise_level(trace)
         noise.append(sigma)
         if frames and not np.isnan(trace).any():
-            calcium[:, i], spikes[:, i] = oasis_ar1(trace, g, options["sparsity"] * sigma)
+            if order == 2:   # the slower factor decays, whichever time constant it is from
+                calcium[:, i], spikes[:, i] = oasis_ar2(trace, max(g, rise), min(g, rise), options["sparsity"] * sigma)
+            else:
+                calcium[:, i], spikes[:, i] = oasis_ar1(trace, g, options["sparsity"] * sigma)
         context.progress((i + 1) / max(rois, 1), f"ROI {i + 1}/{rois}")
     _save(entity, options["output"], spikes, context)
     _save(entity, options["denoisedOutput"], calcium, context)
-    context.log(f"{_name(entity)}: deconvolved {rois} traces, decay factor {g:.4f} per frame")
+    if order == 2:
+        context.log(f"{_name(entity)}: deconvolved {rois} traces, AR(2) coefficients {g + rise:.4f} and {-g * rise:.4f}")
+    else:
+        context.log(f"{_name(entity)}: deconvolved {rois} traces, decay factor {g:.4f} per frame")
     return {"rois": rois, "frames": frames, "noise": [round_to(v, 4) for v in noise],
             "spikeSum": [round_to(np.sum(spikes[:, i]), 3) for i in range(rois)],
             "maxCalcium": [round_to(np.max(calcium[:, i]) if frames else np.nan, 3) for i in range(rois)]}
@@ -1294,6 +1357,81 @@ def oasis_ar1(y, g, lam):
         calcium[start:start + length] = max(value, 0.0) * powers[:length]
     spikes = calcium.copy()
     spikes[1:] = calcium[1:] - g * calcium[:-1]
+    return calcium, spikes
+
+
+def oasis_ar2(y, d, r, lam):
+    """Denoised calcium c and spikes s of OASIS for an AR(2) model (Friedrich et al. 2017, as CaImAn's OASIS class with
+    g2): s_t = c_t - g1 c_(t-1) - g2 c_(t-2) >= 0 with g1 = d + r, g2 = -d r (decay d >= rise r), towards the minimum of
+    1/2 |c - y|^2 + lam * sum(s).
+
+    The calcium before the first spike decays by d from c_0 >= 0 (so s_0 = c_0 and s_1 = c_1 - d c_0). A pool of
+    frames without spikes follows the kernel h_k = (d^(k+1) - r^(k+1)) / (d - r) from its first value and the last
+    value of the pool before it; a pool whose first value is below what the pool before would continue to is merged
+    with it. As for AR(2) in OASIS, each pool's value is fitted with the pools before it fixed, which is greedy: close
+    to the optimum, not always at it. The penalty enters at its exact weight on every frame (dev's thresholded
+    oasisAR2 corrects the last two). Powers are products and sums run in order, as MATLAB's oasisAr2 computes them.
+    """
+    frames = len(y)
+    g1, g2 = d + r, -d * r
+    dpow = np.cumprod(np.concatenate([[1.0], np.full(frames + 1, d)]))   # d^k
+    rpow = np.cumprod(np.concatenate([[1.0], np.full(frames + 1, r)]))
+    if d == r:
+        h = np.arange(1, frames + 2) * dpow[:frames + 1]
+    else:
+        h = (dpow[1:] - rpow[1:]) / (d - r)
+    g12 = np.concatenate([[0.0], g2 * h[:-1]])
+    hh, hg = np.cumsum(h * h), np.cumsum(h * g12)
+    dd = np.cumsum(dpow[:frames] * dpow[:frames])
+    weight = np.ones(frames)   # each c_t's weight in sum(s)
+    if frames >= 3:
+        weight[1:frames - 2] = 1 - g1 - g2
+        weight[0] = 1 - d - g2
+        weight[frames - 2] = 1 - g1
+    elif frames == 2:
+        weight[0] = 1 - d
+    target = (np.asarray(y, dtype=np.float64) - lam * weight).tolist()
+    hl, dl, g12l, hhl, hgl, ddl = h.tolist(), dpow.tolist(), g12.tolist(), hh.tolist(), hg.tolist(), dd.tolist()
+    values, lasts, starts, lengths, sums = [], [], [], [], []   # sums: of each frame's target times its kernel value
+    for t in range(frames):
+        value = target[t] if values else max(target[t], 0.0)   # c_0 >= 0
+        values.append(value)
+        lasts.append(value)
+        starts.append(t)
+        lengths.append(1)
+        sums.append(target[t])
+        while len(values) > 1:
+            n = len(values)
+            span = lengths[-2]
+            if n == 2:   # what the first pool decays to next
+                expected = lasts[0] * d
+            else:
+                expected = hl[span] * values[-2] + g12l[span] * lasts[-3]
+            if values[-1] >= expected:
+                break
+            kernel = dl if n == 2 else hl
+            total = sums[-2]
+            for j in range(lengths[-1]):
+                total = total + kernel[span + j] * target[starts[-1] + j]
+            length = span + lengths[-1]
+            del values[-1], lasts[-1], starts[-1], lengths[-1], sums[-1]
+            sums[-1], lengths[-1] = total, length
+            if n == 2:
+                values[-1] = max(total / ddl[length - 1], 0.0)
+                lasts[-1] = dl[length - 1] * values[-1]
+            else:
+                values[-1] = (total - hgl[length - 1] * lasts[-2]) / hhl[length - 1]
+                lasts[-1] = hl[length - 1] * values[-1] + g12l[length - 1] * lasts[-2]
+    calcium = np.zeros(frames)
+    for i, (value, start, length) in enumerate(zip(values, starts, lengths)):
+        if i == 0:
+            calcium[start:start + length] = value * dpow[:length]
+        else:
+            calcium[start:start + length] = h[:length] * value + g12[:length] * lasts[i - 1]
+    spikes = calcium.copy()
+    if frames > 1:
+        spikes[1] = calcium[1] - d * calcium[0]
+        spikes[2:] = calcium[2:] - g1 * calcium[1:-1] - g2 * calcium[:-2]
     return calcium, spikes
 
 
@@ -1365,24 +1503,64 @@ def cnmf(entity, options, context):
 
 
 def caiman_deconvolution(entity, options, context):
-    """Spikes and denoised calcium of each trace by CaImAn's constrained foopsi."""
+    """Spikes and denoised calcium of each trace by CaImAn's OASIS with dev's options (getDeconvolutionParameters, and
+    its CaImAn deconvolution): thresholded OASIS with spikes of at least spikeSnr times the trace's noise (CaImAn's
+    GetSn), the sparsity penalty dev's choose_lambda gives for lambdaPr, and the AR coefficients of tauRise and
+    tauDecay (_caiman_model), or estimated from the trace. The OASIS class runs AR(1) and AR(2); exp2, the same
+    difference of exponentials as AR(2), runs as AR(2) (MATLAB's deconvolveCa fits its kernel with onnls)."""
     try:
-        from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
+        from caiman.source_extraction.cnmf.deconvolution import GetSn, estimate_time_constant
+        from caiman.source_extraction.cnmf.oasis import OASIS
     except ImportError as error:
         raise NansenError("dependency-missing", f"ophys.caiman_deconvolution needs CaImAn ({error}): see https://github.com/flatironinstitute/CaImAn") from None
     traces = _as_traces(context.project.load(entity, options["signals"]))
+    model, order, given, rate = _caiman_model(entity, options)
     frames, rois = traces.shape
     spikes = np.full(traces.shape, np.nan)
     calcium = np.full(traces.shape, np.nan)
     for i in range(rois):
         context.check_cancelled()
-        if not np.isnan(traces[:, i]).any():
-            c, _, _, _, _, s, _ = constrained_foopsi(traces[:, i], p=options["order"])
-            calcium[:, i], spikes[:, i] = c, s
+        trace = traces[:, i]
+        if not np.isnan(trace).any():
+            sn = float(GetSn(trace))
+            g = list(given) if given else [float(v) for v in np.ravel(estimate_time_constant(trace, order, sn))]
+            deconvolver = OASIS(g=g[0], lam=_caiman_lambda(sn, rate, options["lambdaPr"]), s_min=options["spikeSnr"] * sn,
+                                g2=g[1] if order == 2 else 0)
+            deconvolver.fit(trace.astype(np.float32))
+            calcium[:, i], spikes[:, i] = deconvolver.c, deconvolver.s
         context.progress((i + 1) / max(rois, 1), f"ROI {i + 1}/{rois}")
+    context.log(f"{_name(entity)}: {model} model" + (f", coefficients {', '.join(f'{v:.4f}' for v in given)}" if given else ", estimated per trace"))
     _save(entity, options["output"], spikes, context)
     _save(entity, options["denoisedOutput"], calcium, context)
     return {"rois": rois, "frames": frames}
+
+
+def _caiman_model(entity, options):
+    """ophys.caiman_deconvolution's model as dev's CaImAn deconvolution sets it (both languages): the model type, its
+    order, its AR coefficients (empty to estimate them from each trace) and the frame rate. ar1: g = d; ar2 and
+    exp2: g = (d + r, -d r), dev's exp2ar; autoar: AR(2) above 15 Hz, AR(1) else, estimated. d and r are the decay
+    and rise factors of tauDecay and tauRise at the frame rate."""
+    rate = options["frameRate"] or entity.get("frame_rate")
+    if not rate:
+        raise NansenError("invalid-options", "give frameRate, or fill in the entity's frame_rate")
+    rate = float(rate)
+    model = options["modelType"]
+    if model == "autoar":
+        model = "ar2" if rate > 15 else "ar1"
+    order = 1 if model == "ar1" else 2
+    decay = math.exp(-1.0 / (options["tauDecay"] * rate))
+    rise = math.exp(-1.0 / (options["tauRise"] * rate))
+    if options["modelType"] == "autoar" or options["estimateTimeConstants"]:
+        return model, order, (), rate
+    return model, order, ((decay,) if order == 1 else (decay + rise, -decay * rise)), rate
+
+
+def _caiman_lambda(sn, rate, probability):
+    """dev's sparsity penalty, CaImAn's choose_lambda: sn times the norm of an AR(1) kernel of 1000 samples (a decay of
+    0.5 s, as dev sets it) times the normal distribution's inverse at probability (0 at 0.5)."""
+    from statistics import NormalDist
+    kernel = np.exp(-1.0 / (rate * 0.5)) ** np.arange(1000)
+    return float(sn * np.linalg.norm(kernel) * NormalDist().inv_cdf(probability))
 
 
 def deep_interpolation(entity, options, context):

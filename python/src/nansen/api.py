@@ -1439,8 +1439,11 @@ class Api:
         size = (document.get("imageSize") if isinstance(document, dict) else None) or params.get("imageSize")
         if not isinstance(size, list) or len(size) != 2:
             raise NansenError("invalid-params", f"the ROIs of {params['variable']} have no imageSize: give it")
-        pixels = roi_neuropil(document, params.get("roi"), options, int(size[0]), int(size[1]))
-        return {"roi": params.get("roi"), "pixels": pixels, "options": options}
+        pixels, slices = roi_neuropil(document, params.get("roi"), options, int(size[0]), int(size[1]))
+        result = {"roi": params.get("roi"), "pixels": pixels, "options": options}
+        if options["numNeuropilSlices"] > 1:
+            result["slices"] = slices
+        return result
 
     def _neuropil_options(self, project, params: dict) -> dict:
         """rois.neuropil's options: those given on ophys.extract_signals's defaults, or with methodId, the method's
@@ -1457,10 +1460,12 @@ class Api:
         whole = lambda v, low: isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() and v >= low
         if options["neuropilMethod"] not in ("ring", "expansion") or not whole(options["neuropilGap"], 0) \
                 or not whole(options["neuropilWidth"], 1) or not whole(options["neuropilSeparation"], 0) \
+                or not whole(options["maxNeuropilRadius"], 1) or not whole(options["numNeuropilSlices"], 1) \
                 or not isinstance(options["neuropilExpansionFactor"], (int, float)) or isinstance(options["neuropilExpansionFactor"], bool) \
                 or not options["neuropilExpansionFactor"] > 0 or not isinstance(options["includeRejected"], bool):
             raise NansenError("invalid-options", "the neuropil is a ring (neuropilGap 0 or more, neuropilWidth 1 or more) or an "
-                                                 "expansion (neuropilExpansionFactor above 0, neuropilSeparation 0 or more)")
+                                                 "expansion (neuropilExpansionFactor above 0, neuropilSeparation 0 or more, "
+                                                 "maxNeuropilRadius 1 or more), in numNeuropilSlices slices (1 or more)")
         return options
 
     def rois__signal(self, params: dict) -> dict:

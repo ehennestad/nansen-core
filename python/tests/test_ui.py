@@ -2533,11 +2533,22 @@ def test_deconvolution_explorer_shows_what_deconvolve_gives_and_queues_its_setti
     page.evaluate("(() => { const s = document.querySelector('input.cx-tauDecay'); s.value = '0.3'; s.dispatchEvent(new Event('input')); })()")
     expected = deconvolved(frameRate=30, tauDecay=0.3)["spikeSum"]
     wait_until(lambda: abs(spikes() - expected[1]) < 1e-9)
+    # dev's AR(2) by default, with its rise time constant; AR(1) has none
+    assert page.locator("input.cx-tauRise").is_visible() and page.locator(".cx-coefficients").inner_text().count(",") == 1
+    page.evaluate("(() => { const s = document.querySelector('input.cx-tauRise'); s.value = '0.1'; s.dispatchEvent(new Event('input')); })()")
+    expected = deconvolved(frameRate=30, tauDecay=0.3, tauRise=0.1)["spikeSum"]
+    wait_until(lambda: abs(spikes() - expected[1]) < 1e-9)
+    page.select_option(".cx-order", "1")
+    expected = deconvolved(frameRate=30, tauDecay=0.3, order=1)["spikeSum"]
+    wait_until(lambda: abs(spikes() - expected[1]) < 1e-9)
+    assert not page.locator("input.cx-tauRise").is_visible()
+    assert page.locator(".cx-coefficients").inner_text() == f"{math.exp(-1 / (0.3 * 30)):.4f}"
     assert page.evaluate("document.querySelector('.cx-main .trace-canvas').height") > 0
     page.click(".cx-queue-one")   # the settings, run as ophys.deconvolve
     wait_until(lambda: len(api.handle({"id": 2, "method": "tasks.list", "params": {}})["result"]) == 1)
     task = api.handle({"id": 3, "method": "tasks.list", "params": {}})["result"][0]
-    assert task["method"]["id"] == "ophys.deconvolve" and task["options"]["values"]["tauDecay"] == 0.3 and task["options"]["values"]["frameRate"] == 30
+    values = task["options"]["values"]
+    assert task["method"]["id"] == "ophys.deconvolve" and values["tauDecay"] == 0.3 and values["frameRate"] == 30 and values["order"] == 1
 
 
 def test_rois_drawn_found_and_saved_and_motion_corrected_on_a_file_viewed_without_a_project(app, page, tmp_path):

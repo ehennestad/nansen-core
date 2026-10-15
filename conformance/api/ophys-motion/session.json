@@ -578,6 +578,38 @@
     {
       "request": {
         "method": "methods.run",
+        "id": 1101,
+        "params": {
+          "methodId": "ophys.quicky",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s5"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Original",
+            "roiDiameter": 10,
+            "upsampling": 1,
+            "output": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 4,
+              "shapeRois": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
         "id": 12,
         "params": {
           "methodId": "ophys.quicky",

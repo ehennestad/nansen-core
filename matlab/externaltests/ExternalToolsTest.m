@@ -213,13 +213,18 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             spikes = double(rand(300, 3) < 0.03);
             calcium = filter(1, [1, -0.95], spikes);
             testCase.Project.save(testCase.Session, "RoiSignals_Dff", calcium + 0.05 * randn(size(calcium)));
-            result = testCase.Project.run("ophys.caiman_deconvolution", {testCase.Session});
-            testCase.verifyEqual(result{1}.rois, 3);
-            found = testCase.Project.load(testCase.Session, "RoiSignals_Deconvolved", Cached=false);
-            testCase.verifySize(found, [300, 3]);
-            for i = 1:3
-                c = corrcoef(found(:, i), spikes(:, i));
-                testCase.verifyGreaterThan(c(1, 2), 0.5);
+            % dev's options: an AR(1) decay of 0.95 per frame at 30 Hz (0.65 s), given and estimated
+            for options = {struct("modelType", "ar1", "tauDecay", 0.65), struct("modelType", "ar1", "estimateTimeConstants", true)}
+                settings = options{1};
+                settings.frameRate = 30;
+                result = testCase.Project.run("ophys.caiman_deconvolution", {testCase.Session}, Options=settings);
+                testCase.verifyEqual(result{1}.rois, 3);
+                found = testCase.Project.load(testCase.Session, "RoiSignals_Deconvolved", Cached=false);
+                testCase.verifySize(found, [300, 3]);
+                for i = 1:3
+                    c = corrcoef(found(:, i), spikes(:, i));
+                    testCase.verifyGreaterThan(c(1, 2), 0.5);
+                end
             end
         end
 

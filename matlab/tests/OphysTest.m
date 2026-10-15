@@ -99,6 +99,64 @@ classdef OphysTest < matlab.unittest.TestCase
             out = nansen.internal.neuropilMasks({a, b}, expansion, 1);
             testCase.verifyEqual(nnz(out{1}), 22);
             testCase.verifyFalse(any(out{1} & (a | b), "all"));
+            expansion.maxNeuropilRadius = 1;   % at most one step, by the four sides
+            out = nansen.internal.neuropilMasks({a, b}, expansion, 1);
+            testCase.verifyEqual(OphysTest.pixelsOf(out{1}), [1 2; 1 3; 2 1; 2 4; 3 1; 4 2]);
+        end
+
+        function neuropilIsSplitInSlicesAroundItsRoi(testCase)
+            % dev's splitNeuropilMasks (FISSA), as test_ophys.py's test_the_neuropil_is_split_in_slices_around_its_roi
+            mask = false(10);
+            mask(5, 5) = true;
+            other = false(10);
+            other(3, 4) = true;
+            ring = nansen.internal.neuropilMasks({mask, other}, struct("neuropilGap", 1, "neuropilWidth", 1), 1);
+            parts = nansen.internal.neuropilSlices(ring{1}, mask, 4);
+            labels = zeros(10);
+            for k = 1:4
+                labels(parts{k}) = labels(parts{k}) + k;
+            end
+            pixels = OphysTest.pixelsOf(ring{1}) + 1;
+            testCase.verifyEqual(labels(sub2ind([10, 10], pixels(:, 1), pixels(:, 2)))', [1, 1, 1, 2, 1, 2, 4, 2, 4, 2, 4, 4, 3, 3, 3]);
+            one = nansen.internal.neuropilSlices(ring{1}, mask, 1);
+            testCase.verifyEqual(one{1}, ring{1});
+            none = nansen.internal.neuropilSlices(false(10), mask, 3);
+            testCase.verifyFalse(any(cellfun(@(p) any(p, "all"), none)));
+        end
+
+        function upsamplesAsPythonDoes(testCase)
+            % bicubic (Keys, a = -0.5), the edges mirrored, as imresize; as test_ophys.py's test_candidates_are_upsampled_as_imresize_does
+            up = ophys.internal.upsampleCubic([0, 1, 0; 2, 0.5, 1], 2);
+            testCase.verifySize(up, [4, 6]);
+            testCase.verifyEqual(up(1, :), [-0.30322265625, 0.0899658203125, 0.8763427734375, 0.9019775390625, 0.1668701171875, -0.20068359375], AbsTol=1e-15);
+            testCase.verifyEqual(up(4, :), [2.35009765625, 1.8201904296875, 0.7603759765625, 0.4613037109375, 0.9229736328125, 1.15380859375], AbsTol=1e-15);
+            image = reshape(1:35, 5, 7) / 7;
+            testCase.verifyEqual(ophys.internal.upsampleCubic(image, 1), image);   % once: the image itself
+            testCase.verifyEqual(ophys.internal.upsampleCubic(3 * ones(4), 4), 3 * ones(16), AbsTol=1e-12);
+        end
+
+        function shapeDetectionFindsRingShapedSomata(testCase)
+            % four rings on a fixed texture, with candidates upsampled 4 times (flufinder's) and not; the areas Python finds
+            [columns, rows] = meshgrid(0:63, 0:63);
+            centres = [20, 20; 22, 42; 42, 24; 44, 44];
+            image = 100 * ones(64);
+            for i = 1:4
+                image = image + 120 * exp(-((hypot(rows - centres(i, 1), columns - centres(i, 2)) - 4) .^ 2) / 2);
+            end
+            image = image + 3 * sin(rows * 1.7) .* cos(columns * 2.3);
+            for upsampling = [4, 1]
+                rois = ophys.internal.shapeRois(image, 3, 5, upsampling);
+                testCase.assertNumElements(rois, 4);
+                for i = 1:4
+                    testCase.verifyLessThan(max(abs(mean(rois{i}, 1) - 1 - centres(i, :))), 0.5);
+                end
+                areas = cellfun(@(r) size(r, 1), rois);
+                if upsampling == 4
+                    testCase.verifyEqual(areas, [98, 97, 98, 97]);
+                else
+                    testCase.verifyEqual(areas, [137, 137, 137, 137]);
+                end
+            end
         end
 
         function percentilesInterpolateAsNumpy(testCase)
@@ -184,6 +242,18 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(s', [0, 0.7217017954723, 0, 0, 0.8427336351768, 0, 0, 0], AbsTol=1e-11);
             testCase.verifyEqual(ophys.internal.noiseLevel([1; 2; 4]), 1.5 / (0.6745 * sqrt(2)), AbsTol=1e-15);
             testCase.verifyTrue(isnan(ophys.internal.noiseLevel([1; NaN; 4])));
+        end
+
+        function oasisAr2GivesWhatPythonGives(testCase)
+            % dev's AR(2) model, g1 = d + r and g2 = -d r; as test_ophys.py's test_oasis_for_ar2_keeps_its_pools_and_gives_what_matlab_gives
+            [c, s] = ophys.internal.oasisAr2([0, 1, 0.5, 0.2, 2, 1, 0.4, -0.3], 0.8, 0.3, 0.1);
+            testCase.verifyEqual(c', [0, 0.539852105748, 0.593837316322, 0.523656542575, 0.926660819067, ...
+                0.893649330756, 0.760615667255, 0.622201394600], AbsTol=1e-11);
+            testCase.verifyEqual(s', [0, 0.5398521057476, 0, 0, 0.4931595781520, 0, 0, 0], AbsTol=1e-11);
+            [~, s] = ophys.internal.oasisAr2([0.6, 1, 0.5, 0.2, 2, 1, 0.4, -0.3], 0.8, 0.8, 0);   % rise = decay
+            testCase.verifyEqual(s', [0.6, 0.0689688672996, 0, 0, 0.1526823386432, 0, 0, 0], AbsTol=1e-11);
+            [c, s] = ophys.internal.oasisAr2(0.5, 0.8, 0.3, 0.1);   % one frame
+            testCase.verifyEqual([c, s], [0.4, 0.4], AbsTol=1e-15);
         end
 
         function smoothingKeepsAConstant(testCase)
@@ -647,6 +717,50 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(run("ophys.image_stats", struct("stack", "TwoPhotonSeries_Original", "plane", 0, "averageOutput", "")), ...
                 run("ophys.image_stats", struct("stack", "TwoPhotonSeries_Original", "plane", 1, "averageOutput", "")));
             testCase.verifyError(@() run("ophys.denoise", struct("stack", "Aligned", "plane", 0)), "nansen:InvalidOptions");   % one plane at a time
+        end
+
+        function extractsEveryChannelInOneRunAsEachAlone(testCase)
+            % as test_ophys.py's test_every_channel_is_extracted_in_one_run_as_each_would_be_alone (dev's extractSignalsMultiChannel)
+            project = testCase.ophysProject();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+            fetch = @(name) project.load(entity, name, Cached=false);
+            run = @(options) project.run("ophys.extract_signals", {entity}, Options=options);
+            raw = double(project.load(entity, "TwoPhotonSeries_Original"));
+            channels = cat(4, raw, 2 * circshift(raw, 5, 2) + 7);   % 32 x 32 x 40 x 2 channels
+            channels = permute(channels, [1, 2, 4, 3]);   % 32 x 32 x 2 channels x 40
+            project.save(entity, "Channels", permute(cat(5, channels, circshift(channels, 3, 4)), [1, 2, 3, 5, 4]));   % x 2 planes x 40
+            places = [1, 1; 2, 1; 2, 2; 1, 2; 2, 1];
+            rois = cell(1, 5);
+            for n = 1:5
+                [dx, dy] = meshgrid(0:2, 0:2);
+                pixels = [reshape(dy', [], 1) + 4 + 5 * (n - 1), reshape(dx', [], 1) + 6 + 4 * (n - 1)];
+                rois{n} = struct("id", n, "channel", places(n, 1), "plane", places(n, 2), "pixels", pixels);
+                if n == 5
+                    rois{n}.classification = "rejected";
+                end
+            end
+            project.save(entity, "Placed", struct("imageSize", [32, 32], "rois", {rois}));
+            options = struct("stack", "Channels", "rois", "Placed", "numNeuropilSlices", 3);
+            every = run(nansen.internal.mergeStructs(options, struct("channel", 0, "plane", 0, "output", "Every", "neuropilOutput", "EveryNeuropil")));
+            testCase.verifyEqual(cell2mat(every{1}.ids), 1:4);   % the rejected ROI left out
+            testCase.verifyEqual(every{1}.channels{2}, struct("channel", 2, "rois", 2));
+            testCase.verifyEqual(every{1}.planes{1}, struct("plane", 1, "rois", 2));
+            together = fetch("Every");
+            neuropil = fetch("EveryNeuropil");
+            for n = 1:4
+                one = run(nansen.internal.mergeStructs(options, struct("channel", places(n, 1), "plane", places(n, 2), ...
+                    "output", "One", "neuropilOutput", "OneNeuropil")));
+                testCase.verifyEqual(cell2mat(one{1}.ids), n);
+                testCase.verifyEqual(together(:, n), fetch("One"));
+                testCase.verifyEqual(neuropil(:, n), fetch("OneNeuropil"));
+            end
+            plane2 = run(nansen.internal.mergeStructs(options, struct("channel", 0, "plane", 2, "output", "", "neuropilOutput", "")));
+            testCase.verifyEqual(cell2mat(plane2{1}.ids), [3, 4]);   % every channel of one plane: that plane's ROIs
+            % ROIs without a channel are of every channel: not one channel's to extract
+            project.save(entity, "Unplaced", struct("imageSize", [32, 32], "rois", {{struct("id", 1, "plane", 1, "pixels", {{[3, 3]}})}}));
+            testCase.verifyError(@() run(struct("stack", "Channels", "channel", 0, "plane", 1, "rois", "Unplaced")), "nansen:InvalidData");
+            single = run(struct("stack", "TwoPhotonSeries_Original", "channel", 0, "rois", "Unplaced", "output", "", "neuropilOutput", ""));
+            testCase.verifyEqual(single{1}.channels{1}, struct("channel", 1, "rois", 1));   % of a stack of one channel, its one channel
         end
 
         function everyPlaneStoppedPartWayGoesOnToTheSameResult(testCase)

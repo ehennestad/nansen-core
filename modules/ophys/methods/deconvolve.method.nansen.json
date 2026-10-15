@@ -6,7 +6,7 @@
   "title": "Deconvolve (OASIS)",
   "category": "Two-photon/Signal extraction",
   "entityType": "*",
-  "description": "Spikes and denoised calcium of each ΔF/F trace by OASIS for an AR(1) model (Friedrich et al. 2017), natively in both languages: c minimises 1/2 |c - y|^2 + lambda * sum(s) with spikes s_t = c_t - g c_(t-1) >= 0, g = exp(-1 / (tauDecay * frameRate)) and lambda = sparsity times the trace's noise, median(|diff(y)|) / (0.6745 * sqrt(2)).",
+  "description": "Spikes and denoised calcium of each ΔF/F trace by OASIS (Friedrich et al. 2017), natively in both languages, for an AR(2) model of a rise and a decay (dev's default) or an AR(1) model of the decay: c minimises 1/2 |c - y|^2 + lambda * sum(s) with spikes s_t = c_t - g1 c_(t-1) - g2 c_(t-2) >= 0. The decay factor d = exp(-1 / (tauDecay * frameRate)) and the rise factor r = exp(-1 / (tauRise * frameRate)) give g1 = d + r and g2 = -d r, as dev's exp2ar (AR(1): g1 = d, g2 = 0); before the first spike the calcium decays by d. lambda is sparsity times the trace's noise, median(|diff(y)|) / (0.6745 * sqrt(2)). AR(1) reaches the exact optimum; AR(2), as OASIS does, fits each pool of frames with those before it fixed, which comes close to it.",
   "implementations": {
     "python": "ophys_methods:deconvolve",
     "matlab": "ophys.deconvolve"
@@ -39,11 +39,29 @@
         "title": "Frame rate (Hz)",
         "description": "0 for the entity's frame_rate column"
       },
+      "order": {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ],
+        "default": 2,
+        "title": "Autoregressive order",
+        "description": "2: a rise and a decay (dev's default); 1: the decay only"
+      },
       "tauDecay": {
         "type": "number",
         "default": 0.55,
         "exclusiveMinimum": 0,
-        "title": "Decay time constant (s)"
+        "title": "Decay time constant (s)",
+        "description": "dev's 550 ms"
+      },
+      "tauRise": {
+        "type": "number",
+        "default": 0.18,
+        "exclusiveMinimum": 0,
+        "title": "Rise time constant (s)",
+        "description": "Of order 2; dev's 180 ms"
       },
       "sparsity": {
         "type": "number",

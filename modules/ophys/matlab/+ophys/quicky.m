@@ -71,7 +71,7 @@ function [rois, shapes, areaCount, bins] = planeRois(stack, options, context)
     if useShape   % somata seen by their shape in the mean image, first
         context.progress(0.8, "shape detection");
         shaped = ophys.internal.shapeRois(average, double(nansen.internal.getField(options, "innerRadius", 3)), ...
-            double(nansen.internal.getField(options, "outerRadius", 5)));
+            double(nansen.internal.getField(options, "outerRadius", 5)), double(nansen.internal.getField(options, "upsampling", 4)));
         keep = cellfun(@(r) ~any(cellfun(@(s) ophys.internal.overlapShare(r, s) > 0.75, shaped)), rois);
         rois = [reshape(shaped, 1, []), reshape(rois(keep), 1, [])];
         rois = rois(1:min(numel(rois), options.maxRois));

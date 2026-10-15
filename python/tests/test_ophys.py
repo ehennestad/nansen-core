@@ -12,7 +12,7 @@ np = pytest.importorskip("numpy")
 
 from nansen.adapters import load_object  # noqa: E402
 from nansen.errors import NansenError  # noqa: E402
-from nansen.frames import neuropil_masks  # noqa: E402
+from nansen.frames import neuropil_masks, neuropil_slices  # noqa: E402
 from nansen.modules import Module  # noqa: E402
 
 PYTHON = Path(__file__).resolve().parents[2] / "modules" / "ophys" / "python"
@@ -80,6 +80,25 @@ def test_dev_neuropil_grows_around_the_roi_outside_every_roi():
     assert pixels(second) == [[1, 5], [2, 6], [3, 6], [4, 6], [5, 1], [5, 6], [6, 2], [6, 3], [6, 4], [6, 5]]
     first, = neuropil_masks([a, b], expansion, [0])
     assert len(pixels(first)) == 22 and not (first & (a | b)).any()
+    # at most maxNeuropilRadius steps: one, by the four sides
+    first, = neuropil_masks([a, b], dict(expansion, maxNeuropilRadius=1), [0])
+    assert pixels(first) == [[1, 2], [1, 3], [2, 1], [2, 4], [3, 1], [4, 2]]
+
+
+def test_the_neuropil_is_split_in_slices_around_its_roi():
+    # dev's splitNeuropilMasks (FISSA): the ring 2 px around a pixel, less another ROI's pixel, in quarters by angle
+    # (as the conformance case's rois.neuropil, worked out by hand); OphysTest checks MATLAB's on the same
+    mask = np.zeros((10, 10), bool)
+    mask[4, 4] = True
+    other = np.zeros((10, 10), bool)
+    other[2, 3] = True
+    ring = neuropil_masks([mask, other], {"neuropilGap": 1, "neuropilWidth": 1}, [0])[0]
+    parts = neuropil_slices(ring, mask, 4)
+    labels = sum((k + 1) * part.astype(int) for k, part in enumerate(parts))
+    assert [int(labels[y, x]) for y, x in zip(*np.nonzero(ring))] == [1, 1, 1, 2, 1, 2, 4, 2, 4, 2, 4, 4, 3, 3, 3]
+    assert not any(parts[i].any() and (parts[i] & parts[j]).any() for i in range(4) for j in range(i))
+    assert np.array_equal(neuropil_slices(ring, mask, 1)[0], ring)
+    assert not any(part.any() for part in neuropil_slices(np.zeros((10, 10), bool), mask, 3))
 
 
 def test_percentiles_match_numpy_and_the_window_is_centred():
@@ -346,6 +365,36 @@ def test_oasis_reaches_the_optimum_of_the_deconvolution_problem():
                                  bounds=[(0, None)] * frames, method="L-BFGS-B", options={"ftol": 1e-16, "gtol": 1e-12})
         assert objective(spikes) <= best.fun + 1e-9
         assert np.abs(K @ best.x - calcium).max() < 1e-5
+
+
+def test_oasis_for_ar2_keeps_its_pools_and_gives_what_matlab_gives():
+    # dev's AR(2) model, g1 = d + r and g2 = -d r (exp2ar); the same values as OphysTest's oasisAr2GivesWhatPythonGives
+    y = np.array([0, 1, 0.5, 0.2, 2, 1, 0.4, -0.3])
+    calcium, spikes = ophys["oasis_ar2"](y, 0.8, 0.3, 0.1)
+    assert np.allclose(calcium, [0, 0.539852105748, 0.593837316322, 0.523656542575, 0.926660819067, 0.893649330756,
+                                 0.760615667255, 0.622201394600], atol=1e-11)
+    assert np.allclose(spikes, [0, 0.5398521057476, 0, 0, 0.4931595781520, 0, 0, 0], atol=1e-11)
+    calcium, spikes = ophys["oasis_ar2"](np.array([0.6, 1, 0.5, 0.2, 2, 1, 0.4, -0.3]), 0.8, 0.8, 0.0)   # rise = decay
+    assert np.allclose(spikes, [0.6, 0.0689688672996, 0, 0, 0.1526823386432, 0, 0, 0], atol=1e-11)
+    rng = np.random.default_rng(4)
+    d, r = np.exp(-1 / (0.55 * 30)), np.exp(-1 / (0.18 * 30))
+    for lam in (0.0, 0.5):
+        y = np.convolve((rng.random(200) < 0.05) * 2.0, [(d ** (k + 1) - r ** (k + 1)) / (d - r) for k in range(60)])[:200]
+        y = y + rng.normal(0, 0.1, 200)
+        calcium, spikes = ophys["oasis_ar2"](y, d, r, lam)
+        assert (spikes >= -1e-12).all() and calcium[0] >= 0
+        rebuilt = np.zeros(200)   # the calcium is the spikes through the AR(2) recursion, the first decaying by d
+        for t in range(200):
+            rebuilt[t] = spikes[t] + (d * rebuilt[0] if t == 1 else (d + r) * rebuilt[t - 1] - d * r * rebuilt[t - 2] if t > 1 else 0)
+        assert np.abs(rebuilt - calcium).max() < 1e-9
+        assert np.corrcoef(calcium, y)[0, 1] > 0.9
+    try:   # with no penalty, what CaImAn's OASIS class gives (in single precision)
+        from caiman.source_extraction.cnmf.oasis import OASIS
+    except ImportError:
+        return
+    reference = OASIS(g=d + r, lam=0.0, s_min=0.0, g2=-d * r)
+    reference.fit(y.astype(np.float32))
+    assert np.abs(reference.c - ophys["oasis_ar2"](y, d, r, 0.0)[0]).max() < 1e-4
 
 
 def test_noise_level_and_median():
@@ -695,6 +744,20 @@ def test_shape_detection_finds_ring_shaped_somata_where_they_are():
         assert abs(found[0] - cy) < 0.5 and abs(found[1] - cx) < 0.5
         assert 80 <= len(roi) <= 115   # the ring's outer edge, about 5.5 px out
     assert ophys["shape_rois"](np.full((64, 64), 7.0), 3, 5) == []
+    # at the image's own resolution (upsampling 1) they are found too, the edge sampled a pixel apart and pushed out 2
+    rois = ophys["shape_rois"](image + rng.normal(0, 3, image.shape), 3, 5, 1)
+    assert len(rois) == 4 and all(abs(np.array(roi).mean(axis=0) - c).max() < 0.5 for roi, c in zip(rois, centres))
+
+
+def test_candidates_are_upsampled_as_imresize_does():
+    # bicubic (Keys, a = -0.5), the edges mirrored; the same values as OphysTest's upsamplesAsPythonDoes
+    up = ophys["upsample_cubic"](np.array([[0.0, 1.0, 0.0], [2.0, 0.5, 1.0]]), 2)
+    assert up.shape == (4, 6)
+    assert np.allclose(up[0], [-0.30322265625, 0.0899658203125, 0.8763427734375, 0.9019775390625, 0.1668701171875, -0.20068359375], atol=1e-15)
+    assert np.allclose(up[3], [2.35009765625, 1.8201904296875, 0.7603759765625, 0.4613037109375, 0.9229736328125, 1.15380859375], atol=1e-15)
+    image = np.random.default_rng(1).random((5, 7))
+    assert np.array_equal(ophys["upsample_cubic"](image, 1), image)   # once: the image itself
+    assert np.allclose(ophys["upsample_cubic"](np.full((4, 4), 3.0), 4), 3.0)
 
 
 def test_a_stack_is_exported_as_video(tmp_path):
@@ -834,6 +897,50 @@ def test_a_preview_on_one_column_gives_what_the_whole_run_gives_for_it(tmp_path)
         assert "trace" not in _run(api, "ophys.deconvolve", options, preview=5)["outputs"][0]   # only with a column
         params["column"] = 4
         assert api.handle({"id": 1, "method": "methods.preview", "params": params})["error"]["code"] == "invalid-params"
+    finally:
+        api.close()
+
+
+def test_every_channel_is_extracted_in_one_run_as_each_would_be_alone(tmp_path):
+    # dev's extractSignalsMultiChannel: channel 0 reads each ROI's signal from its own channel, as plane 0 does planes
+    api = _ophys_api(tmp_path)
+    try:
+        entity = api.project.entity("session", {"subject_id": "m1", "session_id": "s2"})
+        load = lambda name: api.project.load(entity, name, cached=False)
+        raw = np.asarray(api.project.load(entity, "TwoPhotonSeries_Original")).astype(np.float64)
+        channels = np.stack([raw, 2 * np.roll(raw, 5, axis=1) + 7], axis=2)   # 32 x 32 x 2 channels x 40
+        api.project.save(entity, "Channels", np.stack([channels, np.roll(channels, 3, axis=3)], axis=3))   # x 2 planes
+        square = lambda y, x: [[y + dy, x + dx] for dy in range(3) for dx in range(3)]
+        places = [(1, 1), (2, 1), (2, 2), (1, 2), (2, 1)]
+        api.project.save(entity, "Placed", {"imageSize": [32, 32], "rois": [
+            dict({"id": n + 1, "channel": c, "plane": p, "pixels": square(4 + 5 * n, 6 + 4 * n)}, **({"classification": "rejected"} if n == 4 else {}))
+            for n, (c, p) in enumerate(places)]})
+        options = {"stack": "Channels", "rois": "Placed", "numNeuropilSlices": 3}
+        every = _run(api, "ophys.extract_signals", dict(options, channel=0, plane=0, output="Every", neuropilOutput="EveryNeuropil"))
+        assert every["ids"] == [1, 2, 3, 4]   # the rejected ROI left out
+        assert every["channels"] == [{"channel": 1, "rois": 2}, {"channel": 2, "rois": 2}]
+        assert every["planes"] == [{"plane": 1, "rois": 2}, {"plane": 2, "rois": 2}]
+        for n, (c, p) in enumerate(places[:4]):
+            one = _run(api, "ophys.extract_signals", dict(options, channel=c, plane=p, output="One", neuropilOutput="OneNeuropil"))
+            assert one["ids"] == [n + 1]
+            assert np.array_equal(load("Every")[:, n], load("One")[:, 0]) and np.array_equal(load("EveryNeuropil")[:, n], load("OneNeuropil")[:, 0])
+        # every channel of one plane: that plane's ROIs only
+        assert _run(api, "ophys.extract_signals", dict(options, channel=0, plane=2, output="", neuropilOutput=""))["ids"] == [3, 4]
+        # the neuropil signal is the mean of its slices' means: ROI 1's, the one ROI of channel 1 in plane 1
+        mask = np.zeros((32, 32), bool)
+        mask[4:7, 6:9] = True
+        neuropil = neuropil_masks([mask], {})[0]
+        stack = np.asarray(api.project.load(entity, "Channels"))[:, :, 0, 0, :]
+        expected = np.mean([stack[part].mean(axis=0) for part in neuropil_slices(neuropil, mask, 3)], axis=0)
+        assert np.allclose(load("EveryNeuropil")[:, 0], expected, rtol=1e-12)
+        # ROIs without a channel are of every channel: not one channel's to extract
+        api.project.save(entity, "Unplaced", {"imageSize": [32, 32], "rois": [{"id": 1, "plane": 1, "pixels": [[3, 3]]}]})
+        with pytest.raises(NansenError) as error:
+            _run(api, "ophys.extract_signals", {"stack": "Channels", "channel": 0, "plane": 1, "rois": "Unplaced"})
+        assert error.value.code == "invalid-data"
+        # of a stack of one channel, channel 0 is its one channel
+        assert _run(api, "ophys.extract_signals", {"channel": 0, "stack": "TwoPhotonSeries_Original", "rois": "Unplaced", "output": "",
+                                                   "neuropilOutput": ""})["channels"] == [{"channel": 1, "rois": 1}]
     finally:
         api.close()
 
