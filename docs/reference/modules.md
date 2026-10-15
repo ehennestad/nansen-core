@@ -26,7 +26,7 @@ The built-in **`core`** module provides:
 - `core.subject`: date of birth, sex (a choice) and species, for subjects;
 - `core.pipeline`: the pipeline an entity is assigned;
 - `core.file_stats`: file count and size, computed by `core.file_stats`;
-- the methods `core.export_keys` (batch) and `core.wait` (for trying the queue);
+- the methods `core.export_keys` (batch), `core.backup` (copies an entity's folders to `<destination>/<data location>/<the same path>`, leaving copies that are up to date alone) and `core.wait` (for trying the queue);
 - the pipeline `core.inspect`.
 
 ## Methods

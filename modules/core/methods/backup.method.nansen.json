@@ -1,0 +1,38 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "core.backup",
+  "version": "1.0.0",
+  "title": "Back up",
+  "category": "Data",
+  "entityType": "*",
+  "description": "Copies the entity's folders to <destination>/<data location>/<the same path>. A file whose copy has the same size and is not older is left alone, so running it again copies only what changed.",
+  "implementations": {
+    "python": "core_methods:backup",
+    "matlab": "nansenCoreBackup"
+  },
+  "options": {
+    "type": "object",
+    "required": ["destination"],
+    "properties": {
+      "destination": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Destination",
+        "description": "Folder to copy into; a relative path is inside the project folder"
+      },
+      "dataLocation": {
+        "type": "string",
+        "default": "",
+        "title": "Data location",
+        "description": "Only this data location; empty for all of them"
+      },
+      "overwrite": {
+        "type": "boolean",
+        "default": false,
+        "title": "Copy every file again",
+        "description": "Also copy files whose copy looks up to date"
+      }
+    }
+  }
+}

@@ -39,8 +39,27 @@ classdef MethodsTest < matlab.unittest.TestCase
 
         function methodsApplyToAnyEntityType(testCase)
             ids = sort([testCase.Project.entityMethods("session").Id]);
-            testCase.verifyEqual(ids, ["core.export_keys", "core.file_stats", "core.wait"]);
+            testCase.verifyEqual(ids, ["core.backup", "core.export_keys", "core.file_stats", "core.wait"]);
             testCase.verifyEqual(testCase.Project.method("core.wait").Languages, ["matlab", "python"]);
+        end
+
+        function backupCopiesOnlyWhatChanged(testCase)
+            project = testCase.Project;
+            entities = project.entities("session");
+            results = project.run("core.backup", entities(1:2), Options=struct("destination", "backup"));
+            testCase.verifyEqual(cellfun(@(r) r.copied, results), [2, 1]);   % ses-m1-001 has a hidden file too
+            copy = fullfile(project.Folder, "backup", "raw", "sub-m1", "ses-m1-001", "movie.tif");
+            testCase.verifyEqual(strlength(string(nansen.internal.readText(copy))), 10);
+            results = project.run("core.backup", entities(1:2), Options=struct("destination", "backup"));
+            testCase.verifyEqual(cellfun(@(r) r.copied, results), [0, 0]);
+            testCase.verifyEqual(cellfun(@(r) r.unchanged, results), [2, 1]);
+            nansen.internal.writeText(fullfile(testCase.Folder, "data", "raw", "sub-m1", "ses-m1-001", "movie.tif"), repmat('y', 1, 12));
+            results = project.run("core.backup", entities(1), Options=struct("destination", "backup"));
+            testCase.verifyEqual(results{1}.copied, 1);
+            testCase.verifyEqual(strlength(string(nansen.internal.readText(copy))), 12);
+            results = project.run("core.backup", entities(1), Options=struct("destination", "backup", "overwrite", true));
+            testCase.verifyEqual(results{1}.copied, 2);
+            testCase.verifyError(@() project.run("core.backup", entities(1)), "nansen:InvalidOptions");   % no destination
         end
 
         function defaultOptionsAndValidation(testCase)

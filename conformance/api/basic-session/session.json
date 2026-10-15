@@ -322,6 +322,10 @@
           {
             "id": "core.wait",
             "queueable": true
+          },
+          {
+            "id": "core.backup",
+            "batchMode": "serial"
           }
         ]
       }

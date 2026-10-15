@@ -1,6 +1,7 @@
 """Python implementations of the core module's methods."""
 
 import csv
+import shutil
 import time
 from pathlib import Path
 
@@ -49,3 +50,37 @@ def wait(entity, options, context):
     if options["fail"]:
         raise RuntimeError("failed on purpose")
     return {"waited": options["seconds"]}
+
+
+def backup(entity, options, context):
+    """Copy the entity's folders to <destination>/<data location>/<the same path>, leaving up-to-date copies alone."""
+    dataset = context.project.dataset
+    destination = Path(options["destination"])
+    if not destination.is_absolute():
+        destination = Path(context.project.folder) / destination
+    destination = destination.resolve()
+    copied, unchanged, size = 0, 0, 0
+    for location in entity.locations:
+        if options["dataLocation"] and location["dataLocationIdentifier"] != options["dataLocation"]:
+            continue
+        root = dataset.root(location["dataLocationIdentifier"], location["rootStoragePathIdentifier"]).path.resolve()
+        for relative in location["paths"]:
+            source = root / relative
+            if destination == source or source in destination.parents:
+                raise ValueError(f"the destination {destination} is inside {source}")
+            files = [source] if source.is_file() else sorted(p for p in source.rglob("*") if p.is_file()) if source.is_dir() else []
+            for file in files:
+                target = destination / location["dataLocationIdentifier"] / file.relative_to(root)
+                info = file.stat()
+                if not options["overwrite"] and target.is_file():
+                    copy = target.stat()
+                    if copy.st_size == info.st_size and copy.st_mtime + 1 >= info.st_mtime:
+                        unchanged += 1
+                        continue
+                context.check_cancelled()
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(file, target)
+                copied += 1
+                size += info.st_size
+    context.log(f"{' / '.join(map(str, entity.key.values()))}: {copied} copied, {unchanged} up to date")
+    return {"copied": copied, "unchanged": unchanged, "size_mb": round(size / 1e6, 6)}

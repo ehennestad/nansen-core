@@ -41,8 +41,27 @@ def test_module_fragments_shape_the_table(project):
 
 
 def test_methods_apply_to_any_entity_type(project):
-    assert {m.id for m in project.methods("session")} == {"core.file_stats", "core.export_keys", "core.wait"}
+    assert {m.id for m in project.methods("session")} == {"core.file_stats", "core.export_keys", "core.wait", "core.backup"}
     assert project.method("core.wait").languages == ["matlab", "python"]
+
+
+def test_backup_copies_only_what_changed(project):
+    entities = sessions(project)[:2]
+    results = project.run("core.backup", entities, options={"destination": "backup"})
+    assert [r["copied"] for r in results] == [2, 1]  # ses-m1-001 has a hidden file too
+    copy = project.folder / "backup" / "raw" / "sub-m1" / "ses-m1-001" / "movie.tif"
+    assert copy.read_bytes() == b"x" * 10
+    results = project.run("core.backup", entities, options={"destination": "backup"})
+    assert [(r["copied"], r["unchanged"]) for r in results] == [(0, 2), (0, 1)]
+    (project.folder / "data" / "raw" / "sub-m1" / "ses-m1-001" / "movie.tif").write_bytes(b"y" * 12)
+    assert project.run("core.backup", entities[:1], options={"destination": "backup"})[0]["copied"] == 1
+    assert copy.read_bytes() == b"y" * 12
+    assert project.run("core.backup", entities[:1], options={"destination": "backup", "overwrite": True})[0]["copied"] == 2
+    with pytest.raises(NansenError) as error:
+        project.run("core.backup", entities[:1])  # no destination
+    assert error.value.code == "invalid-options"
+    with pytest.raises(ValueError):
+        project.run("core.backup", entities[:1], options={"destination": str(project.folder / "data" / "raw" / "sub-m1" / "ses-m1-001" / "b")})
 
 
 def test_default_options_and_validation(project):
