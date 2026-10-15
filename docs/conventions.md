@@ -92,6 +92,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `unknown-view` | The entity type has no saved view of that name |
 | `unknown-note` | The entity type's notebook has no note with that id |
 | `unknown-location` | The dataset has no root for the data location in the active environment |
+| `unknown-assignment` | No entry of the data location at that path is matched to an entity by hand |
 | `read-only-column` | A key column, or a column of a computed fragment, cannot be edited |
 | `generation-failed` | DSM cannot generate a path for the entity in the location (the DSM code is in the message) |
 | `unknown-data-variable` | The project has no data variable of that name |

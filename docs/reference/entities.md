@@ -34,6 +34,21 @@ Each entity has:
 
 A row whose record disappears is kept: the stores may be offline, or the data moved. The app shows it as not found.
 
+## What a scan does not match
+
+A scan lists the folders and files it walked but could not account for (`scan.unmatched`): a name that does not match its level's pattern, a file where a folder is expected, or a name the naming rules cannot read the identity from. Each can be:
+
+- **Left out of scans** (`dataset.exclude`): an `excludePatterns` entry for its exact name is added at its level of the DSM config.
+- **Matched to an entity by hand** (`dataset.assign`, "Assign to…" in the dashboard), as dev's FolderMatcherDialog matched session folders. The entry must be at a level that holds an entity type; that type is the one it is matched to, and the key gives a value for each of its key columns. `scan.unmatched` gives each entry the entity type of its level and what the naming rules read of the key from its path, to start from.
+
+Assignments are kept in `dataset.assignments.nansen.json` in the project (`nansen.assignments`), by data location and path relative to the location's root, so they hold for every root of the location. A scan then:
+
+1. Walks the stores without each assigned entry and what is below it (an entry below two assigned entries belongs to the inner one).
+2. Walks each assigned entry on its own, with DSM, as if the location had only the names on its path at its levels and the fields of the key had the assigned values (fixed values). So its record has the entry's location and files by the level's file patterns, its other fields are read from its names where the rules can read them, and the levels below it are walked as usual: a subject's folder brings its sessions, with that subject as their parent.
+3. Adds the assigned entity and those below it to the records: to the record of the same entity (same type and key) when the walk found one, as one more location, or a second path of a location it has (flagged `duplicate-entity`); else as a new record. An entity above it (the subject of an assigned session) is added only when the walk found none, without locations.
+
+An assignment that no longer fits the config (its level holds another entity type, or the key columns changed) is left out of scans and kept in the file. `dataset.unassign` takes an assignment out; the next scan matches the entry by its name again. `dataset.test` walks a candidate config without the assignments.
+
 ## Sync
 
 `sync(type)` adds a row, with the fragments' defaults, for every entity found in the stores but not in the table, and returns their keys. It never removes rows.

@@ -1,4 +1,4 @@
 {
-  "description": "Reviewing what a scan did not match: the entries of the last scan, with their location, path and reason, and excluding one, which adds an excludePatterns entry for its exact name at its level of the DSM config (once) and drops it from the last scan, so the next scan skips it.",
-  "steps": 12
+  "description": "Reviewing what a scan did not match: the entries of the last scan, with their location, path and reason, and excluding one, which adds an excludePatterns entry for its exact name at its level of the DSM config (once) and drops it from the last scan, so the next scan skips it. Then matching one to an entity by hand: scan.unmatched gives the entity type of its level and what its names say of the key; dataset.assign records it in dataset.assignments.nansen.json, the next scan gives that session the folder (and a session of a new key is found), and dataset.unassign undoes it.",
+  "steps": 30
 }

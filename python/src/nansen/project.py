@@ -26,6 +26,7 @@ from .tables import Column, EntityTable, TableSpec
 
 PROJECT_FILE = "project.nansen.json"
 SCAN_FILE = "cache/scan.nansen.json"
+ASSIGNMENTS_FILE = "dataset.assignments.nansen.json"
 
 
 class Fragment:
@@ -288,6 +289,55 @@ class Project:
             scan.write(self.scan_path)
         return {"dataLocation": data_location, "level": levels[level]["name"], "pattern": pattern}
 
+    # -- entries matched to entities by hand ----------------------------------------------------
+
+    @property
+    def assignments_path(self) -> Path:
+        return self.folder / ASSIGNMENTS_FILE
+
+    def assignments(self) -> List[dict]:
+        """The entries of the data locations matched to an entity by hand, in the order they were first made."""
+        if not self.assignments_path.is_file():
+            return []
+        return read_document(self.assignments_path, "nansen.assignments")["assignments"]
+
+    def _write_assignments(self, assignments: List[dict]) -> None:
+        document = {"schemaType": "nansen.assignments", "schemaVersion": current_version("nansen.assignments"),
+                    "assignments": assignments}
+        write_json(self.assignments_path, check_document(document, "nansen.assignments"))
+
+    def assign_entry(self, data_location: str, path: str, key: Dict[str, Any]) -> Dict[str, Any]:
+        """Match an entry of a data location to the entity with this key, whatever its name, from the next scan
+        on (dev's FolderMatcherDialog). It must be at a level that holds an entity type; one assigned before is
+        assigned anew, in its place."""
+        dataset = self.require_dataset()
+        path, _, entity_type = dataset.assignment_target(data_location, path)
+        assignment = {"dataLocation": data_location, "path": path, "entityType": entity_type,
+                      "key": dataset.check_key(entity_type, key)}
+        assignments = self.assignments()
+        index = next((i for i, a in enumerate(assignments)
+                      if a["dataLocation"] == data_location and a["path"] == path), None)
+        if index is None:
+            assignments.append(assignment)
+        else:
+            assignments[index] = assignment
+        self._write_assignments(assignments)
+        return assignment
+
+    def unassign_entry(self, data_location: str, path: str) -> Dict[str, Any]:
+        """Undo an assignment (unknown-assignment if there is none); the next scan matches the entry by its name."""
+        from .dataset import entry_parts
+
+        names = entry_parts(path)
+        assignments = self.assignments()
+        index = next((i for i, a in enumerate(assignments)
+                      if a["dataLocation"] == data_location and entry_parts(a["path"]) == names), None)
+        if index is None:
+            raise NansenError("unknown-assignment", f"{path!r} of {data_location!r} is not assigned to an entity")
+        removed = assignments.pop(index)
+        self._write_assignments(assignments)
+        return removed
+
     def dataset_text(self) -> str:
         """The DSM config as written, so it can be edited with its formatting."""
         self.require_dataset()
@@ -468,7 +518,7 @@ class Project:
 
     def scan(self, listing=None, registry=None, save: bool = True) -> Scan:
         """Walk the data locations (or a given listing) and keep the result in cache/."""
-        result = self.require_dataset().scan(listing, registry)
+        result = self.require_dataset().scan(listing, registry, assignments=self.assignments())
         if save:
             result.write(self.scan_path)
         return result

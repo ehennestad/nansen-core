@@ -41,7 +41,7 @@ classdef Api < handle
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "app.openUrl", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
-                "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
+                "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
@@ -406,12 +406,20 @@ classdef Api < handle
             entries = entries(order);
             limit = double(nansen.internal.getField(params, "limit", 1000));
             shown = cell(1, min(limit, numel(entries)));
+            dataset = project.dataset();
             for i = 1:numel(shown)
                 u = entries{i};
-                shown{i} = struct("dataLocation", char(nansen.internal.getField(u, "dataLocationIdentifier", "")), ...
+                entry = struct("dataLocation", char(nansen.internal.getField(u, "dataLocationIdentifier", "")), ...
                     "rootStoragePath", char(nansen.internal.getField(u, "rootStoragePathIdentifier", "")), ...
                     "path", char(nansen.internal.getField(u, "path", "")), "reason", char(nansen.internal.getField(u, "reason", "")), ...
-                    "detail", char(nansen.internal.getField(u, "detail", "")));
+                    "detail", char(nansen.internal.getField(u, "detail", "")), "entityType", NaN, "key", NaN);
+                if ~isempty(dataset)
+                    % what it could be matched to by hand, and what its names say of the key
+                    [entityType, key] = dataset.suggestedKey(entry.dataLocation, entry.rootStoragePath, entry.path);
+                    entry.entityType = entityType;
+                    entry.key = key;
+                end
+                shown{i} = entry;
             end
             result = struct("scannedAt", char(scan.ScannedAt), "total", numel(entries), "entries", {shown});
         end
@@ -421,6 +429,31 @@ classdef Api < handle
             project = obj.requireProject();
             result = project.excludeFromScan(string(nansen.Api.param(params, "dataLocation")), string(nansen.Api.param(params, "path")));
             obj.reopen(project);
+        end
+
+        function result = apiDatasetAssign(obj, params)
+            % Match an entry of a data location to an entity by hand, from the next scan on (dev's FolderMatcherDialog)
+            project = obj.requireProject();
+            key = nansen.Api.param(params, "key");
+            if ~(isstruct(key) && isscalar(key))
+                nansen.internal.throwError("invalid-params", "key is an object of the entity's key values")
+            end
+            result = project.assignEntry(string(nansen.Api.param(params, "dataLocation")), ...
+                string(nansen.Api.param(params, "path")), key);
+            obj.emit("project", struct("name", char(project.Name)));
+        end
+
+        function result = apiDatasetUnassign(obj, params)
+            % Undo the matching of an entry to an entity by hand
+            project = obj.requireProject();
+            removed = project.unassignEntry(string(nansen.Api.param(params, "dataLocation")), string(nansen.Api.param(params, "path")));
+            obj.emit("project", struct("name", char(project.Name)));
+            result = struct("removed", removed);
+        end
+
+        function result = apiDatasetAssignments(obj, ~)
+            % The entries matched to an entity by hand
+            result = obj.requireProject().assignments();
         end
 
         function result = apiDatasetTest(obj, params)

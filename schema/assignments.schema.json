@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:assignments",
+  "title": "NANSEN folder assignments",
+  "description": "Folders (or files) of the data locations matched to an entity by hand, as dev's FolderMatcherDialog did for session folders it could not match: at dataset.assignments.nansen.json in the project. A scan treats each as the entity with the given key, whatever its name, so the entity's record gets its location and files; what lies below it is walked as usual.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "assignments"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.assignments" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "assignments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dataLocation", "path", "entityType", "key"],
+        "additionalProperties": false,
+        "properties": {
+          "dataLocation": { "type": "string", "minLength": 1, "description": "The data location's identifier in the DSM config." },
+          "path": { "type": "string", "minLength": 1, "description": "The entry relative to the location's root, as a scan lists it: '/' between names, and a '/' at the end of a folder. The same in every root of the location." },
+          "entityType": { "type": "string", "minLength": 1, "description": "The entity type of the entry's level in the location." },
+          "key": {
+            "type": "object",
+            "description": "The entity's key: a value for every key column of the entity type (its ancestors' identity, then its own).",
+            "additionalProperties": { "type": ["string", "integer"] }
+          }
+        }
+      }
+    }
+  }
+}

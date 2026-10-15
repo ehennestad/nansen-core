@@ -7,6 +7,7 @@ A project is a folder. Everything about it is in that folder, in files that foll
   project.nansen.json                        nansen.project: name, title, description, dataset, modules, entity types and their fragments
   dataset.dsm.json                           DSM config: entity identity and data locations
   dataset.dsm.local.json                     optional, per machine: the active environment (DSM overlay)
+  dataset.assignments.nansen.json            nansen.assignments: folders matched to an entity by hand (dataset.assign)
   fragments/<id>.fragment.nansen.json        nansen.fragment, project-defined fragments
   tables/<entityType>.table.nansen.json      nansen.table sidecar
   tables/<entityType>.csv                    authored values

@@ -76,6 +76,99 @@ def test_generate_path(project):
     assert error.value.code == "generation-failed"
 
 
+def test_folders_matched_to_entities_by_hand(project):
+    raw = project.folder / "data" / "raw"
+    (raw / "sub-m1" / "odd").mkdir()
+    (raw / "sub-m1" / "odd" / "movie.tif").write_text("x")
+    (raw / "Mouse2" / "ses-m2-009").mkdir(parents=True)
+    (raw / "Mouse2" / "ses-m2-009" / "movie.tif").write_text("x")
+    scan = project.scan()
+    assert sorted(u["path"] for u in scan.unmatched) == ["Mouse2/", "sub-m1/odd/"]
+    dataset = project.dataset
+    assert dataset.suggested_key("raw", "here", "sub-m1/odd/") == ("session", {"subject_id": "m1", "session_id": None})
+    assert dataset.suggested_key("raw", "here", "Mouse2/") == ("subject", {"subject_id": None})
+    assert dataset.suggested_key("raw", "here", "sub-m1/odd") == (None, None)  # a file where a folder is expected
+
+    assignment = project.assign_entry("raw", "sub-m1\\odd", {"subject_id": "m1", "session_id": " m1-002 "})
+    assert assignment == {"dataLocation": "raw", "path": "sub-m1/odd/", "entityType": "session",
+                          "key": {"subject_id": "m1", "session_id": "m1-002"}}
+    project.assign_entry("raw", "Mouse2/", {"subject_id": "m2"})
+    assert [a["path"] for a in project.assignments()] == ["sub-m1/odd/", "Mouse2/"]
+    scan = project.scan()
+    assert scan.unmatched == []
+    # a folder given to a session found elsewhere: one more folder of it, with its files
+    m1_002 = project.entity("session", {"session_id": "m1-002"})
+    assert m1_002.location("raw")["paths"] == ["sub-m1/odd/", "sub-m1/ses-m1-002/"]
+    assert m1_002.files("raw", "movie") == ["sub-m1/odd/movie.tif", "sub-m1/ses-m1-002/movie.tif"]
+    assert "duplicate-entity" in {i["code"] for i in m1_002.issues}
+    # a subject's folder: what is below it is walked as usual, with the subject as its parent
+    m2_009 = project.entity("session", {"session_id": "m2-009"})
+    assert m2_009.key == {"subject_id": "m2", "session_id": "m2-009"}
+    assert m2_009.location("raw")["paths"] == ["Mouse2/ses-m2-009/"]
+    assert m2_009.attributes["session_number"] == 9
+    assert project.entity("subject", {"subject_id": "m2"}).location("raw")["paths"] == ["Mouse2/", "sub-m2/"]
+    assert len(project.entities("session")) == 4
+
+    # assigned anew, in its place: a session not found anywhere else
+    project.assign_entry("raw", "sub-m1/odd/", {"subject_id": "m1", "session_id": "m1-007"})
+    assert [a["key"].get("session_id") for a in project.assignments()] == ["m1-007", None]
+    project.scan()
+    assert project.entity("session", {"session_id": "m1-007"}).location("raw")["paths"] == ["sub-m1/odd/"]
+    assert project.entity("session", {"session_id": "m1-002"}).location("raw")["paths"] == ["sub-m1/ses-m1-002/"]
+
+    removed = project.unassign_entry("raw", "sub-m1/odd")
+    assert removed["key"]["session_id"] == "m1-007"
+    with pytest.raises(NansenError) as error:
+        project.unassign_entry("raw", "sub-m1/odd/")
+    assert error.value.code == "unknown-assignment"
+    assert [u["path"] for u in project.scan().unmatched] == ["sub-m1/odd/"]
+
+
+def test_matching_by_hand_is_checked(project):
+    for location, path, key, code in [
+        ("raw", "sub-m1/odd/", {"subject_id": "m1"}, "invalid-params"),                           # a column missing
+        ("raw", "sub-m1/odd/", {"subject_id": "m1", "session_id": ""}, "invalid-params"),         # an empty value
+        ("raw", "sub-m1/odd/", {"subject_id": "m1", "session_id": 3}, "invalid-params"),          # not a text
+        ("raw", "sub-m1/odd/x/", {"subject_id": "m1", "session_id": "x"}, "invalid-params"),      # below the levels
+        ("raw", "../odd/", {"subject_id": "m1"}, "invalid-params"),
+        ("lab", "sub-m1/", {"subject_id": "m1"}, "unknown-location"),
+    ]:
+        with pytest.raises(NansenError) as error:
+            project.assign_entry(location, path, key)
+        assert error.value.code == code, (path, key)
+    assert project.assignments() == []
+    # an assignment the config no longer fits (another level's entity type) is left out of scans
+    from nansen.documents import write_json
+
+    write_json(project.assignments_path, {"schemaType": "nansen.assignments", "schemaVersion": "0.1.0", "assignments": [
+        {"dataLocation": "raw", "path": "sub-m1/", "entityType": "session", "key": {"subject_id": "m1", "session_id": "x"}}]})
+    assert {r["identity"]["session_id"] for r in project.scan().records_of("session")} == {"m1-001", "m1-002", "m2-001"}
+
+
+def test_integer_keys_are_typed(tmp_path):
+    from nansen.dataset import Dataset
+
+    config = {"schemaVersion": "0.1.0", "entityTypes": [{"name": "trial", "identifierRef": "trial"}],
+              "metadataDefinitions": {"trial": {"name": "trial", "dataType": "integer", "ofEntity": "trial"}},
+              "dataLocations": [{"identifier": "raw", "displayName": "Raw", "dataCategory": "raw", "sourceType": "filesystem",
+                                 "filesystemSource": {"rootStoragePaths": [{"identifier": "here", "path": "data"}],
+                                                      "entityLayout": [{"name": "trials", "entityType": "trial", "matchPattern": "^t\\d+$"}],
+                                                      "metadataMapping": [{"metadataRef": "trial", "extraction": {
+                                                          "method": "regex", "pattern": "^t(\\d+)$", "entityLayoutLevel": 0}}]}}]}
+    (tmp_path / "dataset.dsm.json").write_text(json.dumps(config))
+    (tmp_path / "data" / "t1").mkdir(parents=True)
+    (tmp_path / "data" / "first try").mkdir()
+    dataset = Dataset.load(tmp_path / "dataset.dsm.json")
+    assert dataset.check_key("trial", {"trial": "7"}) == {"trial": 7}
+    assert dataset.check_key("trial", {"trial": 7.0}) == {"trial": 7}
+    for bad in ("7.5", 7.5, True, None, "seven"):
+        with pytest.raises(NansenError):
+            dataset.check_key("trial", {"trial": bad})
+    scan = dataset.scan(assignments=[{"dataLocation": "raw", "path": "first try/", "entityType": "trial", "key": {"trial": 0}}])
+    assert [(r["identity"]["trial"], r["locations"][0]["paths"]) for r in scan.records] == [(1, ["t1/"]), (0, ["first try/"])]
+    assert scan.unmatched == []
+
+
 def test_project_without_dataset(tmp_path):
     from nansen import Column
 
