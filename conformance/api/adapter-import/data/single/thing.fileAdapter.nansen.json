@@ -1,0 +1,12 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "thing",
+  "version": "1.0.0",
+  "title": "Thing files",
+  "extensions": [".thing"],
+  "implementations": {
+    "python": "thing_reader:ThingReader",
+    "matlab": "ThingReader"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "halfway",
+  "version": "1.0.0",
+  "implementations": {
+    "matlab": "HalfwayAdapter"
+  }
+}

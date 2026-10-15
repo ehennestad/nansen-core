@@ -943,6 +943,91 @@ classdef Project < handle
             result.files = cellstr(relative);
         end
 
+        function result = importAdapter(obj, path)
+            %importAdapter Copy file adapters into the project, as dev's Import File Adapter (From File, From Folder)
+            %
+            %   A nansen.fileAdapter document, or each one in a folder (and in
+            %   its file-adapters/ and adapters/ folders), with the code of its
+            %   implementations. The code is found beside the document, in the
+            %   python/ or matlab/ folder there, or in the one beside the
+            %   document's folder (a project's or module's layout), and copied
+            %   to the project's python/ and matlab/ folders at the same place.
+            %   Everything is checked before anything is copied: file-not-found
+            %   for a path or code that is not there, invalid-params for a
+            %   folder with no document or code without the class or its read
+            %   and write, adapter-exists for an id the project has or a file of
+            %   other content where one would be copied. struct with adapters:
+            %   each document, with its files. Python's import_adapter is the same.
+            arguments
+                obj
+                path (1,1) string
+            end
+            if isfolder(path)
+                documents = strings(1, 0);
+                for folder = [path, string(fullfile(path, "file-adapters")), string(fullfile(path, "adapters"))]
+                    if ~isfolder(folder)
+                        continue
+                    end
+                    listing = dir(fullfile(folder, "*.fileAdapter.nansen.json"));
+                    listing = listing(~[listing.isdir]);
+                    for name = sort(string({listing.name}))
+                        documents(end + 1) = string(fullfile(folder, name)); %#ok<AGROW>
+                    end
+                end
+                if isempty(documents)
+                    nansen.internal.throwError("invalid-params", "%s holds no file adapter document (*.fileAdapter.nansen.json)", path)
+                end
+            elseif isfile(path)
+                documents = path;
+            else
+                nansen.internal.throwError("file-not-found", "%s is not a file or folder", path)
+            end
+            taken = reshape(obj.adapters().ids(), 1, []);
+            destinations = strings(1, 0);   % what is copied (relative to the project folder), and from where
+            sources = strings(1, 0);
+            imported = cell(1, 0);
+            for d = 1:numel(documents)
+                document = nansen.readDocument(documents(d), ExpectedType="nansen.fileAdapter");
+                adapterId = string(document.id);
+                if ismember(adapterId, taken)
+                    nansen.internal.throwError("adapter-exists", "the project already has a file adapter '%s'", adapterId)
+                end
+                taken(end + 1) = adapterId; %#ok<AGROW>
+                files = "file-adapters/" + adapterId + ".fileAdapter.nansen.json";
+                fileSources = documents(d);
+                for language = ["python", "matlab"]
+                    if isfield(document.implementations, language)
+                        [source, relative] = nansen.Project.adapterCode(string(fileparts(documents(d))), language, ...
+                            string(document.implementations.(language)));
+                        files(end + 1) = language + "/" + relative; %#ok<AGROW>
+                        fileSources(end + 1) = source; %#ok<AGROW>
+                    end
+                end
+                for k = 1:numel(files)
+                    at = find(destinations == files(k), 1);
+                    if ~isempty(at) && sources(at) ~= fileSources(k)
+                        nansen.internal.throwError("adapter-exists", "two adapters would be copied to %s", files(k))
+                    end
+                    destination = string(fullfile(obj.Folder, files(k)));
+                    if (isfile(destination) || isfolder(destination)) && ~nansen.Project.sameContent(destination, fileSources(k))
+                        nansen.internal.throwError("adapter-exists", "the project already has %s", files(k))
+                    end
+                    if isempty(at)
+                        destinations(end + 1) = files(k); %#ok<AGROW>
+                        sources(end + 1) = fileSources(k); %#ok<AGROW>
+                    end
+                end
+                document.files = cellstr(files);
+                imported{end + 1} = document; %#ok<AGROW>
+            end
+            for k = 1:numel(destinations)
+                nansen.Project.copyCode(sources(k), string(fullfile(obj.Folder, destinations(k))));
+            end
+            rehash
+            obj.AdapterCache = [];
+            result = struct("adapters", {imported});
+        end
+
         function registry = adapters(obj)
             %adapters Built-in file adapters, those declared in file-adapters/ (code in matlab/), then the modules'
             if isempty(obj.AdapterCache)
@@ -1214,6 +1299,190 @@ classdef Project < handle
                 obj.attachFragment(options.EntityType, methodId);
             end
             method = obj.method(methodId);
+        end
+
+        function [fragment, method, files] = importColumn(obj, entityType, path, options)
+            %importColumn Import a column of an entity type from a code file, as dev's Import Table Variable
+            %
+            %   What the file is, is read from its text, by the same regular
+            %   expressions as Python's import_column:
+            %   - dev's table variable function (.m: value = Name(sessionObject),
+            %     returning its default without input): a computed column Name,
+            %     filled by a MATLAB method of the id Name in snake case:
+            %     matlab/<id>.m gives the entity to dev's function, copied as it
+            %     is to matlab/<id>_value.m (renamed so). Its type is that of the
+            %     default value dev's function starts with (true or false:
+            %     boolean with that default; NaN or a number: number; a datetime:
+            %     datetime; else string), unless DataType is given.
+            %   - dev's table variable class (.m: classdef Name < ...TableVariable):
+            %     a column Name typed in, with the type and default of its
+            %     DEFAULT_VALUE and the choices of its LIST_ALTERNATIVES; its code
+            %     is not copied.
+            %   - a method of the rebuild: Python (.py with run(entity, options,
+            %     context)) or MATLAB (.m whose function, of the file's name, takes
+            %     entity, options and context): copied to python/ or matlab/ as the
+            %     method, of the file's name, filling Columns (structs as
+            %     createMethod's Computes; by default one column of the file's
+            %     name, of DataType, default number).
+            %   Id gives the id of the fragment and method instead. The fragment,
+            %   the method (NaN for none) and the files written, relative to the
+            %   project folder. file-not-found for a path that is not a file;
+            %   invalid-params for another file; method-exists, fragment-exists
+            %   and column-exists as createMethod.
+            arguments
+                obj
+                entityType (1,1) string
+                path (1,1) string
+                options.DataType (1,1) string = ""
+                options.Title (1,1) string = ""
+                options.Columns = {}
+                options.Id (1,1) string = ""
+            end
+            if ~isfile(path)
+                nansen.internal.throwError("file-not-found", "%s is not a file", path)
+            end
+            obj.entityType(entityType);
+            if options.DataType ~= "" && ~ismember(options.DataType, ["string", "integer", "number", "boolean", "date", "datetime"])
+                nansen.internal.throwError("invalid-params", "'%s' is not a column type", options.DataType)
+            end
+            text = replace(string(nansen.internal.readText(path)), sprintf("\r\n"), newline);
+            [~, name, fileExtension] = fileparts(path);
+            extension = lower(fileExtension);
+            shape = nansen.Project.columnCodeShape(text, name, extension);
+            methodId = options.Id;
+            if methodId == "" && startsWith(shape.kind, "dev")
+                methodId = nansen.Project.snakeCase(name);
+            elseif methodId == ""
+                methodId = name;
+            end
+            if isempty(regexp(methodId, "^[a-z][a-z0-9_]*$", "once"))
+                nansen.internal.throwError("invalid-params", "'%s' cannot be the column's id: a lower-case letter, then letters, digits or _ (give the id)", methodId)
+            end
+            title = strjoin(split(strtrim(options.Title))', " ");
+            if ismember(shape.kind, ["devFunction", "devClass"])
+                [guessed, default] = nansen.Project.defaultType(shape.default);
+                column = struct("name", char(name), "dataType", char(guessed));
+                if options.DataType ~= ""
+                    column.dataType = char(options.DataType);
+                end
+                if title ~= ""
+                    column.title = char(title);
+                end
+                if column.dataType == "boolean" && ~isempty(default)
+                    column.default = default;
+                elseif column.dataType == "boolean"
+                    column.default = false;
+                end
+                if ~isempty(shape.choices) && column.dataType == "string"
+                    column.choices = cellstr(shape.choices);
+                end
+                columns = {column};
+            elseif ~isempty(options.Columns)
+                columns = nansen.internal.asCellOfStructs(options.Columns);
+            else
+                dataType = options.DataType;
+                if dataType == ""
+                    dataType = "number";
+                end
+                column = struct("name", char(methodId), "dataType", char(dataType));
+                if title ~= ""
+                    column.title = char(title);
+                end
+                if dataType == "boolean"
+                    column.default = false;
+                end
+                columns = {column};
+            end
+            shownTitle = title;
+            if shownTitle == ""
+                shownTitle = name;
+            end
+            entry = nansen.internal.schemaEntry("nansen.fragment");
+            fragment = struct("schemaType", 'nansen.fragment', "schemaVersion", char(entry.version), "id", char(methodId), ...
+                "version", '1.0.0', "title", char(shownTitle), "columns", {columns});
+            if shape.kind == "devClass"
+                fragment.description = char("dev's table variable " + name + ", imported from " + name + fileExtension);
+            else
+                fragment.compute = struct("method", char(methodId));
+            end
+            fragment = nansen.checkDocument(fragment, ExpectedType="nansen.fragment");
+            names = string(cellfun(@(c) char(c.name), columns, UniformOutput=false));
+            clash = sort(intersect(obj.table(entityType).columnNames(), names));
+            if ~isempty(clash)
+                nansen.internal.throwError("column-exists", "%s already has column(s) %s", entityType, strjoin(clash, ", "))
+            end
+            if any(cellfun(@(f) f.Id == methodId, obj.fragments()))
+                nansen.internal.throwError("fragment-exists", "the project already has a fragment '%s'", methodId)
+            end
+            files = "fragments/" + methodId + ".fragment.nansen.json";
+            contents = {fragment};
+            if shape.kind ~= "devClass"
+                language = "matlab";
+                implementations = struct("matlab", char(methodId));
+                if extension == ".py"
+                    language = "python";
+                    implementations = struct("python", char(methodId + ":run"));
+                end
+                plural = "";
+                if numel(columns) > 1
+                    plural = "s";
+                end
+                description = "Computes the column" + plural + " " + strjoin(names, ", ") + ", imported from " + name + fileExtension;
+                if shape.kind == "devFunction"
+                    description = description + " (dev's table variable " + name + ")";
+                end
+                entry = nansen.internal.schemaEntry("nansen.method");
+                document = struct("schemaType", 'nansen.method', "schemaVersion", char(entry.version), "id", char(methodId), ...
+                    "version", '0.1.0', "title", char(shownTitle), "entityType", char(entityType), "batchMode", 'serial', ...
+                    "implementations", implementations, "options", struct("type", 'object', "properties", struct()), ...
+                    "description", char(description));
+                nansen.checkDocument(document, ExpectedType="nansen.method");
+                files(end + 1) = "methods/" + methodId + ".method.nansen.json";
+                contents{end + 1} = document;
+                if shape.kind == "devFunction"
+                    files(end + 1) = "matlab/" + methodId + ".m";
+                    contents{end + 1} = nansen.Project.devColumnMethod(methodId, name, name + fileExtension);
+                    files(end + 1) = "matlab/" + methodId + "_value.m";
+                    contents{end + 1} = nansen.Project.renameFunction(text, methodId + "_value");
+                elseif language == "matlab" && methodId ~= name   % MATLAB's function is named as its file
+                    files(end + 1) = "matlab/" + methodId + ".m";
+                    contents{end + 1} = nansen.Project.renameFunction(text, methodId);
+                else
+                    files(end + 1) = language + "/" + methodId + extension;
+                    contents{end + 1} = text;
+                end
+                paths = strings(1, numel(files));
+                for k = 1:numel(files)
+                    paths(k) = string(fullfile(obj.Folder, files(k)));
+                end
+                existing = files(isfile(paths));
+                if ~isempty(existing) || ismember(methodId, [obj.entityMethods().Id])
+                    what = "a method '" + methodId + "'";
+                    if ~isempty(existing)
+                        what = strjoin(existing, ", ");
+                    end
+                    nansen.internal.throwError("method-exists", "the project already has %s", what)
+                end
+            end
+            for k = 1:numel(files)
+                target = string(fullfile(obj.Folder, files(k)));
+                if ~isfolder(fileparts(target))
+                    mkdir(fileparts(target));
+                end
+                if isstruct(contents{k})
+                    nansen.internal.writeJson(target, contents{k})
+                else
+                    nansen.internal.writeText(target, contents{k});
+                end
+            end
+            rehash   % a new file in a folder already on the path is seen at once
+            obj.attachFragment(entityType, methodId);
+            fragment = obj.fragment(methodId);
+            method = NaN;
+            if shape.kind ~= "devClass"
+                method = obj.method(methodId);
+            end
+            files = cellstr(files);
         end
 
         function method = method(obj, methodId)
@@ -2360,6 +2629,237 @@ classdef Project < handle
         function key = cacheKey(adapterId, path)
             % One entry per file and file adapter
             key = string(adapterId) + "|" + string(path);
+        end
+
+        function [source, relative] = adapterCode(folder, language, reference)
+            % Where a file adapter's code in a language is, for a document in folder: its path, and the path relative to
+            % the language's folder (with /). Python's 'a.b:Class' is a/b.py or the package a/b/; MATLAB's 'pkg.Class'
+            % is +pkg/Class.m or the class folder +pkg/@Class/. Looked for in folder, its <language>/ folder and the
+            % <language>/ folder beside it. file-not-found when it is in none of them, invalid-params when it has not
+            % got the class with read and write. As Python's project._adapter_code, with the same regular expressions.
+            if language == "python"
+                parts = split(reference, ":");
+                name = parts(end);
+                modulePath = strjoin(split(parts(1), ".")', "/");
+                candidates = [modulePath + ".py", modulePath];
+                extension = "*.py";
+                patterns = ["^class[ \t]+{name}(?![A-Za-z0-9_])", "^[ \t]+def[ \t]+read[ \t]*\(", "^[ \t]+def[ \t]+write[ \t]*\("];
+            else
+                parts = split(reference, ".")';
+                name = parts(end);
+                packages = "";
+                for part = parts(1:end - 1)
+                    packages = packages + "+" + part + "/";
+                end
+                candidates = [packages + name + ".m", packages + "@" + name];
+                extension = "*.m";
+                patterns = ["^[ \t]*classdef[^\n]*(?<![A-Za-z0-9_.]){name}(?![A-Za-z0-9_])", ...
+                    "^[ \t]*function[^\n]*(?<![A-Za-z0-9_.])read[ \t]*\(", "^[ \t]*function[^\n]*(?<![A-Za-z0-9_.])write[ \t]*\("];
+            end
+            roots = [string(folder), string(fullfile(folder, language)), string(fullfile(fileparts(folder), language))];
+            for root = roots
+                for relative = candidates
+                    source = string(fullfile(root, relative));
+                    if endsWith(relative, [".py", ".m"])
+                        found = isfile(source);
+                    else
+                        found = isfolder(source);
+                    end
+                    if ~found
+                        continue
+                    end
+                    if isfolder(source)
+                        files = nansen.Project.codeFiles(source);
+                        files = files(endsWith(files, extractAfter(extension, 1)));
+                        for k = 1:numel(files)
+                            files(k) = string(fullfile(source, files(k)));
+                        end
+                    else
+                        files = source;
+                    end
+                    text = "";
+                    for file = files
+                        text = text + newline + replace(string(fileread(file)), sprintf("\r\n"), newline);
+                    end
+                    for pattern = patterns
+                        if isempty(regexp(text, replace(pattern, "{name}", name), "once", "lineanchors"))
+                            nansen.internal.throwError("invalid-params", "%s is not the %s code of a file adapter: it needs the class %s with read and write", ...
+                                relative, language, name)
+                        end
+                    end
+                    return
+                end
+            end
+            nansen.internal.throwError("file-not-found", "there is no %s for %s (%s) beside %s", strjoin(candidates, " or "), reference, language, folder)
+        end
+
+        function files = codeFiles(folder)
+            % The files in a folder and its subfolders (not __pycache__), relative to it with /, sorted
+            here = dir(folder);
+            base = string(here(1).folder);   % the folder as dir gives it, which its listing's folders start with
+            listing = dir(fullfile(folder, "**", "*"));
+            listing = listing(~[listing.isdir]);
+            files = strings(1, 0);
+            for k = 1:numel(listing)
+                relative = replace(extractAfter(string(fullfile(listing(k).folder, listing(k).name)), strlength(base) + 1), "\", "/");
+                if ~any(split(relative, "/") == "__pycache__")
+                    files(end + 1) = relative; %#ok<AGROW>
+                end
+            end
+            files = sort(files);
+        end
+
+        function tf = sameContent(destination, source)
+            % Whether a file or folder already in the project is what would be copied there
+            tf = false;
+            if isfolder(source) ~= isfolder(destination)
+                return
+            end
+            if ~isfolder(source)
+                tf = isequal(nansen.Project.fileBytes(destination), nansen.Project.fileBytes(source));
+                return
+            end
+            files = nansen.Project.codeFiles(source);
+            if ~isequal(files, nansen.Project.codeFiles(destination))
+                return
+            end
+            for file = files
+                if ~isequal(nansen.Project.fileBytes(fullfile(destination, file)), nansen.Project.fileBytes(fullfile(source, file)))
+                    return
+                end
+            end
+            tf = true;
+        end
+
+        function copyCode(source, destination)
+            % A file, or a folder's files (not __pycache__), copied to destination
+            if ~isfolder(source)
+                if ~isfolder(fileparts(destination))
+                    mkdir(fileparts(destination));
+                end
+                copyfile(source, destination);
+                return
+            end
+            for file = nansen.Project.codeFiles(source)
+                target = string(fullfile(destination, file));
+                if ~isfolder(fileparts(target))
+                    mkdir(fileparts(target));
+                end
+                copyfile(fullfile(source, file), target);
+            end
+        end
+
+        function bytes = fileBytes(path)
+            fid = fopen(path, "r");
+            closer = onCleanup(@() fclose(fid));
+            bytes = fread(fid, Inf, "*uint8");
+        end
+
+        function shape = columnCodeShape(text, name, extension)
+            % What a code file importColumn is given is: kind devFunction, devClass, matlabMethod or pythonMethod, with
+            % the default value's expression and the choices of dev's. invalid-params for any other file. The regular
+            % expressions are Python's project.column_code_shape's (named tokens here, numbered there).
+            shape = struct("kind", "", "default", "", "choices", strings(1, 0));
+            if extension == ".py"
+                if isempty(regexp(text, "^def[ \t]+run[ \t]*\(", "once", "lineanchors"))
+                    nansen.internal.throwError("invalid-params", "%s.py has no run(entity, options, context) to compute the column with", name)
+                end
+                shape.kind = "pythonMethod";
+                return
+            end
+            if extension ~= ".m"
+                nansen.internal.throwError("invalid-params", "%s%s is not a MATLAB (.m) or Python (.py) file", name, extension)
+            end
+            classLine = regexp(text, "^[ \t]*classdef[ \t]*(?:\([^)\n]*\)[ \t]*)?([A-Za-z][A-Za-z0-9_]*)[ \t]*<[^\n]*TableVariable", ...
+                "tokens", "once", "lineanchors");
+            if ~isempty(classLine) && string(classLine{1}) == name
+                shape.kind = "devClass";
+                default = regexp(text, "^[ \t]*DEFAULT_VALUE[ \t]*=[ \t]*([^;%\n]*)", "tokens", "once", "lineanchors");
+                if ~isempty(default)
+                    shape.default = strtrim(string(default{1}));
+                end
+                listed = regexp(text, "^[ \t]*LIST_ALTERNATIVES[ \t]*=[ \t]*\{([^}]*)\}", "tokens", "once", "lineanchors");
+                if ~isempty(listed)
+                    for item = regexp(char(listed{1}), "(['""])([^'""]*)\1", "tokens")
+                        choice = string(item{1}{2});
+                        if choice ~= "" && ~ismember(choice, shape.choices)
+                            shape.choices(end + 1) = choice;
+                        end
+                    end
+                end
+                return
+            end
+            [line, stop] = regexp(text, "^[ \t]*function[ \t]+(?:\[?[ \t]*(?<output>[A-Za-z][A-Za-z0-9_]*)[ \t]*\]?[ \t]*=[ \t]*)?" + ...
+                "(?<name>[A-Za-z][A-Za-z0-9_]*)[ \t]*(?:\((?<inputs>[^)\n]*)\))?", "names", "end", "once", "lineanchors");
+            if ~isempty(line) && string(line.name) == name
+                inputs = strtrim(split(string(line.inputs), ","));
+                inputs = inputs(inputs ~= "");
+                output = string(line.output);
+                if output ~= "" && numel(inputs) <= 1   % dev's table variable: value = Name(sessionObject)
+                    shape.kind = "devFunction";
+                    default = regexp(extractAfter(text, stop), "^[ \t]*" + output + "[ \t]*=[ \t]*([^;%\n]*)", "tokens", "once", "lineanchors");
+                    if ~isempty(default)
+                        shape.default = strtrim(string(default{1}));
+                    end
+                    return
+                end
+                if output ~= "" && numel(inputs) == 3
+                    shape.kind = "matlabMethod";
+                    return
+                end
+            end
+            nansen.internal.throwError("invalid-params", ...
+                "%s.m is not dev's table variable (a function value = %s(entity), or a class %s < TableVariable) nor a method %s(entity, options, context)", ...
+                name, name, name, name)
+        end
+
+        function [dataType, default] = defaultType(expression)
+            % The column type of a dev default value's MATLAB expression, and the default it gives (booleans only)
+            text = lower(strtrim(string(expression)));
+            default = [];
+            if ismember(text, ["true", "false"])
+                dataType = "boolean";
+                default = text == "true";
+            elseif text == "nan" || ~isempty(regexp(text, "^[-+]?(\d+\.?\d*|\.\d+)([e][-+]?\d+)?$", "once"))
+                dataType = "number";
+            elseif startsWith(text, ["datetime", "nat"])
+                dataType = "datetime";
+            else
+                dataType = "string";
+            end
+        end
+
+        function id = snakeCase(name)
+            % dev's table variable name as a method id: numFrames -> num_frames, subjectID -> subject_id
+            id = regexprep(string(name), "(?<=[a-z0-9])([A-Z])", "_$1");
+            id = lower(regexprep(id, "(?<=[A-Z])([A-Z][a-z])", "_$1"));
+        end
+
+        function text = renameFunction(text, newName)
+            % A MATLAB function file's text with its function, declared first, renamed
+            text = regexprep(text, "^([ \t]*function[ \t]+(?:\[?[ \t]*[A-Za-z][A-Za-z0-9_]*[ \t]*\]?[ \t]*=[ \t]*)?)[A-Za-z][A-Za-z0-9_]*", ...
+                "$1" + newName, "once", "lineanchors");
+        end
+
+        function text = devColumnMethod(methodId, name, fileName)
+            % The method a column imported from dev's table variable function is filled by: it calls that function,
+            % copied beside it as <methodId>_value, with the entity. Python's project.dev_column_method writes the same.
+            lines = [
+                "function result = " + methodId + "(entity, options, context) %#ok<INUSD>"
+                "%" + methodId + " The column " + name + ", imported from dev's table variable " + fileName
+                "%"
+                "%   NANSEN wrote this method around the function of dev's table"
+                "%   variable, copied as it was to " + methodId + "_value.m. It is given the"
+                "%   entity (entity.Key, entity.values(), entity.load(name)) where dev"
+                "%   gave a session or subject object, so calls on that object, such"
+                "%   as loadData, may need changing there."
+                "    value = " + methodId + "_value(entity);"
+                "    if iscell(value) && isscalar(value)   % dev's text values are cells of one text"
+                "        value = value{1};"
+                "    end"
+                "    result = struct(""" + name + """, {value});"
+                "end"];
+            text = strjoin(lines', newline) + newline;
         end
     end
 

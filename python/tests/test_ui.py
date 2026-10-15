@@ -1268,6 +1268,63 @@ def test_start_a_file_adapter(empty_app, page):
     assert "tiff_stack" in options["fileAdapters"]
 
 
+def test_import_file_adapters(empty_app, page):
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    from pathlib import Path
+    data = Path(__file__).resolve().parents[2] / "conformance" / "api" / "adapter-import" / "data"
+    page.goto(empty_app["server"].url + "#/data")
+    page.click(".data-variables .import-adapter")   # dev's Import File Adapter: From File
+    page.click(".menu .item:has-text('From a file')")
+    page.fill(".dialog .field:has-text('File adapter document') input", str(data / "single" / "thing.fileAdapter.nansen.json"))
+    page.click(".dialog-foot button:has-text('Import')")
+    page.wait_for_selector(".toast:has-text('File adapter imported')")
+    assert (folder / "python" / "thing_reader.py").is_file() and (folder / "matlab" / "ThingReader.m").is_file()
+    page.click(".data-variables .import-adapter")   # From Folder: every document in it, with its code
+    page.click(".menu .item:has-text('From a folder')")
+    page.fill(".dialog .field:has-text('Folder') input", str(data / "bundle"))
+    page.click(".dialog-foot button:has-text('Import')")
+    page.wait_for_selector(".toast:has-text('2 file adapters imported')")
+    options = api.handle({"id": 2, "method": "dataVariables.options", "params": {"entityType": "session"}})["result"]
+    assert {"thing", "three", "lab_two"} <= set(options["fileAdapters"])
+    page.click(".data-variables .import-adapter")   # a refusal stays in the dialog
+    page.click(".menu .item:has-text('From a folder')")
+    page.fill(".dialog .field:has-text('Folder') input", str(data / "empty"))
+    page.click(".dialog-foot button:has-text('Import')")
+    page.wait_for_selector(".dialog .form-message:has-text('holds no file adapter document')")
+
+
+def test_import_a_column_from_a_file(empty_app, page):
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    from pathlib import Path
+    data = Path(__file__).resolve().parents[2] / "conformance" / "api" / "column-import" / "data"
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.click(".toolbar button:has-text('Columns')")   # dev's Import Table Variable
+    page.click(".menu .item:has-text('Import a column from a file')")
+    page.fill(".dialog .field:has-text('File') input", str(data / "dev" / "Quality.m"))
+    page.fill(".dialog .field:has-text('Title') input", "Recording quality")
+    page.click(".dialog-foot button:has-text('Import')")
+    page.wait_for_selector(".grid-table th:has-text('Recording quality')")
+    page.wait_for_selector(".toast:has-text('Column imported')")
+    fragment = next(f for f in api.handle({"id": 2, "method": "fragments.list"})["result"] if f["id"] == "quality")
+    assert fragment["columns"][0]["choices"] == ["good", "fair", "poor"] and not fragment["computed"]
+    page.click(".toolbar button:has-text('Columns')")   # a method of the rebuild: a computed column
+    page.click(".menu .item:has-text('Import a column from a file')")
+    page.fill(".dialog .field:has-text('File') input", str(data / "rebuild" / "frame_rate.py"))
+    page.click(".dialog-foot button:has-text('Import')")
+    page.wait_for_selector(".toast:has-text('Computed column imported')")
+    assert (folder / "python" / "frame_rate.py").is_file()
+    page.click(".toolbar button:has-text('Columns')")
+    page.click(".menu .item:has-text('Import a column from a file')")
+    page.fill(".dialog .field:has-text('File') input", str(data / "rebuild" / "script.m"))
+    page.click(".dialog-foot button:has-text('Import')")
+    page.wait_for_selector(".dialog .form-message:has-text('is not dev')")
+
+
 def test_a_pipeline_rule_for_new_rows(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})

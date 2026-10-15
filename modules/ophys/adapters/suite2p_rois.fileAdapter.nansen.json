@@ -2,11 +2,12 @@
   "schemaType": "nansen.fileAdapter",
   "schemaVersion": "0.1.0",
   "id": "ophys.suite2p_rois",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "suite2p cells",
-  "description": "suite2p's Fall.mat: each cell's pixels (stat ypix and xpix), the image size (ops Ly and Lx), and cells suite2p's classifier leaves out (iscell 0) classified rejected. Read as the module's ROI document (imageSize and rois of id, area, center and 0-based [row, column] pixels), so the ROIs can be viewed, curated and have their signals extracted. Read only.",
+  "description": "suite2p's cells, from its Fall.mat or its output folder: each cell's pixels (stat ypix and xpix), the image size (ops Ly and Lx), and cells suite2p's classifier leaves out (iscell 0) classified rejected. A .npy file is a plane's stat.npy, read with the iscell.npy and ops.npy beside it (stat.npy is pickled: it is read without running anything in it, and in MATLAB without Python); a folder is a plane's, or suite2p's output folder of plane0, plane1, ..., read whole, each cell with its plane. Read as the module's ROI document (imageSize and rois of id, area, center and 0-based [row, column] pixels), so the ROIs can be viewed, curated and have their signals extracted. Read only.",
   "extensions": [
-    ".mat"
+    ".mat",
+    ".npy"
   ],
   "dataType": "RoiArray",
   "implementations": {

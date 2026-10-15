@@ -1,0 +1,46 @@
+{
+  "steps": [
+    {"request": {"method": "project.open", "id": 1, "params": {"path": "${project}"}}, "expect": {"result": {"name": "TwoPhoton"}}},
+    {"request": {"method": "columns.import", "id": 2, "params": {"entityType": "session", "path": "${scratch}/data/dev/numFrames.m"}},
+     "expect": {"result": {
+       "fragment": {"id": "num_frames", "version": "1.0.0", "title": "numFrames", "computed": true, "columns": [{"name": "numFrames", "dataType": "number"}]},
+       "method": {"id": "num_frames", "entityType": "session", "batchMode": "serial", "languages": ["matlab"]},
+       "files": ["fragments/num_frames.fragment.nansen.json", "methods/num_frames.method.nansen.json", "matlab/num_frames.m", "matlab/num_frames_value.m"]}}},
+    {"request": {"method": "columns.import", "id": 3, "params": {"entityType": "session", "path": "${scratch}/data/dev/Quality.m", "title": "Recording quality"}},
+     "expect": {"result": {
+       "fragment": {"id": "quality", "title": "Recording quality", "computed": false,
+                    "columns": [{"name": "Quality", "dataType": "string", "title": "Recording quality", "choices": ["good", "fair", "poor"]}]},
+       "method": null, "files": ["fragments/quality.fragment.nansen.json"]}}},
+    {"request": {"method": "columns.import", "id": 4, "params": {"entityType": "subject", "path": "${scratch}/data/dev/Reviewed.m"}},
+     "expect": {"result": {"fragment": {"id": "reviewed", "computed": false, "columns": [{"name": "Reviewed", "dataType": "boolean", "default": false}]},
+       "method": null, "files": ["fragments/reviewed.fragment.nansen.json"]}}},
+    {"request": {"method": "columns.import", "id": 5, "params": {"entityType": "session", "path": "${scratch}/data/rebuild/frame_rate.py", "title": "Frame rate"}},
+     "expect": {"result": {
+       "fragment": {"id": "frame_rate", "title": "Frame rate", "computed": true, "columns": [{"name": "frame_rate", "dataType": "number", "title": "Frame rate"}]},
+       "method": {"id": "frame_rate", "title": "Frame rate", "languages": ["python"]},
+       "files": ["fragments/frame_rate.fragment.nansen.json", "methods/frame_rate.method.nansen.json", "python/frame_rate.py"]}}},
+    {"request": {"method": "columns.import", "id": 6, "params": {"entityType": "session", "path": "${scratch}/data/rebuild/stack_size.m",
+       "columns": [{"name": "height", "dataType": "integer"}, {"name": "width", "dataType": "integer", "unit": "px"}]}},
+     "expect": {"result": {
+       "fragment": {"id": "stack_size", "computed": true, "columns": [{"name": "height", "dataType": "integer"}, {"name": "width", "dataType": "integer", "unit": "px"}]},
+       "method": {"id": "stack_size", "languages": ["matlab"]},
+       "files": ["fragments/stack_size.fragment.nansen.json", "methods/stack_size.method.nansen.json", "matlab/stack_size.m"]}}},
+    {"request": {"method": "columns.import", "id": 7, "params": {"entityType": "subject", "path": "${scratch}/data/rebuild/stack_size.m", "id": "size_of_stack",
+       "columns": [{"name": "height", "dataType": "integer"}, {"name": "width", "dataType": "integer"}]}},
+     "expect": {"result": {"fragment": {"id": "size_of_stack"}, "method": {"id": "size_of_stack", "entityType": "subject"},
+       "files": ["fragments/size_of_stack.fragment.nansen.json", "methods/size_of_stack.method.nansen.json", "matlab/size_of_stack.m"]}}},
+    {"request": {"method": "files.list", "id": 8, "params": {"path": "matlab"}},
+     "expect": {"result": {"entries": [{"name": "num_frames.m"}, {"name": "num_frames_value.m"}, {"name": "size_of_stack.m"}, {"name": "stack_size.m"}]}}},
+    {"request": {"method": "columns.import", "id": 9, "params": {"entityType": "session", "path": "${scratch}/data/dev/numFrames.m"}}, "expect": {"error": "column-exists"}},
+    {"request": {"method": "columns.import", "id": 10, "params": {"entityType": "subject", "path": "${scratch}/data/rebuild/frame_rate.py"}}, "expect": {"error": "fragment-exists"}},
+    {"request": {"method": "columns.import", "id": 11, "params": {"entityType": "subject", "path": "${scratch}/data/dev/numFrames.m", "id": "Frames"}}, "expect": {"error": "invalid-params"}},
+    {"request": {"method": "columns.import", "id": 12, "params": {"entityType": "session", "path": "${scratch}/data/rebuild/notes.txt"}}, "expect": {"error": "invalid-params"}},
+    {"request": {"method": "columns.import", "id": 13, "params": {"entityType": "session", "path": "${scratch}/data/rebuild/script.m"}}, "expect": {"error": "invalid-params"}},
+    {"request": {"method": "columns.import", "id": 14, "params": {"entityType": "session", "path": "${scratch}/data/rebuild/missing.m"}}, "expect": {"error": "file-not-found"}},
+    {"request": {"method": "columns.import", "id": 15, "params": {"entityType": "probe", "path": "${scratch}/data/dev/Reviewed.m"}}, "expect": {"error": "unknown-entity-type"}},
+    {"request": {"method": "columns.import", "id": 16, "params": {"entityType": "session", "path": "${scratch}/data/dev/Reviewed.m", "dataType": "text"}}, "expect": {"error": "invalid-params"}},
+    {"request": {"method": "fragments.list", "id": 17, "params": {}},
+     "expect": {"result": [{"id": "frame_rate", "computed": true}, {"id": "notes"}, {"id": "num_frames", "computed": true}, {"id": "quality", "computed": false},
+       {"id": "reviewed"}, {"id": "size_of_stack"}, {"id": "stack_size"}, {"id": "core.notes"}, {"id": "core.file_stats"}, {"id": "core.subject"}, {"id": "core.pipeline"}]}}
+  ]
+}

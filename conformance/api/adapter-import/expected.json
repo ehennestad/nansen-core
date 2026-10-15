@@ -1,0 +1,4 @@
+{
+  "description": "Importing file adapters (dev's Import File Adapter, From File and From Folder): a nansen.fileAdapter document is copied into file-adapters/ with its code, found beside it or in the python/ and matlab/ folders there or beside its folder, into the project's python/ and matlab/ at the same place; a folder brings every document in it and in its file-adapters/ and adapters/ folders, sharing code they share. An id the project has, a document that does not validate, code that is not there or has not the class with read and write, a folder with no document and a path that is not there are refused, and nothing is copied then.",
+  "steps": 15
+}

@@ -12368,6 +12368,249 @@
       "expect": {
         "error": "invalid-params"
       }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9700,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "path": "suite2p",
+            "adapter": "ophys.suite2p_rois",
+            "mode": "replace"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "pixels": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  2
+                ]
+              ]
+            },
+            {
+              "pixels": [
+                [
+                  5,
+                  4
+                ],
+                [
+                  6,
+                  4
+                ],
+                [
+                  6,
+                  5
+                ]
+              ],
+              "classification": "rejected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9701,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "plane": 1,
+          "import": {
+            "path": "suite2p",
+            "adapter": "ophys.suite2p_rois"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "pixels": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  2
+                ]
+              ]
+            },
+            {
+              "pixels": [
+                [
+                  5,
+                  4
+                ],
+                [
+                  6,
+                  4
+                ],
+                [
+                  6,
+                  5
+                ]
+              ],
+              "classification": "rejected"
+            },
+            {
+              "pixels": [
+                [
+                  3,
+                  5
+                ],
+                [
+                  3,
+                  6
+                ],
+                [
+                  4,
+                  5
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9702,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "path": "suite2p/plane1/stat.npy",
+            "adapter": "ophys.suite2p_rois",
+            "mode": "replace"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "pixels": [
+                [
+                  3,
+                  5
+                ],
+                [
+                  3,
+                  6
+                ],
+                [
+                  4,
+                  5
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9703,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "path": "suite2p"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9704,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "path": "suite2p",
+            "adapter": "json"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-data"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9705,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Combined",
+          "import": {
+            "path": "data/raw",
+            "adapter": "ophys.suite2p_rois"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-data"
+      }
     }
   ]
 }
