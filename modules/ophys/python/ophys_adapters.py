@@ -200,6 +200,45 @@ class TiffStack:
             raise NansenError("invalid-params", "a TIFF stack is height x width x frames of integers or floats")
         tifffile.imwrite(str(path), np.moveaxis(data, 2, 0), photometric="minisblack")
 
+    def create(self, path, shape, dtype):
+        """A writer of a new TIFF stack, a chunk of frames at a time, each frame a page; frames come in order."""
+        return TiffPageWriter(path, shape, dtype)
+
+
+class TiffPageWriter:
+    """Writes a height x width x frames stack to a TIFF file a chunk of frames at a time, as nansen.stacks.StackWriter
+    does for other files: write(start, chunk), close(). Frames must come in order; BigTIFF from 4 GB."""
+
+    def __init__(self, path, shape, dtype):
+        tifffile = _tifffile()
+        self.shape = tuple(int(n) for n in shape)
+        self.dtype = np.dtype(dtype)
+        if len(self.shape) != 3 or self.dtype.kind not in "uif":
+            raise NansenError("invalid-params", "a TIFF stack is height x width x frames of integers or floats")
+        self.written = 0
+        self._writer = tifffile.TiffWriter(str(path), bigtiff=int(np.prod(self.shape)) * self.dtype.itemsize > 4e9)
+
+    def write(self, start, chunk):
+        chunk = np.asarray(chunk)
+        if chunk.ndim == 2:
+            chunk = chunk[:, :, None]
+        if int(start) != self.written or chunk.shape[:2] != self.shape[:2] or self.written + chunk.shape[2] > self.shape[2]:
+            raise NansenError("invalid-params", f"a {chunk.shape} chunk at frame {start} does not follow the {self.written} frames of a {self.shape} TIFF stack")
+        for t in range(chunk.shape[2]):
+            self._writer.write(chunk[:, :, t].astype(self.dtype, copy=False), photometric="minisblack", contiguous=True)
+        self.written += chunk.shape[2]
+
+    def close(self):
+        if self._writer is not None:
+            self._writer.close()
+            self._writer = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
 
 class ScanImageTiff:
     """A ScanImage TIFF file: frames of every saved channel, plane after plane, volume after volume.

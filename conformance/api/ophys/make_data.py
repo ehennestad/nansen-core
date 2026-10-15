@@ -223,6 +223,8 @@ def main():
         {"variable": "RoiSignals_Dff", "count": len(disks), "columns": [{"column": c, "values": [four(dff[t, c]) for t in picked]} for c in (0, 2)]}]}
     expected["frame0"] = {"height": HEIGHT, "width": WIDTH, "frames": FRAMES, "frame": 0, **frame_bytes(aligned[:, :, 0])}
     expected["frame3"] = {"frame": 3, **frame_bytes(aligned[:, :, 3], (0, 1000))}
+    # export_tiff of frames 3..7 (from 1), read back through a data variable: its frame 2 (from 0) is frame 4 (from 0)
+    expected["exported"] = {"height": HEIGHT, "width": WIDTH, "frames": 5, "frame": 2, **frame_bytes(aligned[:, :, 4], (0, 1000))}
     expected["maxProjection"] = {"frame": None, **frame_bytes(aligned.max(axis=2)),
                                  "rois": [{"id": n + 1, "pixels": [[int(y), int(x)] for y, x in zip(*np.nonzero(d))]}
                                           for n, d in enumerate(disks)]}

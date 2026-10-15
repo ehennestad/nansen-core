@@ -1187,7 +1187,22 @@ def test_draw_detect_merge_and_move_rois_in_the_viewer(empty_app, page):
     wait_until(lambda: abs(page.locator(".viewer-canvas").bounding_box()["width"] - box["width"]) < 2)
     with page.expect_download() as download:
         page.click(".viewer-export")
+        page.click(".menu .item:has-text('Image as PNG')")
     assert download.value.suggested_filename.endswith("_TwoPhotonSeries_Corrected_mean.png")
+    # frames 3..7 of the stack as TIFF, through ophys.export_tiff
+    from pathlib import Path
+    import numpy as np
+    tifffile = pytest.importorskip("tifffile")
+    page.click(".viewer-export")
+    page.click(".menu .item:has-text('Stack as TIFF')")
+    page.fill(".dialog .field:has-text('File') input", "exports/viewer.tif")
+    page.fill(".dialog .field:has-text('First frame') input", "3")
+    page.fill(".dialog .field:has-text('Last frame') input", "7")
+    page.click(".dialog .btn.primary:has-text('Export')")
+    page.wait_for_selector(".toast:has-text('Exported')")
+    exported = tifffile.imread(Path(api.project.folder) / "exports" / "viewer.tif")
+    corrected = np.asarray(api.project.load(api.project.entity("session", s1[0]), "TwoPhotonSeries_Corrected", cached=False))
+    assert exported.shape == (5, 32, 32) and (np.moveaxis(exported, 0, 2) == corrected[:, :, 2:7]).all()
 
     # the gallery: a tile per ROI, sorted largest first; keys classify the selected one
     page.click(".viewer-gallery")
@@ -1402,3 +1417,71 @@ def test_preview_a_method_on_the_first_frames(empty_app, page):
     assert [d["files"] for d in status if d["name"] in ("TwoPhotonSeries_Corrected", "MotionCorrectionShifts")] == [[], []]
     page.locator(".preview-dialog .dialog-foot button:has-text('Close')").click()
     assert page.locator(".dialog-foot button:has-text('Run now')").count() == 1   # back in the run dialog
+
+
+def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page):
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    run = lambda method, options=None: ("methods.run", {"methodId": method, "entityType": "session", "keys": s1, "options": options or {}})
+    api = ophys_project(empty_app, [run("ophys.motion_correction", {"referenceFrames": 1}),
+                                    run("ophys.detect_rois", {"threshold": 0.25, "border": 4}),
+                                    run("ophys.extract_signals"), run("ophys.compute_dff")])
+    import time as clock
+
+    def rois():
+        for _ in range(50):
+            try:
+                return api.project.load(api.project.entity("session", s1[0]), "RoiArray", cached=False)["rois"]
+            except ValueError:
+                clock.sleep(0.05)
+    pixels = lambda roi: sorted(tuple(p) for p in roi["pixels"])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.click(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+
+    # the std and correlation projections, in a colormap
+    page.select_option(".viewer-mode", "std")
+    page.wait_for_selector(".viewer-frame:text-is('40 frames')")
+    page.select_option(".viewer-mode", "correlation")
+    page.select_option(".viewer-colormap", "viridis")
+    wait_until(lambda: page.evaluate("(() => { const d = document.querySelector('.viewer-canvas').getContext('2d').getImageData(0, 0, 32, 32).data;"
+                                     " for (let i = 0; i < d.length; i += 4) if (d[i] !== d[i + 1] || d[i + 1] !== d[i + 2]) return true; return false; })()"))
+    box = page.locator(".viewer-canvas").bounding_box()
+    at = lambda row, column: (box["x"] + box["width"] * column / 32, box["y"] + box["height"] * row / 32)
+
+    # a polygon: three corners, closed by clicking the first again
+    page.click(".viewer-polygon")
+    for corner in [(26, 2), (26, 8), (31, 5), (26, 2)]:
+        page.mouse.click(*at(*corner))
+    page.wait_for_selector(".viewer-roi-list li[data-roi='4'].selected")
+    triangle = pixels(rois()[3])
+    assert (26, 4) in triangle and (28, 5) in triangle and all(26 <= r <= 30 and 2 <= c <= 7 for r, c in triangle)   # pixels whose centre is inside
+    page.keyboard.press("Escape")
+
+    # grow it, shrink it back, undo, redo
+    page.click(".roi-grow")
+    wait_until(lambda: len(rois()[3]["pixels"]) > len(triangle))
+    grown = pixels(rois()[3])
+    assert set(triangle) < set(grown)
+    page.click(".roi-shrink")
+    wait_until(lambda: len(rois()[3]["pixels"]) < len(grown))
+    page.keyboard.press("Control+z")
+    wait_until(lambda: pixels(rois()[3]) == grown)
+    page.keyboard.press("Control+z")
+    wait_until(lambda: pixels(rois()[3]) == triangle)
+    page.click(".roi-redo")
+    wait_until(lambda: pixels(rois()[3]) == grown)
+    page.click(".roi-delete")
+    wait_until(lambda: len(rois()) == 3)
+    page.click(".roi-undo")   # the deleted ROI comes back with its id
+    wait_until(lambda: [r["id"] for r in rois()] == [1, 2, 3, 4] and pixels(rois()[3]) == grown)
+
+    # the gallery sorted by the ROIs' largest ΔF/F
+    page.click(".viewer-gallery")
+    page.wait_for_selector(".roi-gallery-dialog .roi-tile")
+    page.select_option(".roi-gallery-sort", "peak")
+    dff = api.project.load(api.project.entity("session", s1[0]), "RoiSignals_Dff", cached=False)
+    import numpy as np
+    order = [i + 1 for i in np.argsort(-np.asarray(dff).max(axis=0), kind="stable")]
+    wait_until(lambda: page.eval_on_selector_all(".roi-tile", "els => els.map(e => Number(e.dataset.roi))")[:3] == order)

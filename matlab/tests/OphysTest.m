@@ -122,6 +122,18 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyError(@() adapter.write(path, int64(stack)), "nansen:InvalidParams");
         end
 
+        function tiffIsWrittenAChunkAtATime(testCase)
+            stack = int16(reshape(0:59, 3, 4, 5));
+            path = fullfile(testCase.Folder, "c.tif");
+            writer = ophys.TiffStack().create(path, size(stack), "int16");
+            writer.write(1, stack(:, :, 1:2));
+            writer.write(3, stack(:, :, 3));
+            testCase.verifyError(@() writer.write(5, stack(:, :, 5)), "nansen:InvalidParams");   % frame 4 was skipped
+            writer.write(4, stack(:, :, 4:5));
+            writer.close();
+            testCase.verifyEqual(ophys.TiffStack().read(path), stack);
+        end
+
         function oasisGivesWhatPythonGives(testCase)
             [c, s] = ophys.internal.oasisAr1([0, 1, 0.5, 0.2, 2, 1, 0.4, -0.3], 0.8, 0.1);
             testCase.verifyEqual(c', [0, 0.721701795472, 0.577361436378, 0.461889149102, 1.212244954459, ...

@@ -44,6 +44,7 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 | `ophys.extract_signals` | The mean of each ROI's pixels per frame (frames x ROIs, rejected ROIs left out), and of a ring of neuropil around it, outside every ROI |
 | `ophys.compute_dff` | ΔF/F = (F - F0) / F0, with F the signal less `neuropilFactor` times the neuropil, and F0 a percentile of F over the whole trace or a window of frames |
 | `ophys.downsample` | Mean or maximum over bins of frames and of pixels |
+| `ophys.export_tiff` | Frames of a stack written to a TIFF file, a chunk at a time, as dev's imviewer exports a stack; the path takes `{field}` tokens of the entity |
 | `ophys.deinterleave` | Frames of several channels and planes interleaved in one stack (channel fastest, then plane, as ScanImage saves them) put in a height x width x channels (x planes) x frames stack |
 | `ophys.deconvolve` | Spikes and denoised calcium by OASIS for an AR(1) model, natively: the exact optimum of 1/2 |c - y|² + λ Σ s with s ≥ 0, g from `tauDecay` and the frame rate (`frameRate`, or the entity's `frame_rate`), λ = `sparsity` times the trace's noise |
 | `ophys.denoise` | Gaussian smoothing in space and time, renormalised at the edges (dev used DeepInterpolation, which needs a trained network) |
@@ -163,7 +164,7 @@ A Python implementation is a class with `read(path)` and `write(path, data)`. A 
 
 ### Image stacks larger than memory, and recordings in several files
 
-An adapter of image stacks can also have `open(paths)`, which returns a stack read a chunk of frames at a time (`nansen.stacks.Stack` in Python, `nansen.Stack` in MATLAB): height x width (x channels (x planes)) x frames, with `frames(start, stop)` reading only those frames. Several files are one recording, joined along the frames in natural order (`part2` before `part10`), so a file pattern with `"cardinality": "many"` can match each file a microscope wrote. `npy`, `ophys.sciscan_raw`, `ophys.tiff_stack` and `ophys.scanimage_tiff` have it. A ScanImage volume may begin in one file and end in the next.
+An adapter of image stacks can also have `open(paths)`, which returns a stack read a chunk of frames at a time (`nansen.stacks.Stack` in Python, `nansen.Stack` in MATLAB): height x width (x channels (x planes)) x frames, with `frames(start, stop)` reading only those frames. Several files are one recording, joined along the frames in natural order (`part2` before `part10`), so a file pattern with `"cardinality": "many"` can match each file a microscope wrote. `npy`, `ophys.sciscan_raw`, `ophys.tiff_stack` and `ophys.scanimage_tiff` have it. `npy`, `ophys.binary_stack` and `ophys.tiff_stack` also have `create(path, shape, type)`, a writer of a new stack a chunk of frames at a time (a TIFF stack's frames in order). A ScanImage volume may begin in one file and end in the next.
 
 - `project.open_stack(entity, name)` (`openStack` in MATLAB) gives a variable as a stack: lazily through `open` where the adapter has it, else the whole value read by `load`.
 - `project.load` reads a recording in several files as one array, through `open`; with an adapter without `open`, it reads the first file.

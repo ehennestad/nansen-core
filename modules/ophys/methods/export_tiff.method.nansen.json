@@ -1,0 +1,55 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.export_tiff",
+  "version": "1.0.0",
+  "title": "Export as TIFF",
+  "category": "Two-photon/Export",
+  "entityType": "*",
+  "description": "Writes frames of a stack to a TIFF file, a chunk at a time, each frame a page, as dev's imviewer exports a stack. A relative path is in the project's folder, and {field} tokens in it are the entity's values. Of a stack with channels or planes, one channel and plane are written.",
+  "implementations": {
+    "python": "ophys_methods:export_tiff",
+    "matlab": "ophys.exportTiff"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack"
+      },
+      "path": {
+        "type": "string",
+        "default": "exports/{subject_id}_{session_id}.tif",
+        "title": "File",
+        "description": "Where the TIFF file is written; relative to the project's folder unless absolute."
+      },
+      "firstFrame": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "First frame"
+      },
+      "lastFrame": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Last frame",
+        "description": "0 for the last frame of the stack."
+      },
+      "channel": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Channel"
+      },
+      "plane": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Plane"
+      }
+    }
+  }
+}

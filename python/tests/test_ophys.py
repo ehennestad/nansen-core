@@ -114,6 +114,20 @@ def test_tiff_stack_round_trips(tmp_path):
     assert tiff.read(tmp_path / "one.tif").shape == (3, 4, 1)
 
 
+def test_tiff_stack_is_written_a_chunk_at_a_time(tmp_path):
+    pytest.importorskip("tifffile")
+    tiff = adapter("TiffStack")
+    stack = np.arange(3 * 4 * 5, dtype=np.int16).reshape(3, 4, 5)
+    with tiff.create(tmp_path / "c.tif", stack.shape, stack.dtype) as writer:
+        writer.write(0, stack[:, :, :2])
+        writer.write(2, stack[:, :, 2])
+        with pytest.raises(NansenError):
+            writer.write(4, stack[:, :, 4:])   # frame 3 was skipped
+        writer.write(3, stack[:, :, 3:])
+    back = tiff.read(tmp_path / "c.tif")
+    assert back.dtype == np.int16 and (back == stack).all()
+
+
 def test_roi_files_written_by_either_language_are_read(tmp_path):
     # MATLAB's jsondecode makes one-pixel lists and single ROIs look different; the file is the same either way
     document = json.loads('{"imageSize": [4, 5], "rois": [{"id": 1, "area": 1, "center": [2, 3], "pixels": [[2, 3]]}]}')

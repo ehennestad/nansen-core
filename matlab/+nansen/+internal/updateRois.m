@@ -56,8 +56,8 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
                 nansen.internal.throwError("invalid-params", "restored ROIs have different whole-number ids from 1")
             end
             rois{i} = measure(struct("id", double(id)), inside(round(nansen.internal.roiPixels(items{i})), size_));
-            label = string(nansen.internal.getField(items{i}, "classification", ""));
-            if any(label == ["accepted", "rejected"])
+            label = nansen.internal.getField(items{i}, "classification", []);   % null decodes as []
+            if ~isempty(label) && any(string(label) == ["accepted", "rejected"])
                 rois{i}.classification = char(label);
             end
             ids(i) = double(id);

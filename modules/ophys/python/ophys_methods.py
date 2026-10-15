@@ -7,6 +7,7 @@ same values the same way; numbers that are returned are rounded with round_to, a
 
 import json
 import math
+import re
 from pathlib import Path
 
 import numpy as np
@@ -1162,6 +1163,37 @@ def deep_interpolation(entity, options, context):
     out[:, :, before:before + count] = np.moveaxis(predicted[before:before + count], 0, 2)
     _save(entity, options["output"], out, context)
     return {"frames": frames, "height": out.shape[0], "width": out.shape[1], "predicted": int(count)}
+
+def export_tiff(entity, options, context):
+    """Frames firstFrame..lastFrame (from 1; lastFrame 0 for the last) of the stack written to a TIFF file, a chunk at
+    a time, as dev's imviewer exports a stack. A relative path is in the project's folder; {field} tokens are the
+    entity's values."""
+    stack = _open_stack(entity, options["stack"], context, options)
+    height, width, frames = stack.shape
+    first, last = int(options.get("firstFrame", 1)), int(options.get("lastFrame", 0)) or frames
+    if not 1 <= first <= last <= frames:
+        raise NansenError("invalid-options", f"frames {first} to {last} are not frames of the stack's {frames}")
+    path = Path(_fill(str(options["path"]), entity))
+    if not path.is_absolute():
+        path = Path(context.project.folder) / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    from nansen.adapters import load_object
+    TiffPageWriter = load_object("ophys_adapters:TiffPageWriter", Path(__file__).resolve().parent)
+    with TiffPageWriter(path, (height, width, last - first + 1), stack.dtype) as out:
+        for start in range(first - 1, last, CHUNK):
+            context.check_cancelled()
+            stop = min(start + CHUNK, last)
+            out.write(start - first + 1, stack.frames(start, stop))
+            context.progress((stop - first + 1) / (last - first + 1), f"frame {stop}/{last}")
+    context.log(f"{_name(entity)}: frames {first} to {last} written to {path}")
+    return {"frames": last - first + 1, "path": str(path)}
+
+
+def _fill(template, entity):
+    """A path with {field} tokens filled from the entity's key and values."""
+    values = {**getattr(entity, "values", {}), **entity.key}
+    return re.sub(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", lambda m: str(values.get(m.group(1), m.group(0))), template)
+
 
 def deinterleave(entity, options, context):
     """Frames of several channels and planes, interleaved in one height x width x frames stack, put in a

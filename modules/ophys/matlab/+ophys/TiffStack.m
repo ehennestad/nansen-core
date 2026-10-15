@@ -17,32 +17,18 @@ classdef TiffStack < nansen.FileAdapter
             stack = nansen.Stack([size(first.Page), count], class(first.Page), reader);
         end
 
-        function write(~, path, data)
-            formats = struct("uint8", "UInt", "uint16", "UInt", "uint32", "UInt", "int8", "Int", "int16", "Int", ...
-                "int32", "Int", "single", "IEEEFP", "double", "IEEEFP");
-            if ~isfield(formats, class(data)) || ndims(data) > 3
+        function write(obj, path, data)
+            if ndims(data) > 3
                 nansen.internal.throwError("invalid-params", "a TIFF stack is height x width x frames of integers or floats")
             end
-            info = whos("data");
-            mode = "w";
-            if info.bytes > 4e9
-                mode = "w8";
-            end
-            file = Tiff(char(path), char(mode));
-            closer = onCleanup(@() close(file));
-            [height, width, frames] = size(data);
-            tags = struct("ImageLength", height, "ImageWidth", width, ...
-                "Photometric", Tiff.Photometric.MinIsBlack, "BitsPerSample", info.bytes / numel(data) * 8, ...
-                "SamplesPerPixel", 1, "SampleFormat", Tiff.SampleFormat.(formats.(class(data))), ...
-                "PlanarConfiguration", Tiff.PlanarConfiguration.Chunky, "Compression", Tiff.Compression.None, ...
-                "RowsPerStrip", height);
-            for t = 1:frames
-                file.setTag(tags);
-                file.write(data(:, :, t));
-                if t < frames
-                    file.writeDirectory();
-                end
-            end
+            writer = obj.create(path, size(data, 1:3), class(data));
+            closer = onCleanup(@() writer.close());
+            writer.write(1, data);
+        end
+
+        function writer = create(~, path, dimensions, className)
+            %create A writer of a new TIFF stack, a chunk of frames at a time, each frame a page; frames come in order
+            writer = ophys.internal.TiffPageWriter(path, dimensions, className);
         end
     end
 end

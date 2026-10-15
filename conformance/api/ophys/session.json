@@ -1069,6 +1069,112 @@
     },
     {
       "request": {
+        "method": "dataVariables.save",
+        "id": 2603,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "TwoPhotonSeries_Export",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "subfolder": "ophys",
+            "fileName": "export.tif",
+            "fileAdapter": "ophys.tiff_stack"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhotonSeries_Export"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 2604,
+        "params": {
+          "methodId": "ophys.export_tiff",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "firstFrame": 3,
+            "lastFrame": 7,
+            "path": "data/processed/sub-{subject_id}/ses-{session_id}/ophys/export.tif"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 2605,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Export",
+          "frame": 2,
+          "limits": [
+            0,
+            1000
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 5,
+          "frame": 2,
+          "low": 0.0,
+          "high": 1000.0,
+          "pixels": "AAA9ODUtNjY1Li4nKCwxNz43RD88LC4rLiw4OiYjJTQAAD84OzE2NzIwLyspLjo7PzA5NDUoKCwvKzY2MyosMQAANSs0KjU2NzgyLy04PzY0LSwmKDIyOTczOzE0KzYtAAApJTIzPD05OjY4Ozk9LTElJyQsOTc7OTk1Kzk3PDMAADInLz0/Ozc2NDA+PUAvOjE0LDQ5PDw7Oz05NTUsLQAANDU3PjYvLCgqM0E6OCw7MzoyODY3NjY+OD84Py4zAAA6PD1ENyoqIicrPj9BPkRDRzs2MTY5NTs5PjAwJTAAAD1BPjAsKTEoLDI0NjY7Pjo5LC8vNDQ1Ni02LC8kMwAAOTkzJSUqMDAqLFo/QT9EODgpNDE0LTQvJyUdJSc9AAA+PCkRHTE9OipKQlQzNTowMSEvLSkeKSAbGB4cHjAAADsuIBskMi8wUEtOWmVEQjoxJzAtLywyJSUXGxokLgAAKCEjLTI3KCkkQ0NNKzYrMyQfICc1OTUhIBggGx8nAAAkGRwoKC4mJy0oTiMjKiMeEAsbKTxCPis1LDQrLCkAABggJzMxMS8nKyQhIRYeExULDyA1QDUzHi8yPjMsKgAAMjApLS88NSkmJh0ZDhwgIBsaKTI2KjgsNzZIQzcpAAAxMTY7OzUtJiQnHyIZIicxMTAyMj06QSssLT9JOS0AAD82KSgwNjgzLSsnLyo5PkI7ODkvNj9MQzgqL0I7NAAAQzg1ODg0OkFBOjE2Mz89PDc+PjYvNEJAPDEuMjM0AABTPzYyNTg4Ozc4M0A1Qjo8Nj1EPjc9RDw4LCosNjsAAEg/PjU4LSsyNkA2QjIyJS01QkVCMjM8OD00NTI1MQAAOTo0LTQqJB4gLjRINj4uPTQ/RENBP0dAOjQ4Pzw9AAAtNSwrKyIkJSYwMUQ9OzE2Nz9MSEQ5QENFQjU3NTcAADU6LTItJCgkHiAnOTc4OTg5PUNHQkA8QURGOzw5PQAAOjkyLSYmMzgxLzE1NiwvLTNBQ0o+QDdAQj0tLzE3AABDOzksLSo0NTg4Ny8wOjQ5JzkoPjVBMjg7NjM5OjkAAEE4NiUnKjQyNTw/MDQ2OjkuNys0NEA+PzcvIyowOAAAOS0pICUrNTE1OENBRUZBOCcsJzU1Njw9OzEsNzY3AAArLiQlITE4PS0xQU9MQTwxNDY1NTIyOEJEPjQwLjYAAC4yKistMDEvICYyTlBNPTQqKzMyNC0xLTU1Ozk7OQAALzUzOzEwJTAhJCg2Mzg0NiwpLTI5LS8oLSguJzIrAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 2606,
+        "params": {
+          "methodId": "ophys.export_tiff",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "firstFrame": 8,
+            "lastFrame": 7
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
         "method": "data.frame",
         "id": 27,
         "params": {

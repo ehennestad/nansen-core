@@ -2,7 +2,8 @@
  *
  * ROIs are curated here, as in dev's roimanager: selected (Ctrl-click for several), classified (a, r, u), deleted,
  * moved by dragging, merged, and added: as a circle, drawn freehand, or detected around a click (rois.detect).
- * The wheel zooms and dragging the image pans it; the image can be saved as PNG, and the ROIs shown as a gallery.
+ * The wheel zooms and dragging the image pans it; the image can be saved as PNG, the stack exported as TIFF, and the
+ * ROIs shown as a gallery.
  */
 (function () {
   "use strict";
@@ -19,17 +20,39 @@
     return d.dataType ? IMAGE_TYPES.includes(d.dataType) : ARRAY_ADAPTERS.includes(d.fileAdapter);
   };
 
-  /** Decode a data.frame result onto a canvas of its own size, gray, with ROIs filled over it.
+  /* Colormaps: colours at even steps from the lowest value to the highest, interpolated to 256 */
+  const COLORMAPS = {
+    gray: [[0, 0, 0], [255, 255, 255]],
+    viridis: [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]],
+    magma: [[0, 0, 4], [81, 18, 124], [183, 55, 121], [252, 137, 97], [252, 253, 191]],
+    hot: [[0, 0, 0], [230, 0, 0], [255, 210, 0], [255, 255, 255]],
+    green: [[0, 0, 0], [0, 255, 70]],
+  };
+  const tables = {};
+  function lut(name) {
+    if (tables[name]) return tables[name];
+    const stops = COLORMAPS[name] || COLORMAPS.gray;
+    const table = new Uint8ClampedArray(256 * 3);
+    for (let v = 0; v < 256; v++) {
+      const at = v / 255 * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(at)), f = at - i;
+      for (let c = 0; c < 3; c++) table[3 * v + c] = Math.round(stops[i][c] + (stops[i + 1][c] - stops[i][c]) * f);
+    }
+    return (tables[name] = table);
+  }
+  N.colormaps = Object.keys(COLORMAPS);
+
+  /** Decode a data.frame result onto a canvas of its own size, in a colormap, with ROIs filled over it.
    * Rejected ROIs are dimmed (or left out with hideRejected); selected ROIs are drawn in full color. */
-  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false) {
+  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false, colormap = "gray") {
     canvas.width = frame.width;
     canvas.height = frame.height;
     const ctx = canvas.getContext("2d");
     const bytes = atob(frame.pixels);
     const image = ctx.createImageData(frame.width, frame.height);
+    const table = lut(colormap);
     for (let i = 0; i < bytes.length; i++) {
-      const v = bytes.charCodeAt(i);
-      image.data[4 * i] = v; image.data[4 * i + 1] = v; image.data[4 * i + 2] = v; image.data[4 * i + 3] = 255;
+      const v = 3 * bytes.charCodeAt(i);
+      image.data[4 * i] = table[v]; image.data[4 * i + 1] = table[v + 1]; image.data[4 * i + 2] = table[v + 2]; image.data[4 * i + 3] = 255;
     }
     if (showRois && rois) {
       rois.forEach((roi, n) => {
@@ -91,7 +114,7 @@
   N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = []) {
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
-      zoom: 1, drag: null };
+      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [] };
     const canvas = h("canvas.viewer-canvas");
     const overlay = h("canvas.viewer-overlay");
     const holder = h("div.viewer-holder", canvas, overlay);
@@ -100,7 +123,10 @@
     const frameLabel = h("span.viewer-frame.mono", "");
     const playButton = h("button.btn.ghost.icon.small.viewer-play", { title: "Play", on: { click: () => toggle() } }, N.icon("play", 14));
     const mode = h("select.input.viewer-mode", { on: { change: () => { state.mode = mode.value; show(); } } },
-      h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "max" }, "Maximum"));
+      h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "max" }, "Maximum"),
+      h("option", { value: "std" }, "Standard deviation"), h("option", { value: "correlation" }, "Local correlation"));
+    const colormapPick = h("select.input.viewer-colormap", { title: "Colormap", on: { change: () => { state.colormap = colormapPick.value; redraw(); } } },
+      N.colormaps.map((name) => h("option", { value: name }, name)));
     const low = h("input.input.viewer-low", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.low = Number(low.value); show(); } } });
     const high = h("input.input.viewer-high", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.high = Number(high.value); show(); } } });
     const auto = h("input", { type: "checkbox", checked: true, on: { change: () => { state.auto = auto.checked; show(); } } });
@@ -114,7 +140,7 @@
       if (select.options.length !== count) N.fill(select, Array.from({ length: count }, (_, i) => h("option", { value: i, selected: i === value }, `${label} ${i + 1}`)));
       select.style.display = count > 1 ? "" : "none";
     };
-    const exportButton = h("button.btn.ghost.icon.small.viewer-export", { title: "Save the image as PNG", on: { click: () => saveImage() } }, N.icon("download", 14));
+    const exportButton = h("button.btn.ghost.icon.small.viewer-export", { title: "Export", on: { click: () => exportMenu() } }, N.icon("download", 14));
     const zoomLabel = h("button.btn.ghost.small.viewer-zoom.mono", { title: "Fit the image (double-click it)", style: { display: "none" }, on: { click: () => zoomTo(1) } }, "");
     const status = h("div.viewer-status.muted", "Loading…");
     const where = h("span.viewer-where.mono.muted", "");
@@ -182,6 +208,16 @@
         ctx.beginPath();
         drag.points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
         ctx.stroke();
+      }
+      if (state.tool === "polygon" && state.polygon.length) {
+        ctx.strokeStyle = "rgba(255, 210, 60, 0.95)";
+        ctx.fillStyle = "rgba(255, 210, 60, 0.95)";
+        ctx.lineWidth = 2 * last.width / width;
+        ctx.beginPath();
+        state.polygon.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.stroke();
+        const dot = 3 * last.width / width;
+        state.polygon.forEach(([x, y]) => ctx.fillRect(x - dot / 2, y - dot / 2, dot, dot));
       }
       if (drag && drag.kind === "move" && (drag.dy || drag.dx)) {
         ctx.fillStyle = "rgba(255, 210, 60, 0.55)";
@@ -257,6 +293,31 @@
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    canvas.addEventListener("click", (event) => {
+      if (!last || !state.rois || state.tool !== "polygon") return;
+      const [py, px] = pointAt(event);
+      const points = state.polygon;
+      const first = points[0];
+      const near = first && Math.hypot(first[0] - px, first[1] - py) < 1.5 && points.length >= 3;
+      if (near) { finishPolygon(); return; }   // a click on the first corner closes it
+      const previous = points[points.length - 1];
+      if (!previous || previous[0] !== px || previous[1] !== py) points.push([px, py]);
+      status.textContent = `${points.length} corner(s): click the first one or double-click to finish, Esc to start again`;
+      drawOverlay();
+    });
+    canvas.addEventListener("dblclick", (event) => {
+      if (state.tool !== "polygon") return;
+      event.stopPropagation();
+      finishPolygon();
+    });
+    function finishPolygon() {
+      const points = state.polygon;
+      state.polygon = [];
+      drawOverlay();
+      const pixels = points.length >= 3 ? N.polygonPixels(points, last.height, last.width) : [];
+      if (pixels.length) edit({ add: [{ pixels }] });
+      else status.textContent = "A polygon needs three corners or more around some pixels";
+    }
     canvas.addEventListener("click", async (event) => {
       if (!last || !state.rois || (state.tool !== "circle" && state.tool !== "detect")) return;
       const [y, x] = pixelAt(event);
@@ -283,24 +344,31 @@
       ["clear", "retry", "Clear (u)", () => classify(null)],
       ["delete", "trash", "Delete (Delete)", () => remove()],
     ].map(([name, icon, title, run]) => h(`button.btn.ghost.icon.small.roi-${name}`, { title, on: { click: run } }, N.icon(icon, 13)));
+    const growButton = h("button.btn.ghost.icon.small.roi-grow", { title: "Grow the selected ROI by a pixel (+)", on: { click: () => reshape(1) } }, N.icon("plus", 13));
+    const shrinkButton = h("button.btn.ghost.icon.small.roi-shrink", { title: "Shrink the selected ROI by a pixel (-)", on: { click: () => reshape(-1) } }, N.icon("minus", 13));
+    const undoButton = h("button.btn.ghost.icon.small.roi-undo", { title: "Undo (Ctrl+Z)", on: { click: () => undo() } }, N.icon("undo", 13));
+    const redoButton = h("button.btn.ghost.icon.small.roi-redo", { title: "Redo (Ctrl+Shift+Z)", on: { click: () => redo() } }, N.icon("redo", 13));
     const mergeButton = h("button.btn.ghost.icon.small.roi-merge", { title: "Merge the selected ROIs into one (m); Ctrl-click selects several", on: { click: () => merge() } }, N.icon("merge", 13));
     const galleryButton = h("button.btn.ghost.icon.small.viewer-gallery", { title: "Show the ROIs as a gallery", on: { click: () => gallery() } }, N.icon("grid", 13));
     const tools = [["circle", "circle", "Add a round ROI where you click", ".viewer-add"],
       ["draw", "freehand", "Draw an ROI: drag around the cell", ".viewer-draw"],
+      ["polygon", "polygon", "Draw an ROI as a polygon: click its corners, then the first one again or double-click", ".viewer-polygon"],
       ["detect", "crosshair", "Detect the cell around where you click", ".viewer-detect"]].map(([name, icon, title, cls]) =>
       h(`button.btn.ghost.icon.small${cls}`, { title, dataset: { tool: name }, on: { click: () => setTool(state.tool === name ? null : name) } }, N.icon(icon, 13)));
     function setTool(name) {
       state.tool = name;
+      state.polygon = [];
+      drawOverlay();
       tools.forEach((b) => b.classList.toggle("active", b.dataset.tool === name));
       canvas.classList.toggle("adding", name === "circle" || name === "detect");
-      canvas.classList.toggle("drawing", name === "draw");
+      canvas.classList.toggle("drawing", name === "draw" || name === "polygon");
     }
     const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of a round ROI (px); Detect looks twice as far",
       on: { change: () => { state.radius = Math.max(1, Math.round(Number(radius.value) || 1)); } } });
     const hide = h("input", { type: "checkbox", on: { change: () => { state.hideRejected = hide.checked; redraw(); renderList(); } } });
     const roiList = h("ul.viewer-roi-list");
     const roiPanel = h("div.viewer-roi-panel",
-      h("div.viewer-roi-actions", actions, mergeButton, h("div.spacer"), galleryButton),
+      h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
       h("div.viewer-roi-actions.viewer-roi-tools", tools, h("div.spacer"), radius),
       h("label.viewer-hide", hide, "Hide rejected"),
       roiList);
@@ -345,10 +413,13 @@
         roi.classification ? h("span.pill." + (roi.classification === "accepted" ? "good" : "bad"), roi.classification) : null)));
       actions.forEach((b) => { b.disabled = state.selection.size === 0; });
       mergeButton.disabled = state.selection.size < 2;
+      growButton.disabled = shrinkButton.disabled = state.selection.size !== 1;
+      undoButton.disabled = !state.undo.length;
+      redoButton.disabled = !state.redo.length;
       galleryButton.disabled = !state.rois || !state.rois.length;
       roiPanel.style.display = state.rois && state.showRois ? "" : "none";
     }
-    function redraw() { if (last) paint(canvas, last, state.rois, state.showRois, state.selection, state.hideRejected); drawOverlay(); }
+    function redraw() { if (last) paint(canvas, last, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap); drawOverlay(); }
     let onSelect = null;   // the gallery, while it is open
     /** Select an ROI (null for none); with add, add it to the selection, or take it out. */
     function select(id, add = false) {
@@ -366,9 +437,19 @@
       if (item) item.scrollIntoView({ block: "nearest" });
       if (onSelect) onSelect();
     }
-    async function edit(change) {
+    /** The ROIs as they are, to restore (undo and redo). */
+    const snapshot = () => (state.rois || []).map((r) => ({ id: r.id, pixels: r.pixels, classification: r.classification || null }));
+    // Edits run one after the other, so an undo or redo acts on what the edits before it left
+    let queue = Promise.resolve();
+    const enqueue = (task) => (queue = queue.then(task, task));
+    function edit(change, history = "record") { return enqueue(() => apply(change, history)); }
+    async function apply(change, history) {
+      const before = snapshot();
       try {
         const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, ...change });
+        if (history === "record") { state.undo.push(before); state.redo = []; }
+        else if (history === "undo") state.redo.push(before);
+        else if (history === "redo") state.undo.push(before);
         state.rois = result.rois;
         if (result.added.length) { state.selected = result.added[0]; state.selection = new Set([state.selected]); }
         state.selection = new Set([...state.selection].filter((id) => state.rois.some((r) => r.id === id)));
@@ -381,6 +462,28 @@
       } catch (error) { N.showError(error, "Could not change the ROIs"); }
     }
     const selectedIds = () => [...state.selection].sort((a, b) => a - b);
+    function undo() { enqueue(() => (state.undo.length ? apply({ restore: state.undo.pop() }, "undo") : null)); }
+    function redo() { enqueue(() => (state.redo.length ? apply({ restore: state.redo.pop() }, "redo") : null)); }
+    /** Grow the selected ROI by its 4-neighbours inside the image (by 1), or keep only pixels whose 4-neighbours are all in it (by -1). */
+    function reshape(by) {
+      if (state.selection.size !== 1 || !last) return;
+      const roi = state.rois.find((r) => r.id === state.selected);
+      const has = new Set(roi.pixels.map(([y, x]) => `${y},${x}`));
+      const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      let pixels;
+      if (by > 0) {
+        const out = new Map(roi.pixels.map(([y, x]) => [`${y},${x}`, [y, x]]));
+        roi.pixels.forEach(([y, x]) => sides.forEach(([a, b]) => {
+          const ny = y + a, nx = x + b;
+          if (ny >= 0 && ny < last.height && nx >= 0 && nx < last.width) out.set(`${ny},${nx}`, [ny, nx]);
+        }));
+        pixels = [...out.values()];
+      } else {
+        pixels = roi.pixels.filter(([y, x]) => sides.every(([a, b]) => has.has(`${y + a},${x + b}`)));
+        if (!pixels.length) { status.textContent = `ROI ${roi.id} is too small to shrink`; return; }
+      }
+      edit({ pixels: [{ id: roi.id, pixels }] });
+    }
     function classify(label) { if (state.selection.size) edit({ classify: selectedIds().map((id) => ({ id, classification: label })) }); }
     function remove() { if (state.selection.size) edit({ remove: selectedIds() }); }
     function merge() {
@@ -395,8 +498,13 @@
       if (onSelect) return;   // the gallery has the keys
       const order = visible().map((r) => r.id);
       const at = order.indexOf(state.selected);
-      if (event.key === "Escape" && state.tool) { setTool(null); event.stopPropagation(); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { if (event.shiftKey) redo(); else undo(); }
+      else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") redo();
+      else if (event.key === "Escape" && state.tool === "polygon" && state.polygon.length) { state.polygon = []; drawOverlay(); event.stopPropagation(); }
+      else if (event.key === "Escape" && state.tool) { setTool(null); event.stopPropagation(); }
       else if (event.ctrlKey || event.metaKey) return;
+      else if (event.key === "+" || event.key === "=") reshape(1);
+      else if (event.key === "-") reshape(-1);
       else if (event.key === "a") classify("accepted");
       else if (event.key === "r") classify("rejected");
       else if (event.key === "u") classify(null);
@@ -431,17 +539,71 @@
       N.toast("Image saved", name, "success", 2500);
     }
 
+    /** Export: the image as shown, as PNG, or frames of the stack as a TIFF file (ophys.export_tiff, when the project has it). */
+    async function exportMenu() {
+      let method = null;
+      try {
+        method = (await app.client.request("methods.list", { entityType })).find((m) => m.id === "ophys.export_tiff") || null;
+      } catch (error) { /* the PNG is still there */ }
+      const items = [{ label: "Image as PNG", icon: "download", onClick: () => saveImage() }];
+      if (method && state.frames > 1) items.push({ label: "Stack as TIFF…", icon: "layers", onClick: () => exportTiff(method) });
+      N.menu(exportButton, items);
+    }
+
+    function exportTiff(method) {
+      const form = N.schemaForm(method.options || {}, { stack: variable, firstFrame: 1, lastFrame: state.frames,
+        channel: state.channel + 1, plane: state.plane + 1 });
+      N.dialog({
+        title: `Export ${variable} as TIFF`, narrow: true,
+        content: h("div.viewer-export-form", form.el),
+        buttons: [
+          { label: "Cancel" },
+          { label: "Export", kind: "primary", icon: "download", onClick: async (close) => {
+            const problems = form.validate();
+            if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
+            close();
+            N.toast("Exporting", `${variable} as TIFF…`);
+            try {
+              const result = await app.client.request("methods.run", { methodId: method.id, entityType, keys: [key], options: form.getValue() });
+              const out = (result.results || [])[0] || {};
+              N.toast("Exported", `${out.frames} frames to ${out.path}`, "success");
+            } catch (error) { N.showError(error, "Could not export the stack"); }
+          } },
+        ],
+      });
+    }
+
     /** The ROIs as tiles of the image around each, for going through them by eye: sorted, selected, classified. */
     function gallery() {
       if (!last || !state.rois) return;
       const bytes = atob(last.pixels);
       const value = (y, x) => (y >= 0 && y < last.height && x >= 0 && x < last.width ? bytes.charCodeAt(y * last.width + x) : 0);
       const brightness = (roi) => roi.pixels.reduce((sum, [y, x]) => sum + value(y, x), 0) / Math.max(1, roi.pixels.length);
-      const sorts = { id: (r) => r.id, area: (r) => -r.pixels.length, brightness: (r) => -brightness(r) };
+      const peaks = {};   // ROI id -> its largest ΔF/F, once asked for
+      const sorts = { id: (r) => r.id, area: (r) => -r.pixels.length, brightness: (r) => -brightness(r),
+        peak: (r) => (peaks[r.id] === undefined ? Infinity : -peaks[r.id]) };
+      async function loadPeaks() {
+        const count = (await app.client.request("data.traces", { entityType, key, variables: ["RoiSignals_Dff"], columns: [] })).traces[0].count;
+        // ROIs added since the signals were extracted have higher ids and no column: the others are the first columns
+        const kept = state.rois.filter((r) => r.classification !== "rejected");
+        const map = N.roiColumns(state.rois, count) ||
+          (kept.length > count ? new Map(kept.slice(0, count).map((r, i) => [r.id, i])) : null);
+        if (!map) return;
+        const ids = [...map.keys()];
+        const result = await app.client.request("data.traces", { entityType, key, variables: ["RoiSignals_Dff"], columns: ids.map((id) => map.get(id)), maxPoints: 4000 });
+        result.traces[0].columns.forEach((trace, i) => { peaks[ids[i]] = Math.max(...trace.values.filter((v) => v !== null)); });
+      }
       let sortBy = "id";
       const grid = h("div.roi-gallery");
-      const sortPick = h("select.input.roi-gallery-sort", { on: { change: () => { sortBy = sortPick.value; render(); } } },
-        h("option", { value: "id" }, "By id"), h("option", { value: "area" }, "Largest first"), h("option", { value: "brightness" }, "Brightest first"));
+      const sortPick = h("select.input.roi-gallery-sort", { on: { change: async () => {
+        sortBy = sortPick.value;
+        if (sortBy === "peak" && !Object.keys(peaks).length) {
+          try { await loadPeaks(); } catch (error) { N.showError(error, "Could not read the ΔF/F of the ROIs"); }
+        }
+        render();
+      } } },
+        h("option", { value: "id" }, "By id"), h("option", { value: "area" }, "Largest first"), h("option", { value: "brightness" }, "Brightest first"),
+        signalVariables.includes("RoiSignals_Dff") ? h("option", { value: "peak" }, "Largest ΔF/F peak first") : null);
       const ordered = () => visible().slice().sort((a, b) => sorts[sortBy](a) - sorts[sortBy](b) || a.id - b.id);
       function tile(roi) {
         const half = 8, size = 2 * half + 1;
@@ -520,7 +682,7 @@
         playButton.disabled = slider.disabled;
         if (state.auto) { state.low = frame.low; state.high = frame.high; low.value = String(frame.low); high.value = String(frame.high); }
         frameLabel.textContent = state.mode === "frame" ? `${state.frame + 1} / ${frame.frames}` : `${frame.frames} frames`;
-        paint(canvas, frame, state.rois, state.showRois, state.selection, state.hideRejected);
+        paint(canvas, frame, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap);
         if (resized) layout(); else drawOverlay();
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
@@ -553,7 +715,7 @@
       h("div.viewer-bar",
         playButton, slider, frameLabel, mode, channelPick, planePick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, exportButton),
+        colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel));
