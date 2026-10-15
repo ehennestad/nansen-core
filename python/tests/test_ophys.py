@@ -210,3 +210,33 @@ def test_update_rois_classifies_removes_and_adds():
         with pytest.raises(NansenError) as error:
             update_rois(document, **bad)
         assert error.value.code == "invalid-params"
+
+
+def test_morphology_for_quicky():
+    ring = np.zeros((7, 7), dtype=bool)
+    ring[1:6, 1:6] = True
+    ring[2:5, 2:5] = False
+    ring[3, 3] = True
+    filled = ophys["fill_holes"](ring)
+    assert filled[1:6, 1:6].all() and filled.sum() == 25
+    touching = np.zeros((6, 6), dtype=bool)
+    touching[0:2, 0:2] = True
+    touching[3:5, 3:5] = True
+    assert ophys["clear_border"](touching).sum() == 4
+    dot = np.zeros((9, 9), dtype=bool)
+    dot[4, 4] = True
+    grown = ophys["dilate_by"](dot, ophys["disk"](2))
+    assert grown.sum() == 13 and (ophys["erode_by"](grown, ophys["disk"](2)) == dot).all()
+    edge = np.ones((5, 5), dtype=bool)
+    assert ophys["erode_by"](edge, ophys["disk"](1)).all()   # the outside counts as foreground
+    assert ophys["_half_up"](2.5) == 3 and ophys["_half_up"](1.5) == 2
+
+
+def test_binning_and_moving_mean():
+    stack = np.arange(2 * 2 * 7, dtype=np.float64).reshape(2, 2, 7)
+    binned = ophys["bin_max"](stack, 3)
+    assert binned.shape == (2, 2, 2) and (binned[0, 0] == [2, 5]).all()
+    assert ophys["bin_max"](stack, 10).shape == (2, 2, 1)
+    trace = np.arange(6, dtype=np.float64).reshape(1, 1, 6)
+    # window 4: 2 before and 1 after, as MATLAB's movmean(x, 4)
+    assert np.allclose(ophys["moving_mean"](trace, 4)[0, 0], [0.5, 1, 1.5, 2.5, 3.5, 4])

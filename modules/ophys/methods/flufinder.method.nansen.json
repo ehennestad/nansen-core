@@ -1,0 +1,36 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.flufinder",
+  "version": "1.0.0",
+  "title": "Detect ROIs (flufinder)",
+  "category": "Two-photon/Segmentation",
+  "entityType": "*",
+  "description": "Runs flufinder.runAutoSegmentation from NANSEN dev (Quicky's algorithm, with its shape detection) on the stack, when it is on the MATLAB path, and saves its ROIs.",
+  "implementations": {
+    "matlab": "ophys.flufinder"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "ROIs",
+        "description": "Variable the result is saved to."
+      },
+      "roiDiameter": {
+        "type": "number",
+        "default": 12,
+        "exclusiveMinimum": 0,
+        "title": "Cell diameter (px)"
+      }
+    }
+  }
+}

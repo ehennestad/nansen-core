@@ -1,0 +1,68 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.quicky",
+  "version": "1.0.0",
+  "title": "Detect ROIs (Quicky)",
+  "category": "Two-photon/Segmentation",
+  "entityType": "*",
+  "description": "dev's Quicky (flufinder) detection, natively in both languages: frames are binned by their maximum, the smooth and slow background taken out, each bin thresholded at a percentile and cleaned with disk-shaped morphology, and the places where the thresholded areas come back in at least observationsRequired bins become ROIs. Saved as ophys.detect_rois saves them. Areas are compared deterministically (by centroids within 3 px of their median), where flufinder clusters them, and its shape detection is not part of it; ophys.flufinder runs flufinder itself.",
+  "implementations": {
+    "python": "ophys_methods:quicky",
+    "matlab": "ophys.quicky"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "ROIs",
+        "description": "Variable the result is saved to."
+      },
+      "roiDiameter": {
+        "type": "number",
+        "default": 12,
+        "exclusiveMinimum": 0,
+        "title": "Cell diameter (px)"
+      },
+      "binSize": {
+        "type": "integer",
+        "default": 5,
+        "minimum": 1,
+        "title": "Frames per bin"
+      },
+      "smoothingSigma": {
+        "type": "number",
+        "default": 20,
+        "exclusiveMinimum": 0,
+        "title": "Background smoothing (px)"
+      },
+      "binarizationPercentile": {
+        "type": "number",
+        "default": 93,
+        "minimum": 0,
+        "maximum": 100,
+        "title": "Threshold percentile"
+      },
+      "observationsRequired": {
+        "type": "integer",
+        "default": 2,
+        "minimum": 1,
+        "title": "Bins a cell must be seen in"
+      },
+      "maxRois": {
+        "type": "integer",
+        "default": 1000,
+        "minimum": 1,
+        "title": "Most ROIs"
+      }
+    }
+  }
+}

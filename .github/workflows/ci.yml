@@ -109,9 +109,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install the package, suite2p (with CPU torch) and DeepInterpolation
+      - name: Install the package, suite2p (with CPU torch and torchvision, built together) and DeepInterpolation
         run: |
-          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
           pip install -e ".[test,npy,ophys]" suite2p tensorflow-cpu h5py "git+https://github.com/AllenInstitute/deepinterpolation"
 
       - name: Run the wrappers with the real tools
@@ -159,9 +159,9 @@ jobs:
 
       - name: Clone NoRMCorre, CaImAn-MATLAB, EXTRACT, Flow-Registration and NANSEN dev (for imviewer)
         run: |
-          mkdir tools
+          mkdir external-tools
           for repo in flatironinstitute/NoRMCorre flatironinstitute/CaImAn-MATLAB schnitzer-lab/EXTRACT-public FlowRegSuite/flow_registration VervaekeLab/NANSEN; do
-            git clone -q --depth 1 "https://github.com/$repo" "tools/$(basename "$repo")"
+            git clone -q --depth 1 "https://github.com/$repo" "external-tools/$(basename "$repo")"
           done
 
       - uses: matlab-actions/setup-matlab@v2
@@ -185,4 +185,4 @@ jobs:
       - name: Run the wrappers with the real tools
         uses: matlab-actions/run-command@v2
         with:
-          command: addpath("matlab"); runExternalToolTests("tools");
+          command: addpath("matlab"); runExternalToolTests("external-tools");

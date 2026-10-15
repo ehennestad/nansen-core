@@ -120,6 +120,19 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             end
         end
 
+        function flufinderFindsTheCells(testCase)
+            result = testCase.Project.run("ophys.flufinder", {testCase.Session}, ...
+                Options=struct("stack", "TwoPhotonSeries_Corrected", "roiDiameter", 8));
+            testCase.verifyGreaterThanOrEqual(result{1}.rois, 8);
+            rois = ophys.internal.roiList(testCase.Project.load(testCase.Session, "RoiArray", Cached=false));
+            centersFound = cell2mat(cellfun(@(r) reshape(double(r.center), 1, 2) + 1, rois(:), UniformOutput=false));
+            matched = 0;
+            for i = 1:size(testCase.Centers, 1)
+                matched = matched + any(vecnorm(centersFound - testCase.Centers(i, :), 2, 2) <= 4);
+            end
+            testCase.verifyGreaterThanOrEqual(matched, 8);
+        end
+
         function imviewerOpensTheStack(testCase)
             before = findall(groot, "Type", "figure");
             result = testCase.Project.run("ophys.open_in_imviewer", {testCase.Session}, ...

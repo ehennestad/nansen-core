@@ -170,11 +170,34 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEmpty(ophys.internal.atlasRegion(atlas, 9, 9));
         end
 
+        function morphologyForQuicky(testCase)
+            ring = false(7);
+            ring(2:6, 2:6) = true;
+            ring(3:5, 3:5) = false;
+            ring(4, 4) = true;
+            testCase.verifyEqual(nnz(ophys.internal.fillHoles(ring)), 25);
+            touching = false(6);
+            touching(1:2, 1:2) = true;
+            touching(4:5, 4:5) = true;
+            testCase.verifyEqual(nnz(ophys.internal.clearBorder(touching)), 4);
+            dot = false(9);
+            dot(5, 5) = true;
+            grown = ophys.internal.dilateBy(dot, ophys.internal.diskOffsets(2));
+            testCase.verifyEqual(nnz(grown), 13);
+            testCase.verifyEqual(ophys.internal.erodeBy(grown, ophys.internal.diskOffsets(2)), dot);
+            testCase.verifyTrue(all(ophys.internal.erodeBy(true(5), ophys.internal.diskOffsets(1)), "all"));
+            stack = reshape(0:27, 7, 2, 2);
+            stack = permute(stack, [3, 2, 1]);   % 2 x 2 x 7, as numpy's arange(28).reshape(2, 2, 7)
+            binned = ophys.internal.binMax(stack, 3);
+            testCase.verifyEqual(squeeze(binned(1, 1, :))', [2, 5]);
+            testCase.verifyEqual(squeeze(ophys.internal.movingMean(reshape(0:5, 1, 1, 6), 4))', [0.5, 1, 1.5, 2.5, 3.5, 4], AbsTol=1e-12);
+        end
+
         function wrappersSayWhatIsMissing(testCase)
             if exist("normcorre", "file") ~= 2
                 testCase.verifyError(@() ophys.normcorre(struct(), struct(), []), "nansen:DependencyMissing");
             end
-            for name = ["extract", "flowreg", "caimanDeconvolution"]
+            for name = ["extract", "flowreg", "caimanDeconvolution", "flufinder"]
                 testCase.verifyError(@() feval("ophys." + name, struct(), struct(), []), "nansen:DependencyMissing", name);
             end
             if ~exist("imviewer", "file")

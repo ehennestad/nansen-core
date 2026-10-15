@@ -143,14 +143,19 @@ def correlation_image(stack):
     return np.divide(total, count, out=np.zeros_like(total), where=count > 0)
 
 
-def components(mask):
-    """The 4-connected areas of a boolean image, each as its (row, column) pixels in row-major order.
+NEIGHBOURS = {4: ((-1, 0), (1, 0), (0, -1), (0, 1)),
+              8: ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))}
+
+
+def components(mask, connectivity=4):
+    """The 4- (or 8-) connected areas of a boolean image, each as its (row, column) pixels in row-major order.
 
     Areas come in the row-major order of their first pixel.
     """
     height, width = mask.shape
     seen = np.zeros_like(mask, dtype=bool)
     found = []
+    steps = NEIGHBOURS[connectivity]
     for seed in np.flatnonzero(mask):
         y, x = divmod(int(seed), width)
         if seen[y, x]:
@@ -160,7 +165,7 @@ def components(mask):
         while queue:
             y, x = queue.pop()
             pixels.append((y, x))
-            for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+            for ny, nx in ((y + dy, x + dx) for dy, dx in steps):
                 if 0 <= ny < height and 0 <= nx < width and mask[ny, nx] and not seen[ny, nx]:
                     seen[ny, nx] = True
                     queue.append((ny, nx))
@@ -173,6 +178,210 @@ def _roi(number, pixels):
     columns = np.array([p[1] for p in pixels], dtype=np.float64)
     return {"id": number, "area": len(pixels), "center": [round_to(rows.mean(), 2), round_to(columns.mean(), 2)],
             "pixels": [[int(y), int(x)] for y, x in pixels]}
+
+
+def quicky(entity, options, context):
+    """dev's Quicky (flufinder) ROI detection: cells as places where thresholded activity recurs.
+
+    Frames are binned by their maximum, the smooth background (a circular Gaussian) and the slow
+    background (a moving mean over 20 bins) are taken out, and each bin is thresholded at a percentile of
+    all values and cleaned with disk-shaped morphology. Connected areas that come back at the same place in
+    several bins make an ROI: the most observed pixel picks the areas around it, their centroids within
+    3 px of the median, and the ROI is the largest area of their overlap image above the mid-point of its
+    50th and 95th percentile, holes filled. ROIs overlapping an earlier one by 75 % or more are left out.
+    """
+    stack = _load_stack(entity, options["stack"], context)
+    height, width, frames = stack.shape
+    diameter = options["roiDiameter"]
+    binned = bin_max(stack.astype(np.float64), options["binSize"])
+    context.progress(0.1, "removing background")
+    data = binned - gaussian_circular(binned, options["smoothingSigma"])
+    data = data - moving_mean(data, 20)
+    data = (data - data.min()) / max(data.max() - data.min(), np.finfo(float).tiny)
+    threshold = float(_percentile(data.reshape(-1, 1), options["binarizationPercentile"])[0])
+    small, large = disk(_half_up(diameter / 6)), disk(_half_up(diameter / 3))
+    areas = []
+    for b in range(data.shape[2]):
+        context.check_cancelled()
+        bw = fill_holes(data[:, :, b] > threshold)
+        bw = dilate_by(erode_by(bw, small), small)
+        bw = dilate_by(bw, large)
+        bw = clear_border(bw)
+        bw = erode_by(bw, large)
+        bw = dilate_by(erode_by(bw, large), large)
+        areas += components(bw, 8)
+        context.progress(0.1 + 0.6 * (b + 1) / data.shape[2], f"bin {b + 1}/{data.shape[2]}")
+    if areas:
+        sizes = np.array([len(a) for a in areas], dtype=np.float64)
+        largest = float(_percentile(sizes.reshape(-1, 1), 99)[0])
+        areas = [a for a in areas if len(a) <= largest]
+    rois = unique_rois(areas, height, width, diameter, options["observationsRequired"], options["maxRois"])
+    document = {"imageSize": [height, width], "rois": [_roi(n + 1, pixels) for n, pixels in enumerate(rois)]}
+    _save(entity, options["output"], document, context)
+    context.log(f"{_name(entity)}: {len(rois)} ROIs from {len(areas)} areas in {data.shape[2]} bins")
+    return {"rois": len(rois), "areas": [len(r) for r in rois]}
+
+
+def _half_up(value):
+    """value rounded to a whole number, half away from zero (as MATLAB's round, for positive values)."""
+    return int(math.floor(value + 0.5))
+
+
+def bin_max(stack, size):
+    """The maximum of each run of size frames (one bin of all frames when there are fewer)."""
+    count = max(1, stack.shape[2] // size)
+    size = stack.shape[2] if stack.shape[2] < size else size
+    return stack[:, :, :count * size].reshape(stack.shape[0], stack.shape[1], count, size).max(axis=3)
+
+
+def gaussian_circular(stack, sigma):
+    """Each frame smoothed by a Gaussian of sigma pixels, wrapping around the edges (by FFT)."""
+    height, width = stack.shape[:2]
+    gy = np.exp(-2 * np.pi ** 2 * sigma ** 2 * np.fft.fftfreq(height) ** 2)
+    gx = np.exp(-2 * np.pi ** 2 * sigma ** 2 * np.fft.fftfreq(width) ** 2)
+    return np.real(np.fft.ifft2(np.fft.fft2(stack, axes=(0, 1)) * (gy[:, None] * gx[None, :])[:, :, None], axes=(0, 1)))
+
+
+def moving_mean(stack, window):
+    """The mean over a window of frames around each frame, as MATLAB's movmean: window // 2 before and
+    window - window // 2 - 1 after, cut at the ends."""
+    frames = stack.shape[2]
+    sums = np.concatenate([np.zeros(stack.shape[:2] + (1,)), np.cumsum(stack, axis=2)], axis=2)
+    out = np.empty_like(stack)
+    for t in range(frames):
+        first, last = max(0, t - window // 2), min(frames, t + window - window // 2)
+        out[:, :, t] = (sums[:, :, last] - sums[:, :, first]) / (last - first)
+    return out
+
+
+def disk(radius):
+    """The offsets of a disk: dy^2 + dx^2 <= radius^2."""
+    return [(dy, dx) for dy in range(-radius, radius + 1) for dx in range(-radius, radius + 1) if dy * dy + dx * dx <= radius * radius]
+
+
+def _shifted(mask, dy, dx, fill):
+    """mask moved so that out[y, x] = mask[y + dy, x + dx], fill outside."""
+    height, width = mask.shape
+    out = np.full_like(mask, fill)
+    out[max(0, -dy):min(height, height - dy), max(0, -dx):min(width, width - dx)] = \
+        mask[max(0, dy):min(height, height + dy), max(0, dx):min(width, width + dx)]
+    return out
+
+
+def dilate_by(mask, offsets):
+    out = np.zeros_like(mask)
+    for dy, dx in offsets:
+        out |= _shifted(mask, dy, dx, False)
+    return out
+
+
+def erode_by(mask, offsets):
+    """Erosion that treats the outside of the image as foreground, as MATLAB's imerode does."""
+    out = np.ones_like(mask)
+    for dy, dx in offsets:
+        out &= _shifted(mask, dy, dx, True)
+    return out
+
+
+def fill_holes(mask):
+    """Background not 4-connected to the image border becomes foreground."""
+    outside = np.zeros_like(mask)
+    queue = [(y, x) for y in range(mask.shape[0]) for x in (0, mask.shape[1] - 1)] + \
+            [(y, x) for x in range(mask.shape[1]) for y in (0, mask.shape[0] - 1)]
+    for y, x in queue:
+        if not mask[y, x]:
+            outside[y, x] = True
+    queue = [(y, x) for y, x in queue if outside[y, x]]
+    while queue:
+        y, x = queue.pop()
+        for dy, dx in NEIGHBOURS[4]:
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < mask.shape[0] and 0 <= nx < mask.shape[1] and not mask[ny, nx] and not outside[ny, nx]:
+                outside[ny, nx] = True
+                queue.append((ny, nx))
+    return ~outside
+
+
+def clear_border(mask):
+    """Foreground areas (8-connected) that touch the border removed."""
+    out = mask.copy()
+    for area in components(mask, 8):
+        if any(y in (0, mask.shape[0] - 1) or x in (0, mask.shape[1] - 1) for y, x in area):
+            for y, x in area:
+                out[y, x] = False
+    return out
+
+
+def unique_rois(areas, height, width, diameter, required, most):
+    """ROIs where areas recur, as flufinder's findUniqueRoisFromComponents, deterministically."""
+    counts = np.zeros((height, width))
+    for area in areas:
+        for y, x in area:
+            counts[y, x] += 1
+    members = {}
+    for index, area in enumerate(areas):
+        for p in area:
+            members.setdefault(p, []).append(index)
+    centroids = np.array([[np.mean([p[0] for p in a]), np.mean([p[1] for p in a])] for a in areas]) if areas else np.zeros((0, 2))
+    remaining = np.ones(len(areas), dtype=bool)
+    rois = []
+    while len(rois) < most and remaining.any() and counts.max() > 0:
+        peak = int(np.argmax(counts))   # the first largest, in row-major order
+        py, px = divmod(peak, width)
+        near = [i for i in members.get((py, px), []) if remaining[i]]
+        if not near:
+            counts[py, px] = 0
+            continue
+        center = np.array([_median(centroids[near, 0]), _median(centroids[near, 1])])
+        kept = [i for i in near if (np.abs(centroids[i] - center) < 3).all()]
+        if not kept:   # no area near the median: the largest group of areas within 3 px of one of them
+            groups = [[j for j in near if (np.abs(centroids[j] - centroids[i]) < 3).all()] for i in near]
+            kept = max(groups, key=len)
+        if len(kept) < required:
+            break
+        image = np.zeros((height, width))
+        for i in kept:
+            for y, x in areas[i]:
+                image[y, x] += 1
+        mask = roi_mask(image, center, diameter)
+        counts -= image
+        counts[mask] = 0
+        remaining[kept] = False
+        pixels = [tuple(map(int, p)) for p in np.argwhere(mask)]
+        if pixels and not any(overlap(pixels, r) >= 0.75 for r in rois):
+            rois.append(pixels)
+    return rois
+
+
+def roi_mask(image, center, diameter):
+    """The ROI in a window of +-15 px around the center: above the mid-point of the window's 50th and 95th
+    percentile, without bits under a tenth of a cell's area, holes filled, the largest area."""
+    height, width = image.shape
+    cy, cx = int(math.floor(center[0] + 0.5)), int(math.floor(center[1] + 0.5))
+    w = min(15, cy, height - 1 - cy, cx, width - 1 - cx)
+    window = image[cy - w:cy + w + 1, cx - w:cx + w + 1]
+    low = float(_percentile(window.reshape(-1, 1), 50)[0])
+    high = float(_percentile(window.reshape(-1, 1), 95)[0])
+    bw = window > low + (high - low) / 2
+    smallest = _half_up(math.pi * (diameter / 2) ** 2 / 10)
+    pieces = [a for a in components(bw, 8) if len(a) >= smallest]
+    bw = np.zeros_like(bw)
+    for a in pieces:
+        for y, x in a:
+            bw[y, x] = True
+    bw = fill_holes(bw)
+    pieces = components(bw, 8)
+    mask = np.zeros((height, width), dtype=bool)
+    if pieces:
+        for y, x in max(pieces, key=len):   # the first of the largest
+            mask[cy - w + y, cx - w + x] = True
+    return mask
+
+
+def overlap(a, b):
+    """The share of the smaller of two pixel lists that the other covers."""
+    common = len(set(a) & set(b))
+    return common / min(len(a), len(b))
 
 
 def extract_signals(entity, options, context):

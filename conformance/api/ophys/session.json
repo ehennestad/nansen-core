@@ -1878,6 +1878,260 @@
           "document": {
             "schemaType": "nansen.dataVariable",
             "schemaVersion": "0.1.0",
+            "name": "RoiArray_Quicky",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "subfolder": "ophys",
+            "fileName": "roi_array_quicky.json",
+            "fileAdapter": "json",
+            "dataType": "RoiArray"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "RoiArray_Quicky"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 40,
+        "params": {
+          "methodId": "ophys.quicky",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "roiDiameter": 4,
+            "output": "RoiArray_Quicky"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "areas": [
+                13,
+                13,
+                13
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 41,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "max",
+          "rois": "RoiArray_Quicky"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 42,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
             "name": "TwoPhotonSeries_ScanImage",
             "entityType": "session",
             "dataLocation": "raw",
@@ -1895,7 +2149,7 @@
     {
       "request": {
         "method": "data.frame",
-        "id": 40,
+        "id": 43,
         "params": {
           "entityType": "session",
           "key": {
@@ -1923,7 +2177,7 @@
     {
       "request": {
         "method": "data.frame",
-        "id": 41,
+        "id": 44,
         "params": {
           "entityType": "session",
           "key": {
@@ -1941,7 +2195,7 @@
     {
       "request": {
         "method": "data.frame",
-        "id": 42,
+        "id": 45,
         "params": {
           "entityType": "session",
           "key": {
@@ -1959,7 +2213,7 @@
     {
       "request": {
         "method": "methods.run",
-        "id": 43,
+        "id": 46,
         "params": {
           "methodId": "ophys.image_stats",
           "entityType": "session",
@@ -1983,7 +2237,7 @@
     {
       "request": {
         "method": "app.plugins",
-        "id": 44,
+        "id": 47,
         "params": {}
       },
       "expect": {
@@ -2002,7 +2256,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 45,
+        "id": 48,
         "params": {
           "module": "ophys",
           "path": "atlas/dorsal_cortex.json"
@@ -2018,7 +2272,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 46,
+        "id": 49,
         "params": {
           "module": "ophys",
           "path": "../core/module.nansen.json"
@@ -2031,7 +2285,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 47,
+        "id": 50,
         "params": {
           "module": "ophys",
           "path": "atlas/nothing.json"
@@ -2044,7 +2298,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 48,
+        "id": 51,
         "params": {
           "module": "core",
           "path": "module.nansen.json"
@@ -2057,7 +2311,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 49,
+        "id": 52,
         "params": {
           "entityType": "session",
           "key": {
@@ -2078,7 +2332,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 50,
+        "id": 53,
         "params": {
           "entityType": "session",
           "key": {
@@ -2098,7 +2352,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 51,
+        "id": 54,
         "params": {
           "entityType": "subject",
           "key": {
@@ -2118,7 +2372,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 52,
+        "id": 55,
         "params": {
           "entityType": "subject",
           "key": {
@@ -2136,7 +2390,7 @@
     {
       "request": {
         "method": "fragments.update",
-        "id": 53,
+        "id": 56,
         "params": {
           "entityType": "session",
           "fragmentId": "ophys.fov_region"
@@ -2152,7 +2406,7 @@
     {
       "request": {
         "method": "methods.run",
-        "id": 54,
+        "id": 57,
         "params": {
           "methodId": "ophys.fov_region",
           "entityType": "session",
@@ -2191,7 +2445,7 @@
     {
       "request": {
         "method": "entities.list",
-        "id": 55,
+        "id": 58,
         "params": {
           "entityType": "session"
         }
@@ -2244,7 +2498,7 @@
     {
       "request": {
         "method": "tools.run",
-        "id": 56,
+        "id": 59,
         "params": {
           "methodId": "ophys.setup_variables",
           "options": {
