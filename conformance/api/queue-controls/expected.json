@@ -1,0 +1,4 @@
+{
+  "description": "Controlling queued tasks: a task on hold is passed over but keeps its place, reordering puts the given tasks first and the rest after in the order they had, a queued task's options can be changed (and are validated), and none of this applies to a task that is no longer queued. Task ids are kept from the submit results.",
+  "steps": 19
+}

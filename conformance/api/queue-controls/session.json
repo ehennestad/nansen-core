@@ -1,0 +1,337 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "id": 2,
+        "params": {
+          "methodId": "core.wait",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "options": {
+            "seconds": 0,
+            "steps": 1,
+            "message": "a"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "status": "queued"
+        }
+      },
+      "keep": {
+        "a": "/id"
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "id": 3,
+        "params": {
+          "methodId": "core.wait",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "options": {
+            "seconds": 0,
+            "steps": 1,
+            "message": "b"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "status": "queued"
+        }
+      },
+      "keep": {
+        "b": "/id"
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "id": 4,
+        "params": {
+          "methodId": "core.wait",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "options": {
+            "seconds": 0,
+            "steps": 1,
+            "message": "c"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "status": "queued"
+        }
+      },
+      "keep": {
+        "c": "/id"
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.hold",
+        "id": 5,
+        "params": {
+          "id": "${a}"
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "${a}",
+          "status": "queued",
+          "onHold": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.reorder",
+        "id": 6,
+        "params": {
+          "ids": [
+            "${c}"
+          ]
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "${c}",
+            "order": 0
+          },
+          {
+            "id": "${a}",
+            "order": 1
+          },
+          {
+            "id": "${b}",
+            "order": 2
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.reorder",
+        "id": 7,
+        "params": {
+          "ids": [
+            "${b}",
+            "${b}"
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.update",
+        "id": 8,
+        "params": {
+          "id": "${c}",
+          "options": {
+            "seconds": 0,
+            "steps": 1,
+            "message": "changed"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "${c}",
+          "options": {
+            "values": {
+              "message": "changed"
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.update",
+        "id": 9,
+        "params": {
+          "id": "${c}",
+          "options": {
+            "seconds": "soon"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 10,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "id": "${c}",
+          "status": "completed"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 11,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "id": "${b}",
+          "status": "completed"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.list",
+        "id": 12,
+        "params": {
+          "status": "queued"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "${a}",
+            "onHold": true
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.hold",
+        "id": 13,
+        "params": {
+          "id": "${a}",
+          "hold": false
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "${a}",
+          "status": "queued"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 14,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "id": "${a}",
+          "status": "completed"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.hold",
+        "id": 15,
+        "params": {
+          "id": "${a}"
+        }
+      },
+      "expect": {
+        "error": "task-not-queued"
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.update",
+        "id": 16,
+        "params": {
+          "id": "${a}",
+          "options": {}
+        }
+      },
+      "expect": {
+        "error": "task-not-queued"
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.reorder",
+        "id": 17,
+        "params": {
+          "ids": [
+            "${a}"
+          ]
+        }
+      },
+      "expect": {
+        "error": "task-not-queued"
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.reorder",
+        "id": 18,
+        "params": {
+          "ids": []
+        }
+      },
+      "expect": {
+        "result": []
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.hold",
+        "id": 19,
+        "params": {
+          "id": "00000000-0000-4000-8000-000000000000"
+        }
+      },
+      "expect": {
+        "error": "unknown-task"
+      }
+    }
+  ]
+}

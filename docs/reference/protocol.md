@@ -106,9 +106,12 @@ Events flow from the core to the frontend:
 | `pipelines.queueNext` | `entityType`, `keys?`, `language?` | `{tasks, skipped}`: for each entity with a pipeline, a chain of the steps from the first not done on. Entities with no pipeline, all steps done, or steps of it queued or running are skipped |
 | `pipelines.submit` | `pipelineId`, `entityType`, `keys?`, `language?` | The queued tasks: one chain per entity, each step waiting for the one before |
 | `tasks.submit` | `methodId`, `entityType`, `keys?`, `options?`, `preset?`, `language?` | The queued task |
-| `tasks.list` | `status?` | Tasks in creation order |
+| `tasks.list` | `status?` | Tasks in creation order; queued tasks start in queue order: those with an `order`, lowest first, then the others by creation |
 | `tasks.get` | `id` | The task plus `logText` |
 | `tasks.cancel` / `tasks.retry` / `tasks.remove` | `id` | The task (or `{removed}`) |
+| `tasks.hold` | `id`, `hold?` (default true) | The task: a queued task on hold (`onHold`) is not started until it is released with `hold: false`; it keeps its place |
+| `tasks.update` | `id`, `options?`, `preset?` | The task with new options: the preset's values with `options` on top, resolved and validated as in `tasks.submit` |
+| `tasks.reorder` | `ids` | The queued tasks in their new order: these first, in this order, then the others as they were. A task still waits for the tasks in its `after` |
 | `tasks.clear` | | `{removed: count}` of finished tasks |
 | `tasks.runNext` | | The task run now in the foreground, or null |
 | `queue.status` / `queue.start` / `queue.stop` | | `{running, executor, counts}` |

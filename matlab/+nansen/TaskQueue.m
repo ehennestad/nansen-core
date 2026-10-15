@@ -289,6 +289,83 @@ classdef TaskQueue < handle
             obj.save(task)
         end
 
+        function task = hold(obj, taskId, onHold)
+            %hold Keep a queued task from starting (true) or let it start again (false); it keeps its place
+            arguments
+                obj
+                taskId (1,1) string
+                onHold (1,1) logical = true
+            end
+            task = obj.requireChanged(taskId, obj.changeQueued(taskId, @(t) withHold(t, onHold)));
+        end
+
+        function task = update(obj, taskId, options)
+            %update Give a queued task new options: the preset's values (if given) with these on top, resolved and validated
+            arguments
+                obj
+                taskId (1,1) string
+                options.Options = struct()
+                options.Preset (1,1) string = ""
+            end
+            method = obj.Project.method(string(obj.get(taskId).method.id));
+            base = struct();
+            if options.Preset ~= ""
+                base = obj.Project.preset(method.Id, options.Preset);
+            end
+            values = options.Options;
+            if isempty(values)
+                values = struct();
+            end
+            resolved = method.resolveOptions(nansen.internal.mergeStructs(base, values));
+            entry = struct("values", resolved);
+            if options.Preset ~= ""
+                entry.preset = char(options.Preset);
+            end
+            version = char(method.Version);
+            task = obj.requireChanged(taskId, obj.changeQueued(taskId, @(t) withOptions(t, entry, version)));
+        end
+
+        function result = reorder(obj, taskIds)
+            %reorder Put these queued tasks first, in this order; the other queued tasks follow in the order they had
+            %
+            %   Returns the queued tasks in their new order (a cell row). A task
+            %   cannot run before the tasks it waits for, whatever its place.
+            taskIds = reshape(string(taskIds), 1, []);
+            queued = nansen.TaskQueue.inQueueOrder(obj.list("queued"));
+            known = string(cellfun(@(t) char(t.id), queued, UniformOutput=false));
+            for taskId = taskIds
+                if ~ismember(taskId, known)
+                    obj.get(taskId);   % unknown-task
+                    nansen.internal.throwError("task-not-queued", "task %s is not queued", taskId)
+                end
+            end
+            if numel(unique(taskIds)) ~= numel(taskIds)
+                nansen.internal.throwError("invalid-params", "a task is listed twice")
+            end
+            [~, at] = ismember(taskIds, known);
+            rest = setdiff(1:numel(queued), at, "stable");
+            ordered = queued([at, rest]);
+            result = {};
+            for i = 1:numel(ordered)
+                task = ordered{i};
+                position = i - 1;
+                if ~isequal(nansen.internal.getField(task, "order", []), position)
+                    try
+                        changed = obj.changeQueued(string(task.id), @(t) setfield(t, "order", position)); %#ok<SFLD>
+                    catch err
+                        if isa(err, "nansen.NansenError")
+                            continue   % it left the queue meanwhile
+                        end
+                        rethrow(err)
+                    end
+                    if ~isempty(changed)
+                        task = changed;
+                    end
+                end
+                result{end + 1} = task; %#ok<AGROW>
+            end
+        end
+
         function remove(obj, taskId)
             task = obj.get(taskId);
             if string(task.status) == "running"
@@ -339,11 +416,12 @@ classdef TaskQueue < handle
             for i = 1:numel(tasks)
                 statuses(char(tasks{i}.id)) = char(tasks{i}.status);
             end
-            for i = 1:numel(tasks)
-                candidate = tasks{i};
-                if string(candidate.status) ~= "queued"
-                    continue
-                end
+            if isempty(tasks)
+                return
+            end
+            queued = nansen.TaskQueue.inQueueOrder(tasks(cellfun(@(t) string(t.status) == "queued", tasks)));
+            for i = 1:numel(queued)
+                candidate = queued{i};
                 waiting = strings(1, 0);
                 for other = nansen.internal.asCellstr(nansen.internal.getField(candidate, "after", {}))
                     if isKey(statuses, other{1})
@@ -360,7 +438,7 @@ classdef TaskQueue < handle
                     statuses(char(candidate.id)) = 'cancelled';
                     continue
                 end
-                if any(waiting ~= "completed")
+                if any(waiting ~= "completed") || isequal(nansen.internal.getField(candidate, "onHold", false), true)
                     continue
                 end
                 if string(nansen.internal.getField(candidate, "language", "matlab")) == "matlab" ...
@@ -389,7 +467,7 @@ classdef TaskQueue < handle
                 end
                 if obj.claim(string(task.id))
                     task = obj.get(string(task.id));
-                    if string(task.status) == "queued"
+                    if string(task.status) == "queued" && ~isequal(nansen.internal.getField(task, "onHold", false), true)
                         break
                     end
                     obj.release(string(task.id));
@@ -466,4 +544,64 @@ classdef TaskQueue < handle
             obj.Future = parfeval(backgroundPool, @nansen.runTask, 1, obj.Project.Folder, string(task.id));
         end
     end
+
+    methods (Access = private)
+        function task = changeQueued(obj, taskId, change)
+            %changeQueued Change a queued task while holding its claim, so no worker starts it meanwhile
+            %
+            %   Returns the changed task, or [] when a worker is taking it right now.
+            obj.get(taskId);   % unknown-task
+            task = [];
+            if ~obj.claim(taskId)
+                return
+            end
+            cleanup = onCleanup(@() obj.release(taskId));
+            current = obj.get(taskId);
+            if string(current.status) ~= "queued"
+                nansen.internal.throwError("task-not-queued", "task %s is %s", taskId, current.status)
+            end
+            task = change(current);
+            obj.save(task)
+        end
+
+        function task = requireChanged(~, taskId, task)
+            if isempty(task)
+                nansen.internal.throwError("task-not-queued", "task %s is being started", taskId)
+            end
+        end
+    end
+
+    methods (Static)
+        function tasks = inQueueOrder(tasks)
+            %inQueueOrder Queued tasks in the order they start: those with an order, lowest first, then by creation
+            if isempty(tasks)
+                return
+            end
+            keys = strings(1, numel(tasks));
+            for i = 1:numel(tasks)
+                order = nansen.internal.getField(tasks{i}, "order", []);
+                if isempty(order)
+                    prefix = "1" + sprintf("%012d", 0);
+                else
+                    prefix = "0" + sprintf("%012d", order);
+                end
+                keys(i) = prefix + " " + string(tasks{i}.createdAt) + " " + string(tasks{i}.id);
+            end
+            [~, sorting] = sort(keys);
+            tasks = tasks(sorting);
+        end
+    end
+end
+
+function task = withHold(task, onHold)
+    if onHold
+        task.onHold = true;
+    elseif isfield(task, "onHold")
+        task = rmfield(task, "onHold");
+    end
+end
+
+function task = withOptions(task, entry, version)
+    task.options = entry;
+    task.method.version = version;
 end

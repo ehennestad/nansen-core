@@ -191,10 +191,21 @@ function detail = runApiCase(folder)
         copyfile(fullfile(folder, "project"), project);
     end
     api = nansen.Api();
+    kept = struct("name", {}, "value", {});   % values a step keeps from its result, as ${name}, for the steps after it
     for number = 1:numel(steps)
         step = steps{number};
         text = string(jsonencode(step.request));
         text = replace(text, """${project}""", string(jsonencode(char(project))));
+        for k = 1:numel(kept)
+            text = replace(text, """${" + kept(k).name + "}""", string(jsonencode(kept(k).value)));
+        end
+        if ~isempty(kept) && isfield(step.expect, "result")
+            expectText = string(jsonencode(step.expect.result));
+            for k = 1:numel(kept)
+                expectText = replace(expectText, """${" + kept(k).name + "}""", string(jsonencode(kept(k).value)));
+            end
+            step.expect.result = jsondecode(char(expectText));
+        end
         if ~isempty(listing)
             text = replace(text, """${listing}""", string(listing));
         end
@@ -221,6 +232,21 @@ function detail = runApiCase(folder)
         if mismatch ~= ""
             detail = sprintf("step %d %s: %s", number, request.method, mismatch);
             return
+        end
+        if isfield(step, "keep")
+            for name = reshape(string(fieldnames(step.keep)), 1, [])
+                value = response.result;
+                tokens = split(string(step.keep.(name)), "/");
+                for token = reshape(tokens(2:end), 1, [])
+                    if ~isnan(str2double(token))
+                        items = asItems(value);
+                        value = items{str2double(token) + 1};
+                    else
+                        value = value.(token);
+                    end
+                end
+                kept(end + 1) = struct("name", name, "value", value); %#ok<AGROW>
+            end
         end
     end
 end

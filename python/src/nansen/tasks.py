@@ -27,6 +27,12 @@ from .methods import Cancelled, MethodContext, run_method
 from .schemas import current_version
 
 TERMINAL = ("completed", "failed", "cancelled")
+
+
+def queue_position(task: dict) -> tuple:
+    """Where a queued task stands in the queue: by its order when it was given one, else after those, by creation."""
+    order = task.get("order")
+    return (0, order, task["createdAt"], task["id"]) if order is not None else (1, 0, task["createdAt"], task["id"])
 MAX_RESULT_BYTES = 64 * 1024
 
 EventHandler = Callable[[str, dict], None]
@@ -228,6 +234,80 @@ class TaskQueue:
         self._wake.set()
         return task
 
+    # -- changing queued tasks ------------------------------------------------------------------
+
+    def _change_queued(self, task_id: str, change: Callable[[dict], None]) -> Optional[dict]:
+        """Change a queued task while holding its claim, so no worker starts it meanwhile.
+
+        Returns the changed task, or None when a worker is taking it right now."""
+        self.get(task_id)  # unknown-task
+        if not self.claim(task_id):
+            return None
+        try:
+            task = self.get(task_id)
+            if task["status"] != "queued":
+                raise NansenError("task-not-queued", f"task {task_id} is {task['status']}")
+            change(task)
+            check_document(task, "nansen.task")
+            self._save(task)
+            return task
+        finally:
+            self.release(task_id)
+
+    def _require_changed(self, task_id: str, task: Optional[dict]) -> dict:
+        if task is None:
+            raise NansenError("task-not-queued", f"task {task_id} is being started")
+        self._wake.set()
+        return task
+
+    def hold(self, task_id: str, hold: bool = True) -> dict:
+        """Keep a queued task from starting (hold) or let it start again; it keeps its place in the queue."""
+        def change(task):
+            if hold:
+                task["onHold"] = True
+            else:
+                task.pop("onHold", None)
+        return self._require_changed(task_id, self._change_queued(task_id, change))
+
+    def update(self, task_id: str, options: Optional[Dict[str, Any]] = None, preset: Optional[str] = None) -> dict:
+        """Give a queued task new options: the preset's values (if given) with these on top, resolved and validated."""
+        method = self.project.method(self.get(task_id)["method"]["id"])
+        values = self.project.preset(method.id, preset) if preset else {}
+        values = method.resolve_options(dict(values, **(options or {})))
+
+        def change(task):
+            task["options"] = {"values": values}
+            if preset:
+                task["options"]["preset"] = preset
+            task["method"]["version"] = method.version
+        return self._require_changed(task_id, self._change_queued(task_id, change))
+
+    def reorder(self, task_ids: List[str]) -> List[dict]:
+        """Put these queued tasks first, in this order; the other queued tasks follow in the order they had.
+
+        Returns the queued tasks in their new order. A task cannot run before the tasks it waits for,
+        whatever its place."""
+        queued = sorted(self.list("queued"), key=queue_position)
+        known = {t["id"] for t in queued}
+        for task_id in task_ids:
+            if task_id not in known:
+                self.get(task_id)  # unknown-task
+                raise NansenError("task-not-queued", f"task {task_id} is not queued")
+        if len(set(task_ids)) != len(task_ids):
+            raise NansenError("invalid-params", "a task is listed twice")
+        first = {task_id: i for i, task_id in enumerate(task_ids)}
+        ordered = sorted(queued, key=lambda t: (0, first[t["id"]]) if t["id"] in first else (1, queue_position(t)))
+        result = []
+        for i, task in enumerate(ordered):
+            if task.get("order") != i:
+                try:
+                    task = self._change_queued(task["id"], lambda t, i=i: t.update(order=i)) or task
+                except NansenError:
+                    continue  # it left the queue meanwhile
+            result.append(task)
+        self._wake.set()
+        return result
+
     def remove(self, task_id: str) -> None:
         task = self.get(task_id)
         if task["status"] == "running":
@@ -268,9 +348,7 @@ class TaskQueue:
         task it waits for completed. A task waiting for one that failed or was cancelled is cancelled."""
         tasks = self.list()
         status = {t["id"]: t["status"] for t in tasks}
-        for task in tasks:
-            if task["status"] != "queued":
-                continue
+        for task in sorted((t for t in tasks if t["status"] == "queued"), key=queue_position):
             waiting = [status.get(other, "missing") for other in task.get("after", [])]
             if any(s in ("failed", "cancelled", "missing") for s in waiting):
                 task.update(status="cancelled", finishedAt=now(),
@@ -278,7 +356,7 @@ class TaskQueue:
                 self._save(task)
                 status[task["id"]] = "cancelled"
                 continue
-            if any(s != "completed" for s in waiting):
+            if any(s != "completed" for s in waiting) or task.get("onHold"):
                 continue
             if task.get("language", "python") == "python" and not self.claim_path(task["id"]).exists():
                 return task
@@ -293,7 +371,7 @@ class TaskQueue:
                     return None
                 if self.claim(task["id"]):
                     task = self.get(task["id"])
-                    if task["status"] == "queued":
+                    if task["status"] == "queued" and not task.get("onHold"):
                         break
                     self.release(task["id"])
             task.update(status="running", startedAt=now(), progress=0)

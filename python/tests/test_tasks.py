@@ -186,3 +186,45 @@ def test_waiting_task_is_not_run_before_its_dependency(project):
     assert queue.claim(tasks[0]["id"])  # another worker holds the first step
     assert queue.run_next() is None     # the second step waits
     queue.release(tasks[0]["id"])
+
+
+def test_queued_tasks_are_held_changed_and_reordered(tmp_path):
+    from nansen.demo import create_demo
+    from nansen.tasks import TaskQueue
+
+    project = create_demo(tmp_path / "demo")
+    queue = TaskQueue(project)
+    sessions = project.entities("session")[:3]
+    first, second, third = (queue.submit("core.wait", [s], {"seconds": 0, "message": f"task {i}"})
+                            for i, s in enumerate(sessions))
+    assert queue.next_task()["id"] == first["id"]
+
+    queue.hold(first["id"])
+    assert queue.get(first["id"])["onHold"] is True
+    assert queue.next_task()["id"] == second["id"]
+
+    order = queue.reorder([third["id"]])
+    assert [t["id"] for t in order] == [third["id"], first["id"], second["id"]]
+    assert queue.next_task()["id"] == third["id"]
+    late = queue.submit("core.wait", [sessions[0]], {"seconds": 0})
+    assert [t["id"] for t in queue.reorder([])] == [third["id"], first["id"], second["id"], late["id"]]
+
+    changed = queue.update(third["id"], {"seconds": 0, "message": "changed"})
+    assert changed["options"]["values"]["message"] == "changed"
+    with pytest.raises(NansenError) as error:
+        queue.update(third["id"], {"seconds": "soon"})
+    assert error.value.code == "invalid-options"
+
+    done = queue.run_next()
+    assert done["id"] == third["id"] and done["status"] == "completed"
+    assert queue.run_next()["id"] == second["id"]  # the first is still on hold
+    queue.hold(first["id"], False)
+    assert "onHold" not in queue.get(first["id"])
+    assert queue.run_next()["id"] == first["id"]
+    for call in (lambda: queue.hold(first["id"]), lambda: queue.update(first["id"], {}), lambda: queue.reorder([first["id"]])):
+        with pytest.raises(NansenError) as error:
+            call()
+        assert error.value.code == "task-not-queued"
+    with pytest.raises(NansenError) as error:
+        queue.hold("00000000-0000-4000-8000-000000000000")
+    assert error.value.code == "unknown-task"

@@ -194,9 +194,11 @@ def _run_api_case(case: Path) -> str:
         if (case / "project").is_dir():
             shutil.copytree(case / "project", folder)
         api = Api(start_queue=False)
+        kept: dict = {}  # values a step keeps from its result, as ${name}, for the steps after it
         try:
             for number, step in enumerate(steps, start=1):
-                request = _substitute(step["request"], {"${project}": str(folder), "${listing}": listing})
+                request = _substitute(step["request"], {"${project}": str(folder), "${listing}": listing, **kept})
+                step = dict(step, expect=_substitute(step["expect"], kept))
                 response = api.handle(request)
                 if response.get("id") != request.get("id"):
                     return f"step {number}: response id {response.get('id')!r} for request {request.get('id')!r}"
@@ -210,6 +212,11 @@ def _run_api_case(case: Path) -> str:
                 mismatch = subset_mismatch(expect["result"], response["result"], "result")
                 if mismatch:
                     return f"step {number} {request['method']}: {mismatch}"
+                for name, pointer in step.get("keep", {}).items():
+                    value = response["result"]
+                    for token in pointer.split("/")[1:]:
+                        value = value[int(token)] if isinstance(value, list) else value[token]
+                    kept["${" + name + "}"] = value
         finally:
             api.close()
     return ""

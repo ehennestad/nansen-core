@@ -676,6 +676,15 @@ class Api:
     def tasks__retry(self, params: dict) -> dict:
         return self._queue().retry(params["id"])
 
+    def tasks__hold(self, params: dict) -> dict:
+        return self._queue().hold(params["id"], params.get("hold", True))
+
+    def tasks__update(self, params: dict) -> dict:
+        return self._queue().update(params["id"], params.get("options"), params.get("preset"))
+
+    def tasks__reorder(self, params: dict) -> list:
+        return self._queue().reorder(list(params["ids"]))
+
     def tasks__remove(self, params: dict) -> dict:
         self._queue().remove(params["id"])
         return {"removed": params["id"]}

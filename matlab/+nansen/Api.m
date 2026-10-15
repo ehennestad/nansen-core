@@ -40,7 +40,7 @@ classdef Api < handle
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
-                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
+                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
             for name = names
                 % "entities.list" -> apiEntitiesList
@@ -808,6 +808,24 @@ classdef Api < handle
 
         function result = apiTasksRetry(obj, params)
             result = obj.queue().retry(string(nansen.Api.param(params, "id")));
+        end
+
+        function result = apiTasksHold(obj, params)
+            result = obj.queue().hold(string(nansen.Api.param(params, "id")), ...
+                logical(nansen.internal.getField(params, "hold", true)));
+        end
+
+        function result = apiTasksUpdate(obj, params)
+            result = obj.queue().update(string(nansen.Api.param(params, "id")), ...
+                Options=obj.optionsOf(params), Preset=string(nansen.internal.getField(params, "preset", "")));
+        end
+
+        function result = apiTasksReorder(obj, params)
+            ids = nansen.Api.param(params, "ids");
+            if isnumeric(ids) && isempty(ids)
+                ids = strings(1, 0);   % []
+            end
+            result = obj.queue().reorder(string(ids));
         end
 
         function result = apiTasksRemove(obj, params)

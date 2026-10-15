@@ -121,6 +121,15 @@
       ],
       "description": "The language that should run the task; any worker that can run the method may take it when absent."
     },
+    "order": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Place in the queue, set when queued tasks are reordered: tasks with an order run first, lowest first; the others follow by creation time."
+    },
+    "onHold": {
+      "type": "boolean",
+      "description": "A queued task on hold is not started until it is released; it keeps its place."
+    },
     "result": {
       "description": "What the method returned, when it is JSON and small; one item per entity for a serial method."
     },

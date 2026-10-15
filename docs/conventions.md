@@ -114,6 +114,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `not-queueable` | The method cannot run as a background task |
 | `unknown-task` | No task has that id |
 | `task-active` | The task is queued or running, so it cannot be retried or removed |
+| `task-not-queued` | The task is no longer queued (or a worker is starting it), so it cannot be held, changed or reordered |
 | `unknown-pipeline` | No pipeline has that id |
 | `no-catalog` | The app was started without a project catalog |
 | `unknown-project` | The project is not in the catalog |
