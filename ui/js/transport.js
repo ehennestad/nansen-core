@@ -7,6 +7,8 @@
   class HttpTransport {
     constructor(base = "") {
       this.base = base;
+      const meta = document.querySelector('meta[name="nansen-token"]');
+      this.token = meta ? meta.content : "";   // the server answers only the page it served (with this token)
       this.kind = "http";
       this.listeners = [];
       this.statusListeners = [];
@@ -15,7 +17,7 @@
     async send(request) {
       const response = await fetch(this.base + "/api", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Nansen-Token": this.token },
         body: JSON.stringify(request),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -29,7 +31,7 @@
       this.statusListeners.push(listener);
     }
     open() {
-      this.source = new EventSource(this.base + "/events");
+      this.source = new EventSource(this.base + "/events?token=" + encodeURIComponent(this.token));
       this.source.onopen = () => this.statusListeners.forEach((l) => l(true));
       this.source.onerror = () => this.statusListeners.forEach((l) => l(false));
       this.source.onmessage = (message) => {

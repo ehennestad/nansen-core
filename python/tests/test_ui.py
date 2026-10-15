@@ -184,7 +184,8 @@ HOST_PAGE = """<!doctype html><html><body style="margin:0">
       sendEventToMATLAB: async (name, data) => {
         if (name === "page") { window.pageLog.push(data); return; }
         window.sent.push(JSON.parse(data).method);
-        const response = await fetch("api", { method: "POST", headers: { "Content-Type": "application/json" }, body: data });
+        const token = frame.contentDocument.querySelector('meta[name="nansen-token"]').content;   // the page this server served
+        const response = await fetch("api", { method: "POST", headers: { "Content-Type": "application/json", "X-Nansen-Token": token }, body: data });
         const text = await response.text();
         (listeners.response || []).forEach((listener) => listener({ Data: text }));
       },

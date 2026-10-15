@@ -1,10 +1,19 @@
-"""Serve the app: the HTML/JS frontend, POST /api for requests, GET /events for a Server-Sent Events stream."""
+"""Serve the app: the HTML/JS frontend, POST /api for requests, GET /events for a Server-Sent Events stream.
+
+The server listens on this machine only, and answers only the page it served: each server has a random token,
+which it writes into the index.html it serves (meta nansen-token). POST /api needs it in the X-Nansen-Token
+header and GET /events as ?token=; a web page from anywhere else can neither read it nor send that header
+without a CORS preflight, which this server never answers, so it cannot drive the app (cross-site requests).
+Requests whose Host is not this machine (DNS rebinding) or whose Origin is another site are refused too.
+"""
 
 from __future__ import annotations
 
 import json
 import mimetypes
+import hmac
 import queue
+import secrets
 import threading
 import webbrowser
 from http import HTTPStatus
@@ -32,6 +41,7 @@ class AppServer(ThreadingHTTPServer):
         self.api = api
         self.ui = Path(ui) if ui is not None else ui_dir()
         self.closing = threading.Event()
+        self.token = secrets.token_urlsafe(24)
         super().__init__(address, _Handler)
 
     @property
@@ -69,9 +79,26 @@ class _Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass  # the page went away before the answer; nothing to do
 
+    LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+
+    def _local(self) -> bool:
+        """Whether the request names this machine as its Host, and comes from no other site (Origin)."""
+        port = self.server.server_address[1]
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host not in {f"{h}:{port}" for h in self.LOCAL_HOSTS} | set(self.LOCAL_HOSTS):
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or origin.lower() in {f"http://{h}:{port}" for h in self.LOCAL_HOSTS}
+
+    def _authorised(self, token: Optional[str]) -> bool:
+        return self._local() and token is not None and hmac.compare_digest(token, self.server.token)
+
     def do_POST(self):
         if self.path != "/api":
             self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
+            return
+        if not self._authorised(self.headers.get("X-Nansen-Token")):
+            self._send(HTTPStatus.FORBIDDEN, b"forbidden: this app answers only the page it served", "text/plain")
             return
         length = int(self.headers.get("Content-Length", 0))
         try:
@@ -82,8 +109,15 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, json.dumps(response, default=str).encode("utf-8"), "application/json")
 
     def do_GET(self):
-        path = self.path.split("?", 1)[0]
+        path, _, query = self.path.partition("?")
+        if not self._local():
+            self._send(HTTPStatus.FORBIDDEN, b"forbidden", "text/plain")
+            return
         if path == "/events":
+            from urllib.parse import parse_qs
+            if not self._authorised(parse_qs(query).get("token", [None])[0]):
+                self._send(HTTPStatus.FORBIDDEN, b"forbidden", "text/plain")
+                return
             self._stream_events()
             return
         if path == "/":
@@ -95,7 +129,11 @@ class _Handler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         if content_type.startswith("text/") or content_type == "application/javascript":
             content_type += "; charset=utf-8"
-        self._send(HTTPStatus.OK, target.read_bytes(), content_type)
+        body = target.read_bytes()
+        if target.name == "index.html":   # the page gets the token it answers with
+            body = body.replace(b'<meta charset="utf-8">',
+                                b'<meta charset="utf-8">\n  <meta name="nansen-token" content="' + self.server.token.encode() + b'">', 1)
+        self._send(HTTPStatus.OK, body, content_type)
 
     def _stream_events(self):
         events: "queue.Queue[dict]" = queue.Queue()

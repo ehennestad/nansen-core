@@ -49,7 +49,7 @@ Events flow from the core to the frontend:
 
 ## Transports
 
-- **HTTP (Python).** `POST /api` takes a request and returns the response. `GET /events` is a Server-Sent Events stream of events. Static files are served from `ui/`.
+- **HTTP (Python).** `POST /api` takes a request and returns the response. `GET /events` is a Server-Sent Events stream of events. Static files are served from `ui/`. The server listens on this machine only and answers only the page it served: it writes a random token into the `index.html` it serves (`<meta name="nansen-token">`), and `POST /api` needs it in an `X-Nansen-Token` header, `GET /events` as `?token=`. Requests whose `Host` is not this machine (DNS rebinding) or whose `Origin` is another site get 403, so another web page open in the browser cannot drive the app.
 - **uihtml (MATLAB).** The page calls `htmlComponent.sendEventToMATLAB("request", json)`. MATLAB answers with `sendEventToHTMLSource(h, "response", json)`, and pushes events as `sendEventToHTMLSource(h, "event", json)`.
 
 ## Methods
