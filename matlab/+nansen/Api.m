@@ -37,7 +37,7 @@ classdef Api < handle
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
-                "project.setDataset", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
+                "project.setDataset", "project.update", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.create", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
@@ -207,6 +207,28 @@ classdef Api < handle
                 RootStoragePath=string(nansen.internal.getField(params, "rootStoragePath", "")));
             obj.setProject(nansen.Project.open(project.Folder, Environment=project.Environment));
             obj.emit("project", struct("name", char(obj.Project.Name)));
+            result = obj.apiProjectInfo(struct());
+        end
+
+        function result = apiProjectUpdate(obj, params)
+            % Change the project's title or description, or entity types' titles
+            project = obj.requireProject();
+            options = struct();
+            if isfield(params, "title")
+                options.Title = string(params.title);
+            end
+            if isfield(params, "description")
+                options.Description = string(params.description);
+            end
+            if isfield(params, "entityTypeTitles") && isstruct(params.entityTypeTitles)
+                options.EntityTypeTitles = params.entityTypeTitles;
+            end
+            args = namedargs2cell(options);
+            project.updateInfo(args{:});
+            if ~isempty(obj.Catalog)
+                obj.Catalog.add(project);
+            end
+            obj.emit("project", struct("name", char(project.Name)));
             result = obj.apiProjectInfo(struct());
         end
 

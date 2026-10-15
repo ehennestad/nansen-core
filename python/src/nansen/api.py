@@ -231,6 +231,15 @@ class Api:
         self.emit("project", {"name": self.project.name})
         return self.project__info({})
 
+    def project__update(self, params: dict) -> dict:
+        """Change the project's title or description, or entity types' titles."""
+        project = self._require_project()
+        project.update_info(params.get("title"), params.get("description"), params.get("entityTypeTitles"))
+        if self.catalog is not None:
+            self.catalog.add(project)
+        self.emit("project", {"name": project.name})
+        return self.project__info({})
+
     def dataset__get(self, params: dict) -> dict:
         """The DSM config's text, for editing."""
         project = self._require_project()

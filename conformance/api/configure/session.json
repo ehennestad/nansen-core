@@ -470,6 +470,64 @@
           }
         }
       }
+    },
+    {
+      "request": {
+        "method": "project.update",
+        "id": 29,
+        "params": {
+          "title": "  Two-photon study ",
+          "description": "Imaging in V1",
+          "entityTypeTitles": {
+            "session": "Imaging sessions"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton",
+          "title": "Two-photon study",
+          "description": "Imaging in V1",
+          "entityTypes": [
+            {
+              "name": "subject"
+            },
+            {
+              "name": "session",
+              "title": "Imaging sessions"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.update",
+        "id": 30,
+        "params": {
+          "title": ""
+        }
+      },
+      "expect": {
+        "result": {
+          "title": "TwoPhoton",
+          "description": "Imaging in V1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.update",
+        "id": 31,
+        "params": {
+          "entityTypeTitles": {
+            "probe": "Probes"
+          }
+        }
+      },
+      "expect": {
+        "error": "unknown-entity-type"
+      }
     }
   ]
 }

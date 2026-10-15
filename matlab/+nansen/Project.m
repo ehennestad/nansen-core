@@ -219,6 +219,45 @@ classdef Project < handle
             obj.writeDocument(document);
         end
 
+        function updateInfo(obj, options)
+            %updateInfo Change the project's title or description, or entity types' titles; an empty text removes it
+            arguments
+                obj
+                options.Title (1,1) string = missing
+                options.Description (1,1) string = missing
+                options.EntityTypeTitles (1,1) struct = struct()   % entity type name -> title
+            end
+            names = string(fieldnames(options.EntityTypeTitles))';
+            for name = names
+                obj.entityType(name);   % unknown-entity-type before anything changes
+            end
+            document = obj.Document;
+            fields = ["title", "description"];
+            values = [options.Title, options.Description];
+            for i = 1:2
+                if ismissing(values(i))
+                    continue
+                end
+                if strtrim(values(i)) ~= ""
+                    document.(fields(i)) = char(strtrim(values(i)));
+                elseif isfield(document, fields(i))
+                    document = rmfield(document, fields(i));
+                end
+            end
+            for i = 1:numel(document.entityTypes)
+                name = string(document.entityTypes{i}.name);
+                if ismember(name, names)
+                    value = strtrim(string(options.EntityTypeTitles.(name)));
+                    if value ~= ""
+                        document.entityTypes{i}.title = char(value);
+                    elseif isfield(document.entityTypes{i}, "title")
+                        document.entityTypes{i} = rmfield(document.entityTypes{i}, "title");
+                    end
+                end
+            end
+            obj.writeDocument(document)
+        end
+
         function text = datasetText(obj)
             %datasetText The DSM config as written, so it can be edited with its formatting
             obj.requireDataset();

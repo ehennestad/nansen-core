@@ -69,6 +69,7 @@
             N.icon("folder", 13)))),
         h("div.spacer"),
         h("div.actions",
+          h("button.btn.ghost.icon.edit-project", { title: "Change the title, description and table names", on: { click: () => editProjectDialog(app) } }, N.icon("edit")),
           dataset ? h("button.btn", { on: { click: () => app.scan() } }, N.icon("scan"), "Scan stores") : null,
           dataset ? h("button.btn.primary", { on: { click: () => app.sync() } }, N.icon("sync"), "Sync tables") : null)),
       stats,
@@ -1322,6 +1323,44 @@
       ],
     });
     loadOptions(true);
+  }
+
+  /* The project's title and description, and what its tables are called. */
+  function editProjectDialog(app) {
+    const project = app.project;
+    const properties = {
+      title: { type: "string", title: "Title", description: `Empty for the name, ${project.name}` },
+      description: { type: "string", title: "Description" },
+    };
+    const values = { title: project.title === project.name ? "" : project.title, description: project.description || "" };
+    for (const type of project.entityTypes) {
+      properties["type_" + type.name] = { type: "string", title: `Name of the ${type.name} table`, description: "Empty for the default" };
+      values["type_" + type.name] = type.title && type.title !== type.name ? type.title : "";
+    }
+    const form = N.schemaForm({ type: "object", properties }, values);
+    const message = h("div.form-message.hidden");
+    N.dialog({
+      title: "Project details",
+      content: h("div", { style: { padding: "16px 20px" } }, form.el, message),
+      buttons: [
+        { label: "Cancel" },
+        { label: "Save", kind: "primary", onClick: async (close) => {
+          const entered = form.getValue();
+          const entityTypeTitles = {};
+          for (const type of project.entityTypes) entityTypeTitles[type.name] = entered["type_" + type.name] || "";
+          try {
+            app.project = await app.client.request("project.update", { title: entered.title || "", description: entered.description || "", entityTypeTitles });
+            close();
+            await app.reloadProject();
+            app.render();
+            N.toast("Project details saved", app.project.title, "success");
+          } catch (error) {
+            message.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error));
+            message.classList.remove("hidden");
+          }
+        } },
+      ],
+    });
   }
 
   /* Run a project tool: its options, then what it returned and logged. */

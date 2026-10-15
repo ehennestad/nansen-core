@@ -61,6 +61,7 @@ Events flow from the core to the frontend:
 | `catalog.remove` | `path` | The remaining projects |
 | `project.open` | `path`, `environment?` | `project.info` |
 | `project.create` | `path`, `name`, `title?`, `description?`, `dataset?` (a config in the folder) or `datasetSource?` (a config to copy in; its relative roots are made absolute), `modules?`, `entityTypes?` (true: one per DSM entity type, with `core.notes` when `core` is listed) | `project.info` |
+| `project.update` | `title?`, `description?`, `entityTypeTitles?` (`{entityType: title}`) | `project.info`; an empty text removes the title (the name is shown) or description; `unknown-entity-type` before anything changes |
 | `project.setDataset` | `datasetSource`, `modules?`, `entityTypes?` | `project.info`: the open project with a copy of that DSM config (`dataset-exists` if it has one) |
 | `dataset.setRoot` | `dataLocation`, `path`, `rootStoragePath?` or `environment?` | `project.info`. With `rootStoragePath`, that root gets the path. Otherwise the location's root in that environment (default: the active one, else this machine's host name) gets the path, or a root is added; a new environment becomes active on this machine (the config's `.local.json`), and other locations with no root there get one at their current path |
 | `dataset.get` | | `{path, text}`: the DSM config's file name in the project and its text as written |

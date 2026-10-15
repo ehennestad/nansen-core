@@ -694,3 +694,19 @@ def test_run_a_project_tool_from_the_overview(empty_app, page):
     page.wait_for_selector(".dialog .tool-result")
     assert '"sessions": 14' in page.locator(".dialog .tool-result").inner_text()
     assert "Tally sessions" in page.locator(".dialog .tool-output").inner_text()
+
+
+def test_edit_the_project_details(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/overview")
+    page.click(".hero .edit-project")
+    page.fill(".dialog .field:has-text('Title') input", "Visual cortex study")
+    page.fill(".dialog .field:has-text('Name of the session table') input", "Imaging sessions")
+    page.click(".dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".hero h1:has-text('Visual cortex study')")
+    page.wait_for_selector(".nav a:has-text('Imaging sessions')")
+    info = api.handle({"id": 2, "method": "project.info"})["result"]
+    assert info["title"] == "Visual cortex study"
+    assert [t.get("title") for t in info["entityTypes"] if t["name"] == "session"] == ["Imaging sessions"]
+    assert [p["title"] for p in api.handle({"id": 3, "method": "catalog.list"})["result"]] == ["Visual cortex study"]

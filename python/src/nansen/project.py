@@ -910,6 +910,26 @@ class Project:
         table.write()
         return len(targets)
 
+    def update_info(self, title: Optional[str] = None, description: Optional[str] = None,
+                    entity_type_titles: Optional[Dict[str, str]] = None) -> None:
+        """Change the project's title or description, or entity types' titles; an empty text removes it."""
+        for name in entity_type_titles or {}:
+            self.entity_type(name)  # unknown-entity-type before anything changes
+        for key, value in (("title", title), ("description", description)):
+            if value is not None:
+                if str(value).strip():
+                    self.document[key] = str(value).strip()
+                else:
+                    self.document.pop(key, None)
+        for entry in self.document["entityTypes"]:
+            if entry["name"] in (entity_type_titles or {}):
+                value = str(entity_type_titles[entry["name"]]).strip()
+                if value:
+                    entry["title"] = value
+                else:
+                    entry.pop("title", None)
+        self._check_and_save()
+
     def _check_and_save(self) -> None:
         self.document = check_document(self.document, "nansen.project")
         write_json(self.folder / PROJECT_FILE, self.document)
