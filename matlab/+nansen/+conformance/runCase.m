@@ -246,7 +246,7 @@ function detail = runApiCase(folder)
                         value = value.(token);
                     end
                 end
-                kept(end + 1) = struct("name", name, "value", value); %#ok<AGROW>
+                kept(end + 1) = struct("name", name, "value", {value}); %#ok<AGROW>   % a cell value as it is
             end
         end
     end
