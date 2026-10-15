@@ -587,6 +587,125 @@
       "expect": {
         "error": "invalid-params"
       }
+    },
+    {
+      "request": {
+        "method": "files.read",
+        "id": 30,
+        "params": {
+          "path": "tables/subject.csv"
+        }
+      },
+      "expect": {
+        "result": {
+          "text": "subject_id,ignore,description\nm999,true,retired\nm110,false,cohort A\n",
+          "binary": false,
+          "truncated": false,
+          "size": 68
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.read",
+        "id": 31,
+        "params": {
+          "path": "tables/subject.csv",
+          "maxBytes": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "text": "subje",
+          "truncated": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.read",
+        "id": 32,
+        "params": {
+          "path": "data/recording.nwb",
+          "maxBytes": 64
+        }
+      },
+      "expect": {
+        "result": {
+          "text": "",
+          "binary": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.read",
+        "id": 33,
+        "params": {
+          "path": "tables"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.makeFolder",
+        "id": 34,
+        "params": {
+          "path": "notes/2024"
+        }
+      },
+      "expect": {
+        "result": {
+          "exists": true,
+          "isFolder": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 35,
+        "params": {
+          "path": "notes"
+        }
+      },
+      "expect": {
+        "result": {
+          "entries": [
+            {
+              "name": "2024",
+              "isFolder": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.makeFolder",
+        "id": 36,
+        "params": {
+          "path": "notes/2024"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.makeFolder",
+        "id": 37,
+        "params": {
+          "path": "../outside"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
     }
   ]
 }

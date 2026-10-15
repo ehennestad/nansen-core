@@ -75,6 +75,18 @@ classdef AdapterRegistry < handle
                 "languages", {languages}, "builtIn", true);
         end
 
+        function ids = forExtension(obj, extension)
+            %forExtension Ids of the adapters, built-in and declared, that name an extension among theirs, in id order
+            extension = lower(string(extension));
+            ids = strings(1, 0);
+            for id = obj.ids()
+                extensions = lower(string(obj.describe(id).extensions));
+                if any(extensions == extension)
+                    ids(end + 1) = id; %#ok<AGROW>
+                end
+            end
+        end
+
         function ids = forStacks(obj, extension)
             %forStacks Ids of the adapters that read files of an extension as image stacks, in id order
             %

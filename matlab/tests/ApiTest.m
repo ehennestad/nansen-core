@@ -146,6 +146,27 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyNotEmpty(sent{2});
         end
 
+        function anyFileGoesToTheWorkspace(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            api = nansen.Api(Project=project);
+            api.SendToWorkspace = @(name, value) assignin("base", "nansenApiTestFile", {name, value});
+            testCase.addTeardown(@() evalin("base", "clear nansenApiTestFile"));
+            result = api.handle(struct("id", 1, "method", "files.send", "params", struct("path", "project.nansen.json"))).result;
+            testCase.verifyEqual(string(result.name), "project_nansen");
+            testCase.verifyEqual(string(result.adapter), "json");   % the first adapter naming .json
+            sent = evalin("base", "nansenApiTestFile");
+            testCase.verifyEqual(string(sent{1}), "project_nansen");
+            testCase.verifyEqual(string(sent{2}.name), project.Name);
+            result = api.handle(struct("id", 2, "method", "files.send", "params", struct("path", "tables/session.csv", "name", "sessions"))).result;
+            testCase.verifyEqual(string(result.adapter), "csv");
+            nansen.internal.writeText(fullfile(project.Folder, "x.unknown"), "?");
+            response = api.handle(struct("id", 3, "method", "files.send", "params", struct("path", "x.unknown")));
+            testCase.verifyEqual(string(response.error.code), "unsupported-file");
+            response = api.handle(struct("id", 4, "method", "files.send", "params", struct("path", "project.nansen.json", "name", "not a name")));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+        end
+
         function aMethodOnlyPythonHasRunsInAPythonWorker(testCase)
             % methods.run hands it to python -m nansen worker; a stand-in does to the task what outcome.json says
             testCase.assumeFalse(ispc, "the stand-in worker is a script with a shebang");

@@ -638,8 +638,8 @@
             N.toast("Path copied", resolved.path, "success");
           } catch (error) { N.showError(error, "Could not copy the path"); }
         } } }, N.icon("copy", 13)));
-      // A folder's contents, read when it is opened; folders open in place
-      const tree = (p) => {
+      // A folder's contents, read when it is opened; folders open in place. base is the entity's folder it is under
+      const tree = (p, base = p) => {
         const el = h("ul.file-tree", h("li.muted", "Reading…"));
         app.client.request("files.list", where(p)).then((listing) => {
           N.fill(el, listing.entries.length ? listing.entries.map((entry) => {
@@ -654,6 +654,24 @@
                     if (shown && shown.classList.contains("hdf5-tree")) { shown.remove(); return; }
                     li.after(hdf5Tree(app, where(child)));
                   } } }, N.icon("database", 13)) : null,
+                h("button.btn.ghost.icon.small.preview-file", { title: "Show the start of the file as text", on: { click: () => previewFile(app, where(child), entry.name) } },
+                  N.icon("note", 13)),
+                app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-file", { title: "Load the file into the workspace", on: { click: async () => {
+                  try {
+                    const sent = await app.client.request("files.send", where(child));
+                    N.toast("In the workspace", `${sent.name} (read with ${sent.adapter})`, "success");
+                  } catch (error) { N.showError(error, "Could not load the file"); }
+                } } }, N.icon("download", 13)) : null,
+                h("button.btn.ghost.icon.small.make-variable", { title: "Make a data variable of this file (for each entity, its file at this place)",
+                  on: { click: () => {
+                    const relative = child.slice(base.length).replace(/^\/+/, "");
+                    let fileName = relative.split("/").pop();
+                    for (const [field, value] of Object.entries(detail.values || {})) {   // the entity's values in the name: {field}
+                      if (typeof value === "string" && value.length > 1 && fileName.includes(value)) fileName = fileName.split(value).join(`{${field}}`);
+                    }
+                    dataVariableDialog(app, null, { entityType, dataLocation: loc.dataLocationIdentifier, fileName,
+                      subfolder: relative.split("/").slice(0, -1).join("/"), extension: (entry.name.match(/\.[^.]+$/) || [""])[0].toLowerCase() });
+                  } } }, N.icon("plus", 13)),
                 /\.(tiff?|raw|seq|tsm|h5|hdf5|npy|avi|mp4|mov|png|jpe?g|bmp|gif)$/i.test(entry.name) ? h("button.btn.ghost.icon.small.view-file",
                   { title: "View the frames (as imviewer)", on: { click: () => N.views.stackViewer(app, null, null, entry.name, [], [], { file: where(child) }) } },
                   N.icon("image", 13)) : null,
@@ -665,10 +683,22 @@
             const row = h("li.folder-entry", { dataset: { name: entry.name } },
               h("button.tree-toggle", { title: "Open", on: { click: () => {
                 if (open) { open.remove(); open = null; row.classList.remove("open"); return; }
-                open = tree(child);
+                open = tree(child, base);
                 row.after(open);
                 row.classList.add("open");
-              } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", entry.name)), pathActions(child));
+              } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", entry.name)),
+              h("button.btn.ghost.icon.small.new-folder", { title: "Make a folder in this folder", on: { click: async () => {
+                const name = await N.prompt("New folder", `A folder in ${entry.name}`, "");
+                if (!name) return;
+                try {
+                  await app.client.request("files.makeFolder", where(`${child}/${name}`));
+                  if (open) { open.remove(); open = null; }
+                  open = tree(child, base);
+                  row.after(open);
+                  row.classList.add("open");
+                } catch (error) { N.showError(error, "Could not make the folder"); }
+              } } }, N.icon("plus", 13)),
+              pathActions(child));
             return row;
           }) : h("li.muted", "Empty folder"), listing.truncated ? h("li.muted", `Only the first ${listing.entries.length} are shown`) : null);
         }).catch((error) => N.fill(el, h("li.muted", error.code === "file-not-found" ? "Not there on this computer" : (error.message || String(error)))));
@@ -1708,8 +1738,27 @@
   }
 
   /* Add or edit a data variable: which file of each entity it is, and the file adapter that reads it. */
-  function dataVariableDialog(app, existing) {
-    const v = existing || {};
+  /** The start of a file as text, in a dialog (dev's file viewer's preview). */
+  async function previewFile(app, where, name) {
+    try {
+      const read = await app.client.request("files.read", { ...where, maxBytes: 65536 });
+      N.dialog({ title: name, content: h("div.file-preview", { style: { padding: "12px 16px" } },
+        read.binary ? h("p.muted", `A binary file of ${N.fmt.bytes(read.size)}: open it in its app, or view it if it is a stack`)
+          : h("pre.mono", { style: { maxHeight: "60vh", overflow: "auto", whiteSpace: "pre-wrap", fontSize: "12px", margin: 0 } }, read.text),
+        read.truncated && !read.binary ? h("p.muted", `The first ${N.fmt.bytes(65536)} of ${N.fmt.bytes(read.size)}`) : null),
+        buttons: [{ label: "Close" }] }).el.classList.add("preview-dialog");
+    } catch (error) { N.showError(error, "Could not read the file"); }
+  }
+
+  // ADAPTERS_BY_EXTENSION: what a new variable of a file of that extension is likely read with
+  const ADAPTERS_BY_EXTENSION = { ".json": ["json"], ".mat": ["mat"], ".npy": ["npy"], ".csv": ["csv"], ".xlsx": ["excel"], ".txt": ["text"],
+    ".tif": ["ophys.tiff_stack"], ".tiff": ["ophys.tiff_stack"], ".raw": ["ophys.sciscan_raw", "ophys.binary_stack"], ".h5": ["ophys.hdf5_stack"],
+    ".hdf5": ["ophys.hdf5_stack"], ".seq": ["ophys.norpix_seq"], ".tsm": ["ophys.tsm_stack"], ".png": ["ophys.image_files"], ".jpg": ["ophys.image_files"],
+    ".avi": ["ophys.video_file"], ".mp4": ["ophys.video_file"], ".nwb": [] };
+
+  /** Add or edit a data variable. prefill (for a new one) gives some fields: from a file in the file tree, say. */
+  function dataVariableDialog(app, existing, prefill = null) {
+    const v = existing || prefill || {};
     const types = app.project.entityTypes.map((t) => t.name);
     const select = (name, options, value) => h(`select.input.${name}`, options.map(([id, label]) =>
       h("option", { value: id, selected: id === value }, label)));
@@ -1740,7 +1789,7 @@
       N.fill(location, options.locations.map((l) => h("option", { value: l.id, selected: l.id === wanted },
         `${l.title}${l.access === "readwrite" ? "" : " (read only)"}`)));
       fillPatterns(keep ? v.filePattern : pattern.value);
-      const adapterWanted = keep ? v.fileAdapter : adapter.value;
+      const adapterWanted = keep ? v.fileAdapter || (ADAPTERS_BY_EXTENSION[v.extension] || []).find((a) => options.fileAdapters.includes(a)) : adapter.value;
       N.fill(adapter, options.fileAdapters.map((a) => h("option", { value: a, selected: a === adapterWanted }, a)));
     };
     entityType.addEventListener("change", () => loadOptions(false));

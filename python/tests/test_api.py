@@ -356,6 +356,30 @@ if outcome:
         api.close()
 
 
+def test_any_file_goes_to_the_workspace(tmp_path):
+    from nansen.demo import create_demo
+
+    api = Api(project=create_demo(tmp_path / "demo"), start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    try:
+        assert call("files.send", path="project.nansen.json")["error"]["code"] == "no-workspace"
+        api.workspace = {}
+        result = call("files.send", path="project.nansen.json")["result"]
+        assert result["name"] == "project_nansen" and result["adapter"] == "json"   # the first adapter naming .json
+        assert api.workspace["project_nansen"]["name"] == api.project.name
+        assert call("files.send", path="tables/session.csv", name="sessions")["result"]["adapter"] == "csv"
+        assert "sessions" in api.workspace
+        (api.project.folder / "1 odd.txt").write_text("hello")
+        assert call("files.send", path="1 odd.txt")["result"]["name"] == "data_1_odd"
+        assert api.workspace["data_1_odd"] == "hello"
+        (api.project.folder / "x.unknown").write_text("?")
+        assert call("files.send", path="x.unknown")["error"]["code"] == "unsupported-file"
+        assert call("files.send", path="project.nansen.json", name="not a name")["error"]["code"] == "invalid-params"
+        assert call("files.send", path="tables")["error"]["code"] == "invalid-params"
+    finally:
+        api.close()
+
+
 def test_a_shared_project_is_installed_from_git(tmp_path):
     import shutil
     import subprocess

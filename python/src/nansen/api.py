@@ -74,6 +74,7 @@ def open_in_file_browser(folder: Path) -> None:
 
 FILES_LIST_LIMIT = 500  # entries files.list gives at most, unless asked for more
 FILES_INSPECT_LIMIT = 2000  # groups, datasets and links files.inspect gives at most
+FILES_READ_LIMIT = 65536  # bytes files.read gives at most, unless asked for more
 WORKER_START_SECONDS = 300  # how long methods.run waits for another language's worker to take a task
 
 def _frame_rate(params: dict, entity: Any) -> Optional[float]:
@@ -717,6 +718,63 @@ class Api:
         if resolved["isFolder"]:
             raise NansenError("invalid-params", f"{resolved['path']} is a folder; files.list shows folders")
         return dict(resolved, **inspect(Path(resolved["path"]), int(params.get("limit", FILES_INSPECT_LIMIT))))
+
+    def files__read(self, params: dict) -> dict:
+        """The start of a file as text, as dev's file viewer's preview: at most maxBytes (default 65536) bytes, decoded as
+        UTF-8 (bytes that are not are replaced); binary when it has a NUL byte."""
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        if resolved["isFolder"]:
+            raise NansenError("invalid-params", f"{resolved['path']} is a folder")
+        limit = int(params.get("maxBytes", FILES_READ_LIMIT))
+        path = Path(resolved["path"])
+        with open(path, "rb") as f:
+            data = f.read(limit + 1)
+        binary = b"\0" in data[:limit]
+        text = "" if binary else data[:limit].decode("utf-8", errors="replace")
+        return dict(resolved, text=text, binary=binary, truncated=len(data) > limit, size=path.stat().st_size)
+
+    def files__makeFolder(self, params: dict) -> dict:
+        """A new folder, as files.resolve finds it (in the project folder or a data location's root)."""
+        resolved = self.files__resolve(params)
+        if resolved["exists"]:
+            raise NansenError("invalid-params", f"{resolved['path']} exists already")
+        Path(resolved["path"]).mkdir(parents=True)
+        return dict(resolved, exists=True, isFolder=True)
+
+    def files__send(self, params: dict) -> dict:
+        """Read any file and put its value in the workspace the app was opened from, as dev's file viewer's Load to
+        workspace: with the adapter given, or the first of those naming its extension that reads it."""
+        if self.workspace is None:
+            raise NansenError("no-workspace", "this app was not opened from a workspace")
+        project = self._require_project()
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        if resolved["isFolder"]:
+            raise NansenError("invalid-params", f"{resolved['path']} is a folder")
+        path = Path(resolved["path"])
+        name = params.get("name") or re.sub(r"\W", "_", path.stem)
+        if not name or not name[0].isalpha():
+            name = "data_" + name
+        if not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name):
+            raise NansenError("invalid-params", f"{name!r} is not a variable name")
+        tries = [params["adapter"]] if params.get("adapter") else project.adapters.for_extension(path.suffix)
+        if not tries:
+            raise NansenError("unsupported-file", f"no file adapter of the project reads {path.suffix or 'these'} files")
+        problems = []
+        for adapter_id in tries:
+            try:
+                value = project.adapters.get(adapter_id).read(path)
+            except NansenError as error:
+                if params.get("adapter"):
+                    raise
+                problems.append(f"{adapter_id}: {error.message}")
+                continue
+            self.workspace[name] = value
+            return {"name": name, "adapter": adapter_id, "path": str(path)}
+        raise NansenError("invalid-data", f"{path.name} could not be read: " + "; ".join(problems))
 
     def files__frame(self, params: dict) -> dict:
         """A frame (or a projection) of any stack file, as data.frame gives one of a variable: dev's imviewer on a file.

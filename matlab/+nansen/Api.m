@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
@@ -705,6 +705,89 @@ classdef Api < handle
             result.format = layout.format;
             result.items = layout.items;
             result.truncated = layout.truncated;
+        end
+
+        function result = apiFilesRead(obj, params)
+            % The start of a file as text, as dev's file viewer's preview: at most maxBytes (default 65536) bytes,
+            % decoded as UTF-8 (bytes that are not are replaced); binary when it has a NUL byte
+            result = obj.apiFilesResolve(params);
+            if ~result.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", result.path)
+            end
+            if result.isFolder
+                nansen.internal.throwError("invalid-params", "%s is a folder", result.path)
+            end
+            limit = double(nansen.internal.getField(params, "maxBytes", 65536));
+            fid = fopen(result.path, "r");
+            closer = onCleanup(@() fclose(fid));
+            data = fread(fid, limit + 1, "*uint8")';
+            listing = dir(result.path);
+            result.binary = any(data(1:min(end, limit)) == 0);
+            result.text = '';
+            if ~result.binary
+                result.text = char(native2unicode(data(1:min(end, limit)), "UTF-8"));
+            end
+            result.truncated = numel(data) > limit;
+            result.size = listing.bytes;
+        end
+
+        function result = apiFilesMakeFolder(obj, params)
+            % A new folder, as files.resolve finds it (in the project folder or a data location's root)
+            result = obj.apiFilesResolve(params);
+            if result.exists
+                nansen.internal.throwError("invalid-params", "%s exists already", result.path)
+            end
+            mkdir(result.path);
+            result.exists = true;
+            result.isFolder = true;
+        end
+
+        function result = apiFilesSend(obj, params)
+            % Read any file and put its value in the base workspace, as dev's file viewer's Load to workspace: with the
+            % adapter given, or the first of those naming its extension that reads it
+            project = obj.requireProject();
+            resolved = obj.apiFilesResolve(params);
+            if ~resolved.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", resolved.path)
+            end
+            if resolved.isFolder
+                nansen.internal.throwError("invalid-params", "%s is a folder", resolved.path)
+            end
+            [~, stem, extension] = fileparts(string(resolved.path));
+            name = string(nansen.internal.getField(params, "name", ""));
+            if name == ""
+                name = regexprep(stem, "\W", "_");
+                if name == "" || ~isletter(extractBefore(name, 2))
+                    name = "data_" + name;
+                end
+            end
+            if ~isvarname(name)
+                nansen.internal.throwError("invalid-params", "'%s' is not a variable name", name)
+            end
+            adapterId = string(nansen.internal.getField(params, "adapter", ""));
+            tries = adapterId;
+            if adapterId == ""
+                tries = project.adapters().forExtension(extension);
+            end
+            if isempty(tries)
+                nansen.internal.throwError("unsupported-file", "no file adapter of the project reads %s files", extension)
+            end
+            problems = strings(1, 0);
+            for candidate = tries
+                try
+                    value = project.adapters().get(candidate).read(string(resolved.path));
+                catch err
+                    if adapterId ~= "" || ~startsWith(string(err.identifier), "nansen:")
+                        rethrow(err)
+                    end
+                    problems(end + 1) = candidate + ": " + string(err.message); %#ok<AGROW>
+                    continue
+                end
+                obj.SendToWorkspace(name, value);
+                result = struct("name", char(name), "adapter", char(candidate), "path", char(resolved.path));
+                return
+            end
+            nansen.internal.throwError("invalid-data", "%s could not be read: %s", stem + extension, strjoin(problems, "; "))
         end
 
         function result = apiFilesFrame(obj, params)

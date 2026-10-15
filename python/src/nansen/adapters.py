@@ -281,6 +281,19 @@ class AdapterRegistry:
                 "languages": ["matlab", "python"],
                 "builtIn": adapter_id in BUILT_IN}
 
+    def for_extension(self, extension: str) -> List[str]:
+        """Ids of the adapters, built-in and declared, that name an extension among theirs, in id order."""
+        extension = extension.lower()
+        ids = []
+        for adapter_id in self.ids:
+            if adapter_id in self._declarations:
+                extensions = self._declarations[adapter_id].get("extensions", [])
+            else:
+                extensions = getattr(self._adapters[adapter_id], "extensions", [])
+            if extension in [e.lower() for e in extensions]:
+                ids.append(adapter_id)
+        return ids
+
     def for_stacks(self, extension: str) -> List[str]:
         """Ids of the adapters that read files of an extension as image stacks (declared with data type ImageStack, and
         the built-in npy for .npy), in id order."""

@@ -684,6 +684,22 @@ def test_browse_an_entitys_files(empty_app, page):
     page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
     page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='masks.json']")
     assert "2 B" in page.locator(f"{tree} li[data-name='masks.json'] .size").inner_text()
+    # dev's file viewer: preview a file, make a folder, make a data variable of a file
+    page.click(f"{tree} li[data-name='masks.json'] .preview-file")
+    page.wait_for_selector(".preview-dialog pre:text-is('[]')")
+    page.locator(".preview-dialog .dialog-foot button:has-text('Close')").click()
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .new-folder")
+    page.fill(".dialog.narrow input", "extra")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(f"{tree} li.folder-entry[data-name='extra']")
+    assert (folder / "roi" / "extra").is_dir()
+    page.click(f"{tree} li[data-name='masks.json'] .make-variable")
+    page.wait_for_selector(".variable-form .variable-adapter option[value='json']", state="attached")
+    assert page.locator(".variable-form .variable-file").input_value() == "masks.json"
+    assert page.locator(".variable-form .variable-subfolder").input_value() == "roi"
+    assert page.locator(".variable-form .variable-location").input_value() == "processed"
+    assert page.locator(".variable-form .variable-adapter").input_value() == "json"
+    page.locator(".dialog .dialog-foot button:has-text('Cancel')").click()
     # an NWB file shows its groups and datasets in place
     page.click(f"{tree} li[data-name='recording.nwb'] .inspect-file")
     page.wait_for_selector(f"{tree} .hdf5-summary:has-text('NWBFile 2.7.0')")
