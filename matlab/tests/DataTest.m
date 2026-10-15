@@ -40,10 +40,11 @@ classdef DataTest < matlab.unittest.TestCase
                 fields.fileName string = ""
                 fields.subfolder string = ""
                 fields.fileAdapter string = ""
+                fields.variableInFile string = ""
             end
             doc = struct("schemaType", 'nansen.dataVariable', "schemaVersion", '0.1.0', "name", char(name), ...
                 "entityType", 'session');
-            for field = ["dataLocation", "filePattern", "fileName", "subfolder", "fileAdapter"]
+            for field = ["dataLocation", "filePattern", "fileName", "subfolder", "fileAdapter", "variableInFile"]
                 if fields.(field) ~= ""
                     doc.(field) = char(fields.(field));
                 end
@@ -120,6 +121,24 @@ classdef DataTest < matlab.unittest.TestCase
             entity = testCase.session("m1-001");
             entity.save("traces", struct("dff", [1, 2, 3]));
             testCase.verifyEqual(entity.load("traces").dff, [1, 2, 3]);
+        end
+
+        function variablesThatShareAMatFile(testCase)
+            % As dev's ROI signals: each data variable is one variable of the file, and saving one keeps the others
+            for name = ["RoiSignals_MeanF", "RoiSignals_Dff"]
+                testCase.Project.addDataVariable(DataTest.variable(name, dataLocation="processed", ...
+                    fileName="{session_id}_roisignals.mat", fileAdapter="mat", variableInFile=name));
+            end
+            entity = testCase.session("m1-001");
+            entity.save("RoiSignals_MeanF", [1, 2; 3, 4]);
+            entity.save("RoiSignals_Dff", [0.5, 0.25]);
+            testCase.verifyEqual(entity.load("RoiSignals_MeanF"), [1, 2; 3, 4]);
+            testCase.verifyEqual(entity.load("RoiSignals_Dff"), [0.5, 0.25]);
+            testCase.verifyEqual(sort(string(fieldnames(load(testCase.Project.writePath(entity, "RoiSignals_Dff"))))), ...
+                ["RoiSignals_Dff"; "RoiSignals_MeanF"]);
+            testCase.Project.addDataVariable(DataTest.variable("Missing", dataLocation="processed", ...
+                fileName="{session_id}_roisignals.mat", fileAdapter="mat", variableInFile="Nope"));
+            testCase.verifyError(@() entity.load("Missing"), "nansen:DataNotFound");
         end
 
         function npyReadsWhatNumpyWrites(testCase)

@@ -246,7 +246,40 @@
       "dataLocation": "processed",
       "subfolder": "roi_data",
       "fileName": "{session_id}_roi_array.mat",
-      "fileAdapter": "mat"
+      "fileAdapter": "mat",
+      "variableInFile": "RoiArray"
+    },
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "entityType": "session",
+      "dataLocation": "processed",
+      "name": "RoiSignals_Dff",
+      "subfolder": "roisignals",
+      "fileName": "{session_id}_roisignals.mat",
+      "fileAdapter": "mat",
+      "variableInFile": "RoiSignals_Dff"
+    },
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "entityType": "session",
+      "dataLocation": "processed",
+      "name": "RoiSignals_MeanF",
+      "subfolder": "roisignals",
+      "fileName": "{session_id}_roisignals.mat",
+      "fileAdapter": "mat",
+      "variableInFile": "RoiSignals_MeanF"
+    },
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "entityType": "session",
+      "dataLocation": "processed",
+      "name": "Rois",
+      "subfolder": "roi_data",
+      "fileName": "{session_id}_rois.mat",
+      "fileAdapter": "ophys.nansen_roi_array"
     },
     {
       "schemaType": "nansen.dataVariable",
@@ -257,6 +290,16 @@
       "filePattern": "SessionConfig",
       "fileName": "{session_id}_config.json",
       "fileAdapter": "json"
+    },
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "entityType": "session",
+      "dataLocation": "processed",
+      "name": "TwoPhotonSeries_Corrected",
+      "subfolder": "motion_corrected",
+      "fileName": "{session_id}_two_photon_corrected.raw",
+      "fileAdapter": "ophys.binary_stack"
     }
   ],
   "tables": {

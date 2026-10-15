@@ -1042,10 +1042,21 @@ class Project:
             paths = existing[:1]
             read = lambda: adapter.read(paths[0])
         if not cached:
-            return read()
+            return self._in_file(variable, read(), paths[0])
         stamps = tuple((p.stat().st_mtime_ns, p.stat().st_size) for p in paths)
         key = (variable.file_adapter, *(str(p.resolve()) for p in paths))
-        return self.data_cache.get_or_load(key if len(paths) > 1 else key[:2], stamps if len(paths) > 1 else stamps[0], read)
+        value = self.data_cache.get_or_load(key if len(paths) > 1 else key[:2], stamps if len(paths) > 1 else stamps[0], read)
+        return self._in_file(variable, value, paths[0])
+
+    @staticmethod
+    def _in_file(variable, value: Any, path: Path) -> Any:
+        """The variable's part of what its file holds: the whole, or the variable named variableInFile."""
+        name = variable.variable_in_file
+        if not name:
+            return value
+        if not isinstance(value, dict) or name not in value:
+            raise NansenError("data-not-found", f"{path} has no variable {name!r} (for {variable.name!r})")
+        return value[name]
 
     def open_stack(self, entity: Entity, name: str) -> Stack:
         """The variable as a stack read a few frames at a time (nansen.stacks.Stack).
@@ -1086,7 +1097,13 @@ class Project:
         variable = self.data_variable(name)
         path = self.write_path(entity, name)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.adapters.get(variable.file_adapter).write(path, data)
+        adapter = self.adapters.get(variable.file_adapter)
+        if variable.variable_in_file:   # one variable of the file: the others are kept
+            others = adapter.read(path) if path.is_file() else {}
+            if not isinstance(others, dict):
+                raise NansenError("invalid-data", f"{path} does not hold named variables; {name!r} cannot be one of them")
+            data = dict(others, **{variable.variable_in_file: data})
+        adapter.write(path, data)
         self.data_cache.remove((variable.file_adapter, str(path.resolve())))  # a rewrite in the same tick keeps mtime
         return path
 

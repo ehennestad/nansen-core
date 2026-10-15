@@ -37,6 +37,10 @@ class DataVariable:
         return self.document.get("fileName")
 
     @property
+    def variable_in_file(self) -> Optional[str]:
+        return self.document.get("variableInFile")
+
+    @property
     def subfolder(self) -> str:
         return self.document.get("subfolder", "")
 

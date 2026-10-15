@@ -15,7 +15,9 @@ What maps over:
   go to ``core.notes``; other columns go to a ``legacy.<entityType>`` fragment in the project. An entity
   type the dataset has but dev kept no table of gets an empty table with ``core.notes``;
 - file path settings become data variables, when their file adapter has an equivalent: built in, or in the ophys
-  module for dev's ROI files (RoiArray) and image stacks (ImageStack of TIFF, SciScan raw, HDF5 or npy files);
+  module for dev's ROI files (RoiArray, RoiGroup) and image stacks (ImageStack of TIFF, dev's binary or SciScan raw,
+  HDF5 or npy files). A variable dev kept in a .mat file under its own name (its Default adapter, and RoiSignalArray,
+  which kept all the ROI signals in one file) is that variable of the file (variableInFile);
 - the notes of a ``Notebook`` column go into the entity type's notebook, in the order they were written.
 
 Whatever cannot be mapped is left out and named in the report's ``warnings``.
@@ -47,10 +49,14 @@ NOTE_TYPES = {"informal": "informal", "important": "important", "todo": "todo", 
 DERIVED = {"session": {"Date": "session_date", "Time": "session_time"}}
 ADAPTERS_BY_TYPE = {".mat": "mat", ".json": "json", ".txt": "text"}
 ADAPTERS_BY_NAME = {"default": None, "": None, "matfile": "mat", "mat": "mat", "json": "json", "text": "text",
-                    "roiarray": "ophys.nansen_roi_array"}
-# dev's ImageStack adapter read stacks of many file types; the ophys module's adapters read these
-STACK_ADAPTERS_BY_TYPE = {".tif": "ophys.tiff_stack", ".tiff": "ophys.tiff_stack", ".raw": "ophys.sciscan_raw",
+                    "roiarray": "ophys.nansen_roi_array", "roigroup": "ophys.nansen_roi_array", "roisignalarray": "mat"}
+# dev's ImageStack adapter read stacks of many file types; the ophys module's adapters read these (a .raw is dev's
+# own binary stack, or SciScan's: ophys.binary_stack reads both)
+STACK_ADAPTERS_BY_TYPE = {".tif": "ophys.tiff_stack", ".tiff": "ophys.tiff_stack", ".raw": "ophys.binary_stack",
+                          ".bin": "ophys.binary_stack", ".dat": "ophys.binary_stack",
                           ".h5": "ophys.hdf5_stack", ".hdf5": "ophys.hdf5_stack", ".npy": "npy"}
+# dev saved these as one named variable of a .mat file (its Default adapter, its RoiSignalArray: several in one file)
+NAMED_IN_FILE = {"default", "", "roisignalarray"}
 
 
 def convert_legacy(export: dict, folder: PathLike) -> dict:
@@ -328,6 +334,8 @@ def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str
             document["subfolder"] = subfolder
         document["fileName"] = "{session_id}_" + base
         document["fileAdapter"] = adapter
+        if adapter == "mat" and adapter_name.lower() in NAMED_IN_FILE and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", legacy_name):
+            document["variableInFile"] = legacy_name   # dev loaded the variable of the data variable's name
         variables.append(document)
     return variables
 

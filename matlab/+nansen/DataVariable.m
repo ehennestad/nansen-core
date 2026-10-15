@@ -12,6 +12,7 @@ classdef DataVariable
         FileName (1,1) string = ""
         Subfolder (1,1) string = ""
         FileAdapter (1,1) string
+        VariableInFile (1,1) string = ""   % the variable of a .mat file it is, when the file holds several
     end
 
     methods
@@ -28,6 +29,18 @@ classdef DataVariable
             obj.FileName = field("fileName");
             obj.Subfolder = field("subfolder");
             obj.FileAdapter = field("fileAdapter");
+            obj.VariableInFile = field("variableInFile");
+        end
+
+        function value = inFile(obj, value, path)
+            %inFile The variable's part of what its file holds: the whole, or the variable named VariableInFile
+            if obj.VariableInFile == ""
+                return
+            end
+            if ~(isstruct(value) && isscalar(value) && isfield(value, obj.VariableInFile))
+                nansen.internal.throwError("data-not-found", "%s has no variable '%s' (for '%s')", path, obj.VariableInFile, obj.Name)
+            end
+            value = value.(obj.VariableInFile);
         end
 
         function relative = relativeFile(obj, values)

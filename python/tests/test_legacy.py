@@ -105,5 +105,5 @@ def test_cli(tmp_path, capsys):
     export.write_text(json.dumps(export_for(raw, processed)))
     assert main(["import-legacy", str(export), str(tmp_path / "project")]) == 0
     out = capsys.readouterr().out
-    assert "2 subject(s), 2 session(s), 3 data variable(s)" in out   # MotionCorrected, an ImageStack .tif, through ophys.tiff_stack
+    assert "2 subject(s), 2 session(s), 7 data variable(s)" in out   # dev's ROI, signal and binary stack variables too
     assert "note: variable 'MotionCorrected'" not in out

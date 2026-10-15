@@ -1,11 +1,16 @@
 classdef NansenRoiArray < nansen.FileAdapter
 %NansenRoiArray dev's ROI file (.mat): a struct array roiArray (or RoiArray, roi_arr) of RoI properties
 %
-%   As dev's roimanager saves it. Read as the module's ROI document: Mask
-%   ROIs are their pixels, given as 1-based x (column), y (row); Circle
-%   ROIs (x, y and a radius) are made into pixels as dev's RoI does; Polygon
-%   ROIs are the pixels whose centre is inside, by the even-odd rule. Read
-%   only. Python's ophys_adapters.NansenRoiArray reads the same.
+%   As dev's roimanager and RoiGroup adapter save it, with roiClassification
+%   beside it (1 accepted, 2 rejected; 0 unclassified and 3 unresolved are
+%   left unclassified). Read as the module's ROI document: Mask and Donut
+%   ROIs are their pixels, given as 1-based x (column), y (row); IMask ROIs
+%   those of weight above 0; Circle ROIs (x, y and a radius) are made into
+%   pixels as dev's RoI does; Polygon ROIs are the pixels whose centre is
+%   inside, by the even-odd rule. A file of several planes or channels
+%   (cells of them) is read as its first. Written as dev's RoiGroup adapter
+%   writes: Mask ROIs and their classification, which dev reads. Python's
+%   ophys_adapters.NansenRoiArray is the same.
 
     methods
         function data = read(~, path)
@@ -15,13 +20,27 @@ classdef NansenRoiArray < nansen.FileAdapter
                 nansen.internal.throwError("invalid-data", "%s has no roiArray", path)
             end
             rois = contents.(names(1));
-            if iscell(rois)
-                rois = [rois{:}];
+            classes = [];
+            if isfield(contents, "roiClassification")
+                classes = contents.roiClassification;
+            end
+            if iscell(rois)   % planes x channels: the first
+                rois = rois{1};
+                if iscell(classes)
+                    classes = classes{1};
+                end
             end
             if isempty(rois)
                 data = struct("imageSize", [0, 0], "rois", {{}});
                 return
             end
+            codes = double(classes(:));
+            if numel(codes) ~= numel(rois)
+                codes = zeros(numel(rois), 1);   % as dev: a classification of the wrong size is reset
+            end
+            labels = repmat({""}, 1, numel(rois));
+            labels(codes == 1) = {"accepted"};
+            labels(codes == 2) = {"rejected"};
             imageSize = double(rois(1).imagesize(:))';
             lists = cell(1, numel(rois));
             for k = 1:numel(rois)
@@ -40,18 +59,59 @@ classdef NansenRoiArray < nansen.FileAdapter
                         lists{k} = candidates(keep, :);
                     otherwise   % Mask, IMask, Donut: 1-based x, y of each pixel
                         points = reshape(coordinates, [], size(coordinates, 2));
+                        if string(rois(k).shape) == "IMask" && isfield(rois, "pixelweights") && numel(rois(k).pixelweights) == size(points, 1)
+                            points = points(double(rois(k).pixelweights(:)) > 0, :);
+                        end
                         lists{k} = [round(points(:, 2)) - 1, round(points(:, 1)) - 1];
                 end
             end
-            data = ophys.internal.roiDocument(imageSize, lists);
+            data = ophys.internal.roiDocument(imageSize, lists, labels);
         end
 
-        function write(~, ~, ~)
-            nansen.internal.throwError("invalid-params", "dev's ROI files are read here; ROIs are saved as JSON")
+        function write(~, path, data)
+            rois = ophys.internal.roiList(data);
+            imageSize = double(reshape(nansen.internal.getField(data, "imageSize", [0, 0]), 1, []));
+            fields = ["uid", "shape", "coordinates", "pixelweights", "imagesize", "boundary", "area", "center", ...
+                "connectedrois", "group", "celltype", "structure", "layer", "tags", "enhancedImage"];
+            roiArray = repmat(cell2struct(cell(numel(fields), 1), cellstr(fields), 1), 1, numel(rois));
+            codes = zeros(numel(rois), 1);
+            for k = 1:numel(rois)
+                pixels = double(rois{k}.pixels);
+                coordinates = [pixels(:, 2) + 1, pixels(:, 1) + 1];   % 1-based x, y
+                roiArray(k).uid = ophys.NansenRoiArray.uid();
+                roiArray(k).shape = 'Mask';
+                roiArray(k).coordinates = coordinates;
+                roiArray(k).pixelweights = [];
+                roiArray(k).imagesize = imageSize;
+                roiArray(k).boundary = {[NaN, NaN]};
+                roiArray(k).area = size(pixels, 1);
+                roiArray(k).center = mean(coordinates, 1);
+                roiArray(k).connectedrois = cell(0);
+                roiArray(k).group = [];
+                roiArray(k).celltype = '';
+                roiArray(k).structure = 'na';
+                roiArray(k).layer = '';
+                roiArray(k).tags = cell(0, 1);
+                roiArray(k).enhancedImage = [];
+                switch string(nansen.internal.getField(rois{k}, "classification", ""))
+                    case "accepted"
+                        codes(k) = 1;
+                    case "rejected"
+                        codes(k) = 2;
+                end
+            end
+            contents = struct("roiArray", {roiArray}, "roiClassification", codes, "roiImages", {[]}, "roiStats", {[]});
+            save(path, "-struct", "contents");
         end
     end
 
     methods (Static, Access = private)
+        function text = uid()
+            % A random UUID, as dev's RoI has
+            hex = dec2hex(randi([0, 15], 1, 32))';
+            text = sprintf('%s-%s-4%s-%s-%s', hex(1:8), hex(9:12), hex(14:16), hex(17:20), hex(21:32));
+        end
+
         function pixels = circlePixels(x, y, r)
             % dev's RoI.getPixelIdxList for a circle: a local disk offset by the centre's fraction, placed at the centre
             [xx, yy] = meshgrid((-r:r) - mod(x, 1), (-r:r) - mod(y, 1));

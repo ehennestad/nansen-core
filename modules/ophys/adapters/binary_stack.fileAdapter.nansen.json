@@ -1,0 +1,18 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.binary_stack",
+  "version": "1.0.0",
+  "title": "NANSEN dev binary stack",
+  "description": "NANSEN dev's own image stack file: a headerless .raw (or .bin, .dat) beside an .ini with its Size and Class, in MATLAB's column-major order, little-endian, as dev's motion correction and downsampling wrote them. A .raw whose .ini is SciScan's is read as SciScan's, so every .raw of a dev project is read. Read a chunk of frames at a time, and written in the same format.",
+  "extensions": [
+    ".raw",
+    ".bin",
+    ".dat"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:BinaryStack",
+    "matlab": "ophys.BinaryStack"
+  }
+}

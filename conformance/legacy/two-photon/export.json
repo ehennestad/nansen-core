@@ -2,89 +2,421 @@
   "schemaType": "nansen.legacyExport",
   "schemaVersion": "0.1.0",
   "source": "/old/RatNav",
-  "project": { "name": "Rat Navigation", "shortName": "RatNav", "description": "Imported from dev" },
+  "project": {
+    "name": "Rat Navigation",
+    "shortName": "RatNav",
+    "description": "Imported from dev"
+  },
   "dataLocations": [
     {
       "name": "Rawdata",
       "type": "recorded",
-      "rootPaths": [ { "key": "local", "value": "/data/rawdata", "diskName": "LabDisk" } ],
+      "rootPaths": [
+        {
+          "key": "local",
+          "value": "/data/rawdata",
+          "diskName": "LabDisk"
+        }
+      ],
       "subfolders": [
-        { "name": "m110", "type": "Subject", "expression": "^m\\d{3}$", "ignoreList": ["old"], "isFolder": true },
-        { "name": "2025_05_23", "type": "Date", "expression": "", "ignoreList": [], "isFolder": true },
-        { "name": "session-m110-001", "type": "Session", "expression": "session", "ignoreList": [], "isFolder": true }
+        {
+          "name": "m110",
+          "type": "Subject",
+          "expression": "^m\\d{3}$",
+          "ignoreList": [
+            "old"
+          ],
+          "isFolder": true
+        },
+        {
+          "name": "2025_05_23",
+          "type": "Date",
+          "expression": "",
+          "ignoreList": [],
+          "isFolder": true
+        },
+        {
+          "name": "session-m110-001",
+          "type": "Session",
+          "expression": "session",
+          "ignoreList": [],
+          "isFolder": true
+        }
       ],
       "metadata": [
-        { "variableName": "Subject ID", "subfolderLevel": [1], "mode": "ind", "input": "1:end", "format": "" },
-        { "variableName": "Session ID", "subfolderLevel": [3], "mode": "expr", "input": "m\\d{3}-\\d{3}", "format": "" },
-        { "variableName": "Experiment Date", "subfolderLevel": [2], "mode": "ind", "input": "1:10", "format": "yyyy_MM_dd" },
-        { "variableName": "Experiment Time", "subfolderLevel": [], "mode": "ind", "input": "1:end", "format": "HHmmss" }
+        {
+          "variableName": "Subject ID",
+          "subfolderLevel": [
+            1
+          ],
+          "mode": "ind",
+          "input": "1:end",
+          "format": ""
+        },
+        {
+          "variableName": "Session ID",
+          "subfolderLevel": [
+            3
+          ],
+          "mode": "expr",
+          "input": "m\\d{3}-\\d{3}",
+          "format": ""
+        },
+        {
+          "variableName": "Experiment Date",
+          "subfolderLevel": [
+            2
+          ],
+          "mode": "ind",
+          "input": "1:10",
+          "format": "yyyy_MM_dd"
+        },
+        {
+          "variableName": "Experiment Time",
+          "subfolderLevel": [],
+          "mode": "ind",
+          "input": "1:end",
+          "format": "HHmmss"
+        }
       ]
     },
     {
       "name": "Processed",
       "type": "processed",
-      "rootPaths": [ { "key": "1bad", "value": "/data/processed" } ],
+      "rootPaths": [
+        {
+          "key": "1bad",
+          "value": "/data/processed"
+        }
+      ],
       "subfolders": [
-        { "name": "m110", "type": "Subject", "expression": "", "ignoreList": [], "isFolder": true },
-        { "name": "m110-001", "type": "Session", "expression": "", "ignoreList": [], "isFolder": true }
+        {
+          "name": "m110",
+          "type": "Subject",
+          "expression": "",
+          "ignoreList": [],
+          "isFolder": true
+        },
+        {
+          "name": "m110-001",
+          "type": "Session",
+          "expression": "",
+          "ignoreList": [],
+          "isFolder": true
+        }
       ],
       "metadata": [
-        { "variableName": "Subject ID", "subfolderLevel": [1], "mode": "ind", "input": "1:end" },
-        { "variableName": "Session ID", "subfolderLevel": [2], "mode": "func", "input": "", "functionName": "RatNav.datalocation.getSessionID" },
-        { "variableName": "Experiment Date", "subfolderLevel": [1, 2], "mode": "expr", "input": "\\d{8}", "separator": "_" }
+        {
+          "variableName": "Subject ID",
+          "subfolderLevel": [
+            1
+          ],
+          "mode": "ind",
+          "input": "1:end"
+        },
+        {
+          "variableName": "Session ID",
+          "subfolderLevel": [
+            2
+          ],
+          "mode": "func",
+          "input": "",
+          "functionName": "RatNav.datalocation.getSessionID"
+        },
+        {
+          "variableName": "Experiment Date",
+          "subfolderLevel": [
+            1,
+            2
+          ],
+          "mode": "expr",
+          "input": "\\d{8}",
+          "separator": "_"
+        }
       ]
     },
-    { "name": "Scratch", "type": "temporary", "rootPaths": [], "subfolders": [], "metadata": [] }
+    {
+      "name": "Scratch",
+      "type": "temporary",
+      "rootPaths": [],
+      "subfolders": [],
+      "metadata": []
+    }
   ],
   "variables": [
-    { "name": "SessionConfig", "dataLocation": "Rawdata", "subfolder": "", "fileNameExpression": "config", "fileType": "json", "fileAdapter": "Default" },
-    { "name": "RoiArray", "dataLocation": "Processed", "subfolder": "roi_data", "fileNameExpression": "", "fileType": ".mat", "fileAdapter": "Default" },
-    { "name": "MotionCorrected", "dataLocation": "Processed", "subfolder": "", "fileNameExpression": "motion_corrected", "fileType": ".tif", "fileAdapter": "ImageStack" },
-    { "name": "SessionData", "dataLocation": "Processed", "isInternal": true }
+    {
+      "name": "SessionConfig",
+      "dataLocation": "Rawdata",
+      "subfolder": "",
+      "fileNameExpression": "config",
+      "fileType": "json",
+      "fileAdapter": "Default"
+    },
+    {
+      "name": "RoiArray",
+      "dataLocation": "Processed",
+      "subfolder": "roi_data",
+      "fileNameExpression": "",
+      "fileType": ".mat",
+      "fileAdapter": "Default"
+    },
+    {
+      "name": "MotionCorrected",
+      "dataLocation": "Processed",
+      "subfolder": "",
+      "fileNameExpression": "motion_corrected",
+      "fileType": ".tif",
+      "fileAdapter": "ImageStack"
+    },
+    {
+      "name": "Rois",
+      "dataLocation": "Processed",
+      "subfolder": "roi_data",
+      "fileNameExpression": "rois",
+      "fileType": ".mat",
+      "fileAdapter": "RoiGroup"
+    },
+    {
+      "name": "RoiSignals_MeanF",
+      "dataLocation": "Processed",
+      "subfolder": "roisignals",
+      "fileNameExpression": "roisignals",
+      "fileType": ".mat",
+      "fileAdapter": "RoiSignalArray"
+    },
+    {
+      "name": "RoiSignals_Dff",
+      "dataLocation": "Processed",
+      "subfolder": "roisignals",
+      "fileNameExpression": "roisignals",
+      "fileType": ".mat",
+      "fileAdapter": "RoiSignalArray"
+    },
+    {
+      "name": "TwoPhotonSeries_Corrected",
+      "dataLocation": "Processed",
+      "subfolder": "motion_corrected",
+      "fileNameExpression": "two_photon_corrected",
+      "fileType": ".raw",
+      "fileAdapter": "ImageStack"
+    },
+    {
+      "name": "SessionData",
+      "dataLocation": "Processed",
+      "isInternal": true
+    }
   ],
   "tables": [
     {
-      "name": "Sessions", "entityClass": "session", "isMaster": true,
+      "name": "Sessions",
+      "entityClass": "session",
+      "isMaster": true,
       "columns": [
-        { "name": "sessionID", "dataType": "string" }, { "name": "subjectID", "dataType": "string" },
-        { "name": "Date", "dataType": "date" }, { "name": "Time", "dataType": "string" },
-        { "name": "Ignore", "dataType": "boolean" }, { "name": "Description", "dataType": "string" },
-        { "name": "NumRois", "dataType": "integer" }, { "name": "Quality", "dataType": "number" },
-        { "name": "Reviewed", "dataType": "boolean" }
+        {
+          "name": "sessionID",
+          "dataType": "string"
+        },
+        {
+          "name": "subjectID",
+          "dataType": "string"
+        },
+        {
+          "name": "Date",
+          "dataType": "date"
+        },
+        {
+          "name": "Time",
+          "dataType": "string"
+        },
+        {
+          "name": "Ignore",
+          "dataType": "boolean"
+        },
+        {
+          "name": "Description",
+          "dataType": "string"
+        },
+        {
+          "name": "NumRois",
+          "dataType": "integer"
+        },
+        {
+          "name": "Quality",
+          "dataType": "number"
+        },
+        {
+          "name": "Reviewed",
+          "dataType": "boolean"
+        }
       ],
-      "skippedColumns": ["DataLocation", "Progress"],
+      "skippedColumns": [
+        "DataLocation",
+        "Progress"
+      ],
       "rows": [
-        { "sessionID": "m110-001", "subjectID": "m110", "Date": "2025-05-23", "Time": "09:30", "Ignore": false, "Description": "Good", "NumRois": 120, "Quality": 0.8, "Reviewed": true },
-        { "sessionID": "m110-002", "subjectID": "m110", "Date": "2025-05-24", "Time": null, "Ignore": true, "Description": "", "NumRois": null, "Quality": null, "Reviewed": false },
-        { "sessionID": "m111-001", "subjectID": "", "Date": null, "Time": null, "Ignore": false, "Description": "", "NumRois": null, "Quality": null, "Reviewed": false },
-        { "sessionID": "m110-001", "subjectID": "m110", "Date": "2025-05-23", "Time": null, "Ignore": false, "Description": "copy", "NumRois": null, "Quality": null, "Reviewed": false }
+        {
+          "sessionID": "m110-001",
+          "subjectID": "m110",
+          "Date": "2025-05-23",
+          "Time": "09:30",
+          "Ignore": false,
+          "Description": "Good",
+          "NumRois": 120,
+          "Quality": 0.8,
+          "Reviewed": true
+        },
+        {
+          "sessionID": "m110-002",
+          "subjectID": "m110",
+          "Date": "2025-05-24",
+          "Time": null,
+          "Ignore": true,
+          "Description": "",
+          "NumRois": null,
+          "Quality": null,
+          "Reviewed": false
+        },
+        {
+          "sessionID": "m111-001",
+          "subjectID": "",
+          "Date": null,
+          "Time": null,
+          "Ignore": false,
+          "Description": "",
+          "NumRois": null,
+          "Quality": null,
+          "Reviewed": false
+        },
+        {
+          "sessionID": "m110-001",
+          "subjectID": "m110",
+          "Date": "2025-05-23",
+          "Time": null,
+          "Ignore": false,
+          "Description": "copy",
+          "NumRois": null,
+          "Quality": null,
+          "Reviewed": false
+        }
       ],
       "notes": [
-        { "row": 1, "createdAt": "2025-05-24T10:00:00", "author": "ana", "type": "Important", "title": "Lost frames", "text": "Frames 1200 to 1300 were dropped. #artifact" },
-        { "row": 0, "createdAt": "2025-05-23T09:00:00", "author": "ben", "type": "Informal", "title": "", "text": "Good imaging, stable #window" },
-        { "row": 3, "createdAt": "2025-05-23T12:00:00", "author": "ana", "type": "Todo", "title": "Re-run motion correction", "text": "" },
-        { "row": 2, "createdAt": "2025-05-25T08:00:00", "author": "ana", "type": "Question", "title": "Which subject?", "text": "" },
-        { "row": 1, "createdAt": null, "author": "ben", "type": "Informal", "title": "", "text": "no time" },
-        { "row": 0, "createdAt": "2025-05-23T09:00:00", "author": "ben", "type": "Reminder", "title": "Order", "text": "Same second as the first note" }
+        {
+          "row": 1,
+          "createdAt": "2025-05-24T10:00:00",
+          "author": "ana",
+          "type": "Important",
+          "title": "Lost frames",
+          "text": "Frames 1200 to 1300 were dropped. #artifact"
+        },
+        {
+          "row": 0,
+          "createdAt": "2025-05-23T09:00:00",
+          "author": "ben",
+          "type": "Informal",
+          "title": "",
+          "text": "Good imaging, stable #window"
+        },
+        {
+          "row": 3,
+          "createdAt": "2025-05-23T12:00:00",
+          "author": "ana",
+          "type": "Todo",
+          "title": "Re-run motion correction",
+          "text": ""
+        },
+        {
+          "row": 2,
+          "createdAt": "2025-05-25T08:00:00",
+          "author": "ana",
+          "type": "Question",
+          "title": "Which subject?",
+          "text": ""
+        },
+        {
+          "row": 1,
+          "createdAt": null,
+          "author": "ben",
+          "type": "Informal",
+          "title": "",
+          "text": "no time"
+        },
+        {
+          "row": 0,
+          "createdAt": "2025-05-23T09:00:00",
+          "author": "ben",
+          "type": "Reminder",
+          "title": "Order",
+          "text": "Same second as the first note"
+        }
       ]
     },
     {
-      "name": "Sessions (curated)", "entityClass": "session", "isMaster": false,
-      "columns": [ { "name": "sessionID", "dataType": "string" } ],
-      "rows": [ { "sessionID": "m110-001" }, { "sessionID": "m110-002" }, { "sessionID": "m999-001" } ]
-    },
-    {
-      "name": "Subjects", "entityClass": "subject", "isMaster": true,
+      "name": "Sessions (curated)",
+      "entityClass": "session",
+      "isMaster": false,
       "columns": [
-        { "name": "SubjectID", "dataType": "string" }, { "name": "DateOfBirth", "dataType": "date" },
-        { "name": "BiologicalSex", "dataType": "string" }, { "name": "Description", "dataType": "string" }
+        {
+          "name": "sessionID",
+          "dataType": "string"
+        }
       ],
       "rows": [
-        { "SubjectID": "m110", "DateOfBirth": "2024-11-01", "BiologicalSex": "Female", "Description": "Head-fixed" },
-        { "SubjectID": "m111", "DateOfBirth": null, "BiologicalSex": "unknown", "Description": null }
+        {
+          "sessionID": "m110-001"
+        },
+        {
+          "sessionID": "m110-002"
+        },
+        {
+          "sessionID": "m999-001"
+        }
+      ]
+    },
+    {
+      "name": "Subjects",
+      "entityClass": "subject",
+      "isMaster": true,
+      "columns": [
+        {
+          "name": "SubjectID",
+          "dataType": "string"
+        },
+        {
+          "name": "DateOfBirth",
+          "dataType": "date"
+        },
+        {
+          "name": "BiologicalSex",
+          "dataType": "string"
+        },
+        {
+          "name": "Description",
+          "dataType": "string"
+        }
+      ],
+      "rows": [
+        {
+          "SubjectID": "m110",
+          "DateOfBirth": "2024-11-01",
+          "BiologicalSex": "Female",
+          "Description": "Head-fixed"
+        },
+        {
+          "SubjectID": "m111",
+          "DateOfBirth": null,
+          "BiologicalSex": "unknown",
+          "Description": null
+        }
       ],
       "notes": [
-        { "row": 0, "createdAt": "2025-04-02T15:30:00", "author": "ana", "type": "Question", "title": "Window clear?", "text": "Check at week 6 #window" }
+        {
+          "row": 0,
+          "createdAt": "2025-04-02T15:30:00",
+          "author": "ana",
+          "type": "Question",
+          "title": "Window clear?",
+          "text": "Check at week 6 #window"
+        }
       ]
     }
   ]

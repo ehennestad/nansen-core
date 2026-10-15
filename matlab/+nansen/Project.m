@@ -1679,7 +1679,7 @@ classdef Project < handle
                 reader = @() adapter.read(paths(1));
             end
             if ~options.Cached
-                data = reader();
+                data = variable.inFile(reader(), paths(1));
                 return
             end
             stamps = zeros(numel(paths), 2);
@@ -1689,6 +1689,7 @@ classdef Project < handle
             end
             data = obj.DataCache.getOrLoad(nansen.Project.cacheKey(variable.FileAdapter, strjoin(paths, "|")), ...
                 reshape(stamps.', 1, []), reader);
+            data = variable.inFile(data, paths(1));
         end
 
         function stack = openStack(obj, entity, name)
@@ -1749,7 +1750,19 @@ classdef Project < handle
             if ~isfolder(folder)
                 mkdir(folder);
             end
-            obj.adapters().get(variable.FileAdapter).write(path, data);
+            adapter = obj.adapters().get(variable.FileAdapter);
+            if variable.VariableInFile ~= ""   % one variable of the file: the others are kept
+                others = struct();
+                if isfile(path)
+                    others = adapter.read(path);
+                end
+                if ~(isstruct(others) && isscalar(others))
+                    nansen.internal.throwError("invalid-data", "%s does not hold named variables; '%s' cannot be one of them", path, name)
+                end
+                others.(variable.VariableInFile) = data;
+                data = others;
+            end
+            adapter.write(path, data);
             obj.DataCache.remove(nansen.Project.cacheKey(variable.FileAdapter, path));   % a rewrite in the same tick keeps the time
         end
 

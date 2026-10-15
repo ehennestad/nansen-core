@@ -145,7 +145,7 @@ classdef Npy < nansen.FileAdapter
         end
     end
 
-    methods (Static, Access = private)
+    methods (Static, Hidden)   % used by other adapters of raw values too (ophys.BinaryStack)
         function data = readFrames(path, precision, byteOrder, shape, fortran, offset, logicalValues, first, last)
             %readFrames Frames first..last of an array of the shape, frames last: one stretch of the file in Fortran
             %order; in C order a run of values for each pixel, the rest skipped

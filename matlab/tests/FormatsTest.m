@@ -23,6 +23,46 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyDocument(ophys.NansenRoiArray().read(fullfile(testCase.Files, "rois_nansen.mat")), testCase.Expected.nansen);
         end
 
+        function readsDevRoiGroups(testCase)   % two planes, classified, with an IMask ROI: plane 1 is read
+            testCase.verifyDocument(ophys.NansenRoiArray().read(fullfile(testCase.Files, "rois_group.mat")), testCase.Expected.roiGroup);
+        end
+
+        function writesDevRoisAsDevReadsThem(testCase)
+            folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
+            path = fullfile(folder, "rois.mat");
+            document = ophys.NansenRoiArray().read(fullfile(testCase.Files, "rois_group.mat"));
+            ophys.NansenRoiArray().write(path, document);
+            saved = load(path);
+            testCase.verifyTrue(all(isfield(saved, ["roiArray", "roiClassification", "roiImages", "roiStats"])));
+            testCase.verifyEqual(string({saved.roiArray.shape}), ["Mask", "Mask", "Mask"]);
+            testCase.verifyEqual(saved.roiClassification, [1; 2; 0]);
+            testCase.verifyDocument(ophys.NansenRoiArray().read(path), testCase.Expected.roiGroup);
+        end
+
+        function readsAndWritesDevBinaryStacks(testCase)
+            raw = fullfile(testCase.Files, "binary", "stack.raw");
+            stack = ophys.BinaryStack().open(raw);
+            expected = testCase.Expected.devBinary;
+            testCase.verifyEqual(size(stack), expected.size');
+            testCase.verifyEqual(stack.ClassName, "uint16");
+            at = expected.pixel.at' + 1;
+            frame = stack.frames(at(3), at(3));
+            testCase.verifyEqual(double(frame(at(1), at(2))), expected.pixel.value);
+            frame = stack.frames(3, 3);
+            testCase.verifyEqual(double(frame(9, :))', expected.frame2row8);
+            data = stack.all();
+            testCase.verifyEqual(sum(double(data), "all"), expected.sum);
+            folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
+            ophys.BinaryStack().write(fullfile(folder, "out.raw"), data);
+            testCase.verifyEqual(splitlines(strtrim(string(fileread(fullfile(folder, "out.ini"))))), ["Size = 9  7  5"; "Class = uint16"]);
+            testCase.verifyEqual(readBytes(fullfile(folder, "out.raw")), readBytes(raw));   % as dev wrote it
+            writer = ophys.BinaryStack().create(fullfile(folder, "made.raw"), [9, 7, 5], "uint16");
+            writer.write(1, data(:, :, 1:2));
+            writer.write(3, data(:, :, 3:5));
+            writer.close();
+            testCase.verifyEqual(readBytes(fullfile(folder, "made.raw")), readBytes(raw));
+        end
+
         function readsSuite2pCells(testCase)   % those suite2p left out rejected
             testCase.verifyDocument(ophys.Suite2pRois().read(fullfile(testCase.Files, "Fall.mat")), testCase.Expected.suite2p);
         end
@@ -84,4 +124,10 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyEqual(jsondecode(jsonencode(actual)), expected);
         end
     end
+end
+
+function bytes = readBytes(path)
+    fid = fopen(path, "r");
+    closer = onCleanup(@() fclose(fid));
+    bytes = fread(fid, Inf, "*uint8");
 end

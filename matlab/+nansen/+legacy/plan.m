@@ -333,14 +333,16 @@ function [variables, dataset, warnings] = buildDataVariables(export, dataset, le
                 adapter = "json";
             case "text"
                 adapter = "text";
-            case "roiarray"   % dev's ROI files: read by the ophys module
+            case {"roiarray", "roigroup"}   % dev's ROI files: read by the ophys module
                 adapter = "ophys.nansen_roi_array";
+            case "roisignalarray"   % dev's ROI signals: named variables of one .mat file
+                adapter = "mat";
             case "imagestack"   % dev's stacks of many file types: those the ophys module reads
                 switch lower(fileType)
                     case {".tif", ".tiff"}
                         adapter = "ophys.tiff_stack";
-                    case ".raw"
-                        adapter = "ophys.sciscan_raw";
+                    case {".raw", ".bin", ".dat"}   % dev's own binary stack, or SciScan's: ophys.binary_stack reads both
+                        adapter = "ophys.binary_stack";
                     case {".h5", ".hdf5"}
                         adapter = "ophys.hdf5_stack";
                     case ".npy"
@@ -396,6 +398,9 @@ function [variables, dataset, warnings] = buildDataVariables(export, dataset, le
         end
         document.fileName = char("{session_id}_" + base);
         document.fileAdapter = char(adapter);
+        if adapter == "mat" && ismember(lower(adapterName), ["default", "", "roisignalarray"]) && ~isempty(regexp(legacyName, '^[A-Za-z][A-Za-z0-9_]*$', "once"))
+            document.variableInFile = char(legacyName);   % dev loaded the variable of the data variable's name
+        end
         variables{end + 1} = document; %#ok<AGROW>
     end
 end

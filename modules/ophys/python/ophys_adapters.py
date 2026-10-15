@@ -27,6 +27,84 @@ def ini_number(values, name, path):
         raise NansenError("invalid-data", f"{path} has no number {name}") from None
 
 
+DEV_CLASSES = {"uint8": "u1", "int8": "i1", "uint16": "<u2", "int16": "<i2", "uint32": "<u4", "int32": "<i4",
+               "uint64": "<u8", "int64": "<i8", "single": "<f4", "double": "<f8", "logical": "?"}
+
+
+class BinaryStack:
+    """NANSEN dev's own image stack file (its Binary stack): a headerless .raw (or .bin, .dat) and an .ini of the same
+    name with two lines, "Size = 512   512  1000" and "Class = uint16". The values are in MATLAB's column-major
+    order (rows fastest, then columns, channels, planes and frames), little-endian. A .raw whose .ini is
+    SciScan's is read as SciScan's (ophys.sciscan_raw), so this adapter reads every .raw a dev project has.
+    Read a chunk of frames at a time; written in the same format, which dev reads."""
+
+    extensions = [".raw", ".bin", ".dat"]
+
+    @staticmethod
+    def info(path):
+        """(size, dtype) from the .ini file; None when it is SciScan's."""
+        ini = Path(path).with_suffix(".ini")
+        if not ini.is_file():
+            raise NansenError("invalid-data", f"{path}: there is no {ini.name} beside it")
+        values = {}
+        for line in ini.read_text(errors="replace").splitlines():
+            if "=" in line:
+                key, _, value = line.partition("=")
+                values[key.strip()] = value.strip().strip('"')
+        if "Size" not in values or "Class" not in values:
+            if "x.pixels" in values:
+                return None
+            raise NansenError("invalid-data", f"{ini} has no Size and Class (not a NANSEN dev binary stack)")
+        if values["Class"] not in DEV_CLASSES:
+            raise NansenError("invalid-data", f"{ini}: class {values['Class']!r} is not one this adapter reads")
+        size = tuple(int(float(v)) for v in values["Size"].split())
+        return size, np.dtype(DEV_CLASSES[values["Class"]])
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import from_array, join, natural_order
+        parts = []
+        for path in natural_order(paths):
+            found = self.info(path)
+            if found is None:
+                parts.append(SciScanRaw().open([path]))
+                continue
+            size, dtype = found
+            expected = int(np.prod(size)) * dtype.itemsize
+            if Path(path).stat().st_size < expected:
+                raise NansenError("invalid-data", f"{path} is {Path(path).stat().st_size} bytes; Size {list(size)} of {dtype} needs {expected}")
+            parts.append(from_array(np.memmap(path, dtype=dtype, mode="r", shape=size, order="F")))
+        return join(parts)
+
+    def write(self, path, data):
+        data = np.asarray(data)
+        self._ini(path, data.shape, data.dtype)
+        data.astype(self._disk(data.dtype)).ravel(order="F").tofile(path)
+
+    def create(self, path, shape, dtype):
+        """A writer of a new stack, a chunk of frames at a time, straight into the file."""
+        from nansen.stacks import StackWriter
+        dtype = np.dtype(dtype)
+        self._ini(path, shape, dtype)
+        target = np.memmap(path, dtype=self._disk(dtype), mode="w+", shape=tuple(int(n) for n in shape), order="F")
+        return StackWriter(shape, dtype, target=target)
+
+    @staticmethod
+    def _disk(dtype):
+        name = next((n for n, code in DEV_CLASSES.items() if np.dtype(code) == np.dtype(dtype).newbyteorder("<")), None)
+        if name is None:
+            raise NansenError("invalid-params", f"a NANSEN dev binary stack holds no {np.dtype(dtype)} values")
+        return np.dtype(DEV_CLASSES[name])
+
+    @classmethod
+    def _ini(cls, path, shape, dtype):
+        name = next(n for n, code in DEV_CLASSES.items() if np.dtype(code) == cls._disk(dtype))
+        size = "  ".join(str(int(n)) for n in shape)
+        Path(path).with_suffix(".ini").write_text(f"Size = {size}\nClass = {name}\n")
+
+
 class SciScanRaw:
     """A SciScan .raw file with the .ini file of the same name beside it.
 
@@ -296,10 +374,19 @@ def _mat(path):
     return MatAdapter().read(Path(path))
 
 
+DEV_CLASSIFICATIONS = {1: "accepted", 2: "rejected"}   # dev's roiClassification: 0 unclassified, 3 unresolved
+DEV_ROI_FIELDS = ["uid", "shape", "coordinates", "pixelweights", "imagesize", "boundary", "area", "center", "connectedrois",
+                  "group", "celltype", "structure", "layer", "tags", "enhancedImage"]
+
+
 class NansenRoiArray:
     """dev's ROI file (.mat): a struct array roiArray (or RoiArray, roi_arr) of RoI properties, as dev's
-    roimanager saves it. Mask ROIs are their pixels, given as 1-based x (column), y (row); Circle ROIs are x, y and a
-    radius, made into pixels as dev's RoI does; Polygon ROIs are the pixels whose centre is inside, by the even-odd rule."""
+    roimanager and RoiGroup adapter save them, with roiClassification beside it (1 accepted, 2 rejected; 0
+    unclassified and 3 unresolved are left unclassified). Mask and Donut ROIs are their pixels, given as 1-based
+    x (column), y (row); IMask ROIs those of weight above 0; Circle ROIs are x, y and a radius, made into pixels as
+    dev's RoI does; Polygon ROIs are the pixels whose centre is inside, by the even-odd rule. A file of several
+    planes or channels (cells of them) is read as its first. Written as dev's RoiGroup adapter writes: Mask ROIs
+    and their classification, which dev reads."""
 
     extensions = [".mat"]
 
@@ -308,13 +395,21 @@ class NansenRoiArray:
         name = next((n for n in ("roiArray", "RoiArray", "roi_arr") if n in data), None)
         if name is None:
             raise NansenError("invalid-data", f"{path} has no roiArray")
-        rois = data[name]
-        rois = [rois] if isinstance(rois, dict) else list(rois)
+        rois, classes = data[name], data.get("roiClassification")
+        if _groups(rois):   # planes x channels: the first
+            rois = rois[0]
+            if isinstance(classes, list) or (isinstance(classes, np.ndarray) and classes.dtype == object):
+                classes = classes[0]
+        rois = [rois] if isinstance(rois, dict) else list(rois) if rois is not None and np.size(rois) else []
+        rois = [_plain(roi) for roi in rois]
         if not rois:
             return {"imageSize": [0, 0], "rois": []}
         size = np.asarray(rois[0]["imagesize"], dtype=float).ravel()
+        codes = np.asarray(classes, dtype=float).ravel() if classes is not None and np.size(classes) else np.zeros(0)
+        if codes.size != len(rois):
+            codes = np.zeros(len(rois))   # as dev: a classification of the wrong size is reset
         out = []
-        for roi in rois:
+        for roi, code in zip(rois, codes):
             shape = str(roi["shape"])
             coordinates = np.asarray(roi["coordinates"], dtype=np.float64)
             if shape == "Circle":
@@ -325,12 +420,45 @@ class NansenRoiArray:
                           if in_polygon(points[:, 0], points[:, 1], c + 1, r + 1)]
             else:   # Mask, IMask, Donut: 1-based x, y of each pixel
                 points = coordinates.reshape(-1, coordinates.shape[-1] if coordinates.ndim == 2 else 2)[:, :2]
+                weights = np.asarray(roi.get("pixelweights", []), dtype=np.float64).ravel()
+                if shape == "IMask" and weights.size == len(points):
+                    points = points[weights > 0]
                 pixels = [(_round_away(y) - 1, _round_away(x) - 1) for x, y in points]
-            out.append((pixels, None))
+            out.append((pixels, DEV_CLASSIFICATIONS.get(int(code))))
         return roi_document(size, out)
 
     def write(self, path, data):
-        raise NansenError("invalid-params", "dev's ROI files are read here; ROIs are saved as JSON")
+        import uuid
+        from scipy.io import savemat
+        height, width = (int(v) for v in data.get("imageSize", [0, 0]))
+        rois = data.get("rois", [])
+        records = np.empty((1, len(rois)), dtype=[(f, "O") for f in DEV_ROI_FIELDS])
+        codes = np.zeros((len(rois), 1))
+        for k, roi in enumerate(rois):
+            pixels = np.asarray(roi["pixels"], dtype=np.float64).reshape(-1, 2)
+            coordinates = np.stack([pixels[:, 1] + 1, pixels[:, 0] + 1], axis=1)   # 1-based x, y
+            boundary = np.empty((1, 1), dtype=object)
+            boundary[0, 0] = np.array([[np.nan, np.nan]])
+            records[0, k] = (str(uuid.uuid4()), "Mask", coordinates, np.zeros((0, 0)), np.array([height, width], dtype=float),
+                             boundary, float(len(pixels)), coordinates.mean(axis=0) if len(pixels) else np.zeros((0, 0)),
+                             np.empty((0, 0), dtype=object), np.zeros((0, 0)), "", "na", "", np.empty((0, 1), dtype=object), np.zeros((0, 0)))
+            codes[k, 0] = {"accepted": 1, "rejected": 2}.get(roi.get("classification"), 0)
+        savemat(str(path), {"roiArray": records, "roiClassification": codes, "roiImages": np.zeros((0, 0)), "roiStats": np.zeros((0, 0))})
+
+
+def _plain(value):
+    """A struct scipy left as a mat_struct (one inside a cell) as a dict."""
+    if hasattr(value, "_fieldnames"):
+        return {name: getattr(value, name) for name in value._fieldnames}
+    return value
+
+
+def _groups(rois):
+    """Whether dev's roiArray is a cell of ROI arrays, one per plane and channel, rather than one array."""
+    if isinstance(rois, dict) or rois is None:
+        return False
+    items = list(rois) if isinstance(rois, (list, np.ndarray)) else []
+    return bool(items) and not isinstance(items[0], dict) and not hasattr(items[0], "_fieldnames")
 
 
 def _circle_pixels(x, y, r):

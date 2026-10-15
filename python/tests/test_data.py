@@ -124,6 +124,26 @@ def test_mat_adapter_round_trip(project):
     assert list(entity.load("traces")["dff"]) == [1.0, 2.0, 3.0]
 
 
+
+def test_variables_that_share_a_mat_file(project):
+    """As dev's ROI signals: each data variable is one variable of the file, and saving one keeps the others."""
+    pytest.importorskip("scipy")
+    for name in ("RoiSignals_MeanF", "RoiSignals_Dff"):
+        project.add_data_variable(variable(name, dataLocation="processed", fileName="{session_id}_roisignals.mat",
+                                           fileAdapter="mat", variableInFile=name))
+    entity = session(project, "m1-001")
+    entity.save("RoiSignals_MeanF", [[1.0, 2.0], [3.0, 4.0]])
+    entity.save("RoiSignals_Dff", [[0.5, 0.25]])
+    assert entity.load("RoiSignals_MeanF").tolist() == [[1.0, 2.0], [3.0, 4.0]]
+    assert entity.load("RoiSignals_Dff").tolist() == [0.5, 0.25]   # scipy squeezes a row
+    from nansen.adapters import MatAdapter
+    assert set(MatAdapter().read(project.write_path(entity, "RoiSignals_Dff"))) == {"RoiSignals_MeanF", "RoiSignals_Dff"}
+    project.add_data_variable(variable("Missing", dataLocation="processed", fileName="{session_id}_roisignals.mat",
+                                       fileAdapter="mat", variableInFile="Nope"))
+    with pytest.raises(NansenError) as error:
+        entity.load("Missing")
+    assert error.value.code == "data-not-found"
+
 # -- the data cache ---------------------------------------------------------------------------
 
 def test_load_is_cached_until_the_file_changes(project):

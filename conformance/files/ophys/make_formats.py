@@ -64,6 +64,60 @@ def nansen_rois(expected):
     expected["nansen"] = {"imageSize": [HEIGHT, WIDTH], "rois": [roi(1, mask), roi(2, disk), roi(3, inside)]}
 
 
+def roi_group(expected):
+    """dev's RoiGroup file of two planes, as its RoiSegmentation and roimanager save them: roiArray and
+    roiClassification are cells, one per plane (planes x channels), with ChannelNumber and PlaneNumber. Plane 1
+    has a Mask ROI classified accepted (1), an IMask ROI with a pixel of weight 0 (not part of it) classified
+    rejected (2), and an unresolved (3) Mask ROI; the ROI document is plane 1's."""
+    fields = ["uid", "shape", "coordinates", "pixelweights", "imagesize", "boundary", "area", "center", "connectedrois",
+              "group", "celltype", "structure", "layer", "tags", "enhancedImage"]
+
+    def records(rows):
+        out = np.empty((1, len(rows)), dtype=[(f, "O") for f in fields])
+        for k, (uid, shape, pixels, weights) in enumerate(rows):
+            coordinates = np.array([[c + 1, r + 1] for r, c in pixels], dtype=float)   # 1-based x, y
+            boundary = np.empty((1, 1), dtype=object)
+            boundary[0, 0] = np.array([[np.nan, np.nan]])
+            out[0, k] = (uid, shape, coordinates, np.array(weights, dtype=float).reshape(-1, 1) if weights else np.zeros((0, 0)),
+                         np.array([HEIGHT, WIDTH], dtype=float), boundary, float(len(pixels)),
+                         coordinates.mean(axis=0), np.empty((0, 0), dtype=object), np.zeros((0, 0)), "", "na", "",
+                         np.empty((0, 1), dtype=object), np.zeros((0, 0)))
+        return out
+    accepted = [(2, 2), (2, 3), (3, 2), (3, 3)]
+    weighted = [(8, 10), (8, 11), (9, 10), (9, 11), (10, 10)]
+    weights = [0.5, 1.0, 0.8, 0.0, 0.3]                                     # (9, 11) has weight 0: not part of it
+    unresolved = [(14, 4), (14, 5), (15, 4)]
+    plane1 = records([("p1a", "Mask", accepted, None), ("p1b", "IMask", weighted, weights), ("p1c", "Mask", unresolved, None)])
+    plane2 = records([("p2a", "Mask", [(20, 20), (20, 21)], None)])
+    rois = np.empty((2, 1), dtype=object)
+    rois[0, 0], rois[1, 0] = plane1, plane2
+    classes = np.empty((2, 1), dtype=object)
+    classes[0, 0], classes[1, 0] = np.array([[1.0], [2.0], [3.0]]), np.array([[0.0]])
+    planes = np.empty((2, 1), dtype=object)
+    planes[0, 0], planes[1, 0] = 1.0, 2.0
+    channels = np.empty((2, 1), dtype=object)
+    channels[0, 0], channels[1, 0] = 1.0, 1.0
+    scipy.io.savemat(HERE / "rois_group.mat", {"roiArray": rois, "roiClassification": classes, "roiImages": np.zeros((0, 0)),
+                                               "roiStats": np.zeros((0, 0)), "PlaneNumber": planes, "ChannelNumber": channels})
+    kept = [p for p, w in zip(weighted, weights) if w > 0]
+    expected["roiGroup"] = {"imageSize": [HEIGHT, WIDTH],
+                            "rois": [roi(1, accepted, "accepted"), roi(2, kept, "rejected"), roi(3, unresolved)]}
+
+
+def dev_binary(expected):
+    """dev's binary stack: a headerless .raw in MATLAB's column-major order, little-endian, and an .ini with its
+    Size (written by MATLAB's num2str, several spaces apart) and Class. 9 x 7 x 5 uint16, so rows and columns
+    cannot be swapped unnoticed."""
+    rng = np.random.default_rng(16)
+    stack = rng.integers(0, 4000, (9, 7, 5)).astype(np.uint16)
+    folder = HERE / "binary"
+    folder.mkdir(exist_ok=True)
+    stack.astype("<u2").ravel(order="F").tofile(folder / "stack.raw")
+    (folder / "stack.ini").write_text("Size = 9    7    5\nClass = uint16\n")
+    expected["devBinary"] = {"size": [9, 7, 5], "pixel": {"at": [4, 6, 3], "value": int(stack[4, 6, 3])},
+                             "frame2row8": [int(v) for v in stack[8, :, 2]], "sum": int(stack.astype(np.int64).sum())}
+
+
 def suite2p_rois(expected):
     """suite2p's Fall.mat: stat (a cell array of structs with 0-based ypix, xpix), iscell and ops (Ly, Lx)."""
     cells = [([2, 2, 3, 3], [7, 8, 7, 8], 1), ([10, 11, 11, 12, 12, 12], [3, 3, 4, 3, 4, 5], 0), ([17, 18], [20, 21], 1)]
@@ -191,6 +245,8 @@ def mat73(expected):
 def main():
     expected = {}
     nansen_rois(expected)
+    roi_group(expected)
+    dev_binary(expected)
     suite2p_rois(expected)
     caiman_rois(expected)
     extract_rois(expected)

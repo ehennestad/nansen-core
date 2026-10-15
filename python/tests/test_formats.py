@@ -24,6 +24,7 @@ def adapter(name):
 
 @pytest.mark.parametrize("name, file, key", [
     ("NansenRoiArray", "rois_nansen.mat", "nansen"),     # Mask, Circle and Polygon ROIs of dev's roimanager
+    ("NansenRoiArray", "rois_group.mat", "roiGroup"),    # dev's RoiGroup of two planes: classified, an IMask, plane 1 read
     ("Suite2pRois", "Fall.mat", "suite2p"),               # suite2p's cells, those it left out rejected
     ("CaimanRois", "caiman.hdf5", "caiman"),              # CaImAn's sparse spatial components
     ("ExtractRois", "extract.mat", "extract"),            # EXTRACT's spatial weights
@@ -74,3 +75,28 @@ def test_other_files_are_refused():
         assert error.value.code == "invalid-data"
     with pytest.raises(NansenError):
         adapter("PrairieTSeries").read(FILES / "expected.json")
+
+
+def test_dev_rois_are_written_as_dev_reads_them(tmp_path):
+    document = EXPECTED["roiGroup"]
+    adapter("NansenRoiArray").write(tmp_path / "rois.mat", document)
+    saved = MatAdapter().read(tmp_path / "rois.mat")
+    assert set(saved) >= {"roiArray", "roiClassification", "roiImages", "roiStats"}
+    assert [r["shape"] for r in saved["roiArray"]] == ["Mask"] * 3 and list(saved["roiClassification"]) == [1, 2, 0]
+    assert adapter("NansenRoiArray").read(tmp_path / "rois.mat") == document
+
+
+def test_a_dev_binary_stack_reads_and_writes(tmp_path):
+    stack = adapter("BinaryStack").open([FILES / "binary" / "stack.raw"])
+    expected = EXPECTED["devBinary"]
+    assert list(stack.shape) == expected["size"] and stack.dtype == np.uint16
+    data = np.asarray(stack)
+    assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]
+    assert stack.frames(2, 3)[8, :, 0].tolist() == expected["frame2row8"] and int(data.astype(np.int64).sum()) == expected["sum"]
+    adapter("BinaryStack").write(tmp_path / "out.raw", data)
+    assert (tmp_path / "out.ini").read_text().splitlines() == ["Size = 9  7  5", "Class = uint16"]
+    assert (tmp_path / "out.raw").read_bytes() == (FILES / "binary" / "stack.raw").read_bytes()   # as dev wrote it
+    with adapter("BinaryStack").create(tmp_path / "made.raw", (9, 7, 5), np.uint16) as writer:
+        writer.write(0, data[:, :, :2])
+        writer.write(2, data[:, :, 2:])
+    assert (tmp_path / "made.raw").read_bytes() == (FILES / "binary" / "stack.raw").read_bytes()

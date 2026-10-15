@@ -20,6 +20,8 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 
 - The Python app server answers only the page it served: a random token in its `index.html`, needed by `POST /api` and `GET /events`, and Host and Origin checks, so another web page in the browser cannot drive it (cross-site requests, DNS rebinding).
 
+- dev's two-photon data comes across: its binary stacks (`ophys.binary_stack`, read and written), its RoiGroup files with their classifications (read and written), and its ROI signals and `Default` `.mat` variables, as named variables of a file (`variableInFile`, new on data variables), which the importer maps them to.
+
 **Methods and tasks**
 
 - Added modules, which provide fragments, methods, file adapters and pipelines. Added the built-in `core` module: notes, file statistics, export, backup and wait methods, an inspect pipeline, and the demo ([modules](docs/reference/modules.md)).
