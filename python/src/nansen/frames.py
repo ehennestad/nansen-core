@@ -323,6 +323,25 @@ def _number(value: float):
     return int(value) if math.isfinite(value) and value == int(value) else value
 
 
+def roi_signal(stack: Any, pixels: Any, start: int = 0, stop: Optional[int] = None) -> Any:
+    """The mean of the pixels ([row, column], 0-based) in each frame of a height x width x frames stack, read a chunk
+    at a time: frames start..stop-1, NaN outside them. For the viewer's live signal of an ROI being edited."""
+    import numpy as np
+    height, width, frames = stack.shape
+    points = np.asarray(pixels, dtype=np.int64).reshape(-1, 2)
+    if points.size == 0 or (points < 0).any() or (points[:, 0] >= height).any() or (points[:, 1] >= width).any():
+        raise NansenError("invalid-params", f"pixels are [row, column] pairs inside the {height} x {width} image")
+    index = np.unique(points[:, 0] * width + points[:, 1])
+    start = min(max(0, int(start)), frames)
+    stop = frames if stop is None else min(max(start, int(stop)), frames)
+    out = np.full(frames, np.nan)
+    for first in range(start, stop, CHUNK):
+        last = min(first + CHUNK, stop)
+        chunk = np.asarray(stack.frames(first, last)).reshape(height * width, last - first)
+        out[first:last] = chunk[index].astype(np.float64).mean(axis=0)
+    return out
+
+
 def signal_traces(values: Dict[str, Any], columns: List[int], start: int = 0, stop: Optional[int] = None,
                   max_points: int = 2000) -> Dict[str, Any]:
     """Columns of frames x N signal arrays (a 1-D array is one column), for the dashboard's trace plot.

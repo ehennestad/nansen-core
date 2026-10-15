@@ -24,7 +24,7 @@ from .dataset import Dataset
 from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
-from .frames import _mean as mean_image, _pick as pick_channel, detect_roi, image_frame, roi_outlines, signal_traces, update_rois
+from .frames import _mean as mean_image, _pick as pick_channel, detect_roi, image_frame, roi_outlines, roi_signal, signal_traces, update_rois
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -934,6 +934,21 @@ class Api:
         stack, _, _ = pick_channel(project.open_stack(entity, params["variable"]), int(params.get("channel", 0)), int(params.get("plane", 0)))
         image = mean_image(stack)
         return {"pixels": detect_roi(image, point, int(params.get("radius", 6)))}
+
+    def rois__signal(self, params: dict) -> dict:
+        """An ROI's signal read from a stack now (the mean of its pixels per frame), as data.traces gives one: the
+        viewer's live trace of an ROI that was added or changed since the signals were extracted."""
+        project = self._require_project()
+        entity = self._entity(params)
+        pixels = params.get("pixels")
+        if not isinstance(pixels, list) or not pixels:
+            raise NansenError("invalid-params", "pixels is a list of [row, column] pairs")
+        stack, _, _ = pick_channel(project.open_stack(entity, params["variable"]), int(params.get("channel", 0)), int(params.get("plane", 0)))
+        start, stop = params.get("start", 0), params.get("stop")
+        trace = roi_signal(stack, pixels, start, stop)
+        result = signal_traces({params["variable"]: trace}, [0], start, stop, params.get("maxPoints", 2000))
+        result["frameRate"] = _frame_rate(params, entity)
+        return result
 
     def methods__list(self, params: dict) -> list:
         project = self._require_project()

@@ -41,6 +41,7 @@
     let drag = null;
     let hover = null;
     const pad = { left: 56, right: 12, top: 8, bottom: 22 };
+    canvas.style.height = `${height + pad.bottom}px`;   // one panel's room before the first draw, so nothing moves when it comes
 
     const css = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
     const panels = () => (data ? data.traces.length : 0);

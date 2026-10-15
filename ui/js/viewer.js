@@ -363,45 +363,99 @@
       canvas.classList.toggle("adding", name === "circle" || name === "detect");
       canvas.classList.toggle("drawing", name === "draw" || name === "polygon");
     }
+    // Find ROIs: run a segmentation method on this entity from here (dev's roimanager autosegmentation), then show its ROIs
+    const findButton = h("button.btn.ghost.icon.small.viewer-find-rois", { title: "Find ROIs with a segmentation method", on: { click: () => findRois() } }, N.icon("zap", 13));
+    async function findRois() {
+      let methods = [];
+      try { methods = await app.client.request("methods.list", { entityType }); } catch (error) { N.showError(error, "Could not list the methods"); return; }
+      const language = app.info && app.info.language;
+      const found = methods.filter((m) => /\/Segmentation$/.test(m.category || "") && (!language || !m.languages || m.languages.includes(language)));
+      if (!found.length) { N.toast("No segmentation methods", "The project's modules have none this backend runs", "error"); return; }
+      N.menu(findButton, [{ heading: "Find ROIs with" }].concat(found.map((m) => ({ label: m.title, onClick: () => findWith(m) }))));
+    }
+    function findWith(method) {
+      const properties = (method.options && method.options.properties) || {};
+      const values = {};
+      if ("stack" in properties) values.stack = variable;
+      if ("output" in properties && (properties.output.default || "").startsWith("Roi") && !(properties.output.default || "").startsWith("RoiSignals")) values.output = state.roiVariable;
+      if ("channel" in properties) values.channel = state.channel + 1;
+      if ("plane" in properties) values.plane = state.plane + 1;
+      const form = N.schemaForm(method.options || {}, values);
+      N.dialog({
+        title: method.title, narrow: true, content: h("div.viewer-find-form", h("p.muted", method.description || ""), form.el),
+        buttons: [{ label: "Cancel" }, { label: "Find ROIs", kind: "primary", icon: "zap", onClick: async (close) => {
+          const problems = form.validate();
+          if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
+          close();
+          N.toast("Finding ROIs", `${method.title}…`);
+          try {
+            await app.client.request("methods.run", { methodId: method.id, entityType, keys: [key], options: form.getValue() });
+            state.rois = null;
+            state.undo = [];
+            state.redo = [];
+            select(null);
+            show();
+            N.toast("ROIs found", method.title, "success");
+          } catch (error) { N.showError(error, `${method.title} failed`); }
+        } }],
+      });
+    }
     const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of a round ROI (px); Detect looks twice as far",
       on: { change: () => { state.radius = Math.max(1, Math.round(Number(radius.value) || 1)); } } });
     const hide = h("input", { type: "checkbox", on: { change: () => { state.hideRejected = hide.checked; redraw(); renderList(); } } });
     const roiList = h("ul.viewer-roi-list");
     const roiPanel = h("div.viewer-roi-panel",
       h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
-      h("div.viewer-roi-actions.viewer-roi-tools", tools, h("div.spacer"), radius),
+      h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, h("div.spacer"), radius),
       h("label.viewer-hide", hide, "Hide rejected"),
       roiList);
 
-    // The selected ROI's signal under the image: the frame shown is marked, a click on the trace goes to that frame
-    const signal = { variable: signalVariables.includes("RoiSignals_Dff") ? "RoiSignals_Dff" : signalVariables[0], counts: {}, range: [null, null] };
-    const tracePlot = signalVariables.length ? N.tracePlot({
+    // The selected ROI's signal under the image: the frame shown is marked, a click on the trace goes to that frame.
+    // Saved signals come from a signal variable; "live" is the mean of the ROI's pixels read from the stack now
+    // (rois.signal), for an ROI added or changed since the signals were extracted, which saved ones fall back to.
+    const LIVE = "__live__";
+    const signal = { variable: signalVariables.includes("RoiSignals_Dff") ? "RoiSignals_Dff" : signalVariables[0] || LIVE, counts: {}, range: [null, null] };
+    const tracePlot = signalVariables.length || roiVariables.length ? N.tracePlot({
       height: 90,
       onPick: (frame) => { if (state.mode !== "frame") { state.mode = "frame"; mode.value = "frame"; } state.frame = frame; slider.value = String(frame); show(); },
       onRange: (start, stop) => { signal.range = [start, stop]; showSignal(); },
     }) : null;
-    const signalPick = signalVariables.length > 1 ? h("select.input.viewer-signal", { on: { change: () => { signal.variable = signalPick.value; showSignal(); } } },
-      signalVariables.map((v) => h("option", { value: v, selected: v === signal.variable }, v))) : null;
+    const signalPick = h("select.input.viewer-signal-pick", { on: { change: () => { signal.variable = signalPick.value; showSignal(); } } },
+      signalVariables.map((v) => h("option", { value: v, selected: v === signal.variable }, v)),
+      h("option", { value: LIVE, selected: signal.variable === LIVE }, "Live from the stack"));
+    if (tracePlot) tracePlot.el.style.visibility = "hidden";   // its room kept, so the image does not move when it shows
     const signalHint = h("span.muted.viewer-signal-hint", "Select an ROI to see its signal");
-    const signalPanel = tracePlot ? h("div.viewer-signal", h("div.viewer-signal-bar", signalPick || h("span.muted", signal.variable), signalHint), tracePlot.el) : null;
+    const signalPanel = tracePlot ? h("div.viewer-signal", h("div.viewer-signal-bar", signalPick, signalHint), tracePlot.el) : null;
     async function showSignal() {
       if (!tracePlot) return;
-      if (state.selected === null || !state.rois) { signalHint.textContent = "Select an ROI to see its signal"; tracePlot.el.style.display = "none"; return; }
+      if (state.selected === null || !state.rois) { signalHint.textContent = "Select an ROI to see its signal"; tracePlot.el.style.visibility = "hidden"; return; }
+      const selected = state.selected;
       try {
-        if (signal.counts[signal.variable] === undefined) {
-          const probe = await app.client.request("data.traces", { entityType, key, variables: [signal.variable], columns: [] });
-          signal.counts[signal.variable] = probe.traces[0].count;
+        let column, live = signal.variable === LIVE;
+        if (!live) {
+          if (signal.counts[signal.variable] === undefined) {
+            const probe = await app.client.request("data.traces", { entityType, key, variables: [signal.variable], columns: [] });
+            signal.counts[signal.variable] = probe.traces[0].count;
+          }
+          const map = N.roiColumns(state.rois, signal.counts[signal.variable]);
+          column = map ? map.get(selected) : undefined;
+          live = column === undefined;   // added since the signals were extracted
         }
-        const map = N.roiColumns(state.rois, signal.counts[signal.variable]);
-        const column = map ? map.get(state.selected) : undefined;
-        if (column === undefined) { signalHint.textContent = `${signal.variable} has no column for ROI ${state.selected}`; tracePlot.el.style.display = "none"; return; }
-        const params = { entityType, key, variables: [signal.variable], columns: [column], maxPoints: 1200 };
-        if (signal.range[0] !== null) { params.start = signal.range[0]; params.stop = signal.range[1]; }
-        const result = await app.client.request("data.traces", params);
-        tracePlot.el.style.display = "";
-        tracePlot.draw(result, [`ROI ${state.selected}`]);
+        const range = signal.range[0] !== null ? { start: signal.range[0], stop: signal.range[1] } : {};
+        let result;
+        if (live) {
+          const roi = state.rois.find((r) => r.id === selected);
+          if (!roi) return;
+          result = await app.client.request("rois.signal", { entityType, key, variable, pixels: roi.pixels, channel: state.channel, plane: state.plane, maxPoints: 1200, ...range });
+        } else {
+          result = await app.client.request("data.traces", { entityType, key, variables: [signal.variable], columns: [column], maxPoints: 1200, ...range });
+        }
+        if (state.selected !== selected) return;   // another ROI was selected meanwhile
+        tracePlot.el.style.visibility = "";
+        tracePlot.draw(result, [`ROI ${selected}`]);
         tracePlot.cursor(state.mode === "frame" ? state.frame : null);
-        signalHint.textContent = `ROI ${state.selected}` + (signal.range[0] !== null ? " · double-click for all frames" : " · drag to zoom, click to go to a frame");
+        signalHint.textContent = `ROI ${selected}` + (live ? " · live from the stack" : "") +
+          (signal.range[0] !== null ? " · double-click for all frames" : " · drag to zoom, click to go to a frame");
       } catch (error) { signalHint.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error)); }
     }
 

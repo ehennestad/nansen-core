@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -1125,6 +1125,24 @@ classdef Api < handle
                 double(nansen.internal.getField(params, "channel", 0)), double(nansen.internal.getField(params, "plane", 0)));
             pixels = nansen.internal.detectRoi(nansen.internal.meanImage(stack), point, double(nansen.internal.getField(params, "radius", 6)));
             result = struct("pixels", {num2cell(pixels, 2)'});
+        end
+
+        function result = apiRoisSignal(obj, params)
+            % An ROI's signal read from a stack now (the mean of its pixels per frame), as data.traces gives one
+            project = obj.requireProject();
+            entity = obj.entity(params);
+            pixels = nansen.internal.getField(params, "pixels", []);
+            if isempty(pixels) || ~(isnumeric(pixels) || iscell(pixels))
+                nansen.internal.throwError("invalid-params", "pixels is a list of [row, column] pairs")
+            end
+            variable = string(nansen.Api.param(params, "variable"));
+            stack = nansen.internal.pickChannel(project.openStack(entity, variable), ...
+                double(nansen.internal.getField(params, "channel", 0)), double(nansen.internal.getField(params, "plane", 0)));
+            start = nansen.internal.getField(params, "start", 0);
+            stop = nansen.internal.getField(params, "stop", []);
+            trace = nansen.internal.roiSignal(stack, pixels, start, stop);
+            result = nansen.internal.signalTraces({char(variable)}, {trace}, 0, start, stop, nansen.internal.getField(params, "maxPoints", 2000));
+            result.frameRate = nansen.Api.frameRate(params, entity);
         end
 
         function result = apiDataSend(obj, params)

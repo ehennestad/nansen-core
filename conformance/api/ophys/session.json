@@ -985,6 +985,129 @@
     },
     {
       "request": {
+        "method": "rois.signal",
+        "id": 2302,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "pixels": [
+            [
+              8,
+              12
+            ],
+            [
+              9,
+              11
+            ],
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              10
+            ],
+            [
+              10,
+              11
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              10,
+              13
+            ],
+            [
+              10,
+              14
+            ],
+            [
+              11,
+              11
+            ],
+            [
+              11,
+              12
+            ],
+            [
+              11,
+              13
+            ],
+            [
+              12,
+              12
+            ]
+          ],
+          "start": 5,
+          "stop": 20,
+          "maxPoints": 4
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 40,
+          "start": 5,
+          "step": 4,
+          "points": 4,
+          "traces": [
+            {
+              "variable": "TwoPhotonSeries_Corrected",
+              "count": 1,
+              "columns": [
+                {
+                  "column": 0,
+                  "values": [
+                    185.2308,
+                    328.1538,
+                    433.7692,
+                    341.7692
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.signal",
+        "id": 2303,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "pixels": [
+            [
+              3,
+              3
+            ],
+            [
+              32,
+              0
+            ]
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
         "method": "data.frame",
         "id": 24,
         "params": {

@@ -1311,6 +1311,23 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     box = page.locator(".viewer-signal .trace-canvas").bounding_box()
     page.mouse.click(box["x"] + box["width"] - 13, box["y"] + 40)   # the end of the trace: the last frame
     page.wait_for_selector(".viewer-frame:text-is('40 / 40')")
+    # live: the ROI's pixels read from the stack now (rois.signal); an ROI added since extraction falls back to it
+    page.select_option(".viewer-signal-pick", "__live__")
+    page.wait_for_selector(".viewer-signal-hint:has-text('ROI 2 · live from the stack')")
+    page.select_option(".viewer-signal-pick", "RoiSignals_Dff")
+    page.click(".viewer-add")
+    image = page.locator(".viewer-canvas").bounding_box()
+    page.mouse.click(image["x"] + image["width"] * 28.5 / 32, image["y"] + image["height"] * 28.5 / 32)
+    page.wait_for_selector(".viewer-status:has-text('4 ROIs')")
+    page.wait_for_selector(".viewer-signal-hint:has-text('ROI 4 · live from the stack')")
+    # find ROIs with a segmentation method from the viewer: the ROIs are read again
+    page.click(".viewer-find-rois")
+    page.click(".menu .item:has-text('Detect ROIs')")
+    page.fill(".dialog .field:has-text('Correlation threshold') input", "0.25")
+    page.fill(".dialog .field:has-text('Border left out') input", "4")
+    page.click(".dialog .btn.primary:has-text('Find ROIs')")
+    page.wait_for_selector(".toast:has-text('ROIs found')")
+    page.wait_for_selector(".viewer-status:has-text('3 ROIs')")
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 

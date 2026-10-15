@@ -261,6 +261,10 @@ def main():
     expected["signalsExpansion"] = {"rois": len(disks), "frames": FRAMES,
                                     "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
                                     "meanNeuropil": [round_to(v, 4) for v in np.stack(expanded, axis=1).mean(axis=0)]}
+    # rois.signal: ROI 1's pixels read from the aligned stack now, frames 5..19 every 4th, as data.traces gives them
+    expected["liveSignal"] = {"frames": FRAMES, "start": 5, "step": 4, "points": 4, "traces": [
+        {"variable": "TwoPhotonSeries_Corrected", "count": 1, "columns": [{"column": 0, "values": [four(signals[t, 0]) for t in picked]}]}]}
+    expected["liveSignalPixels"] = [[int(y), int(x)] for y, x in zip(*np.nonzero(disks[0]))]
     # data.traces of image_stats' FrameStats (of the aligned recording): mean and std at frames 0, 10, 20, 30
     stats = frame_stats(aligned)
     expected["frameStatsTraces"] = {"frames": FRAMES, "start": 0, "step": 10, "points": 4, "traces": [
