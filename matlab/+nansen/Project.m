@@ -2802,7 +2802,7 @@ classdef Project < handle
                 return
             end
             [declaration, stop] = regexp(text, "^[ \t]*function[ \t][^\n]*", "match", "end", "once", "lineanchors");
-            if ~isempty(declaration)
+            if strlength(string(declaration)) > 0   % regexp of a string gives "" (not empty) for no match
                 % the declaration read a part at a time: MATLAB gives no named tokens for the optional groups of
                 % Python's one expression ([output] = name(inputs), output and inputs optional)
                 rest = char(strtrim(extractAfter(string(declaration), "function")));
