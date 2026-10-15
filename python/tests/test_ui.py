@@ -1205,11 +1205,12 @@ def test_describe_the_data_folders(empty_app, page):
     page.goto(empty_app["server"].url + "#/overview")
     page.click(".setup .describe-data")
     page.fill(".dialog .wizard-root", str(data))
+    page.select_option(".dialog .wizard-layout", "bids")   # dev's data location templates
     page.click(".dialog-foot button:has-text('Next')")
     page.wait_for_selector(".dialog .level-card[data-level='2']")
     assert page.locator(".dialog .level-card[data-level='1'] .level-type").input_value() == "subject"
-    page.fill(".dialog .level-card[data-level='1'] .level-template", "sub-{subject_id}")
-    page.fill(".dialog .level-card[data-level='2'] .level-template", "ses-{session_id}")
+    assert page.locator(".dialog .level-card[data-level='1'] .level-template").input_value() == "sub-{subject_id}"
+    assert page.locator(".dialog .level-card[data-level='2'] .level-template").input_value() == "ses-{session_id}"
     page.wait_for_selector(".dialog .level-card[data-level='2'] .level-check:has-text('2 of the 2 examples match')")
     page.click(".dialog-foot button:has-text('Next')")
     page.wait_for_selector(".dialog .stat:has-text('session')")

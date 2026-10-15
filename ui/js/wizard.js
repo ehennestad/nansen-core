@@ -90,8 +90,18 @@
   };
 
   /** The wizard, for a project without a dataset. */
+  // dev's data location templates (its modules' resources/datalocations): what each level of folders holds
+  const LAYOUTS = {
+    bids: { title: "BIDS: sub-<subject>/ses-<session>", levels: [
+      { role: "entity", entityType: "subject", template: "sub-{subject_id}" }, { role: "entity", entityType: "session", template: "ses-{session_id}" }] },
+    subjectSession: { title: "Subject / session folders", levels: [
+      { role: "entity", entityType: "subject", template: "{subject_id}" }, { role: "entity", entityType: "session", template: "{session_id}" }] },
+    sciscan: { title: "SciScan two-photon: date / session folders", levels: [
+      { role: "folder", pattern: "^\\d{4}_\\d{2}_\\d{2}$" }, { role: "entity", entityType: "session", template: "{session_id}" }] },
+  };
+
   N.datasetWizard = function (app) {
-    const state = { id: "raw", title: "Raw data", access: "read", root: "", sample: null, levels: [] };
+    const state = { id: "raw", title: "Raw data", access: "read", root: "", sample: null, levels: [], layout: "" };
     const body = h("div.wizard", { style: { padding: "16px 20px" } });
     const message = h("div.form-message.hidden");
     const say = (text) => { message.textContent = text; message.classList.toggle("hidden", !text); };
@@ -105,17 +115,25 @@
       const root = h("input.input.wizard-root", { value: state.root, placeholder: "/path/to/the/data" });
       const access = h("select.input.wizard-access", [["read", "Read only: data as recorded"], ["readwrite", "Read and write: processed data"]]
         .map(([v, label]) => h("option", { value: v, selected: v === state.access }, label)));
+      const layout = h("select.input.wizard-layout", [h("option", { value: "" }, "Guess from the folders")].concat(
+        Object.entries(LAYOUTS).map(([v, l]) => h("option", { value: v, selected: v === state.layout }, l.title))));
       N.fill(body, h("p.muted", { style: { marginTop: 0 } }, "Describe how the data is organized: first where it is, then what each level of folders holds. NANSEN makes a dataset config (DSM) from it, which you can change later."),
         field("Folder", root, "The top folder of the data on this computer"),
         h("div.field-row", field("Name of the location", id, "Short, such as raw or processed"), field("Title", title)),
-        field("Access", access), message);
+        h("div.field-row", field("Access", access), field("Layout", layout, "A template of what each level holds, as dev's data location templates; it can be changed next")), message);
       return async () => {
-        Object.assign(state, { id: id.value.trim(), title: title.value.trim(), root: root.value.trim(), access: access.value });
+        const chosen = layout.value !== state.layout;
+        Object.assign(state, { id: id.value.trim(), title: title.value.trim(), root: root.value.trim(), access: access.value, layout: layout.value });
         if (!state.root) throw new Error("Give the folder the data is in");
         state.sample = await app.client.request("dataset.sample", { path: state.root, depth: 5, limit: 8 });
         state.root = state.sample.path;
         if (!state.sample.levels.length) throw new Error("The folder is empty");
-        if (state.levels.length !== state.sample.levels.length) {
+        if (state.layout && (chosen || state.levels.length !== state.sample.levels.length)) {
+          // the template's levels, then the deeper ones inside the last entity
+          const template = LAYOUTS[state.layout].levels;
+          state.levels = state.sample.levels.map((level, i) => Object.assign(
+            { role: "stop", entityType: "session", template: "{session_id}", pattern: patternFor(level.folders) }, template[i] || {}));
+        } else if (state.levels.length !== state.sample.levels.length || chosen) {
           // A first guess: subjects, then sessions (or only sessions); deeper levels are inside a session
           const guess = state.sample.levels.length > 1 ? ["subject", "session"] : ["session"];
           state.levels = state.sample.levels.map((level, i) => ({
