@@ -1,11 +1,1381 @@
 {
+  "viewables": [
+    {
+      "stack": "${scratch}/data/movie.npy"
+    },
+    {
+      "stack": "${scratch}/data/movie.npy",
+      "rois": "${scratch}/data/curated.json",
+      "name": "curated"
+    },
+    {
+      "signals": "${scratch}/data/dff.npy"
+    }
+  ],
   "steps": [
-    {"request": {"method": "view.list", "id": 1, "params": {}}, "expect": {"result": []}},
-    {"request": {"method": "view.frame", "id": 2, "params": {"viewable": "v1"}}, "expect": {"error": "unknown-viewable"}},
-    {"request": {"method": "view.frame", "id": 3, "params": {"viewable": "v1", "frame": 0, "rois": true}}, "expect": {"error": "unknown-viewable"}},
-    {"request": {"method": "view.signal", "id": 4, "params": {"viewable": "v1", "pixels": [[0, 0]]}}, "expect": {"error": "unknown-viewable"}},
-    {"request": {"method": "view.traces", "id": 5, "params": {"viewable": "v1", "columns": [0]}}, "expect": {"error": "unknown-viewable"}},
-    {"request": {"method": "view.frame", "id": 6, "params": {}}, "expect": {"error": "invalid-params"}},
-    {"request": {"method": "files.frame", "id": 7, "params": {"path": "recording.tif"}}, "expect": {"error": "no-project"}}
+    {
+      "request": {
+        "method": "view.list",
+        "id": 1,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "v1",
+            "kind": "stack",
+            "name": "movie.npy",
+            "path": "${scratch}/data/movie.npy",
+            "rois": false,
+            "roiFile": "${scratch}/data/movie_rois.json"
+          },
+          {
+            "id": "v2",
+            "kind": "stack",
+            "name": "curated",
+            "path": "${scratch}/data/movie.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/curated.json"
+          },
+          {
+            "id": "v3",
+            "kind": "signals",
+            "name": "dff",
+            "path": "${scratch}/data/dff.npy",
+            "rois": false,
+            "roiFile": ""
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 2,
+        "params": {
+          "viewable": "v9"
+        }
+      },
+      "expect": {
+        "error": "unknown-viewable"
+      }
+    },
+    {
+      "request": {
+        "method": "view.signal",
+        "id": 3,
+        "params": {
+          "viewable": "v9",
+          "pixels": [
+            [
+              0,
+              0
+            ]
+          ]
+        }
+      },
+      "expect": {
+        "error": "unknown-viewable"
+      }
+    },
+    {
+      "request": {
+        "method": "view.traces",
+        "id": 4,
+        "params": {
+          "viewable": "v9",
+          "columns": [
+            0
+          ]
+        }
+      },
+      "expect": {
+        "error": "unknown-viewable"
+      }
+    },
+    {
+      "request": {
+        "method": "view.detect",
+        "id": 5,
+        "params": {
+          "viewable": "v9",
+          "point": [
+            0,
+            0
+          ]
+        }
+      },
+      "expect": {
+        "error": "unknown-viewable"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 6,
+        "params": {
+          "viewable": "v9",
+          "methodId": "ophys.motion_correction"
+        }
+      },
+      "expect": {
+        "error": "unknown-viewable"
+      }
+    },
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 7,
+        "params": {}
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 8,
+        "params": {
+          "path": "recording.tif"
+        }
+      },
+      "expect": {
+        "error": "no-project"
+      }
+    },
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 9,
+        "params": {
+          "viewable": "v1",
+          "rois": true
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 40,
+          "width": 40,
+          "frames": 12,
+          "rois": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 10,
+        "params": {
+          "viewable": "v1",
+          "imageSize": [
+            40,
+            40
+          ],
+          "add": [
+            {
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  5
+                ],
+                [
+                  6,
+                  6
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  5
+                ],
+                [
+                  6,
+                  6
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": [
+            1
+          ],
+          "file": "${scratch}/data/movie_rois.json"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 11,
+        "params": {
+          "viewable": "v1",
+          "classify": [
+            {
+              "id": 1,
+              "classification": "accepted"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "classification": "accepted"
+            }
+          ],
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 12,
+        "params": {
+          "viewable": "v1",
+          "move": [
+            {
+              "id": 1,
+              "rows": 1,
+              "columns": 2
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  6,
+                  7
+                ],
+                [
+                  6,
+                  8
+                ],
+                [
+                  7,
+                  7
+                ],
+                [
+                  7,
+                  8
+                ]
+              ]
+            }
+          ],
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 13,
+        "params": {
+          "viewable": "v1",
+          "restore": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  5
+                ],
+                [
+                  6,
+                  6
+                ]
+              ],
+              "classification": "accepted"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  5
+                ],
+                [
+                  6,
+                  6
+                ]
+              ],
+              "classification": "accepted"
+            }
+          ],
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.list",
+        "id": 14,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "v1",
+            "kind": "stack",
+            "name": "movie.npy",
+            "path": "${scratch}/data/movie.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/movie_rois.json"
+          },
+          {
+            "id": "v2",
+            "kind": "stack",
+            "name": "curated",
+            "path": "${scratch}/data/movie.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/curated.json"
+          },
+          {
+            "id": "v3",
+            "kind": "signals",
+            "name": "dff",
+            "path": "${scratch}/data/dff.npy",
+            "rois": false,
+            "roiFile": ""
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 15,
+        "params": {
+          "viewable": "v1",
+          "rois": true
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "classification": "accepted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 16,
+        "params": {
+          "viewable": "v2",
+          "classify": [
+            {
+              "id": 2,
+              "classification": null
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "classification": "accepted"
+            },
+            {
+              "id": 2,
+              "classification": null
+            }
+          ],
+          "added": [],
+          "file": "${scratch}/data/curated.json"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 17,
+        "params": {
+          "viewable": "v1",
+          "import": {
+            "viewable": "v2",
+            "mode": "appendNonOverlapping"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  14
+                ],
+                [
+                  13,
+                  13
+                ],
+                [
+                  13,
+                  14
+                ],
+                [
+                  13,
+                  15
+                ],
+                [
+                  14,
+                  12
+                ],
+                [
+                  14,
+                  13
+                ],
+                [
+                  14,
+                  14
+                ],
+                [
+                  14,
+                  15
+                ],
+                [
+                  14,
+                  16
+                ],
+                [
+                  15,
+                  13
+                ],
+                [
+                  15,
+                  14
+                ],
+                [
+                  15,
+                  15
+                ],
+                [
+                  16,
+                  14
+                ]
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ]
+              ]
+            }
+          ],
+          "added": [
+            2,
+            3
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 18,
+        "params": {
+          "viewable": "v1",
+          "remove": [
+            2,
+            3
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1
+            }
+          ],
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 19,
+        "params": {
+          "viewable": "v1",
+          "mirror": true
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 20,
+        "params": {
+          "viewable": "v1",
+          "import": {
+            "variable": "RoiArray"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 21,
+        "params": {
+          "viewable": "v1",
+          "import": {
+            "viewable": "v9"
+          }
+        }
+      },
+      "expect": {
+        "error": "unknown-viewable"
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 22,
+        "params": {
+          "viewable": "v1",
+          "remove": [
+            7
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 23,
+        "params": {
+          "viewable": "v3",
+          "add": [
+            {
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  5
+                ],
+                [
+                  6,
+                  6
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 24,
+        "params": {
+          "viewable": "v9",
+          "add": [
+            {
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  5
+                ],
+                [
+                  6,
+                  6
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "unknown-viewable"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 25,
+        "params": {
+          "viewable": "v1",
+          "methodId": "ophys.nothing"
+        }
+      },
+      "expect": {
+        "error": "unknown-method"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 26,
+        "params": {
+          "viewable": "v1",
+          "methodId": "ophys.setup_variables"
+        }
+      },
+      "expect": {
+        "error": "wrong-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 27,
+        "params": {
+          "viewable": "v1",
+          "methodId": "ophys.compute_dff"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 28,
+        "params": {
+          "viewable": "v3",
+          "methodId": "ophys.motion_correction"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 29,
+        "params": {
+          "viewable": "v1",
+          "methodId": "ophys.motion_correction",
+          "options": {
+            "maxShift": -1
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 30,
+        "params": {
+          "viewable": "v1",
+          "methodId": "ophys.motion_correction",
+          "preset": "nothing"
+        }
+      },
+      "expect": {
+        "error": "unknown-preset"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 31,
+        "params": {
+          "viewable": "v1",
+          "methodId": "ophys.motion_correction",
+          "options": {
+            "maxShift": 4,
+            "referenceFrames": 1
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "result": {
+            "frames": 12,
+            "maxShift": 2,
+            "meanShift": 1.4322
+          },
+          "outputs": [
+            {
+              "variable": "TwoPhotonSeries_Corrected",
+              "path": "${scratch}/data/movie_TwoPhotonSeries_Corrected.npy",
+              "kind": "stack",
+              "viewable": "v4"
+            },
+            {
+              "variable": "MotionCorrectionShifts",
+              "path": "${scratch}/data/movie_MotionCorrectionShifts.npy",
+              "kind": "data",
+              "viewable": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.list",
+        "id": 32,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "v1",
+            "kind": "stack",
+            "name": "movie.npy",
+            "path": "${scratch}/data/movie.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/movie_rois.json"
+          },
+          {
+            "id": "v2",
+            "kind": "stack",
+            "name": "curated",
+            "path": "${scratch}/data/movie.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/curated.json"
+          },
+          {
+            "id": "v3",
+            "kind": "signals",
+            "name": "dff",
+            "path": "${scratch}/data/dff.npy",
+            "rois": false,
+            "roiFile": ""
+          },
+          {
+            "id": "v4",
+            "kind": "stack",
+            "name": "movie.npy \u00b7 TwoPhotonSeries_Corrected",
+            "path": "${scratch}/data/movie_TwoPhotonSeries_Corrected.npy",
+            "rois": false,
+            "roiFile": "${scratch}/data/movie_TwoPhotonSeries_Corrected_rois.json"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 33,
+        "params": {
+          "viewable": "v4",
+          "projection": "mean"
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 40,
+          "width": 40,
+          "frames": 12,
+          "adapter": "npy",
+          "adapters": [
+            "npy"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.detect",
+        "id": 34,
+        "params": {
+          "viewable": "v4",
+          "point": [
+            26,
+            20
+          ],
+          "radius": 4
+        }
+      },
+      "expect": {
+        "result": {
+          "pixels": [
+            [
+              24,
+              20
+            ],
+            [
+              25,
+              19
+            ],
+            [
+              25,
+              20
+            ],
+            [
+              25,
+              21
+            ],
+            [
+              26,
+              18
+            ],
+            [
+              26,
+              19
+            ],
+            [
+              26,
+              20
+            ],
+            [
+              26,
+              21
+            ],
+            [
+              26,
+              22
+            ],
+            [
+              27,
+              19
+            ],
+            [
+              27,
+              20
+            ],
+            [
+              27,
+              21
+            ],
+            [
+              28,
+              20
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.detect",
+        "id": 35,
+        "params": {
+          "viewable": "v4",
+          "point": [
+            40,
+            0
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "view.detect",
+        "id": 36,
+        "params": {
+          "viewable": "v3",
+          "point": [
+            0,
+            0
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 37,
+        "params": {
+          "viewable": "v4",
+          "methodId": "ophys.detect_rois",
+          "options": {
+            "border": 5,
+            "threshold": 0.45
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "result": {
+            "rois": 3,
+            "areas": [
+              9,
+              9,
+              9
+            ]
+          },
+          "outputs": [
+            {
+              "variable": "RoiArray",
+              "path": "${scratch}/data/movie_TwoPhotonSeries_Corrected_RoiArray.json",
+              "kind": "rois",
+              "viewable": "v5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 38,
+        "params": {
+          "viewable": "v5",
+          "rois": true
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  13,
+                  13
+                ],
+                [
+                  13,
+                  14
+                ],
+                [
+                  13,
+                  15
+                ],
+                [
+                  14,
+                  13
+                ],
+                [
+                  14,
+                  14
+                ],
+                [
+                  14,
+                  15
+                ],
+                [
+                  15,
+                  13
+                ],
+                [
+                  15,
+                  14
+                ],
+                [
+                  15,
+                  15
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  13,
+                  25
+                ],
+                [
+                  13,
+                  26
+                ],
+                [
+                  13,
+                  27
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  14,
+                  26
+                ],
+                [
+                  14,
+                  27
+                ],
+                [
+                  15,
+                  25
+                ],
+                [
+                  15,
+                  26
+                ],
+                [
+                  15,
+                  27
+                ]
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  25,
+                  19
+                ],
+                [
+                  25,
+                  20
+                ],
+                [
+                  25,
+                  21
+                ],
+                [
+                  26,
+                  19
+                ],
+                [
+                  26,
+                  20
+                ],
+                [
+                  26,
+                  21
+                ],
+                [
+                  27,
+                  19
+                ],
+                [
+                  27,
+                  20
+                ],
+                [
+                  27,
+                  21
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.updateRois",
+        "id": 39,
+        "params": {
+          "viewable": "v4",
+          "import": {
+            "viewable": "v5",
+            "mode": "replace"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  13,
+                  13
+                ],
+                [
+                  13,
+                  14
+                ],
+                [
+                  13,
+                  15
+                ],
+                [
+                  14,
+                  13
+                ],
+                [
+                  14,
+                  14
+                ],
+                [
+                  14,
+                  15
+                ],
+                [
+                  15,
+                  13
+                ],
+                [
+                  15,
+                  14
+                ],
+                [
+                  15,
+                  15
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  13,
+                  25
+                ],
+                [
+                  13,
+                  26
+                ],
+                [
+                  13,
+                  27
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  14,
+                  26
+                ],
+                [
+                  14,
+                  27
+                ],
+                [
+                  15,
+                  25
+                ],
+                [
+                  15,
+                  26
+                ],
+                [
+                  15,
+                  27
+                ]
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  25,
+                  19
+                ],
+                [
+                  25,
+                  20
+                ],
+                [
+                  25,
+                  21
+                ],
+                [
+                  26,
+                  19
+                ],
+                [
+                  26,
+                  20
+                ],
+                [
+                  26,
+                  21
+                ],
+                [
+                  27,
+                  19
+                ],
+                [
+                  27,
+                  20
+                ],
+                [
+                  27,
+                  21
+                ]
+              ]
+            }
+          ],
+          "added": [
+            1,
+            2,
+            3
+          ],
+          "file": "${scratch}/data/movie_TwoPhotonSeries_Corrected_rois.json"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.run",
+        "id": 40,
+        "params": {
+          "viewable": "v4",
+          "methodId": "ophys.detect_rois",
+          "options": {
+            "border": 5,
+            "threshold": 0.45
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "outputs": [
+            {
+              "variable": "RoiArray",
+              "path": "${scratch}/data/movie_TwoPhotonSeries_Corrected_RoiArray.json",
+              "kind": "rois",
+              "viewable": "v5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.list",
+        "id": 41,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "v1",
+            "kind": "stack",
+            "name": "movie.npy",
+            "path": "${scratch}/data/movie.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/movie_rois.json"
+          },
+          {
+            "id": "v2",
+            "kind": "stack",
+            "name": "curated",
+            "path": "${scratch}/data/movie.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/curated.json"
+          },
+          {
+            "id": "v3",
+            "kind": "signals",
+            "name": "dff",
+            "path": "${scratch}/data/dff.npy",
+            "rois": false,
+            "roiFile": ""
+          },
+          {
+            "id": "v4",
+            "kind": "stack",
+            "name": "movie.npy \u00b7 TwoPhotonSeries_Corrected",
+            "path": "${scratch}/data/movie_TwoPhotonSeries_Corrected.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/movie_TwoPhotonSeries_Corrected_rois.json"
+          },
+          {
+            "id": "v5",
+            "kind": "stack",
+            "name": "movie.npy \u00b7 TwoPhotonSeries_Corrected \u00b7 RoiArray",
+            "path": "${scratch}/data/movie_TwoPhotonSeries_Corrected.npy",
+            "rois": true,
+            "roiFile": "${scratch}/data/movie_TwoPhotonSeries_Corrected_RoiArray.json"
+          }
+        ]
+      }
+    }
   ]
 }

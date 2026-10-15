@@ -4,8 +4,12 @@ function app = view(data, options)
 %   As dev's command-line viewers: nansen.view(array) and
 %   nansen.view("recording.tif") as imviewer; nansen.view([],
 %   Signals=traces) as signalviewer (frames x N); nansen.view(file,
-%   Rois="rois.json") shows ROIs over the stack, read only, as
-%   roimanager. data is a file any stack adapter reads (TIFF, .npy,
+%   Rois="rois.json") shows ROIs over the stack, as roimanager. ROIs
+%   drawn and edited are saved to that file, or to <stem>_rois.json
+%   beside the stack's file (an array's are kept in memory), and the
+%   Viewer page runs a built-in method (motion correction, ROI
+%   detection, ...) on a stack, writing what it saves beside it.
+%   data is a file any stack adapter reads (TIFF, .npy,
 %   SciScan raw, HDF5, video, ...) or an array, height x width (x channels
 %   (x planes)) x frames, or a cell array of them. Signals are an array, a
 %   .npy file or a .mat file (Variable names the variable, when it has

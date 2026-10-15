@@ -996,12 +996,13 @@ class Api:
     # -- viewing without a project: what `nansen view` and nansen.view registered ---------------------------------
 
     def view__list(self, params: dict) -> list:
-        """The files and arrays this app was given to view: [{id, kind (stack or signals), name, path, rois}]."""
+        """The files and arrays this app was given to view: [{id, kind (stack or signals), name, path, rois, roiFile}]."""
         return self.viewables.list()
 
     def view__frame(self, params: dict) -> dict:
         """A frame (or a projection) of a registered stack, as files.frame gives one of a file; with rois, its ROIs of
-        the plane and channel shown. No project is needed, and nothing but what was registered is read."""
+        the plane and channel shown ([] when it has none yet). No project is needed, and nothing but what was
+        registered is read."""
         viewable = self.viewables.get(params["viewable"])
         limits = params.get("limits")
         if limits is not None and (not isinstance(limits, list) or len(limits) != 2):
@@ -1011,9 +1012,55 @@ class Api:
         result = image_frame(stack, int(params.get("frame", 0)), channel, params.get("projection"), limits,
                              plane, params.get("filter"), _bin_of(params))
         result = dict(result, metadata=viewable.metadata(stack), adapter=adapter, adapters=list(viewable.adapters), name=viewable.name)
-        if _flag(params, "rois") and viewable.rois is not None:
-            result["rois"] = roi_outlines(rois_at(viewable.rois, plane + 1, channel + 1))
+        if _flag(params, "rois"):
+            result["rois"] = roi_outlines(rois_at(viewable.rois, plane + 1, channel + 1)) if viewable.rois is not None else []
         return result
+
+    def view__updateRois(self, params: dict) -> dict:
+        """Change the ROIs of a registered stack as rois.update changes an ROI variable's, and save them to its ROI file
+        (roimanager's Save Rois): {rois, added, file}; file is "" for an array's, kept in memory. An import takes the
+        ROIs of another registered stack ({viewable, mode?})."""
+        viewable = self.viewables.get(params["viewable"])
+        if viewable.kind != "stack":
+            raise NansenError("invalid-params", f"{viewable.name} is signals; ROIs are drawn on image stacks")
+        if params.get("mirror", False) is not False:
+            raise NansenError("invalid-params", f"the ROIs of {viewable.name} are aligned with no others: there is nothing to mirror the change to")
+        plane, channel = int(params.get("plane", 0)) + 1, int(params.get("channel", 0)) + 1
+        current = viewable.rois if viewable.rois is not None else {"rois": []}
+        if params.get("imageSize") and "imageSize" not in current:
+            current = dict(current, imageSize=params["imageSize"])
+        document, added = self._edit_rois(current, plane, channel, params, 1, self._viewable_rois)
+        file = self.viewables.save_rois(viewable, document)
+        return {"rois": roi_outlines(rois_at(document, plane, channel)), "added": added, "file": file}
+
+    def _viewable_rois(self, spec: dict) -> Any:
+        """The ROIs view.updateRois imports: those of another registered stack (none, when it has none yet)."""
+        if spec.get("viewable") is None:
+            raise NansenError("invalid-params", "a viewable's import names another viewable: {viewable, mode?}")
+        other = self.viewables.get(spec["viewable"])
+        if other.kind != "stack":
+            raise NansenError("invalid-params", f"{other.name} is signals, which have no ROIs")
+        return other.rois if other.rois is not None else {"rois": []}
+
+    def view__detect(self, params: dict) -> dict:
+        """The pixels of an ROI found around a point of a registered stack's mean, as rois.detect finds one; not saved."""
+        viewable = self.viewables.get(params["viewable"])
+        point = params.get("point")
+        if not isinstance(point, list) or len(point) != 2:
+            raise NansenError("invalid-params", "point is [row, column]")
+        stack, _ = self.viewables.stack(viewable, params.get("adapter"))
+        stack, _, _ = pick_channel(stack, int(params.get("channel", 0)), int(params.get("plane", 0)))
+        return {"pixels": detect_roi(mean_image(stack), point, int(params.get("radius", 6)))}
+
+    def view__methods(self, params: dict) -> list:
+        """Summaries of the built-in methods view.run runs on a registered stack."""
+        return [m.summary() for m in self.viewables.methods()]
+
+    def view__run(self, params: dict) -> dict:
+        """Run a built-in method on a registered stack now, as dev's imviewer runs Align Images: {result, log, outputs};
+        what it saves is written beside the stack's file, and its stacks and ROIs are registered as viewables."""
+        viewable = self.viewables.get(params["viewable"])
+        return self.viewables.run(viewable, params["methodId"], params.get("options"), params.get("preset"))
 
     def view__signal(self, params: dict) -> dict:
         """An ROI's signal read from a registered stack (the mean of its pixels per frame), as rois.signal gives one."""
@@ -1282,18 +1329,8 @@ class Api:
         if not isinstance(mirror, bool):
             raise NansenError("invalid-params", "mirror is true or false")
         aligned, first_id = (self._aligned_rois(project, entity, params, current) if mirror else ([], 1))
-        document, added = update_rois_at(current, plane, channel,
-                                         classify=params.get("classify"), remove=params.get("remove"), add=params.get("add"),
-                                         move=params.get("move"), merge=params.get("merge"), pixels=params.get("pixels"),
-                                         restore=params.get("restore"), cell_type=params.get("cellType"), link=params.get("link"),
-                                         first_id=first_id)
-        if params.get("import") is not None:   # roimanager's loaded ROIs, or a segmentation's, added to these
-            spec = params["import"]
-            if not isinstance(spec, dict):
-                raise NansenError("invalid-params", "import is {variable} or {path, adapter?}, and a mode")
-            document, imported = import_rois_at(document, plane, channel, self._imported_rois(project, entity, spec),
-                                                spec.get("mode", "append"), first_id)
-            added = added + imported
+        document, added = self._edit_rois(current, plane, channel, params, first_id,
+                                          lambda spec: self._imported_rois(project, entity, spec))
         project.save(entity, params["variable"], document)
         result = {"rois": roi_outlines(rois_at(document, plane, channel)), "added": added}
         if mirror:   # the same change made to the ROIs of the entities aligned with this one (dev's synchEntries 'Mirror')
@@ -1306,6 +1343,25 @@ class Api:
                 project.save(other, entry["variable"], value)
                 result["mirrored"].append(dict(key=dict(other.key), **summary))
         return result
+
+    @staticmethod
+    def _edit_rois(current: Any, plane: int, channel: int, params: dict, first_id: int,
+                   imported: Callable[[dict], Any]) -> Any:
+        """rois.update's changes to an ROI document at a plane and channel (from 1), in its order, the import last:
+        (document, ids of the added ROIs). imported(spec) gives the ROIs an import takes. view.updateRois makes the
+        same changes to a viewable's ROIs."""
+        document, added = update_rois_at(current, plane, channel,
+                                         classify=params.get("classify"), remove=params.get("remove"), add=params.get("add"),
+                                         move=params.get("move"), merge=params.get("merge"), pixels=params.get("pixels"),
+                                         restore=params.get("restore"), cell_type=params.get("cellType"), link=params.get("link"),
+                                         first_id=first_id)
+        if params.get("import") is not None:   # roimanager's loaded ROIs, or a segmentation's, added to these
+            spec = params["import"]
+            if not isinstance(spec, dict):
+                raise NansenError("invalid-params", "import is an object: where the ROIs come from, and a mode")
+            document, imported_ids = import_rois_at(document, plane, channel, imported(spec), spec.get("mode", "append"), first_id)
+            added = added + imported_ids
+        return document, added
 
     def _aligned_rois(self, project, entity, params: dict, current: Any) -> Any:
         """The entities aligned with this one by the alignment its ROI file has (ophys.align_sessions writes it): each

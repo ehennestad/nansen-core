@@ -4,22 +4,37 @@ classdef Viewables < handle
 %   As dev's imviewer(array), imviewer(file), signalviewer and roimanager
 %   opened from the command line. A viewable is an image stack (a file any
 %   stack adapter reads, or an array, height x width (x channels (x
-%   planes)) x frames) with ROIs to show over it, read only, or frames x N
-%   signals. nansen.Api serves frames (view.frame), ROI signals
-%   (view.signal) and traces (view.traces) of viewables only, each named
-%   by its id (v1, v2, ...): viewables are registered from MATLAB, never
-%   by a request, so the page reads no file the user did not hand over.
+%   planes)) x frames) with its ROIs, or frames x N signals. nansen.Api
+%   serves frames (view.frame), ROI signals (view.signal) and traces
+%   (view.traces) of viewables only, each named by its id (v1, v2, ...):
+%   viewables are registered from MATLAB, never by a request, so the page
+%   reads no file the user did not hand over. ROIs drawn and edited on a
+%   stack (view.updateRois) are saved to its ROI file: the .json ROI file
+%   it was given, else <stem>_rois.json beside its file (dev's roimanager
+%   saves <stem>_rois.mat there), which is read again when the same file
+%   is viewed with no ROIs given; an array's are kept in memory. A method
+%   of the built-in modules runs on a stack (view.run, as dev's imviewer
+%   runs Align Images and roimanager its autosegmentation): what it saves
+%   is written beside the stack's file as <stem>_<variable>.npy or .json,
+%   and the stacks and ROIs among it are registered as viewables too.
 %   Python's nansen.viewables.Viewables does the same.
 %
 %   viewables = nansen.Viewables();
 %   id = viewables.addStack(data, Name=, Rois=, Adapter=, FrameRate=)
 %   id = viewables.addSignals(data, Name=, Variable=, FrameRate=)
 
+    properties (Constant)
+        RoiFileEnd = "_rois.json"   % a stack file's ROIs, when it was given none: <stem>_rois.json beside it
+    end
+
     properties (Access = private)
         Ids (1,:) string = string.empty(1, 0)
-        Items        % id -> struct: id, kind, name, path, frameRate, adapter, adapters, rois, hasRois, signals
+        % id -> struct: id, kind, name, path, frameRate, adapter, adapters, rois, hasRois, roiFile (where ROI edits are
+        % saved; "" in memory), origin ("<viewable id>/<variable>" for what view.run saved), signals
+        Items
         Stacks       % "<id>/<adapter>" -> the nansen.Stack it read
         Registry = []
+        AllMethods = []   % the built-in modules' methods, once read
     end
 
     methods
@@ -53,12 +68,13 @@ classdef Viewables < handle
         end
 
         function result = list(obj)
-            %list The viewables: a cell row of structs id, kind (stack or signals), name, path ("" for an array), rois
+            %list The viewables: a cell row of structs id, kind (stack or signals), name, path ("" for an array), rois,
+            %roiFile (where ROI edits are saved; "" for an array's, kept in memory, and for signals)
             result = cell(1, numel(obj.Ids));
             for i = 1:numel(obj.Ids)
                 item = obj.Items(char(obj.Ids(i)));
                 result{i} = struct("id", char(item.id), "kind", char(item.kind), "name", char(item.name), ...
-                    "path", char(item.path), "rois", item.hasRois);
+                    "path", char(item.path), "rois", item.hasRois, "roiFile", char(item.roiFile));
             end
         end
 
@@ -76,7 +92,9 @@ classdef Viewables < handle
         function id = addStack(obj, data, options)
             %addStack Register an image stack: a file (read with the adapter given, or the first stack adapter of its
             %extension that opens it) or an array. Rois is an ROI file (.json as ophys saves ROIs, or a file an RoiArray
-            %adapter reads, such as dev's roimanager .mat) or an ROI struct, shown read only. Returns the id.
+            %adapter reads, such as dev's roimanager .mat) or an ROI struct. ROI edits are saved to a .json ROI file
+            %given, to the same name as .json beside any other ROI file, and else to <stem>_rois.json beside the stack's
+            %file, which is read when it is there and no ROIs are given; an array's are kept in memory. Returns the id.
             arguments
                 obj
                 data
@@ -103,6 +121,22 @@ classdef Viewables < handle
             if ~isempty(options.Rois)
                 item.rois = obj.readRois(options.Rois);
                 item.hasRois = true;
+                if nansen.Viewables.isPath(options.Rois)
+                    given = nansen.Viewables.filePath(options.Rois);
+                    [folder, name, extension] = fileparts(given);
+                    item.roiFile = given;
+                    if lower(extension) ~= ".json"
+                        item.roiFile = string(fullfile(folder, name + ".json"));
+                    end
+                elseif item.path ~= ""
+                    item.roiFile = nansen.Viewables.roiFileBeside(item.path);
+                end
+            elseif item.path ~= ""
+                item.roiFile = nansen.Viewables.roiFileBeside(item.path);
+                if isfile(item.roiFile)   % saved when the file was viewed before (view.updateRois)
+                    item.rois = obj.readRois(item.roiFile);
+                    item.hasRois = true;
+                end
             end
             obj.Stacks(char(item.id + "/" + item.adapter)) = stack;
             obj.store(item);
@@ -220,6 +254,118 @@ classdef Viewables < handle
             end
             stack = obj.Stacks(key);
         end
+
+        function file = saveRois(obj, id, document)
+            %saveRois The stack's ROIs from now on, written to its ROI file (as ophys saves ROIs); returns the file, ""
+            %for an array's, kept in memory
+            item = obj.get(id);
+            item.rois = document;
+            item.hasRois = true;
+            obj.Items(char(item.id)) = item;
+            file = item.roiFile;
+            if file ~= ""
+                nansen.adapters.Json().write(file, document);
+            end
+        end
+
+        function found = runnableMethods(obj)
+            %runnableMethods The methods view.run runs on a stack: those of the built-in modules that run on any entity
+            %type, read the stack their stack option names, and have a MATLAB implementation
+            found = obj.allMethods();
+            keep = arrayfun(@(m) nansen.Viewables.runsOnStacks(m) && any(m.Languages == "matlab"), found);
+            found = found(keep);
+        end
+
+        function method = findMethod(obj, methodId)
+            %findMethod A built-in method by its id; unknown-method for any other
+            for candidate = obj.allMethods()
+                if candidate.Id == string(methodId)
+                    method = candidate;
+                    return
+                end
+            end
+            nansen.internal.throwError("unknown-method", "no built-in method '%s'", strjoin(string(methodId), " "))
+        end
+
+        function values = presetValues(~, method, name)
+            %presetValues A preset of a built-in method: its defaults ("default"), or one its module ships
+            if string(name) == "default"
+                values = method.defaultOptions();
+                return
+            end
+            modules = nansen.Module.available("");
+            for i = 1:numel(modules)
+                for document = modules{i}.presetDocuments()
+                    if string(document{1}.method.id) == method.Id && string(document{1}.name) == string(name)
+                        values = document{1}.values;
+                        return
+                    end
+                end
+            end
+            nansen.internal.throwError("unknown-preset", "method '%s' has no preset '%s'", method.Id, name)
+        end
+
+        function result = runOn(obj, id, methodId, options, preset)
+            %runOn Run a built-in method on a stack, now: struct result, log, outputs (variable, path, kind, viewable)
+            %
+            %   The variable its stack option names is the viewable's stack,
+            %   and the one its rois option names (extractSignals', ...) its
+            %   ROIs; what it saves is written beside the stack's file as
+            %   <stem>_<variable>.npy or .json (kept in memory for an array),
+            %   and registered: a stack (3 or more dimensions) as a stack, ROIs
+            %   as the viewable's stack with those ROIs, saved to that file.
+            %   What one run saved replaces what the run before it saved to the
+            %   same variable, under the same id. A run that stops starts over.
+            arguments
+                obj
+                id
+                methodId
+                options = struct()
+                preset (1,1) string = ""
+            end
+            item = obj.get(id);
+            if item.kind ~= "stack"
+                nansen.internal.throwError("invalid-params", "%s is signals; methods run on image stacks", item.name)
+            end
+            method = obj.findMethod(methodId);
+            if method.EntityType ~= "*"
+                nansen.internal.throwError("wrong-entity-type", "%s runs on %s, not on a stack viewed without a project", ...
+                    method.Id, method.EntityType)
+            end
+            if ~nansen.Viewables.runsOnStacks(method)
+                nansen.internal.throwError("invalid-params", "%s reads no stack (it has no stack option), so it cannot run on %s", ...
+                    method.Id, item.name)
+            end
+            if isempty(options)
+                options = struct();
+            end
+            if ~(isstruct(options) && isscalar(options))
+                nansen.internal.throwError("invalid-params", "options is an object of option values")
+            end
+            values = struct();
+            if preset ~= ""
+                values = obj.presetValues(method, preset);
+            end
+            values = nansen.internal.mergeStructs(values, options);
+            resolved = method.resolveOptions(values);
+            roisName = "";
+            schema = method.optionsSchema();
+            if isfield(schema.properties, "rois")
+                roisName = string(resolved.rois);
+            end
+            sandbox = nansen.internal.ViewableProject(obj, item, string(resolved.stack), roisName);
+            context = nansen.MethodContext(Project=sandbox, Method=method);
+            results = nansen.runMethod(method, {nansen.Entity("viewable", struct("viewable", char(item.id)))}, values, context);
+            value = results{1};
+            if isempty(value) && isnumeric(value)
+                value = NaN;   % null
+            end
+            outputs = cell(1, numel(sandbox.Names));
+            for i = 1:numel(sandbox.Names)
+                outputs{i} = obj.addOutput(item, sandbox.Names(i), sandbox.Paths(i), sandbox.Values{i}, sandbox.InFile(i));
+            end
+            result = struct("result", {value}, "log", {cellstr(context.Lines)}, "outputs", {outputs});
+        end
     end
 
     methods (Static)
@@ -229,6 +375,12 @@ classdef Viewables < handle
             if ~isempty(item.frameRate) && ~isfield(metadata, "frameRate")
                 metadata.frameRate = item.frameRate;
             end
+        end
+
+        function path = roiFileBeside(path)
+            %roiFileBeside Where the ROIs of a stack file are saved when it was given no ROI file: <stem>_rois.json beside it
+            [folder, name] = fileparts(string(path));
+            path = string(fullfile(folder, name + nansen.Viewables.RoiFileEnd));
         end
     end
 
@@ -256,12 +408,106 @@ classdef Viewables < handle
                 frameRate = double(frameRate);
             end
             item = struct("id", "v" + string(numel(obj.Ids) + 1), "kind", string(kind), "name", string(name), "path", "", ...
-                "frameRate", frameRate, "adapter", "", "adapters", strings(1, 0), "rois", [], "hasRois", false, "signals", []);
+                "frameRate", frameRate, "adapter", "", "adapters", strings(1, 0), "rois", [], "hasRois", false, ...
+                "roiFile", "", "origin", "", "signals", []);
         end
 
         function store(obj, item)
             obj.Items(char(item.id)) = item;
-            obj.Ids(end + 1) = item.id;
+            if ~ismember(item.id, obj.Ids)
+                obj.Ids(end + 1) = item.id;
+            end
+        end
+
+        function found = allMethods(obj)
+            % The built-in modules' methods, the first declaration of an id winning
+            if isempty(obj.AllMethods)
+                found = nansen.Method.empty(1, 0);
+                modules = nansen.Module.available("");
+                for i = 1:numel(modules)
+                    found = [found, modules{i}.entityMethods()]; %#ok<AGROW>
+                end
+                if ~isempty(found)
+                    [~, first] = unique([found.Id], "stable");
+                    found = found(sort(first));
+                end
+                obj.AllMethods = found;
+            end
+            found = obj.AllMethods;
+        end
+
+        function entry = addOutput(obj, source, variable, path, value, inFile)
+            % Register what a run saved, when it is a stack or ROIs: the entry of view.run's outputs. inFile: the value
+            % is in the file at path (an array a stack writer wrote, or one saved as .npy), not at hand
+            stack = [];
+            hasStack = false;
+            kind = "data";
+            if inFile && endsWith(path, ".npy")
+                stack = nansen.adapters.Npy().open(path);
+                hasStack = true;
+            elseif ~inFile && nansen.Viewables.isArray(value)
+                stack = nansen.Stack.fromArray(value);
+                hasStack = true;
+            end
+            if hasStack && ndims(stack) >= 3
+                kind = "stack";
+            elseif ~inFile && isstruct(value) && isscalar(value) && isfield(value, "rois")
+                try
+                    nansen.internal.roiOutlines(value);
+                    kind = "rois";
+                catch err
+                    if ~isa(err, "nansen.NansenError")
+                        rethrow(err)
+                    end
+                end
+            end
+            entry = struct("variable", char(variable), "path", char(path), "kind", char(kind), "viewable", '');
+            if kind == "data"
+                return
+            end
+            origin = source.id + "/" + variable;
+            item = obj.newItem("stack", source.name + " · " + variable, source.frameRate);
+            for i = 1:numel(obj.Ids)
+                other = obj.Items(char(obj.Ids(i)));
+                if other.origin == origin   % what the run before saved to the variable: replaced, under its id
+                    item.id = other.id;
+                    for key = string(keys(obj.Stacks))
+                        if startsWith(key, item.id + "/")
+                            remove(obj.Stacks, char(key));
+                        end
+                    end
+                    break
+                end
+            end
+            item.origin = origin;
+            sourceStack = obj.Stacks(char(source.id + "/" + source.adapter));
+            if kind == "stack"
+                stack = nansen.Viewables.imageStack(stack, item.name);
+                if isempty(fieldnames(stack.Metadata))   % an aligned stack keeps what the recording's files tell
+                    stack.Metadata = sourceStack.Metadata;
+                end
+                item.path = string(path);
+                if item.path ~= ""
+                    item.adapter = "npy";
+                    item.adapters = obj.adapters().forStacks(".npy");
+                    item.roiFile = nansen.Viewables.roiFileBeside(item.path);
+                    if isfile(item.roiFile)
+                        item.rois = obj.readRois(item.roiFile);
+                        item.hasRois = true;
+                    end
+                end
+                obj.Stacks(char(item.id + "/" + item.adapter)) = stack;
+            else   % ROIs found in the stack: shown over it, edits saved to their file
+                item.path = source.path;
+                item.adapter = source.adapter;
+                item.adapters = source.adapters;
+                item.rois = value;
+                item.hasRois = true;
+                item.roiFile = string(path);
+                obj.Stacks(char(item.id + "/" + item.adapter)) = sourceStack;
+            end
+            obj.store(item);
+            entry.viewable = char(item.id);
         end
 
         function [stack, adapterId] = openFile(obj, path, adapterId, candidates)
@@ -349,6 +595,18 @@ classdef Viewables < handle
 
         function tf = isPath(value)
             tf = ischar(value) || (isstring(value) && isscalar(value));
+        end
+
+        function tf = isArray(value)
+            % An array of numbers or truth values, more than one: saved as .npy (as Project.save makes a variable)
+            tf = (isnumeric(value) || islogical(value)) && numel(value) > 1;
+        end
+
+        function tf = runsOnStacks(method)
+            % A method view.run runs: of any entity type, with a stack option naming the stack it reads
+            schema = method.optionsSchema();
+            tf = method.EntityType == "*" && isfield(schema, "properties") && isstruct(schema.properties) ...
+                && isfield(schema.properties, "stack");
         end
 
         function path = filePath(value)

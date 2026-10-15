@@ -51,7 +51,7 @@ classdef Api < handle
             names = ["app.info", "app.openUrl", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "view.updateRois", "view.detect", "view.methods", "view.run", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.comment", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
@@ -991,13 +991,14 @@ classdef Api < handle
         % -- viewing without a project: what nansen.view registered ---------------------------------------------------
 
         function result = apiViewList(obj, ~)
-            % The files and arrays this app was given to view: {id, kind (stack or signals), name, path, rois}
+            % The files and arrays this app was given to view: {id, kind (stack or signals), name, path, rois, roiFile}
             result = obj.Viewables.list();
         end
 
         function result = apiViewFrame(obj, params)
             % A frame (or a projection) of a registered stack, as files.frame gives one of a file; with rois, its ROIs of
-            % the plane and channel shown. No project is needed, and nothing but what was registered is read
+            % the plane and channel shown ([] when it has none yet). No project is needed, and nothing but what was
+            % registered is read
             item = obj.Viewables.get(nansen.Api.param(params, "viewable"));
             limits = nansen.internal.getField(params, "limits", []);
             if ~isempty(limits) && (~isnumeric(limits) || numel(limits) ~= 2)
@@ -1013,9 +1014,83 @@ classdef Api < handle
             result.adapter = char(adapterId);
             result.adapters = cellstr(item.adapters);
             result.name = char(item.name);
-            if nansen.Api.flag(params, "rois") && item.hasRois
-                result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(item.rois, plane + 1, channel + 1));
+            if nansen.Api.flag(params, "rois")
+                result.rois = {};
+                if item.hasRois
+                    result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(item.rois, plane + 1, channel + 1));
+                end
             end
+        end
+
+        function result = apiViewUpdateRois(obj, params)
+            % Change the ROIs of a registered stack as rois.update changes an ROI variable's, and save them to its ROI file
+            % (roimanager's Save Rois): {rois, added, file}; file is "" for an array's, kept in memory. An import takes
+            % the ROIs of another registered stack ({viewable, mode?})
+            item = obj.Viewables.get(nansen.Api.param(params, "viewable"));
+            if item.kind ~= "stack"
+                nansen.internal.throwError("invalid-params", "%s is signals; ROIs are drawn on image stacks", item.name)
+            end
+            mirror = nansen.internal.getField(params, "mirror", false);
+            if ~(islogical(mirror) && isscalar(mirror) && ~mirror)
+                nansen.internal.throwError("invalid-params", "the ROIs of %s are aligned with no others: there is nothing to mirror the change to", item.name)
+            end
+            plane = double(nansen.internal.getField(params, "plane", 0)) + 1;
+            channel = double(nansen.internal.getField(params, "channel", 0)) + 1;
+            current = struct("rois", {{}});
+            if item.hasRois
+                current = item.rois;
+            end
+            imageSize = nansen.internal.getField(params, "imageSize", []);
+            if ~isempty(imageSize) && ~isfield(current, "imageSize")
+                current.imageSize = double(reshape(imageSize, 1, []));
+            end
+            [document, added] = nansen.Api.editRois(current, plane, channel, params, 1, @(spec) obj.viewableRois(spec));
+            file = obj.Viewables.saveRois(item.id, document);
+            result = struct("rois", {nansen.internal.roiOutlines(nansen.internal.roisAt(document, plane, channel))}, ...
+                "added", {added}, "file", char(file));
+        end
+
+        function value = viewableRois(obj, spec)
+            % The ROIs view.updateRois imports: those of another registered stack (none, when it has none yet)
+            id = nansen.internal.getField(spec, "viewable", []);
+            if isempty(id)
+                nansen.internal.throwError("invalid-params", "a viewable's import names another viewable: {viewable, mode?}")
+            end
+            other = obj.Viewables.get(id);
+            if other.kind ~= "stack"
+                nansen.internal.throwError("invalid-params", "%s is signals, which have no ROIs", other.name)
+            end
+            value = struct("rois", {{}});
+            if other.hasRois
+                value = other.rois;
+            end
+        end
+
+        function result = apiViewDetect(obj, params)
+            % The pixels of an ROI found around a point of a registered stack's mean, as rois.detect finds one; not saved
+            item = obj.Viewables.get(nansen.Api.param(params, "viewable"));
+            point = nansen.internal.getField(params, "point", []);
+            if ~isnumeric(point) || numel(point) ~= 2
+                nansen.internal.throwError("invalid-params", "point is [row, column]")
+            end
+            stack = obj.Viewables.stack(item, string(nansen.internal.getField(params, "adapter", "")));
+            stack = nansen.internal.pickChannel(stack, double(nansen.internal.getField(params, "channel", 0)), ...
+                double(nansen.internal.getField(params, "plane", 0)));
+            pixels = nansen.internal.detectRoi(nansen.internal.meanImage(stack), point, double(nansen.internal.getField(params, "radius", 6)));
+            result = struct("pixels", {num2cell(pixels, 2)'});
+        end
+
+        function result = apiViewMethods(obj, ~)
+            % Summaries of the built-in methods view.run runs on a registered stack
+            result = arrayfun(@(m) m.summary(), obj.Viewables.runnableMethods(), UniformOutput=false);
+        end
+
+        function result = apiViewRun(obj, params)
+            % Run a built-in method on a registered stack now, as dev's imviewer runs Align Images: {result, log, outputs};
+            % what it saves is written beside the stack's file, and its stacks and ROIs are registered as viewables
+            item = obj.Viewables.get(nansen.Api.param(params, "viewable"));
+            result = obj.Viewables.runOn(item.id, nansen.Api.param(params, "methodId"), obj.optionsOf(params), ...
+                string(nansen.internal.getField(params, "preset", "")));
         end
 
         function result = apiViewSignal(obj, params)
@@ -1503,10 +1578,6 @@ classdef Api < handle
             project = obj.requireProject();
             entity = obj.entity(params);
             variable = string(nansen.Api.param(params, "variable"));
-            restore = missing;   % absent, as opposed to an empty list, which restores no ROIs
-            if isfield(params, "restore")
-                restore = params.restore;
-            end
             plane = double(nansen.internal.getField(params, "plane", 0)) + 1;
             channel = double(nansen.internal.getField(params, "channel", 0)) + 1;
             if ~isfile(project.dataVariablePath(variable))   % a new ROI variable, as roimanager's Save Rois as
@@ -1525,21 +1596,8 @@ classdef Api < handle
             if mirror
                 [aligned, firstId] = obj.alignedRois(project, entity, params, current, variable);
             end
-            [document, added] = nansen.internal.updateRoisAt(current, plane, channel, ...
-                nansen.internal.getField(params, "classify", []), nansen.internal.getField(params, "remove", []), ...
-                nansen.internal.getField(params, "add", []), nansen.internal.getField(params, "move", []), ...
-                nansen.internal.getField(params, "merge", []), nansen.internal.getField(params, "pixels", []), restore, ...
-                nansen.internal.getField(params, "cellType", []), nansen.internal.getField(params, "link", []), firstId);
-            if isfield(params, "import") && ~(isnumeric(params.import) && isempty(params.import))   % null is none
-                % roimanager's loaded ROIs, or a segmentation's, added to these
-                spec = params.import;
-                if ~(isstruct(spec) && isscalar(spec))
-                    nansen.internal.throwError("invalid-params", "import is {variable} or {path, adapter?}, and a mode")
-                end
-                [document, imported] = nansen.internal.importRoisAt(document, plane, channel, obj.importedRois(project, entity, spec), ...
-                    nansen.internal.getField(spec, "mode", "append"), firstId);
-                added = [reshape(added, 1, []), reshape(imported, 1, [])];
-            end
+            [document, added] = nansen.Api.editRois(current, plane, channel, params, firstId, ...
+                @(spec) obj.importedRois(project, entity, spec));
             project.save(entity, variable, document);
             result = struct("rois", {nansen.internal.roiOutlines(nansen.internal.roisAt(document, plane, channel))}, "added", {added});
             if mirror   % the same change made to the ROIs of the entities aligned with this one (dev's synchEntries 'Mirror')
@@ -2505,6 +2563,31 @@ classdef Api < handle
                 nansen.internal.throwError("invalid-params", "bin is {size: 2 or more frames, method: mean or max}")
             end
             value = struct("size", double(size_), "method", method);
+        end
+
+        function [document, added] = editRois(current, plane, channel, params, firstId, imported)
+            % rois.update's changes to an ROI document at a plane and channel (from 1), in its order, the import last:
+            % the document and the ids of the added ROIs. imported(spec) gives the ROIs an import takes. view.updateRois
+            % makes the same changes to a viewable's ROIs. As Python's Api._edit_rois.
+            restore = missing;   % absent, as opposed to an empty list, which restores no ROIs
+            if isfield(params, "restore")
+                restore = params.restore;
+            end
+            [document, added] = nansen.internal.updateRoisAt(current, plane, channel, ...
+                nansen.internal.getField(params, "classify", []), nansen.internal.getField(params, "remove", []), ...
+                nansen.internal.getField(params, "add", []), nansen.internal.getField(params, "move", []), ...
+                nansen.internal.getField(params, "merge", []), nansen.internal.getField(params, "pixels", []), restore, ...
+                nansen.internal.getField(params, "cellType", []), nansen.internal.getField(params, "link", []), firstId);
+            if isfield(params, "import") && ~(isnumeric(params.import) && isempty(params.import))   % null is none
+                % roimanager's loaded ROIs, or a segmentation's, added to these
+                spec = params.import;
+                if ~(isstruct(spec) && isscalar(spec))
+                    nansen.internal.throwError("invalid-params", "import is an object: where the ROIs come from, and a mode")
+                end
+                [document, importedIds] = nansen.internal.importRoisAt(document, plane, channel, imported(spec), ...
+                    nansen.internal.getField(spec, "mode", "append"), firstId);
+                added = [reshape(added, 1, []), reshape(importedIds, 1, [])];
+            end
         end
 
         function value = roisOf(project, entity, name, cached)

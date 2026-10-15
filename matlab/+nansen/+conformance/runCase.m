@@ -186,12 +186,20 @@ function detail = runApiCase(folder)
     % ${scratch} and ${case} may appear inside any string, in requests and expected results alike
     sessionText = replace(sessionText, "${scratch}", jsonContent(replace(scratch, "\", "/")));
     sessionText = replace(sessionText, "${case}", jsonContent(replace(caseFolder, "\", "/")));
-    steps = nansen.internal.asCellOfStructs(jsondecode(char(sessionText)).steps);
+    session = jsondecode(char(sessionText));
+    steps = nansen.internal.asCellOfStructs(session.steps);
     project = fullfile(scratch, "project");
     if isfolder(fullfile(folder, "project"))
         copyfile(fullfile(folder, "project"), project);
     end
-    api = nansen.Api();
+    if isfolder(fullfile(folder, "data"))   % files viewed without a project
+        copyfile(fullfile(folder, "data"), fullfile(scratch, "data"));
+    end
+    viewables = nansen.Viewables();
+    if isfield(session, "viewables")
+        registerViewables(viewables, nansen.internal.asCellOfStructs(session.viewables));
+    end
+    api = nansen.Api(Viewables=viewables);
     kept = struct("name", {}, "value", {});   % values a step keeps from its result, as ${name}, for the steps after it
     for number = 1:numel(steps)
         step = steps{number};
@@ -248,6 +256,25 @@ function detail = runApiCase(folder)
                 end
                 kept(end + 1) = struct("name", name, "value", {value}); %#ok<AGROW>   % a cell value as it is
             end
+        end
+    end
+end
+
+function registerViewables(viewables, entries)
+    % What the case's app is given to view, as nansen.view gives it: {stack, rois?, name?, frameRate?} or
+    % {signals, name?, frameRate?}, registered in order (v1, v2, ...)
+    for i = 1:numel(entries)
+        entry = entries{i};
+        name = string(nansen.internal.getField(entry, "name", ""));
+        frameRate = nansen.internal.getField(entry, "frameRate", []);
+        if isfield(entry, "signals")
+            viewables.addSignals(string(entry.signals), Name=name, FrameRate=frameRate);
+        else
+            rois = nansen.internal.getField(entry, "rois", []);
+            if ~isempty(rois)
+                rois = string(rois);
+            end
+            viewables.addStack(string(entry.stack), Name=name, Rois=rois, FrameRate=frameRate);
         end
     end
 end

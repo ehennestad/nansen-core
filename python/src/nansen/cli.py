@@ -31,8 +31,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                                             "signalviewer and roimanager)")
     view.add_argument("files", nargs="*", help="image stack files: any a stack adapter reads (TIFF, .npy, SciScan .raw, "
                                                "HDF5, video, ...)")
-    view.add_argument("--rois", default=None, help="ROIs to show over the first stack, read only (.json as ophys saves "
-                                                   "them, or dev's roimanager .mat)")
+    view.add_argument("--rois", default=None, help="ROIs to show and edit over the first stack (.json as ophys saves them, "
+                                                   "saved back there; or dev's roimanager .mat, saved as .json beside it). "
+                                                   "Without it, ROIs are saved to <stem>_rois.json beside each stack")
     view.add_argument("--signals", action="append", default=[], metavar="FILE",
                       help="frames x N signals to plot (.npy, or .mat: see --variable); may be given more than once")
     view.add_argument("--variable", default=None, help="the variable of a .mat signals file (default: its only numeric array)")
