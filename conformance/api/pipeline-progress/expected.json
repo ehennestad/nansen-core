@@ -1,0 +1,4 @@
+{
+  "description": "Pipelines assigned to entities: progress read from the run journal as steps complete, queueing only the steps not done (and nothing while they are queued), project pipelines saved and deleted (a module's stays), and errors for unknown methods, pipelines and entities.",
+  "steps": 25
+}

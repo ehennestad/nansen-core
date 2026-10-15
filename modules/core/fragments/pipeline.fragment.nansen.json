@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "core.pipeline",
+  "version": "1.0.0",
+  "title": "Pipeline",
+  "description": "The pipeline each entity is to go through. Its progress is read from the run journal: a step is done once its method has completed on the entity.",
+  "columns": [
+    {
+      "name": "pipeline",
+      "dataType": "string",
+      "title": "Pipeline",
+      "description": "The id of a pipeline of this entity type"
+    }
+  ]
+}

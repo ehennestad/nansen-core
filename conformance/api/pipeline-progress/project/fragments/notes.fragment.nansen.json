@@ -1,0 +1,17 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "notes",
+  "version": "1.0.0",
+  "columns": [
+    {
+      "name": "ignore",
+      "dataType": "boolean",
+      "default": false
+    },
+    {
+      "name": "description",
+      "dataType": "string"
+    }
+  ]
+}

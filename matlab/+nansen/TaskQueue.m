@@ -171,6 +171,9 @@ classdef TaskQueue < handle
                 pipelineId (1,1) string
                 entities (1,:) cell
                 options.Language (1,1) string = ""
+                % runKeyId of an entity -> the numbers (from 0) of the steps to leave out, as when only
+                % the steps not done yet are queued
+                options.Skip = containers.Map("KeyType", "char", "ValueType", "any")
             end
             pipeline = obj.Project.pipeline(pipelineId);
             if isempty(entities)
@@ -190,7 +193,15 @@ classdef TaskQueue < handle
             for i = 1:numel(entities)
                 run = nansen.internal.uuid4();
                 previous = "";
+                leftOut = [];
+                id = nansen.internal.runKeyId(entities{i}.Key);
+                if isKey(options.Skip, id)
+                    leftOut = options.Skip(id);
+                end
                 for s = 1:numel(steps)
+                    if ismember(s - 1, leftOut)
+                        continue
+                    end
                     step = steps{s};
                     info = struct("id", char(string(pipeline.id)), "run", char(run), "step", s - 1, ...
                         "steps", numel(steps), "title", char(nansen.internal.getField(step, "title", methods{s}.Title)));

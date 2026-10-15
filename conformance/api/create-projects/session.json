@@ -504,6 +504,10 @@
           {
             "id": "core.subject",
             "computed": false
+          },
+          {
+            "id": "core.pipeline",
+            "computed": false
           }
         ]
       }

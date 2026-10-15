@@ -22,6 +22,7 @@ from .dataset import Dataset
 from .documents import check_document
 from .entities import Entity
 from .errors import NansenError
+from . import runs
 from .project import Project
 from .tasks import TaskQueue
 
@@ -292,8 +293,17 @@ class Api:
         table = project.table(entity_type)
         entities = project.entities(entity_type)
         columns = self._columns(entity_type, table, entities)
-        return {"entityType": entity_type, "key": table.spec.key, "columns": columns,
-                "rows": [self._row(e, table) for e in entities]}
+        rows = [self._row(e, table) for e in entities]
+        if "core.pipeline" in project.entity_type(entity_type).get("fragments", []):
+            progress = project.pipeline_progress(entity_type)
+            columns.append({"name": "progress", "dataType": "number", "title": "Progress", "unit": None,
+                            "fragment": "core.pipeline", "source": "progress", "editable": False})
+            for row in rows:
+                state = progress.get(runs.key_id(row["key"]))
+                row["values"]["progress"] = state["done"] / state["total"] if state else None
+                if state:
+                    row["progress"] = {k: state[k] for k in ("pipeline", "title", "done", "total")}
+        return {"entityType": entity_type, "key": table.spec.key, "columns": columns, "rows": rows}
 
     def _columns(self, entity_type: str, table, entities: List[Entity]) -> List[dict]:
         project = self._require_project()
@@ -315,6 +325,8 @@ class Api:
                             "editable": not is_key and column.fragment not in computed})
             if "choices" in info:
                 columns[-1]["choices"] = list(info["choices"])
+            if column.name == "pipeline" and column.fragment == "core.pipeline":
+                columns[-1]["choices"] = [p["id"] for p in project.pipelines(entity_type)]
         dataset = project.dataset
         if dataset is not None and entity_type in dataset.entity_types:
             definitions = dataset.config.definitions
@@ -335,6 +347,11 @@ class Api:
         detail["locations"] = entity.locations
         detail["issueDetails"] = entity.issues
         detail["data"] = project.data_status(entity) if project.dataset is not None else []
+        if "core.pipeline" in project.entity_type(entity.entity_type).get("fragments", []):
+            state = project.pipeline_progress(entity.entity_type).get(runs.key_id(entity.key))
+            detail["values"]["progress"] = state["done"] / state["total"] if state else None
+            if state is not None:
+                detail["pipeline"] = state
         return detail
 
     def entities__update(self, params: dict) -> dict:
@@ -524,8 +541,47 @@ class Api:
 
     def pipelines__list(self, params: dict) -> list:
         project = self._require_project()
-        return [dict(p, steps=[dict(s, title=s.get("title") or project.method(s["method"]).title) for s in p["steps"]])
+        return [dict(p, source=project.pipeline_source(p["id"]),
+                     steps=[dict(s, title=s.get("title") or project.method(s["method"]).title) for s in p["steps"]])
                 for p in project.pipelines(params.get("entityType"))]
+
+    def pipelines__save(self, params: dict) -> dict:
+        document = self._require_project().save_pipeline(params["document"])
+        self.emit("pipelines", {"id": document["id"]})
+        return document
+
+    def pipelines__delete(self, params: dict) -> dict:
+        self._require_project().delete_pipeline(params["pipelineId"])
+        self.emit("pipelines", {"id": params["pipelineId"]})
+        return {"removed": params["pipelineId"]}
+
+    def pipelines__assign(self, params: dict) -> dict:
+        project = self._require_project()
+        count = project.assign_pipeline(params["entityType"], params.get("keys"), params.get("pipelineId"))
+        self.emit("entities", {"entityTypes": [params["entityType"]]})
+        return {"assigned": count}
+
+    def pipelines__queueNext(self, params: dict) -> dict:
+        """For each entity with a pipeline, queue the steps not done yet (from the first not done on)."""
+        project = self._require_project()
+        progress = project.pipeline_progress(params["entityType"])
+        in_flight = {(t["pipeline"]["id"], runs.key_id(t["entities"][0]["key"])) for t in self._queue().list()
+                     if t.get("pipeline") and t["status"] in ("queued", "running")}
+        by_pipeline: Dict[str, list] = {}
+        skip: Dict[Any, set] = {}
+        skipped = []
+        for entity in self._entities(params):
+            state = progress.get(runs.key_id(entity.key))
+            if state is None or state["done"] == state["total"] or (state["pipeline"], runs.key_id(entity.key)) in in_flight:
+                skipped.append(entity.key)  # no pipeline, all done, or its steps are queued already
+                continue
+            first = next(i for i, s in enumerate(state["steps"]) if not s["done"])
+            skip[runs.key_id(entity.key)] = set(range(first))
+            by_pipeline.setdefault(state["pipeline"], []).append(entity)
+        tasks = []
+        for pipeline_id, entities in by_pipeline.items():
+            tasks += self._queue().submit_pipeline(pipeline_id, entities, params.get("language"), skip=skip)
+        return {"tasks": tasks, "skipped": skipped}
 
     def pipelines__submit(self, params: dict) -> list:
         return self._queue().submit_pipeline(params["pipelineId"], self._entities(params), params.get("language"))

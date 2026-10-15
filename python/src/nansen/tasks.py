@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .documents import PathLike, check_document, read_document
 from .errors import NansenError
+from . import runs
 from .methods import Cancelled, MethodContext, run_method
 from .schemas import current_version
 
@@ -169,8 +170,13 @@ class TaskQueue:
             task["pipeline"] = pipeline
         return task
 
-    def submit_pipeline(self, pipeline_id: str, entities: List[Any], language: Optional[str] = None) -> List[dict]:
-        """Queue a pipeline: per entity, one task per step, each waiting for the step before."""
+    def submit_pipeline(self, pipeline_id: str, entities: List[Any], language: Optional[str] = None,
+                        skip: Optional[Dict[Any, set]] = None) -> List[dict]:
+        """Queue a pipeline: per entity, one task per step, each waiting for the step before.
+
+        skip maps an entity's key id (runs.key_id) to the numbers of the steps to leave out, as when only
+        the steps not done yet are queued.
+        """
         pipeline = self.project.pipeline(pipeline_id)
         if not entities:
             raise NansenError("no-entities", "a pipeline needs at least one entity")
@@ -184,7 +190,10 @@ class TaskQueue:
         tasks = []
         for entity in entities:
             run, previous = str(uuid.uuid4()), None
+            left_out = (skip or {}).get(runs.key_id(entity.key), set())
             for number, (method, step) in enumerate(steps):
+                if number in left_out:
+                    continue
                 info = {"id": pipeline["id"], "run": run, "step": number, "steps": len(steps),
                         "title": step.get("title", method.title)}
                 task = self._make(method, [entity], step.get("options"), step.get("preset"), language,
@@ -393,6 +402,7 @@ def run_task(project, task_id: str, on_event: Optional[EventHandler] = None) -> 
         entities = [project.entity(ref["entityType"], ref["key"]) for ref in task["entities"]]
         context.log(f"{method.id} {method.version} on {len(entities)} {entities[0].entity_type}(s)")
         results = run_method(method, entities, task["options"]["values"], context)
+        runs.record(project.folder, method.id, method.version, entities, task_id)
         task.update(status="completed", progress=1)
         result = _json_result(results if method.batch_mode == "serial" else results[0])
         if result is not None:

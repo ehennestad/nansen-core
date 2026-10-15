@@ -40,7 +40,7 @@ classdef Api < handle
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
-                "pipelines.list", "pipelines.submit", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
+                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
             for name = names
                 % "entities.list" -> apiEntitiesList
@@ -311,8 +311,21 @@ classdef Api < handle
                     rows{i} = obj.row(entities{i}, table);
                 end
             end
+            columns = obj.columns(entityType, table);
+            if obj.hasPipelines(project, entityType)
+                progress = project.pipelineProgress(entityType);
+                columns{end + 1} = struct("name", 'progress', "dataType", 'number', "title", 'Progress', "unit", NaN, ...
+                    "fragment", 'core.pipeline', "source", 'progress', "editable", false);
+                for i = 1:numel(rows)
+                    [rows{i}.values.progress, state] = nansen.Api.progressOf(progress, rows{i}.key);
+                    if ~isempty(state)
+                        rows{i}.progress = struct("pipeline", state.pipeline, "title", state.title, ...
+                            "done", state.done, "total", state.total);
+                    end
+                end
+            end
             result = struct("entityType", char(entityType), "key", {cellstr(table.Key)}, ...
-                "columns", {obj.columns(entityType, table)}, "rows", {rows});
+                "columns", {columns}, "rows", {rows});
         end
 
         function result = apiEntitiesGet(obj, params)
@@ -326,6 +339,12 @@ classdef Api < handle
             result.data = {};
             if ~isempty(project.dataset())
                 result.data = project.dataStatus(entity);
+            end
+            if obj.hasPipelines(project, entity.EntityType)
+                [result.values.progress, state] = nansen.Api.progressOf(project.pipelineProgress(entity.EntityType), entity.Key);
+                if ~isempty(state)
+                    result.pipeline = state;
+                end
             end
         end
 
@@ -583,7 +602,76 @@ classdef Api < handle
                     end
                 end
                 result{i}.steps = steps;
+                result{i}.source = char(project.pipelineSource(string(result{i}.id)));
             end
+        end
+
+        function result = apiPipelinesSave(obj, params)
+            result = obj.requireProject().savePipeline(nansen.Api.param(params, "document"));
+            obj.emit("pipelines", struct("id", result.id));
+        end
+
+        function result = apiPipelinesDelete(obj, params)
+            pipelineId = string(nansen.Api.param(params, "pipelineId"));
+            obj.requireProject().deletePipeline(pipelineId);
+            obj.emit("pipelines", struct("id", char(pipelineId)));
+            result = struct("removed", char(pipelineId));
+        end
+
+        function result = apiPipelinesAssign(obj, params)
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            keys = [];
+            if isfield(params, "keys")
+                keys = nansen.internal.asCellOfStructs(params.keys);
+            end
+            count = project.assignPipeline(entityType, keys, nansen.internal.getField(params, "pipelineId", []));
+            obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
+            result = struct("assigned", count);
+        end
+
+        function result = apiPipelinesQueueNext(obj, params)
+            %apiPipelinesQueueNext For each entity with a pipeline, queue the steps not done yet (from the first not done on)
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            progress = project.pipelineProgress(entityType);
+            inFlight = strings(1, 0);
+            for task = obj.queue().list()
+                t = task{1};
+                if isfield(t, "pipeline") && ismember(string(t.status), ["queued", "running"])
+                    references = nansen.internal.asCellOfStructs(t.entities);
+                    inFlight(end + 1) = string(t.pipeline.id) + "|" + nansen.internal.runKeyId(references{1}.key); %#ok<AGROW>
+                end
+            end
+            skip = containers.Map("KeyType", "char", "ValueType", "any");
+            byPipeline = containers.Map("KeyType", "char", "ValueType", "any");
+            order = strings(1, 0);
+            skipped = {};
+            for entity = obj.entities(params)
+                id = nansen.internal.runKeyId(entity{1}.Key);
+                if ~isKey(progress, id)
+                    skipped{end + 1} = entity{1}.Key; %#ok<AGROW>
+                    continue
+                end
+                state = progress(id);
+                if state.done == state.total || ismember(string(state.pipeline) + "|" + id, inFlight)
+                    skipped{end + 1} = entity{1}.Key; %#ok<AGROW>   % all done, or its steps are queued already
+                    continue
+                end
+                first = find(~cellfun(@(s) s.done, state.steps), 1);
+                skip(id) = 0:first - 2;
+                if ~isKey(byPipeline, state.pipeline)
+                    byPipeline(state.pipeline) = {};
+                    order(end + 1) = string(state.pipeline); %#ok<AGROW>
+                end
+                byPipeline(state.pipeline) = [byPipeline(state.pipeline), entity];
+            end
+            tasks = {};
+            for pipelineId = order
+                tasks = [tasks, obj.queue().submitPipeline(pipelineId, byPipeline(char(pipelineId)), ...
+                    Language=string(nansen.internal.getField(params, "language", "")), Skip=skip)]; %#ok<AGROW>
+            end
+            result = struct("tasks", {tasks}, "skipped", {skipped});
         end
 
         function result = apiPipelinesSubmit(obj, params)
@@ -771,6 +859,9 @@ classdef Api < handle
                 if isfield(info, "choices")
                     entry.choices = nansen.internal.asCellstr(info.choices);
                 end
+                if column.Name == "pipeline" && column.Fragment == "core.pipeline"
+                    entry.choices = cellfun(@(p) char(string(p.id)), project.pipelines(entityType), UniformOutput=false);
+                end
                 columns{end + 1} = entry; %#ok<AGROW>
             end
             dataset = project.dataset();
@@ -803,6 +894,26 @@ classdef Api < handle
             if ~ispc && status ~= 0
                 nansen.internal.throwError("cannot-open", "could not open %s", folder)
             end
+        end
+    end
+
+    methods (Static, Access = private)
+        function [value, state] = progressOf(progress, key)
+            % The fraction of the entity's pipeline that is done, or [] (null) when it has none
+            value = [];
+            state = [];
+            id = nansen.internal.runKeyId(key);
+            if isKey(progress, id)
+                state = progress(id);
+                value = state.done / state.total;
+            end
+        end
+    end
+
+    methods (Access = private)
+        function tf = hasPipelines(~, project, entityType)
+            listed = string(nansen.internal.asCellstr(nansen.internal.getField(project.entityType(entityType), "fragments", {})));
+            tf = ismember("core.pipeline", listed);
         end
     end
 

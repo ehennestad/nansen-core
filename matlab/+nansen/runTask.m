@@ -36,6 +36,7 @@ function task = runTask(project, taskId, options)
         entities = cellfun(@(r) project.entity(string(r.entityType), r.key), references, UniformOutput=false);
         context.log("%s %s on %d %s(s)", method.Id, method.Version, numel(entities), entities{1}.EntityType);
         results = nansen.runMethod(method, entities, task.options.values, context);
+        nansen.internal.recordRuns(project.Folder, method.Id, method.Version, entities, string(taskId));
         task.status = 'completed';
         task.progress = 1;
         if method.BatchMode == "batch"

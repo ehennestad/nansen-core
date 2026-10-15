@@ -17,6 +17,7 @@ A project is a folder. Everything about it is in that folder, in files that foll
   modules/<id>/                              optional: modules kept inside the project
   options/<methodId>/<name>.options.nansen.json    nansen.options: method presets
   notes/<entityType>.notebook.nansen.json    nansen.notebook: notes on the entity type's entities
+  runs/<entityType>.runs.jsonl               nansen.run lines: each method run that completed on an entity (only appended to)
   tasks/<id>.task.nansen.json                nansen.task, plus <id>.claim/, <id>.cancel and <id>.log while it runs
   cache/scan.nansen.json                     nansen.scan: the last walk of the stores; derived, safe to delete
   exports/                                   files written by export methods

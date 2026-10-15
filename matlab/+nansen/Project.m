@@ -584,6 +584,134 @@ classdef Project < handle
             nansen.internal.throwError("unknown-pipeline", "no pipeline '%s'", pipelineId)
         end
 
+        function path = pipelinePath(obj, pipelineId)
+            path = string(fullfile(obj.Folder, "pipelines", pipelineId + ".pipeline.nansen.json"));
+        end
+
+        function source = pipelineSource(obj, pipelineId)
+            %pipelineSource "project" when the project's pipelines/ folder holds it (over a module's of the same id), else "module"
+            source = "module";
+            if isfile(obj.pipelinePath(string(pipelineId)))
+                source = "project";
+            end
+        end
+
+        function document = savePipeline(obj, document)
+            %savePipeline Write a pipeline into the project; one with a module pipeline's id is used instead of that one
+            document = nansen.checkDocument(document, ExpectedType="nansen.pipeline");
+            entityType = string(document.entityType);
+            for step = nansen.internal.asCellOfStructs(document.steps)
+                method = obj.method(string(step{1}.method));
+                if entityType ~= "*" && ~method.appliesTo(entityType)
+                    nansen.internal.throwError("wrong-entity-type", "%s runs on %s, not %s", method.Id, method.EntityType, entityType)
+                end
+                if isfield(step{1}, "preset")
+                    obj.preset(method.Id, string(step{1}.preset));
+                end
+            end
+            path = obj.pipelinePath(string(document.id));
+            if ~isfolder(fileparts(path))
+                mkdir(fileparts(path));
+            end
+            nansen.internal.writeJson(path, document)
+        end
+
+        function deletePipeline(obj, pipelineId)
+            %deletePipeline Delete one of the project's pipelines (a module's of the same id is then used again)
+            path = obj.pipelinePath(string(pipelineId));
+            if ~isfile(path)
+                nansen.internal.throwError("unknown-pipeline", "'%s' is not one of the project's own pipelines", pipelineId)
+            end
+            delete(path);
+        end
+
+        function count = assignPipeline(obj, entityType, keys, pipelineId)
+            %assignPipeline Set the pipeline of the given rows (a cell of keys; [] for all rows); "" or [] takes it away
+            entityType = string(entityType);
+            value = [];
+            if ~isempty(pipelineId) && string(pipelineId) ~= ""
+                pipeline = obj.pipeline(string(pipelineId));
+                if ~ismember(string(pipeline.entityType), ["*", entityType])
+                    nansen.internal.throwError("wrong-entity-type", "pipeline '%s' is for %s", pipelineId, pipeline.entityType)
+                end
+                value = char(pipelineId);
+            end
+            listed = string(nansen.internal.asCellstr(nansen.internal.getField(obj.entityType(entityType), "fragments", {})));
+            if ~ismember("core.pipeline", listed)
+                obj.attachFragment(entityType, "core.pipeline");
+            end
+            table = obj.table(entityType);
+            if ~iscell(keys)
+                table.fillColumn("pipeline", value);
+                count = table.numRows();
+            else
+                for i = 1:numel(keys)
+                    if ~table.hasRow(keys{i})
+                        nansen.internal.throwError("unknown-entity", "no row with this key")
+                    end
+                end
+                for i = 1:numel(keys)
+                    table.updateRow(keys{i}, struct("pipeline", {value}));
+                end
+                count = numel(keys);
+            end
+            table.write();
+        end
+
+        function progress = pipelineProgress(obj, entityType)
+            %pipelineProgress For each row with a pipeline (runKeyId -> struct pipeline, title, steps, done, total)
+            progress = containers.Map("KeyType", "char", "ValueType", "any");
+            listed = string(nansen.internal.asCellstr(nansen.internal.getField(obj.entityType(entityType), "fragments", {})));
+            if ~ismember("core.pipeline", listed)
+                return
+            end
+            table = obj.table(entityType);
+            completed = nansen.internal.completedRuns(obj.Folder, entityType);
+            known = containers.Map("KeyType", "char", "ValueType", "any");
+            for candidate = obj.pipelines(entityType)
+                known(char(string(candidate{1}.id))) = candidate{1};
+            end
+            assigned = string(table.Data.pipeline);
+            for r = 1:table.numRows()
+                if ismissing(assigned(r)) || ~isKey(known, char(assigned(r)))
+                    continue
+                end
+                pipeline = known(char(assigned(r)));
+                key = struct();
+                for name = table.Key
+                    value = table.Data.(name)(r);
+                    if isstring(value)
+                        value = char(value);
+                    end
+                    key.(name) = value;
+                end
+                id = nansen.internal.runKeyId(key);
+                done = containers.Map("KeyType", "char", "ValueType", "any");
+                if isKey(completed, id)
+                    done = completed(id);
+                end
+                stepList = nansen.internal.asCellOfStructs(pipeline.steps);
+                steps = cell(1, numel(stepList));
+                count = 0;
+                for s = 1:numel(stepList)
+                    methodId = char(string(stepList{s}.method));
+                    title = nansen.internal.getField(stepList{s}, "title", '');
+                    if isempty(title)
+                        title = char(obj.method(string(methodId)).Title);
+                    end
+                    finished = [];
+                    if isKey(done, methodId)
+                        finished = done(methodId);
+                        count = count + 1;
+                    end
+                    steps{s} = struct("title", char(title), "method", methodId, "done", isKey(done, methodId), "finishedAt", finished);
+                end
+                progress(id) = struct("pipeline", char(string(pipeline.id)), ...
+                    "title", char(nansen.internal.getField(pipeline, "title", pipeline.id)), "steps", {steps}, ...
+                    "done", count, "total", numel(stepList));
+            end
+        end
+
         function path = presetPath(obj, methodId, name)
             path = string(fullfile(obj.Folder, "options", methodId, name + ".options.nansen.json"));
         end
@@ -672,6 +800,7 @@ classdef Project < handle
                 context.Project = obj;
             end
             results = nansen.runMethod(method, entities, values, context);
+            nansen.internal.recordRuns(obj.Folder, method.Id, method.Version, entities);
         end
 
         function summary = updateFragment(obj, entityType, fragmentId, options)

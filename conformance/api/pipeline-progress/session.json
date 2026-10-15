@@ -1,0 +1,540 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 2,
+        "params": {
+          "listing": "${listing}"
+        }
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "session": 4
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.list",
+        "id": 3,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "core.inspect",
+            "source": "module",
+            "steps": [
+              {
+                "title": "Count files"
+              },
+              {
+                "title": "Pause"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.assign",
+        "id": 4,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "pipelineId": "core.inspect"
+        }
+      },
+      "expect": {
+        "result": {
+          "assigned": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 5,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "pipeline": "core.inspect",
+            "progress": 0
+          },
+          "pipeline": {
+            "pipeline": "core.inspect",
+            "done": 0,
+            "total": 2,
+            "steps": [
+              {
+                "method": "core.file_stats",
+                "done": false
+              },
+              {
+                "method": "core.wait",
+                "done": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.queueNext",
+        "id": 6,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "tasks": [
+            {
+              "pipeline": {
+                "id": "core.inspect",
+                "step": 0
+              }
+            },
+            {
+              "pipeline": {
+                "id": "core.inspect",
+                "step": 1
+              }
+            }
+          ],
+          "skipped": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.queueNext",
+        "id": 7,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "tasks": [],
+          "skipped": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 8
+      },
+      "expect": {
+        "result": {
+          "status": "completed",
+          "pipeline": {
+            "step": 0
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 9,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "progress": 0.5
+          },
+          "pipeline": {
+            "done": 1,
+            "steps": [
+              {
+                "done": true
+              },
+              {
+                "done": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 10
+      },
+      "expect": {
+        "result": {
+          "status": "completed",
+          "pipeline": {
+            "step": 1
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 11,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "progress": 1
+          },
+          "pipeline": {
+            "done": 2
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.queueNext",
+        "id": 12,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "tasks": [],
+          "skipped": [
+            {},
+            {},
+            {},
+            {}
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.save",
+        "id": 13,
+        "params": {
+          "document": {
+            "schemaType": "nansen.pipeline",
+            "schemaVersion": "0.1.0",
+            "id": "count_then_export",
+            "version": "1.0.0",
+            "title": "Count, then export",
+            "entityType": "session",
+            "steps": [
+              {
+                "method": "core.file_stats"
+              },
+              {
+                "method": "core.export_keys",
+                "title": "Export"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "count_then_export"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.list",
+        "id": 14,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "count_then_export",
+            "source": "project"
+          },
+          {
+            "id": "core.inspect",
+            "source": "module"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.assign",
+        "id": 15,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "pipelineId": "count_then_export"
+        }
+      },
+      "expect": {
+        "result": {
+          "assigned": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.queueNext",
+        "id": 16,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "tasks": [
+            {
+              "pipeline": {
+                "id": "count_then_export",
+                "step": 1
+              }
+            }
+          ],
+          "skipped": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.save",
+        "id": 17,
+        "params": {
+          "document": {
+            "schemaType": "nansen.pipeline",
+            "schemaVersion": "0.1.0",
+            "id": "broken",
+            "version": "1.0.0",
+            "title": "Count, then export",
+            "entityType": "session",
+            "steps": [
+              {
+                "method": "no.such"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "unknown-method"
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.save",
+        "id": 18,
+        "params": {
+          "document": {
+            "schemaType": "nansen.pipeline",
+            "schemaVersion": "0.1.0",
+            "id": "broken",
+            "version": "1.0.0",
+            "title": "Count, then export",
+            "entityType": "session",
+            "steps": []
+          }
+        }
+      },
+      "expect": {
+        "error": "schema-validation"
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.assign",
+        "id": 19,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "pipelineId": "nope"
+        }
+      },
+      "expect": {
+        "error": "unknown-pipeline"
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.assign",
+        "id": 20,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "nope"
+            }
+          ],
+          "pipelineId": "core.inspect"
+        }
+      },
+      "expect": {
+        "error": "unknown-entity"
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.delete",
+        "id": 21,
+        "params": {
+          "pipelineId": "count_then_export"
+        }
+      },
+      "expect": {
+        "result": {
+          "removed": "count_then_export"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.delete",
+        "id": 22,
+        "params": {
+          "pipelineId": "count_then_export"
+        }
+      },
+      "expect": {
+        "error": "unknown-pipeline"
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.delete",
+        "id": 23,
+        "params": {
+          "pipelineId": "core.inspect"
+        }
+      },
+      "expect": {
+        "error": "unknown-pipeline"
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.assign",
+        "id": 24,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "pipelineId": null
+        }
+      },
+      "expect": {
+        "result": {
+          "assigned": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 25,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "pipeline": null,
+            "progress": null
+          }
+        }
+      }
+    }
+  ]
+}

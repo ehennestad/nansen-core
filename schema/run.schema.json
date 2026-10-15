@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:run",
+  "title": "NANSEN run record",
+  "description": "That a method completed on an entity: one line of runs/<entityType>.runs.jsonl, which is only ever appended to. A pipeline step is done for an entity once its method has completed on it. Lines that cannot be read (a write cut short) are skipped.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "method", "key", "finishedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaType": { "const": "nansen.run" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "method": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "version": { "type": "string" } }
+    },
+    "key": { "type": "object", "additionalProperties": { "type": ["string", "integer"] } },
+    "finishedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$" },
+    "task": { "type": "string", "description": "The task that ran it, when it ran in the queue." }
+  }
+}

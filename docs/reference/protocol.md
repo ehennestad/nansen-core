@@ -40,6 +40,7 @@ Events flow from the core to the frontend:
 | `scan` | The stores were scanned | The `project.scan` result |
 | `entities` | Rows changed | `{entityTypes, keys?}` |
 | `notes` | A note was added or removed | `{entityType, key?}` |
+| `pipelines` | A pipeline was saved or deleted | `{id}` |
 | `task` | A task was queued, started, made progress or finished | The task document |
 | `removed` | A task was removed | `{id}` |
 | `log` | A running task logged a line | `{id, line}` |
@@ -65,8 +66,8 @@ Events flow from the core to the frontend:
 | `project.info` | | `{name, title, description, folder, entityTypes[{name, title, fragments, rows, records}], modules, lastScan, dataset{environment, entityTypes, locations, roots}}` |
 | `project.scan` | `listing?` (a DSM DirectoryListing, instead of the file system) | `{scannedAt, records{type: count}, roots, unmatched}` |
 | `project.sync` | `entityType?` | `{added{type: [keys]}}` |
-| `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute, editable, choices?}], rows[{key, inStore, inTable, values, issues?}]}` |
-| `entities.get` | `entityType`, `key` | A row plus `locations`, `issueDetails`, `data` (data variable status) |
+| `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute\|progress, editable, choices?}], rows[{key, inStore, inTable, values, issues?, progress?}]}; with `core.pipeline`, a `progress` column (the fraction of the pipeline done) and each row's `progress {pipeline, title, done, total}`` |
+| `entities.get` | `entityType`, `key` | A row plus `locations`, `issueDetails`, `data` (data variable status), and `pipeline` when it has one: `{pipeline, title, steps[{title, method, done, finishedAt}], done, total}` |
 | `entities.update` | `entityType`, `key`, `values` | The updated row; key and computed columns are `read-only-column` |
 | `entities.add` | `entityType`, `key`, `values?` | The new row |
 | `entities.remove` | `entityType`, `key` | `{removed}` |
@@ -86,7 +87,11 @@ Events flow from the core to the frontend:
 | `methods.list` | `entityType?` | Method summaries, including the options schema |
 | `methods.run` | `methodId`, `entityType`, `keys?`, `options?`, `preset?` | `{results}`, run in the foreground |
 | `presets.list` / `presets.save` / `presets.delete` | `methodId`, `name`, `values`, `description?` | The method's presets |
-| `pipelines.list` | `entityType?` | Pipeline documents, each step with its method's title |
+| `pipelines.list` | `entityType?` | Pipeline documents, each step with its method's title, and `source`: `project` or `module` |
+| `pipelines.save` | `document` (a `nansen.pipeline`) | The pipeline, written into the project; one with a module pipeline's id is used instead of it |
+| `pipelines.delete` | `pipelineId` | `{removed}`; only the project's own pipelines (`unknown-pipeline` otherwise) |
+| `pipelines.assign` | `entityType`, `keys?` (all rows when left out), `pipelineId` (null: none) | `{assigned}`; adds `core.pipeline` to the entity type if it has not got it |
+| `pipelines.queueNext` | `entityType`, `keys?`, `language?` | `{tasks, skipped}`: for each entity with a pipeline, a chain of the steps from the first not done on. Entities with no pipeline, all steps done, or steps of it queued or running are skipped |
 | `pipelines.submit` | `pipelineId`, `entityType`, `keys?`, `language?` | The queued tasks: one chain per entity, each step waiting for the one before |
 | `tasks.submit` | `methodId`, `entityType`, `keys?`, `options?`, `preset?`, `language?` | The queued task |
 | `tasks.list` | `status?` | Tasks in creation order |

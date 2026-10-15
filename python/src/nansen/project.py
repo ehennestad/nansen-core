@@ -18,6 +18,7 @@ from .errors import NansenError
 from .methods import Method, MethodContext, run_method
 from .modules import Module, resolve_module
 from .notebook import Notebook
+from . import runs
 from .schemas import current_version
 from .tables import Column, EntityTable, TableSpec
 
@@ -415,6 +416,72 @@ class Project:
                 return document
         raise NansenError("unknown-pipeline", f"no pipeline {pipeline_id!r}")
 
+    def pipeline_path(self, pipeline_id: str) -> Path:
+        return self.folder / "pipelines" / f"{pipeline_id}.pipeline.nansen.json"
+
+    def pipeline_source(self, pipeline_id: str) -> str:
+        """'project' when the project's pipelines/ folder holds it (over a module's of the same id), else 'module'."""
+        return "project" if self.pipeline_path(pipeline_id).is_file() else "module"
+
+    def save_pipeline(self, document: dict) -> dict:
+        """Write a pipeline into the project; one with a module pipeline's id is used instead of that one."""
+        document = check_document(document, "nansen.pipeline")
+        for step in document["steps"]:
+            method = self.method(step["method"])
+            if document["entityType"] != "*" and not method.applies_to(document["entityType"]):
+                raise NansenError("wrong-entity-type", f"{method.id} runs on {method.entity_type}, not {document['entityType']}")
+            if "preset" in step:
+                self.preset(method.id, step["preset"])
+        path = self.pipeline_path(document["id"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(path, document)
+        return document
+
+    def delete_pipeline(self, pipeline_id: str) -> None:
+        """Delete one of the project's pipelines (a module's of the same id is then used again)."""
+        path = self.pipeline_path(pipeline_id)
+        if not path.is_file():
+            raise NansenError("unknown-pipeline", f"{pipeline_id!r} is not one of the project's own pipelines")
+        path.unlink()
+
+    def assign_pipeline(self, entity_type: str, keys: Optional[List[Dict[str, Any]]], pipeline_id: Optional[str]) -> int:
+        """Set the pipeline of the given rows (all rows when keys is None); None takes it away. Returns how many."""
+        if pipeline_id is not None:
+            pipeline = self.pipeline(pipeline_id)
+            if pipeline["entityType"] not in ("*", entity_type):
+                raise NansenError("wrong-entity-type", f"pipeline {pipeline_id!r} is for {pipeline['entityType']}")
+        if "core.pipeline" not in self.entity_type(entity_type).get("fragments", []):
+            self.attach_fragment(entity_type, "core.pipeline")
+        table = self.table(entity_type)
+        targets = keys if keys is not None else [dict(zip(table.spec.key, table.key_of(row))) for row in table.rows]
+        for key in targets:
+            if not table.has(key):
+                raise NansenError("unknown-entity", f"no row with key {key}")
+        for key in targets:
+            table.update(key, pipeline=pipeline_id)
+        table.write()
+        return len(targets)
+
+    def pipeline_progress(self, entity_type: str) -> Dict[runs.KeyId, dict]:
+        """For each row with a pipeline: {pipeline, title, steps[{title, method, done, finishedAt}], done, total}."""
+        if "core.pipeline" not in self.entity_type(entity_type).get("fragments", []):
+            return {}
+        table = self.table(entity_type)
+        completed = runs.completed(self.folder, entity_type)
+        known = {p["id"]: p for p in self.pipelines(entity_type)}
+        progress: Dict[runs.KeyId, dict] = {}
+        for row in table.rows:
+            pipeline = known.get(row.get("pipeline"))
+            if pipeline is None:
+                continue
+            key = {name: row[name] for name in table.spec.key}
+            done = completed.get(runs.key_id(key), {})
+            steps = [{"title": s.get("title") or self.method(s["method"]).title, "method": s["method"],
+                      "done": s["method"] in done, "finishedAt": done.get(s["method"])} for s in pipeline["steps"]]
+            progress[runs.key_id(key)] = {"pipeline": pipeline["id"], "title": pipeline.get("title", pipeline["id"]),
+                                          "steps": steps, "done": sum(s["done"] for s in steps), "total": len(steps)}
+        return progress
+
     def preset_path(self, method_id: str, name: str) -> Path:
         return self.folder / "options" / method_id / f"{name}.options.nansen.json"
 
@@ -463,7 +530,9 @@ class Project:
         context = context or MethodContext(project=self, method=method)
         if context.project is None:
             context.project = self
-        return run_method(method, entities, values, context)
+        results = run_method(method, entities, values, context)
+        runs.record(self.folder, method.id, method.version, entities)
+        return results
 
     def update_fragment(self, entity_type: str, fragment_id: str, keys: Optional[List[Dict[str, Any]]] = None,
                         context: Optional[MethodContext] = None) -> Dict[str, Any]:
