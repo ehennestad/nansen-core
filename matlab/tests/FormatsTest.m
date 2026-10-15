@@ -251,6 +251,30 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyEqual(data.info.rate, expected.rate);
         end
 
+        function loadsTheVersion73FilePythonWrites(testCase)   % Python's mat adapter writes these for variables of 2 GB or more
+            data = load(fullfile(testCase.Files, "v73_python.mat"));
+            expected = testCase.Expected.mat73Written;
+            testCase.verifyEqual(data.matrix, expected.matrix);
+            testCase.verifyClass(data.volume, "int16");
+            testCase.verifyEqual(size(data.volume), expected.volumeSize');
+            testCase.verifyEqual(double(data.volume(:)), expected.volume);
+            testCase.verifyEqual(data.vector, expected.vector');
+            testCase.verifyEqual(double(data.count), expected.count);
+            testCase.verifyEqual(data.flags, expected.flags');
+            testCase.verifyEqual(data.name, char(expected.name));
+            testCase.verifyEmpty(data.blank);
+            testCase.verifyClass(data.blank, "char");
+            testCase.verifyEmpty(data.nothing);
+            testCase.verifyEqual(data.info.rate, expected.rate);
+            testCase.verifyEqual(data.info.label, char(expected.label));
+            testCase.verifyEqual(data.info.inner.depth, uint16(expected.depth));
+            testCase.verifyEqual(fieldnames(data.info), {'rate'; 'label'; 'inner'});
+            testCase.verifyEqual(size(data.items), [1, 3]);
+            testCase.verifyEqual(data.items{1}, char(expected.items{1}));
+            testCase.verifyEqual(data.items{2}, expected.items{2});
+            testCase.verifyEqual(data.items{3}, uint8(expected.items{3}));
+        end
+
         function refusesOtherFiles(testCase)
             testCase.verifyError(@() ophys.Suite2pRois().read(fullfile(testCase.Files, "extract.mat")), "nansen:InvalidData");
             testCase.verifyError(@() ophys.ExtractRois().read(fullfile(testCase.Files, "Fall.mat")), "nansen:InvalidData");

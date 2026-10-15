@@ -70,6 +70,31 @@ def test_mat_files_of_version_7_3_are_read():
     assert data["info"]["rate"] == expected["rate"]
 
 
+def test_mat_files_of_version_7_3_are_written(tmp_path, monkeypatch):
+    pytest.importorskip("h5py")
+    from nansen import adapters
+    data = MatAdapter().read(FILES / "v73_python.mat")   # written by write_mat73; MATLAB's tests load it too
+    expected = EXPECTED["mat73Written"]
+    assert open(FILES / "v73_python.mat", "rb").read(19) == b"MATLAB 7.3 MAT-file"
+    assert data["matrix"].tolist() == expected["matrix"]
+    assert list(data["volume"].shape) == expected["volumeSize"] and data["volume"].dtype == np.int16
+    assert data["volume"].ravel(order="F").tolist() == expected["volume"]
+    assert data["vector"].tolist() == expected["vector"] and data["count"] == expected["count"]
+    assert data["flags"].tolist() == expected["flags"] and data["name"] == expected["name"]
+    assert data["blank"] == "" and data["nothing"].size == 0
+    assert data["info"]["rate"] == expected["rate"] and data["info"]["label"] == expected["label"]
+    assert data["info"]["inner"]["depth"] == expected["depth"]
+    assert data["items"][:2] == expected["items"][:2] and data["items"][2].tolist() == expected["items"][2]
+    monkeypatch.setattr(adapters, "MAT73_BYTES", 64)   # as MATLAB's save -v7.3 for a variable of 2 GB or more
+    MatAdapter().write(tmp_path / "big.mat", {"stack": np.arange(10.0), "rate": 30.0})
+    MatAdapter().write(tmp_path / "small.mat", {"stack": np.arange(4.0), "rate": 30.0})
+    assert open(tmp_path / "big.mat", "rb").read(10) == b"MATLAB 7.3" and open(tmp_path / "small.mat", "rb").read(10) == b"MATLAB 5.0"
+    for name in ("big.mat", "small.mat"):
+        assert MatAdapter().read(tmp_path / name)["rate"] == 30
+    assert MatAdapter().read(tmp_path / "big.mat")["stack"].tolist() == list(range(10))
+    assert len(list(tmp_path.iterdir())) == 2   # no temporary file left
+
+
 def test_other_files_are_refused():
     for name, file in [("Suite2pRois", "extract.mat"), ("ExtractRois", "Fall.mat"), ("NansenRoiArray", "Fall.mat")]:
         with pytest.raises(NansenError) as error:

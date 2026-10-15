@@ -12,6 +12,7 @@ pixelSize, zStep) is computed from the header values the file is written with, e
 
 import json
 import math
+import sys
 from pathlib import Path
 
 import h5py
@@ -441,6 +442,22 @@ def mat73(expected):
     expected["mat73"] = {"matrix": [[1, 2, 3], [4, 5, 6]], "name": "roi", "flags": [True, False, True], "rate": 30}
 
 
+def mat73_written(expected):
+    """A v7.3 .mat file written by Python's mat adapter (nansen.adapters.write_mat73, which it uses for variables of
+    2 GB or more), for MATLAB's load to read in MATLAB's tests."""
+    sys.path.insert(0, str(HERE.parents[2] / "python" / "src"))
+    from nansen.adapters import write_mat73
+    volume = (np.arange(2 * 3 * 4, dtype=np.int16) - 5).reshape(2, 3, 4)
+    write_mat73(HERE / "v73_python.mat", {
+        "matrix": np.array([[1.0, 2, 3], [4, 5, 6]]), "volume": volume, "vector": [0.5, 1.5, 2.5], "count": 7,
+        "flags": np.array([True, False, True]), "name": "roi", "blank": "", "nothing": None,
+        "info": {"rate": 30.0, "label": "cell", "inner": {"depth": np.uint16(150)}},
+        "items": ["text", 2.0, np.array([[1, 2], [3, 4]], dtype=np.uint8)]})
+    expected["mat73Written"] = {"matrix": [[1, 2, 3], [4, 5, 6]], "volumeSize": [2, 3, 4], "volume": volume.ravel(order="F").tolist(),
+                                "vector": [0.5, 1.5, 2.5], "count": 7, "flags": [True, False, True], "name": "roi",
+                                "rate": 30, "label": "cell", "depth": 150, "items": ["text", 2, [[1, 2], [3, 4]]]}
+
+
 def main():
     expected = {}
     nansen_rois(expected)
@@ -460,6 +477,7 @@ def main():
     scanimage(expected)
     sciscan(expected)
     mat73(expected)
+    mat73_written(expected)
     (HERE / "expected.json").write_text(json.dumps(expected, indent=1) + "\n", encoding="utf-8")
 
 

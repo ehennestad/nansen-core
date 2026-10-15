@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
@@ -74,10 +75,16 @@ class MatAdapter:
         return {k: v for k, v in data.items() if not k.startswith("__")}
 
     def write(self, path: Path, data: Any) -> None:
-        io = _optional("scipy.io", "mat")
+        """Version 5 (scipy), or version 7.3 (HDF5, with h5py) when a variable is MAT73_BYTES or more, as MATLAB's
+        save needs -v7.3 for a variable of 2 GB or more."""
         if not isinstance(data, dict):
             data = {"data": data}
-        io.savemat(str(path), data)
+        numpy = _optional("numpy", "mat")
+        if any(numpy.asarray(v).nbytes >= MAT73_BYTES for v in data.values()
+               if isinstance(v, numpy.ndarray) or (isinstance(v, list) and v and all(_is_number(x) for x in v))):
+            write_mat73(path, data)
+            return
+        _optional("scipy.io", "mat").savemat(str(path), data)
 
 
 class NpyAdapter:
@@ -135,6 +142,99 @@ def read_mat73(path: Path) -> Dict[str, Any]:
 
     with h5py.File(str(path), "r") as f:
         return {name: value(f, f[name]) for name in f if not name.startswith("#")}
+
+
+MAT73_BYTES = 2 ** 31   # a variable this large or larger is written to a version 7.3 file
+
+
+def _is_number(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def write_mat73(path: Path, data: Dict[str, Any]) -> None:
+    """The variables as a MATLAB v7.3 .mat file (HDF5 with MATLAB's 512-byte header), written with h5py as MATLAB
+    writes them, so MATLAB's load reads them and read_mat73 gives them back: arrays with their dimensions reversed
+    (MATLAB's column-major order; a vector is 1 x n) and their MATLAB_class, bools as logical, text as char, dicts
+    as structs, lists of numbers as arrays and other lists as cell arrays (1 x n), None and empty values as empty
+    double. Written to a temporary file next to it and moved over it."""
+    h5py = _optional("h5py", "mat (v7.3)")
+    numpy = _optional("numpy", "mat (v7.3)")
+    classes = {"float64": "double", "float32": "single", "int8": "int8", "uint8": "uint8", "int16": "int16",
+               "uint16": "uint16", "int32": "int32", "uint32": "uint32", "int64": "int64", "uint64": "uint64",
+               "bool": "logical"}
+    counter = [0]
+
+    def empty(where, name, kind="double"):
+        where[name] = numpy.zeros(2, dtype=numpy.uint64)   # MATLAB keeps an empty array's size as its data
+        where[name].attrs["MATLAB_class"] = numpy.bytes_(kind)
+        where[name].attrs["MATLAB_empty"] = numpy.uint8(1)
+        return where[name]
+
+    def put(f, where, name, item):
+        if isinstance(item, dict):
+            group = where.create_group(name)
+            group.attrs["MATLAB_class"] = numpy.bytes_("struct")
+            fields = [str(k) for k in item]
+            names = numpy.empty(len(fields), dtype=object)   # MATLAB's field order: each name as characters
+            for i, k in enumerate(fields):
+                names[i] = numpy.array(list(k), dtype="S1")
+            group.attrs.create("MATLAB_fields", names, dtype=h5py.vlen_dtype(numpy.dtype("S1")))
+            for k in fields:
+                put(f, group, k, item[k])
+            return group
+        if isinstance(item, str):
+            if not item:
+                dataset = empty(where, name, "char")
+            else:
+                where[name] = numpy.array([[ord(c) for c in item]], dtype=numpy.uint16).T
+                dataset = where[name]
+                dataset.attrs["MATLAB_class"] = numpy.bytes_("char")
+            dataset.attrs["MATLAB_int_decode"] = numpy.int32(2)
+            return dataset
+        if item is None or (isinstance(item, (list, tuple)) and not item):
+            return empty(where, name)
+        if isinstance(item, (list, tuple)) and not all(_is_number(x) or isinstance(x, (numpy.number, numpy.bool_)) for x in item) \
+                or (isinstance(item, numpy.ndarray) and item.dtype == object):
+            cells = list(item) if isinstance(item, (list, tuple)) else list(item.ravel())
+            refs = f.require_group("#refs#")
+            references = []
+            for cell in cells:
+                counter[0] += 1
+                references.append(put(f, refs, f"c{counter[0]}", cell).ref)
+            where.create_dataset(name, data=numpy.array([references], dtype=h5py.ref_dtype).T)
+            where[name].attrs["MATLAB_class"] = numpy.bytes_("cell")
+            return where[name]
+        array = numpy.asarray(item)
+        if array.dtype.kind in "US":
+            return put(f, where, name, str(array.item()) if array.ndim == 0 else [str(x) for x in array.ravel()])
+        kind = classes.get(array.dtype.name)
+        if kind is None:
+            raise NansenError("invalid-data", f"a .mat file cannot hold {array.dtype} values ({name})")
+        if array.size == 0:
+            return empty(where, name, kind)
+        if array.ndim < 2:
+            array = array.reshape(1, -1)   # a scalar is 1 x 1, a vector 1 x n, as MATLAB has them
+        where.create_dataset(name, data=(array.astype(numpy.uint8) if kind == "logical" else array).T,
+                             chunks=True if array.nbytes > 2 ** 20 else None)
+        where[name].attrs["MATLAB_class"] = numpy.bytes_(kind)
+        if kind == "logical":
+            where[name].attrs["MATLAB_int_decode"] = numpy.int32(1)
+        return where[name]
+
+    path = Path(path)
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        with h5py.File(str(temporary), "w", userblock_size=512) as f:
+            for name, item in data.items():
+                put(f, f, str(name), item)
+        text = time.strftime("MATLAB 7.3 MAT-file, Platform: GLNXA64, Created on: %a %b %d %H:%M:%S %Y HDF5 schema 1.00 .")
+        header = text.ljust(116).encode("ascii") + b"\x00" * 8 + b"\x00\x02" + b"IM"
+        with open(temporary, "r+b") as handle:
+            handle.write(header)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def _optional(module: str, adapter: str):
