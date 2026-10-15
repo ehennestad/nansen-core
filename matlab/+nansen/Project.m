@@ -2801,24 +2801,38 @@ classdef Project < handle
                 end
                 return
             end
-            [line, stop] = regexp(text, "^[ \t]*function[ \t]+(?:\[?[ \t]*(?<output>[A-Za-z][A-Za-z0-9_]*)[ \t]*\]?[ \t]*=[ \t]*)?" + ...
-                "(?<name>[A-Za-z][A-Za-z0-9_]*)[ \t]*(?:\((?<inputs>[^)\n]*)\))?", "names", "end", "once", "lineanchors");
-            if ~isempty(line) && string(line.name) == name
-                % MATLAB leaves a named token out when its optional group does not take part in the match
-                inputs = strtrim(split(string(nansen.internal.getField(line, "inputs", "")), ","));
-                inputs = inputs(inputs ~= "");
-                output = string(nansen.internal.getField(line, "output", ""));
-                if output ~= "" && numel(inputs) <= 1   % dev's table variable: value = Name(sessionObject)
-                    shape.kind = "devFunction";
-                    default = regexp(extractAfter(text, stop), "^[ \t]*" + output + "[ \t]*=[ \t]*([^;%\n]*)", "tokens", "once", "lineanchors");
-                    if ~isempty(default)
-                        shape.default = strtrim(string(default{1}));
-                    end
-                    return
+            [declaration, stop] = regexp(text, "^[ \t]*function[ \t][^\n]*", "match", "end", "once", "lineanchors");
+            if ~isempty(declaration)
+                % the declaration read a part at a time: MATLAB gives no named tokens for the optional groups of
+                % Python's one expression ([output] = name(inputs), output and inputs optional)
+                rest = char(strtrim(extractAfter(string(declaration), "function")));
+                output = "";
+                [parts, after] = regexp(rest, '^\[?\s*([A-Za-z]\w*)\s*\]?\s*=\s*([A-Za-z]\w*)', "tokens", "end", "once");
+                if isempty(parts)
+                    [parts, after] = regexp(rest, '^([A-Za-z]\w*)', "tokens", "end", "once");
+                else
+                    output = string(parts{1});
+                    parts = parts(2);
                 end
-                if output ~= "" && numel(inputs) == 3
-                    shape.kind = "matlabMethod";
-                    return
+                if ~isempty(parts) && string(parts{1}) == name
+                    inputs = strings(1, 0);
+                    listed = regexp(rest(after + 1:end), '^\s*\(([^)]*)\)', "tokens", "once");
+                    if ~isempty(listed)
+                        inputs = strtrim(split(string(listed{1}), ","));
+                        inputs = reshape(inputs(inputs ~= ""), 1, []);
+                    end
+                    if output ~= "" && numel(inputs) <= 1   % dev's table variable: value = Name(sessionObject)
+                        shape.kind = "devFunction";
+                        default = regexp(extractAfter(text, stop), "^[ \t]*" + output + "[ \t]*=[ \t]*([^;%\n]*)", "tokens", "once", "lineanchors");
+                        if ~isempty(default)
+                            shape.default = strtrim(string(default{1}));
+                        end
+                        return
+                    end
+                    if output ~= "" && numel(inputs) == 3
+                        shape.kind = "matlabMethod";
+                        return
+                    end
                 end
             end
             nansen.internal.throwError("invalid-params", ...
