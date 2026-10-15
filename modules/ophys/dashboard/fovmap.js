@@ -85,7 +85,9 @@ if (!document.getElementById("ophys-fovmap-style")) {
     .fov-list .grow { flex: 1; min-width: 0; }
     .fov-list .sub { font-size: 12px; }
     .fov-map { padding: 0; overflow: hidden; }
-    .fov-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .fov-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .fov-bar .fov-image-variable { width: auto; min-width: 9em; max-width: 16em; flex: 0 1 auto; }
+    .fov-bar .fov-opacity { width: 90px; }
     .fov-bar .spacer { flex: 1; }
     .fov-bar .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
     .fov-labels { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
