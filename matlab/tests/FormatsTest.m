@@ -23,7 +23,7 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyDocument(ophys.NansenRoiArray().read(fullfile(testCase.Files, "rois_nansen.mat")), testCase.Expected.nansen);
         end
 
-        function readsDevRoiGroups(testCase)   % two planes, classified, with an IMask ROI: plane 1 is read
+        function readsDevRoiGroups(testCase)   % two planes, classified, with an IMask ROI: each ROI with its plane
             testCase.verifyDocument(ophys.NansenRoiArray().read(fullfile(testCase.Files, "rois_group.mat")), testCase.Expected.roiGroup);
         end
 
@@ -34,9 +34,20 @@ classdef FormatsTest < matlab.unittest.TestCase
             ophys.NansenRoiArray().write(path, document);
             saved = load(path);
             testCase.verifyTrue(all(isfield(saved, ["roiArray", "roiClassification", "roiImages", "roiStats"])));
-            testCase.verifyEqual(string({saved.roiArray.shape}), ["Mask", "Mask", "Mask"]);
-            testCase.verifyEqual(saved.roiClassification, [1; 2; 0]);
+            testCase.verifyEqual(size(saved.roiArray), [2, 1]);   % cells of planes x channels
+            testCase.verifyEqual(string({saved.roiArray{1}.shape}), ["Mask", "Mask", "Mask"]);
+            testCase.verifyEqual(saved.roiClassification{1}, [1; 2; 0]);
+            testCase.verifyEqual([saved.PlaneNumber{:}], [1, 2]);
             testCase.verifyDocument(ophys.NansenRoiArray().read(path), testCase.Expected.roiGroup);
+            rois = document.rois(1:3);   % ROIs without places: one roiArray
+            for k = 1:3
+                rois{k} = rmfield(rois{k}, ["plane", "channel"]);
+            end
+            onePlane = struct("imageSize", document.imageSize, "rois", {rois});
+            ophys.NansenRoiArray().write(fullfile(folder, "one.mat"), onePlane);
+            saved = load(fullfile(folder, "one.mat"));
+            testCase.verifyEqual(string({saved.roiArray.shape}), ["Mask", "Mask", "Mask"]);
+            testCase.verifyFalse(isfield(saved, "PlaneNumber"));
         end
 
         function readsSuite2pBinaries(testCase)

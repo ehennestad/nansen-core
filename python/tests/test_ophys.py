@@ -250,6 +250,24 @@ def test_scanimage_reads_channels_planes_and_rois():
     assert error.value.code == "invalid-data"
 
 
+def test_rois_with_places_are_edited_on_their_plane():
+    from nansen.frames import rois_at, update_rois_at
+    document = {"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]], "plane": 1, "channel": 1},
+                                                {"id": 2, "pixels": [[2, 2]], "plane": 2, "channel": 1},
+                                                {"id": 3, "pixels": [[3, 3]], "plane": 2, "channel": 1}]}
+    assert [r["id"] for r in rois_at(document, 2, 1)["rois"]] == [2, 3]
+    assert rois_at(document, 1, 2)["rois"] == []
+    plain = {"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}]}
+    assert rois_at(plain, 3, 2) is plain   # no places: all of them, on any plane
+    changed, added = update_rois_at(document, 2, 1, add=[{"pixels": [[5, 5]]}], classify=[{"id": 1, "classification": "accepted"}])
+    assert added == [4] and {r["id"]: r["plane"] for r in changed["rois"]} == {1: 1, 2: 2, 3: 2, 4: 2}
+    assert changed["rois"][0]["classification"] == "accepted"
+    # undo on plane 2 restores plane 2's ROIs only; plane 1's stay
+    restored, _ = update_rois_at(changed, 2, 1, restore=[{"id": 2, "pixels": [[2, 2]]}])
+    assert [(r["id"], r["plane"], r["channel"]) for r in restored["rois"]] == [(1, 1, 1), (2, 2, 1)]
+    assert restored["rois"][0]["classification"] == "accepted" and restored["rois"][0]["pixels"] == [[1, 1]]
+
+
 def test_update_rois_classifies_removes_and_adds():
     from nansen.frames import update_rois
     document = {"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}, {"id": 5, "pixels": [[2, 2], [2, 3]]}]}

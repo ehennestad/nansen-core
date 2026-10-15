@@ -182,6 +182,28 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyError(@() ophys.ScanImageTiff().read(fullfile(folder, "ses-s2", "rec_part2.tif")), "nansen:InvalidData");
         end
 
+        function editsRoisWithPlacesOnTheirPlane(testCase)
+            document = jsondecode(['{"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]], "plane": 1, "channel": 1}, ' ...
+                '{"id": 2, "pixels": [[2, 2]], "plane": 2, "channel": 1}, {"id": 3, "pixels": [[3, 3]], "plane": 2, "channel": 1}]}']);
+            here = nansen.internal.roisAt(document, 2, 1);
+            testCase.verifyEqual(cellfun(@(r) r.id, here.rois), [2, 3]);
+            testCase.verifyEmpty(nansen.internal.roisAt(document, 1, 2).rois);
+            plain = jsondecode('{"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}]}');
+            testCase.verifyEqual(nansen.internal.roisAt(plain, 3, 2), plain);   % no places: all of them, on any plane
+            [changed, added] = nansen.internal.updateRoisAt(document, 2, 1, struct("id", 1, "classification", "accepted"), [], ...
+                struct("pixels", [5, 5]), [], [], [], missing);
+            testCase.verifyEqual(added, {4});
+            testCase.verifyEqual(cellfun(@(r) r.id, changed.rois), [1, 2, 3, 4]);
+            testCase.verifyEqual(cellfun(@(r) r.plane, changed.rois), [1, 2, 2, 2]);
+            testCase.verifyEqual(changed.rois{1}.classification, 'accepted');
+            % undo on plane 2 restores plane 2's ROIs only; plane 1's stay
+            restored = nansen.internal.updateRoisAt(changed, 2, 1, [], [], [], [], [], [], {struct("id", 2, "pixels", [2, 2])});
+            testCase.verifyEqual(cellfun(@(r) r.id, restored.rois), [1, 2]);
+            testCase.verifyEqual(cellfun(@(r) r.plane, restored.rois), [1, 2]);
+            testCase.verifyEqual(cellfun(@(r) r.channel, restored.rois), [1, 1]);
+            testCase.verifyEqual(restored.rois{1}.classification, 'accepted');
+        end
+
         function updatesRois(testCase)
             document = jsondecode('{"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}, {"id": 5, "pixels": [[2, 2], [2, 3]]}]}');
             [changed, added] = nansen.internal.updateRois(document, struct("id", 5, "classification", "rejected"), 1, ...

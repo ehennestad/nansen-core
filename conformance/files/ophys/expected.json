@@ -272,7 +272,9 @@
       3
      ]
     ],
-    "classification": "accepted"
+    "classification": "accepted",
+    "plane": 1,
+    "channel": 1
    },
    {
     "id": 2,
@@ -299,7 +301,9 @@
       10
      ]
     ],
-    "classification": "rejected"
+    "classification": "rejected",
+    "plane": 1,
+    "channel": 1
    },
    {
     "id": 3,
@@ -321,7 +325,29 @@
       15,
       4
      ]
-    ]
+    ],
+    "plane": 1,
+    "channel": 1
+   },
+   {
+    "id": 4,
+    "area": 2,
+    "center": [
+     17.0,
+     20.5
+    ],
+    "pixels": [
+     [
+      17,
+      20
+     ],
+     [
+      17,
+      21
+     ]
+    ],
+    "plane": 2,
+    "channel": 1
    }
   ]
  },

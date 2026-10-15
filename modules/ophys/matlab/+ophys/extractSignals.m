@@ -8,7 +8,9 @@ function result = extractSignals(entity, options, context)
 %   ophys.internal.expansionNeuropil). As Python's ophys_methods.extract_signals.
     stack = ophys.internal.openStack(context, entity, options.stack, options);
     [height, width, frames] = size(stack);
-    document = context.Project.load(entity, options.rois);
+    % the ROIs of the plane and channel used, when they have places (dev's RoiGroup of several)
+    document = nansen.internal.roisAt(context.Project.load(entity, options.rois), ...
+        double(nansen.internal.getField(options, "plane", 1)), double(nansen.internal.getField(options, "channel", 1)));
     rois = ophys.internal.roiList(document);
     keep = cellfun(@(r) options.includeRejected || ~strcmp(string(nansen.internal.getField(r, "classification", "")), "rejected"), rois);
     rois = rois(keep);

@@ -553,8 +553,9 @@ def _tifffile():
 # 0-based [row, column] pixels in row-major order, pixels outside the image left out, center the mean row and
 # column rounded to 2 decimals. MATLAB's adapters of the same names read the same.
 
-def roi_document(image_size, rois):
-    """The ROI document of a list of (pixels, classification) in file order."""
+def roi_document(image_size, rois, places=None):
+    """The ROI document of a list of (pixels, classification) in file order; places, when given, is each ROI's
+    (plane, channel), from 1."""
     height, width = int(image_size[0]), int(image_size[1])
     out = []
     for number, (pixels, classification) in enumerate(rois, start=1):
@@ -566,6 +567,8 @@ def roi_document(image_size, rois):
                "pixels": [[r, c] for r, c in kept]}
         if classification:
             roi["classification"] = classification
+        if places is not None:
+            roi["plane"], roi["channel"] = int(places[number - 1][0]), int(places[number - 1][1])
         out.append(roi)
     return {"imageSize": [height, width], "rois": out}
 
@@ -626,8 +629,9 @@ class NansenRoiArray:
     unclassified and 3 unresolved are left unclassified). Mask and Donut ROIs are their pixels, given as 1-based
     x (column), y (row); IMask ROIs those of weight above 0; Circle ROIs are x, y and a radius, made into pixels as
     dev's RoI does; Polygon ROIs are the pixels whose centre is inside, by the even-odd rule. A file of several
-    planes or channels (cells of them) is read as its first. Written as dev's RoiGroup adapter writes: Mask ROIs
-    and their classification, which dev reads."""
+    planes or channels (dev's RoiGroup: cells of them, planes x channels, with PlaneNumber and ChannelNumber) is read
+    whole, each ROI with its plane and channel. Written as dev's RoiGroup adapter writes: Mask ROIs and their
+    classification, which dev reads, as cells of planes x channels when the ROIs have places."""
 
     extensions = [".mat"]
 
@@ -637,14 +641,32 @@ class NansenRoiArray:
         if name is None:
             raise NansenError("invalid-data", f"{path} has no roiArray")
         rois, classes = data[name], data.get("roiClassification")
-        if _groups(rois):   # planes x channels: the first
-            rois = rois[0]
-            if isinstance(classes, list) or (isinstance(classes, np.ndarray) and classes.dtype == object):
-                classes = classes[0]
-        rois = [rois] if isinstance(rois, dict) else list(rois) if rois is not None and np.size(rois) else []
+        planes, channels = data.get("PlaneNumber"), data.get("ChannelNumber")
+        if not _groups(rois):
+            size, out = self._group(rois, classes)
+            return roi_document(size if size is not None else [0, 0], out)
+        # dev's RoiGroup of several planes or channels (a cell of ROI arrays, planes x channels): every ROI, with its place
+        groups = np.asarray(rois, dtype=object).ravel(order="F") if not isinstance(rois, list) else rois
+        class_groups = _cells(classes, len(groups))
+        shape = np.shape(rois) if np.ndim(rois) == 2 else (len(groups), 1)
+        plane_numbers, channel_numbers = _cells(planes, len(groups)), _cells(channels, len(groups))
+        size, out, places = None, [], []
+        for k, group in enumerate(groups):
+            group_size, group_rois = self._group(group, class_groups[k])
+            size = size if size is not None else group_size
+            plane = int(np.asarray(plane_numbers[k]).ravel()[0]) if np.size(plane_numbers[k]) else k % shape[0] + 1
+            channel = int(np.asarray(channel_numbers[k]).ravel()[0]) if np.size(channel_numbers[k]) else k // shape[0] + 1
+            out += group_rois
+            places += [(plane, channel)] * len(group_rois)
+        return roi_document(size if size is not None else [0, 0], out, places)
+
+    @staticmethod
+    def _group(rois, classes):
+        """One plane's ROIs as (pixels, classification), and their image size (None when there are none)."""
+        rois = [rois] if isinstance(rois, dict) or hasattr(rois, "_fieldnames") else list(rois) if rois is not None and np.size(rois) else []
         rois = [_plain(roi) for roi in rois]
         if not rois:
-            return {"imageSize": [0, 0], "rois": []}
+            return None, []
         size = np.asarray(rois[0]["imagesize"], dtype=float).ravel()
         codes = np.asarray(classes, dtype=float).ravel() if classes is not None and np.size(classes) else np.zeros(0)
         if codes.size != len(rois):
@@ -666,13 +688,32 @@ class NansenRoiArray:
                     points = points[weights > 0]
                 pixels = [(_round_away(y) - 1, _round_away(x) - 1) for x, y in points]
             out.append((pixels, DEV_CLASSIFICATIONS.get(int(code))))
-        return roi_document(size, out)
+        return size, out
 
     def write(self, path, data):
-        import uuid
         from scipy.io import savemat
         height, width = (int(v) for v in data.get("imageSize", [0, 0]))
         rois = data.get("rois", [])
+        contents = {"roiImages": np.zeros((0, 0)), "roiStats": np.zeros((0, 0))}
+        if not any("plane" in roi or "channel" in roi for roi in rois):
+            contents["roiArray"], contents["roiClassification"] = self._records(rois, height, width)
+        else:   # dev's RoiGroup: cells of planes x channels
+            planes = max(int(roi.get("plane", 1)) for roi in rois)
+            channels = max(int(roi.get("channel", 1)) for roi in rois)
+            names = ("roiArray", "roiClassification", "PlaneNumber", "ChannelNumber")
+            cells = {name: np.empty((planes, channels), dtype=object) for name in names}
+            for p in range(planes):
+                for c in range(channels):
+                    group = [roi for roi in rois if int(roi.get("plane", 1)) == p + 1 and int(roi.get("channel", 1)) == c + 1]
+                    cells["roiArray"][p, c], cells["roiClassification"][p, c] = self._records(group, height, width)
+                    cells["PlaneNumber"][p, c], cells["ChannelNumber"][p, c] = float(p + 1), float(c + 1)
+            contents.update(cells)
+        savemat(str(path), contents)
+
+    @staticmethod
+    def _records(rois, height, width):
+        """dev's roiArray of Mask ROIs and its roiClassification."""
+        import uuid
         records = np.empty((1, len(rois)), dtype=[(f, "O") for f in DEV_ROI_FIELDS])
         codes = np.zeros((len(rois), 1))
         for k, roi in enumerate(rois):
@@ -684,7 +725,7 @@ class NansenRoiArray:
                              boundary, float(len(pixels)), coordinates.mean(axis=0) if len(pixels) else np.zeros((0, 0)),
                              np.empty((0, 0), dtype=object), np.zeros((0, 0)), "", "na", "", np.empty((0, 1), dtype=object), np.zeros((0, 0)))
             codes[k, 0] = {"accepted": 1, "rejected": 2}.get(roi.get("classification"), 0)
-        savemat(str(path), {"roiArray": records, "roiClassification": codes, "roiImages": np.zeros((0, 0)), "roiStats": np.zeros((0, 0))})
+        return records, codes
 
 
 def _plain(value):
@@ -698,8 +739,18 @@ def _groups(rois):
     """Whether dev's roiArray is a cell of ROI arrays, one per plane and channel, rather than one array."""
     if isinstance(rois, dict) or rois is None:
         return False
-    items = list(rois) if isinstance(rois, (list, np.ndarray)) else []
-    return bool(items) and not isinstance(items[0], dict) and not hasattr(items[0], "_fieldnames")
+    items = list(np.asarray(rois, dtype=object).ravel()) if isinstance(rois, (list, np.ndarray)) else []
+    return any(not isinstance(i, dict) and not hasattr(i, "_fieldnames") for i in items)
+
+
+def _cells(value, count):
+    """The items of a cell of count (column-major), or count empty ones when it does not have that many."""
+    if count == 1:
+        return [value]
+    if value is None or isinstance(value, (str, bytes)):
+        return [None] * count
+    items = list(np.asarray(value, dtype=object).ravel(order="F")) if np.ndim(value) else [value]
+    return items if len(items) == count else [None] * count
 
 
 def _circle_pixels(x, y, r):

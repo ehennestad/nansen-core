@@ -24,7 +24,7 @@ from .dataset import Dataset
 from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
-from .frames import _mean as mean_image, _pick as pick_channel, detect_roi, image_frame, roi_outlines, roi_signal, signal_traces, update_rois
+from .frames import _mean as mean_image, _pick as pick_channel, detect_roi, image_frame, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -915,8 +915,9 @@ class Api:
             raise NansenError("invalid-params", "limits is [low, high]")
         result = image_frame(project.open_stack(entity, params["variable"]), int(params.get("frame", 0)),
                              int(params.get("channel", 0)), params.get("projection"), limits, int(params.get("plane", 0)))
-        if params.get("rois"):
-            result["rois"] = roi_outlines(project.load(entity, params["rois"]))
+        if params.get("rois"):   # those of the plane and channel shown, when they have places
+            result["rois"] = roi_outlines(rois_at(project.load(entity, params["rois"]), int(params.get("plane", 0)) + 1,
+                                                  int(params.get("channel", 0)) + 1))
         return result
 
     def data__traces(self, params: dict) -> dict:
@@ -955,11 +956,13 @@ class Api:
         """Classify, remove and add ROIs in an ROI variable of an entity, and save it."""
         project = self._require_project()
         entity = self._entity(params)
-        document, added = update_rois(project.load(entity, params["variable"], cached=False), params.get("classify"),
-                                      params.get("remove"), params.get("add"), params.get("move"), params.get("merge"),
-                                      params.get("pixels"), params.get("restore"))
+        plane, channel = int(params.get("plane", 0)) + 1, int(params.get("channel", 0)) + 1
+        document, added = update_rois_at(project.load(entity, params["variable"], cached=False), plane, channel,
+                                         classify=params.get("classify"), remove=params.get("remove"), add=params.get("add"),
+                                         move=params.get("move"), merge=params.get("merge"), pixels=params.get("pixels"),
+                                         restore=params.get("restore"))
         project.save(entity, params["variable"], document)
-        return {"rois": roi_outlines(document), "added": added}
+        return {"rois": roi_outlines(rois_at(document, plane, channel)), "added": added}
 
     def rois__detect(self, params: dict) -> dict:
         """The pixels of an ROI found around a point of an image variable (a stack's mean projection)."""

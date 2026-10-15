@@ -892,7 +892,9 @@ def extract_signals(entity, options, context):
     diagonals, as FISSA does."""
     stack = _open_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
-    document = context.project.load(entity, options["rois"])
+    from nansen.frames import rois_at
+    # the ROIs of the plane and channel used, when they have places (dev's RoiGroup of several)
+    document = rois_at(context.project.load(entity, options["rois"]), options.get("plane", 1), options.get("channel", 1))
     kept = [roi for roi in document.get("rois", []) if options["includeRejected"] or roi.get("classification") != "rejected"]
     masks = roi_masks(dict(document, rois=kept), height, width)
     signals = np.full((frames, len(masks)), np.nan)

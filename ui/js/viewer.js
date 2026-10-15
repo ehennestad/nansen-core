@@ -535,7 +535,7 @@
     async function apply(change, history) {
       const before = snapshot();
       try {
-        const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, ...change });
+        const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, channel: state.channel, plane: state.plane, ...change });
         if (history === "record") { state.undo.push(before); state.redo = []; }
         else if (history === "undo") state.redo.push(before);
         else if (history === "redo") state.undo.push(before);

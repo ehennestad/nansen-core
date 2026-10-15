@@ -1,9 +1,10 @@
-function document = roiDocument(imageSize, pixelLists, classifications)
+function document = roiDocument(imageSize, pixelLists, classifications, places)
 %roiDocument The module's ROI document of ROIs given as 0-based [row, column] pixels, in file order
 %
 %   ids from 1, pixels outside the image left out and the rest in row-major
 %   order, area, and center the mean row and column rounded to 2 decimals;
-%   classification where classifications{k} is not "". Python's
+%   classification where classifications{k} is not ""; and with places (a
+%   row of [plane, channel] per ROI, from 1), plane and channel. Python's
 %   ophys_adapters.roi_document makes the same.
     height = double(imageSize(1));
     width = double(imageSize(2));
@@ -20,6 +21,10 @@ function document = roiDocument(imageSize, pixelLists, classifications)
             "pixels", {num2cell(pixels, 2)'});
         if strlength(string(classifications{k})) > 0
             roi.classification = char(classifications{k});
+        end
+        if nargin >= 4
+            roi.plane = places(k, 1);
+            roi.channel = places(k, 2);
         end
         rois{k} = roi;
     end

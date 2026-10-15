@@ -8,9 +8,11 @@ classdef NansenRoiArray < nansen.FileAdapter
 %   those of weight above 0; Circle ROIs (x, y and a radius) are made into
 %   pixels as dev's RoI does; Polygon ROIs are the pixels whose centre is
 %   inside, by the even-odd rule. A file of several planes or channels
-%   (cells of them) is read as its first. Written as dev's RoiGroup adapter
-%   writes: Mask ROIs and their classification, which dev reads. Python's
-%   ophys_adapters.NansenRoiArray is the same.
+%   (dev's RoiGroup: cells of them, planes x channels, with PlaneNumber and
+%   ChannelNumber) is read whole, each ROI with its plane and channel.
+%   Written as dev's RoiGroup adapter writes: Mask ROIs and their
+%   classification, which dev reads, as cells of planes x channels when the
+%   ROIs have places. Python's ophys_adapters.NansenRoiArray is the same.
 
     methods
         function data = read(~, path)
@@ -24,14 +26,74 @@ classdef NansenRoiArray < nansen.FileAdapter
             if isfield(contents, "roiClassification")
                 classes = contents.roiClassification;
             end
-            if iscell(rois)   % planes x channels: the first
-                rois = rois{1};
-                if iscell(classes)
-                    classes = classes{1};
+            if ~iscell(rois)
+                [imageSize, lists, labels] = ophys.NansenRoiArray.group(rois, classes);
+                data = ophys.internal.roiDocument(imageSize, lists, labels);
+                return
+            end
+            % dev's RoiGroup of several planes or channels (cells, planes x channels): every ROI, with its place
+            imageSize = [];
+            lists = {};
+            labels = {};
+            places = zeros(0, 2);
+            for g = 1:numel(rois)
+                groupClasses = [];
+                if iscell(classes) && numel(classes) == numel(rois)
+                    groupClasses = classes{g};
+                end
+                [groupSize, groupLists, groupLabels] = ophys.NansenRoiArray.group(rois{g}, groupClasses);
+                if isempty(imageSize)
+                    imageSize = groupSize;
+                end
+                [plane, channel] = ind2sub(size(rois), g);
+                plane = ophys.NansenRoiArray.number(contents, "PlaneNumber", g, numel(rois), plane);
+                channel = ophys.NansenRoiArray.number(contents, "ChannelNumber", g, numel(rois), channel);
+                lists = [lists, groupLists]; %#ok<AGROW>
+                labels = [labels, groupLabels]; %#ok<AGROW>
+                places = [places; repmat([plane, channel], numel(groupLists), 1)]; %#ok<AGROW>
+            end
+            if isempty(imageSize)
+                imageSize = [0, 0];
+            end
+            data = ophys.internal.roiDocument(imageSize, lists, labels, places);
+        end
+
+        function write(~, path, data)
+            rois = ophys.internal.roiList(data);
+            imageSize = double(reshape(nansen.internal.getField(data, "imageSize", [0, 0]), 1, []));
+            placed = any(cellfun(@(r) isfield(r, "plane") || isfield(r, "channel"), rois));
+            contents = struct("roiImages", {[]}, "roiStats", {[]});
+            if ~placed
+                [contents.roiArray, contents.roiClassification] = ophys.NansenRoiArray.records(rois, imageSize);
+            else   % dev's RoiGroup: cells of planes x channels
+                planeOf = cellfun(@(r) double(nansen.internal.getField(r, "plane", 1)), rois);
+                channelOf = cellfun(@(r) double(nansen.internal.getField(r, "channel", 1)), rois);
+                planes = max(planeOf);
+                channels = max(channelOf);
+                contents.roiArray = cell(planes, channels);
+                contents.roiClassification = cell(planes, channels);
+                contents.PlaneNumber = cell(planes, channels);
+                contents.ChannelNumber = cell(planes, channels);
+                for p = 1:planes
+                    for c = 1:channels
+                        [contents.roiArray{p, c}, contents.roiClassification{p, c}] = ...
+                            ophys.NansenRoiArray.records(rois(planeOf == p & channelOf == c), imageSize);
+                        contents.PlaneNumber{p, c} = p;
+                        contents.ChannelNumber{p, c} = c;
+                    end
                 end
             end
+            save(path, "-struct", "contents");
+        end
+    end
+
+    methods (Static, Access = private)
+        function [imageSize, lists, labels] = group(rois, classes)
+            % One plane's ROIs as 0-based pixel lists and classifications, and their image size ([] when there are none)
+            imageSize = [];
+            lists = {};
+            labels = {};
             if isempty(rois)
-                data = struct("imageSize", [0, 0], "rois", {{}});
                 return
             end
             codes = double(classes(:));
@@ -65,12 +127,18 @@ classdef NansenRoiArray < nansen.FileAdapter
                         lists{k} = [round(points(:, 2)) - 1, round(points(:, 1)) - 1];
                 end
             end
-            data = ophys.internal.roiDocument(imageSize, lists, labels);
         end
 
-        function write(~, path, data)
-            rois = ophys.internal.roiList(data);
-            imageSize = double(reshape(nansen.internal.getField(data, "imageSize", [0, 0]), 1, []));
+        function value = number(contents, name, g, count, default)
+            % The PlaneNumber or ChannelNumber of group g, or the default when the file has none for it
+            value = default;
+            if isfield(contents, name) && iscell(contents.(name)) && numel(contents.(name)) == count && ~isempty(contents.(name){g})
+                value = double(contents.(name){g}(1));
+            end
+        end
+
+        function [roiArray, codes] = records(rois, imageSize)
+            % dev's roiArray of Mask ROIs and its roiClassification
             fields = ["uid", "shape", "coordinates", "pixelweights", "imagesize", "boundary", "area", "center", ...
                 "connectedrois", "group", "celltype", "structure", "layer", "tags", "enhancedImage"];
             roiArray = repmat(cell2struct(cell(numel(fields), 1), cellstr(fields), 1), 1, numel(rois));
@@ -100,12 +168,8 @@ classdef NansenRoiArray < nansen.FileAdapter
                         codes(k) = 2;
                 end
             end
-            contents = struct("roiArray", {roiArray}, "roiClassification", codes, "roiImages", {[]}, "roiStats", {[]});
-            save(path, "-struct", "contents");
         end
-    end
 
-    methods (Static, Access = private)
         function text = uid()
             % A random UUID, as dev's RoI has
             hex = dec2hex(randi([0, 15], 1, 32))';

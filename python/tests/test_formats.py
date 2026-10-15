@@ -24,7 +24,7 @@ def adapter(name):
 
 @pytest.mark.parametrize("name, file, key", [
     ("NansenRoiArray", "rois_nansen.mat", "nansen"),     # Mask, Circle and Polygon ROIs of dev's roimanager
-    ("NansenRoiArray", "rois_group.mat", "roiGroup"),    # dev's RoiGroup of two planes: classified, an IMask, plane 1 read
+    ("NansenRoiArray", "rois_group.mat", "roiGroup"),    # dev's RoiGroup of two planes: classified, an IMask, each ROI with its plane
     ("Suite2pRois", "Fall.mat", "suite2p"),               # suite2p's cells, those it left out rejected
     ("CaimanRois", "caiman.hdf5", "caiman"),              # CaImAn's sparse spatial components
     ("ExtractRois", "extract.mat", "extract"),            # EXTRACT's spatial weights
@@ -82,8 +82,14 @@ def test_dev_rois_are_written_as_dev_reads_them(tmp_path):
     adapter("NansenRoiArray").write(tmp_path / "rois.mat", document)
     saved = MatAdapter().read(tmp_path / "rois.mat")
     assert set(saved) >= {"roiArray", "roiClassification", "roiImages", "roiStats"}
-    assert [r["shape"] for r in saved["roiArray"]] == ["Mask"] * 3 and list(saved["roiClassification"]) == [1, 2, 0]
+    assert [r["shape"] for r in saved["roiArray"][0]] == ["Mask"] * 3 and list(saved["roiClassification"][0]) == [1, 2, 0]
+    assert getattr(saved["roiArray"][1], "shape") == "Mask" and list(saved["PlaneNumber"]) == [1, 2]   # cells of planes x channels
     assert adapter("NansenRoiArray").read(tmp_path / "rois.mat") == document
+    one_plane = {"imageSize": document["imageSize"], "rois": [{k: v for k, v in r.items() if k not in ("plane", "channel")}
+                                                              for r in document["rois"][:3]]}
+    adapter("NansenRoiArray").write(tmp_path / "one.mat", one_plane)   # ROIs without places: one roiArray
+    assert [r["shape"] for r in MatAdapter().read(tmp_path / "one.mat")["roiArray"]] == ["Mask"] * 3
+    assert adapter("NansenRoiArray").read(tmp_path / "one.mat") == one_plane
 
 
 def test_a_suite2p_binary_reads_with_the_size_from_ops(tmp_path):

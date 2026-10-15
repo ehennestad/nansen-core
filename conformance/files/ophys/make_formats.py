@@ -68,7 +68,8 @@ def roi_group(expected):
     """dev's RoiGroup file of two planes, as its RoiSegmentation and roimanager save them: roiArray and
     roiClassification are cells, one per plane (planes x channels), with ChannelNumber and PlaneNumber. Plane 1
     has a Mask ROI classified accepted (1), an IMask ROI with a pixel of weight 0 (not part of it) classified
-    rejected (2), and an unresolved (3) Mask ROI; the ROI document is plane 1's."""
+    rejected (2), and an unresolved (3) Mask ROI; plane 2 an unclassified Mask ROI. The ROI document has them all,
+    each with its plane and channel."""
     fields = ["uid", "shape", "coordinates", "pixelweights", "imagesize", "boundary", "area", "center", "connectedrois",
               "group", "celltype", "structure", "layer", "tags", "enhancedImage"]
 
@@ -88,7 +89,7 @@ def roi_group(expected):
     weights = [0.5, 1.0, 0.8, 0.0, 0.3]                                     # (9, 11) has weight 0: not part of it
     unresolved = [(14, 4), (14, 5), (15, 4)]
     plane1 = records([("p1a", "Mask", accepted, None), ("p1b", "IMask", weighted, weights), ("p1c", "Mask", unresolved, None)])
-    plane2 = records([("p2a", "Mask", [(20, 20), (20, 21)], None)])
+    plane2 = records([("p2a", "Mask", [(17, 20), (17, 21)], None)])
     rois = np.empty((2, 1), dtype=object)
     rois[0, 0], rois[1, 0] = plane1, plane2
     classes = np.empty((2, 1), dtype=object)
@@ -101,7 +102,8 @@ def roi_group(expected):
                                                "roiStats": np.zeros((0, 0)), "PlaneNumber": planes, "ChannelNumber": channels})
     kept = [p for p, w in zip(weighted, weights) if w > 0]
     expected["roiGroup"] = {"imageSize": [HEIGHT, WIDTH],
-                            "rois": [roi(1, accepted, "accepted"), roi(2, kept, "rejected"), roi(3, unresolved)]}
+                            "rois": [dict(roi(1, accepted, "accepted"), plane=1, channel=1), dict(roi(2, kept, "rejected"), plane=1, channel=1),
+                                     dict(roi(3, unresolved), plane=1, channel=1), dict(roi(4, [(17, 20), (17, 21)]), plane=2, channel=1)]}
 
 
 def dev_binary(expected):

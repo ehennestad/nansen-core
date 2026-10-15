@@ -254,6 +254,35 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
     return dict(value, rois=rois), added
 
 
+def placed(value: Any) -> bool:
+    """Whether an ROI file's ROIs have places: a plane and channel each (dev's RoiGroup of several of them)."""
+    return isinstance(value, dict) and any(isinstance(r, dict) and ("plane" in r or "channel" in r) for r in value.get("rois", []))
+
+
+def rois_at(value: Any, plane: int, channel: int) -> Any:
+    """The ROI file with the ROIs of a plane and channel (from 1) only, and those with no place; all, when none has one."""
+    if not placed(value):
+        return value
+    return dict(value, rois=[r for r in value["rois"] if r.get("plane", plane) == plane and r.get("channel", channel) == channel])
+
+
+def update_rois_at(value: Any, plane: int, channel: int, **changes) -> Any:
+    """update_rois on the ROIs of a plane and channel (from 1) of a file whose ROIs have places: a restore puts back
+    that place's ROIs only, and added ROIs are put there. Returns (document, ids of the added ROIs)."""
+    if not placed(value):
+        return update_rois(value, **changes)
+    rois = [dict(roi, id=roi.get("id", number)) for number, roi in enumerate(value.get("rois", []), start=1)]
+    places = {roi["id"]: (roi["plane"], roi.get("channel", 1)) for roi in rois if "plane" in roi}
+    if changes.get("restore") is not None:   # the others stay as they are
+        elsewhere = [roi for roi in rois if roi.get("plane", plane) != plane or roi.get("channel", channel) != channel]
+        changes["restore"] = elsewhere + list(changes["restore"])
+    document, added = update_rois(dict(value, rois=rois), **changes)
+    for roi in document["rois"]:
+        if "plane" not in roi:
+            roi["plane"], roi["channel"] = places.get(roi["id"], (plane, channel))
+    return document, added
+
+
 def detect_roi(image: Any, point: List[int], radius: int = 6) -> List[List[int]]:
     """An ROI found around a point of an image (height x width), as the viewer's Detect tool does.
 

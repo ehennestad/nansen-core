@@ -1089,8 +1089,9 @@ classdef Api < handle
                 string(nansen.internal.getField(params, "projection", "")), double(limits), ...
                 double(nansen.internal.getField(params, "plane", 0)));
             rois = string(nansen.internal.getField(params, "rois", ""));
-            if rois ~= ""
-                result.rois = nansen.internal.roiOutlines(project.load(entity, rois));
+            if rois ~= ""   % those of the plane and channel shown, when they have places
+                result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(project.load(entity, rois), ...
+                    double(nansen.internal.getField(params, "plane", 0)) + 1, double(nansen.internal.getField(params, "channel", 0)) + 1));
             end
         end
 
@@ -1148,12 +1149,14 @@ classdef Api < handle
             if isfield(params, "restore")
                 restore = params.restore;
             end
-            [document, added] = nansen.internal.updateRois(project.load(entity, variable, Cached=false), ...
+            plane = double(nansen.internal.getField(params, "plane", 0)) + 1;
+            channel = double(nansen.internal.getField(params, "channel", 0)) + 1;
+            [document, added] = nansen.internal.updateRoisAt(project.load(entity, variable, Cached=false), plane, channel, ...
                 nansen.internal.getField(params, "classify", []), nansen.internal.getField(params, "remove", []), ...
                 nansen.internal.getField(params, "add", []), nansen.internal.getField(params, "move", []), ...
                 nansen.internal.getField(params, "merge", []), nansen.internal.getField(params, "pixels", []), restore);
             project.save(entity, variable, document);
-            result = struct("rois", {nansen.internal.roiOutlines(document)}, "added", {added});
+            result = struct("rois", {nansen.internal.roiOutlines(nansen.internal.roisAt(document, plane, channel))}, "added", {added});
         end
 
         function result = apiRoisDetect(obj, params)

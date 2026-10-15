@@ -3178,6 +3178,145 @@
     },
     {
       "request": {
+        "method": "dataVariables.save",
+        "id": 4801,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "RoiGroup",
+            "entityType": "session",
+            "dataLocation": "raw",
+            "fileName": "rois_group.mat",
+            "fileAdapter": "ophys.nansen_roi_array",
+            "dataType": "RoiArray"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "RoiGroup"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 4802,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s4"
+          },
+          "variable": "TwoPhotonSeries_ScanImage",
+          "plane": 0,
+          "rois": "RoiGroup"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  3
+                ],
+                [
+                  3,
+                  2
+                ],
+                [
+                  3,
+                  3
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  8,
+                  10
+                ],
+                [
+                  8,
+                  11
+                ],
+                [
+                  9,
+                  10
+                ],
+                [
+                  10,
+                  10
+                ]
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  14,
+                  4
+                ],
+                [
+                  14,
+                  5
+                ],
+                [
+                  15,
+                  4
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 4803,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s4"
+          },
+          "variable": "TwoPhotonSeries_ScanImage",
+          "plane": 1,
+          "rois": "RoiGroup"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  17,
+                  20
+                ],
+                [
+                  17,
+                  21
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
         "method": "methods.run",
         "id": 49,
         "params": {
