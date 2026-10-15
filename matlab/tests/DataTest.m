@@ -122,8 +122,36 @@ classdef DataTest < matlab.unittest.TestCase
             testCase.verifyEqual(entity.load("traces").dff, [1, 2, 3]);
         end
 
-        function npyIsPythonOnly(testCase)
-            testCase.verifyError(@() testCase.Project.adapters().get("npy"), "nansen:AdapterUnavailable");
+        function npyReadsWhatNumpyWrites(testCase)
+            % Fixtures written by numpy.save (C and Fortran order, big-endian, bool, 1-D, scalar), values in C order
+            folder = fullfile(nansen.internal.repoRoot(), "testdata", "npy");
+            expected = jsondecode(nansen.internal.readText(fullfile(folder, "expected.json")));
+            adapter = testCase.Project.adapters().get("npy");
+            for name = string(fieldnames(expected))'
+                data = adapter.read(fullfile(folder, name + ".npy"));
+                shape = reshape(expected.(name).shape, 1, []);
+                if numel(shape) >= 2
+                    testCase.verifyEqual(size(data), shape, name);
+                    values = permute(data, numel(shape):-1:1);
+                else
+                    testCase.verifyEqual(numel(data), max([shape, 1]), name);
+                    values = data;
+                end
+                testCase.verifyEqual(double(values(:)), double(expected.(name).values(:)), name);
+            end
+            testCase.verifyClass(adapter.read(fullfile(folder, "stack_uint16.npy")), "uint16");
+            testCase.verifyClass(adapter.read(fullfile(folder, "mask_bool.npy")), "logical");
+        end
+
+        function npyRoundTrips(testCase)
+            adapter = testCase.Project.adapters().get("npy");
+            path = fullfile(testCase.Folder, "a.npy");
+            for value = {uint16(reshape(0:23, 2, 3, 4)), single([1.5 2; -3 4]), int64([1; -2; 3]), true(2, 3), 7.25, zeros(0, 3)}
+                adapter.write(path, value{1});
+                back = adapter.read(path);
+                testCase.verifyEqual(back, value{1});
+            end
+        end
         end
 
         function loadIsCachedUntilTheFileChanges(testCase)

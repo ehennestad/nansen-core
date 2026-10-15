@@ -23,6 +23,7 @@ classdef AdapterRegistry < handle
                 obj.Adapters("json") = nansen.adapters.Json();
                 obj.Adapters("text") = nansen.adapters.Text();
                 obj.Adapters("mat") = nansen.adapters.Mat();
+                obj.Adapters("npy") = nansen.adapters.Npy();
             end
         end
 
@@ -67,9 +68,6 @@ classdef AdapterRegistry < handle
                 nansen.internal.throwError("unknown-file-adapter", "no file adapter '%s'", adapterId)
             end
             languages = {'matlab', 'python'};
-            if adapterId == "npy"
-                languages = {'python'};
-            end
             info = struct("id", adapterId, "title", adapterId, "extensions", {builtIn.(adapterId)}, ...
                 "languages", {languages}, "builtIn", true);
         end
@@ -79,9 +77,6 @@ classdef AdapterRegistry < handle
             if isKey(obj.Adapters, adapterId)
                 adapter = obj.Adapters(adapterId);
                 return
-            end
-            if adapterId == "npy"
-                nansen.internal.throwError("adapter-unavailable", "the npy adapter has no MATLAB implementation")
             end
             if ~isKey(obj.Declarations, adapterId)
                 nansen.internal.throwError("unknown-file-adapter", "no file adapter '%s'", adapterId)

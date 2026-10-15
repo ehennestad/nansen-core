@@ -101,7 +101,7 @@ A fragment with `compute.method` is computed: its columns are filled by that met
 
 ## File adapters
 
-A file adapter reads a file into a value and writes a value to a file. The built-in ones are `json`, `text` and `mat` (in Python, `mat` needs SciPy: `pip install "nansen-core[mat]"`), plus `npy` in Python only. A module adds others with a `nansen.fileAdapter` document:
+A file adapter reads a file into a value and writes a value to a file. The built-in ones are `json`, `text` and `mat` (in Python, `mat` needs SciPy: `pip install "nansen-core[mat]"`), plus `npy` (NumPy arrays; read and written by MATLAB without Python, keeping NumPy's shape and indexing, and by Python with NumPy: `pip install "nansen-core[npy]"`). A module adds others with a `nansen.fileAdapter` document:
 
 ```json
 { "schemaType": "nansen.fileAdapter", "schemaVersion": "0.1.0", "id": "ophys.tiff_stack", "version": "1.0.0",
