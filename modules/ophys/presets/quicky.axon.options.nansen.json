@@ -1,0 +1,21 @@
+{
+  "schemaType": "nansen.options",
+  "schemaVersion": "0.1.0",
+  "method": {
+    "id": "ophys.quicky",
+    "version": "1.0.0"
+  },
+  "name": "axon",
+  "description": "dev's Quicky preset Axons: tuned to detect smaller axonal bouton-like structures",
+  "values": {
+    "roiDiameter": 4,
+    "binSize": 5,
+    "smoothingSigma": 20,
+    "binarizationPercentile": 95,
+    "observationsRequired": 2,
+    "maxRois": 1000,
+    "useShapeDetection": false,
+    "innerRadius": 3,
+    "outerRadius": 5
+  }
+}

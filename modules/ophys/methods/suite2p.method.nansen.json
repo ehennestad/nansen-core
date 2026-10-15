@@ -6,7 +6,7 @@
   "title": "Run suite2p",
   "category": "Two-photon/Segmentation",
   "entityType": "*",
-  "description": "Runs suite2p (registration, cell detection, signal extraction and deconvolution) on the stack, when the suite2p package (0.x or 1.x) is installed, and saves its cells as ROIs, and their signals and spikes, in the same variables as the native methods. suite2p's own output is kept in a suite2p folder next to the ROI file.",
+  "description": "Runs suite2p (registration, cell detection, signal extraction and deconvolution) on the stack, when the suite2p package (0.x or 1.x) is installed, and saves its cells as ROIs, and their signals and spikes, in the same variables as the native methods. suite2p's own output is kept in a suite2p folder next to the ROI file. Its options are passed to suite2p under suite2p's names (given in each option's description), with suite2p's defaults; of a stack with channels or planes, suite2p gets the channel and plane chosen.",
   "implementations": {
     "python": "ophys_methods:suite2p"
   },
@@ -59,6 +59,94 @@
         "type": "boolean",
         "default": true,
         "title": "Keep only what suite2p classifies as cells"
+      },
+      "tau": {
+        "type": "number",
+        "default": 1.0,
+        "exclusiveMinimum": 0,
+        "title": "Indicator decay time (s)",
+        "description": "suite2p's tau, for deconvolution: about 0.7 for GCaMP6f, 1.0 for GCaMP6m, 1.25-1.5 for GCaMP6s"
+      },
+      "registration": {
+        "type": "boolean",
+        "default": true,
+        "title": "Register the frames",
+        "description": "suite2p's do_registration; turn it off for a stack that is aligned already"
+      },
+      "nonrigid": {
+        "type": "boolean",
+        "default": true,
+        "title": "Nonrigid registration",
+        "description": "suite2p's nonrigid: blocks of the frame are registered on their own after the rigid shift"
+      },
+      "sparseMode": {
+        "type": "boolean",
+        "default": true,
+        "title": "Sparse mode",
+        "description": "suite2p's sparse_mode (in suite2p 1.x the sparsery detection algorithm; off, sourcery)"
+      },
+      "thresholdScaling": {
+        "type": "number",
+        "default": 1.0,
+        "exclusiveMinimum": 0,
+        "title": "Threshold scaling",
+        "description": "suite2p's threshold_scaling: higher finds fewer ROIs, lower more"
+      },
+      "maxIterations": {
+        "type": "integer",
+        "default": 20,
+        "minimum": 1,
+        "title": "Most detection iterations",
+        "description": "suite2p's max_iterations (in suite2p 1.x, sourcery's, with sparse mode off)"
+      },
+      "spatialScale": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 4,
+        "title": "Spatial scale",
+        "description": "suite2p's spatial_scale, in sparse mode: 0 finds it, 1 is 6 pixels, 2 12, 3 24, 4 48"
+      },
+      "denoise": {
+        "type": "boolean",
+        "default": false,
+        "title": "Denoise before detection",
+        "description": "suite2p's denoise: the binned movie is denoised by PCA before cells are found, in sparse mode"
+      },
+      "neuropilCoefficient": {
+        "type": "number",
+        "default": 0.7,
+        "minimum": 0,
+        "title": "Neuropil coefficient",
+        "description": "suite2p's neucoeff: the share of the neuropil taken from the signal before deconvolution"
+      },
+      "innerNeuropilRadius": {
+        "type": "integer",
+        "default": 2,
+        "minimum": 0,
+        "title": "Gap to the neuropil (px)",
+        "description": "suite2p's inner_neuropil_radius: pixels between a cell and its neuropil"
+      },
+      "minNeuropilPixels": {
+        "type": "integer",
+        "default": 350,
+        "minimum": 1,
+        "title": "Fewest neuropil pixels",
+        "description": "suite2p's min_neuropil_pixels"
+      },
+      "channel": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Channel",
+        "description": "Of a stack with channels (height x width x channels x frames): the one to use, from 1"
+      },
+      "plane": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Plane",
+        "description": "Of a stack with planes (height x width x channels x planes x frames): the one to use, from 1"
       }
     }
   }

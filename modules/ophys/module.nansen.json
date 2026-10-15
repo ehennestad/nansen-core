@@ -66,7 +66,12 @@
     "pipelines/preprocess.pipeline.nansen.json"
   ],
   "presets": [
-    "presets/motion_correction.thorough.options.nansen.json"
+    "presets/motion_correction.thorough.options.nansen.json",
+    "presets/normcorre.nonrigid.options.nansen.json",
+    "presets/normcorre.rigid.options.nansen.json",
+    "presets/quicky.axon.options.nansen.json",
+    "presets/quicky.soma.options.nansen.json",
+    "presets/quicky.soma_virus.options.nansen.json"
   ],
   "addons": [
     {

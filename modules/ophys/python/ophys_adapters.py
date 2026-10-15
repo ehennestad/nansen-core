@@ -325,23 +325,34 @@ class SciScanRaw:
 
 
 class TiffStack:
-    """A multi-page grayscale TIFF file, as height x width x frames (needs tifffile)."""
+    """A multi-page TIFF file, as height x width x frames (needs tifffile).
+
+    Pages of several samples (RGB, or grayscale with extra samples; contiguous or planar) are channels: height x width
+    x samples x frames, as dev's TiffMultiPart reads them (its multisample channel mode). A recording split into a file
+    series per channel (dev's TiffMultiPartMultiChannel: rec_ch1_part_001.tif, rec_ch2_part_001.tif, ...) is height x
+    width x channels x frames: when every file's name has a channel number (tiff_channel) and there are at least two,
+    the files of each channel are its frames, joined in natural order, and the channels come in the order of their
+    numbers. Otherwise every file is a part of one recording, joined along the frames in natural order.
+    """
 
     def read(self, path):
         return np.ascontiguousarray(np.asarray(self.open([path])))
 
     def open(self, paths):
-        """The pages of the files, in natural order, as one stack read page by page."""
-        from nansen.stacks import Stack, natural_order, pages
-        tifffile = _tifffile()
+        """The pages of the files, in natural order, as one stack read page by page; files per channel as channels."""
+        from nansen.stacks import Stack, natural_order
         paths = [str(p) for p in natural_order(paths)]
-        with tifffile.TiffFile(paths[0]) as tif:
-            first = tif.pages[0]
-            if len(first.shape) != 2:
-                raise NansenError("invalid-data", f"{paths[0]} holds pages of {first.shape}; a TIFF stack of grayscale frames is read")
-            frame_shape, dtype = tuple(first.shape), first.dtype
-        count, read_pages = pages(paths, _page_info, _read_pages, frame_shape, dtype)
-        return Stack(frame_shape + (count,), dtype, lambda start, stop: np.moveaxis(read_pages(start, stop), 0, 2))
+        groups = tiff_channel_groups(paths)
+        if groups is None:
+            return _tiff_series(paths, samples=True)
+        channels = [_tiff_series(group, samples=False) for group in groups]
+        first = channels[0]
+        if any(c.shape != first.shape or c.dtype != first.dtype for c in channels):
+            raise NansenError("invalid-data", "the channels of the recording differ in size, frames or type: "
+                                              + ", ".join(f"{c.shape} {c.dtype}" for c in channels))
+        height, width, frames = first.shape
+        return Stack((height, width, len(channels), frames), first.dtype,
+                     lambda start, stop: np.stack([c.frames(start, stop) for c in channels], axis=2))
 
     def write(self, path, data):
         tifffile = _tifffile()
@@ -723,15 +734,66 @@ def mroi_mosaic(data, artist, path):
     return out
 
 
+# A channel number in a file name: ch1, chan1, channel1 (any case, _ or - before the number allowed: ch_1), not after a
+# letter or digit; else C1 followed by -, _ or . (as ImageJ names a stack's channels: C1-rec.tif). The first match counts.
+# MATLAB's ophys.TiffStack.channelNumber uses the same patterns.
+TIFF_CHANNEL_NAMES = (re.compile(r"(?<![A-Za-z0-9])(?:ch|chan|channel)[_-]?(\d+)(?!\d)", re.IGNORECASE),
+                      re.compile(r"(?<![A-Za-z0-9])C(\d+)(?=[-_.])"))
+
+
+def tiff_channel(name):
+    """The channel number in a TIFF file's name (TIFF_CHANNEL_NAMES), or None."""
+    for pattern in TIFF_CHANNEL_NAMES:
+        match = pattern.search(name)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def tiff_channel_groups(paths):
+    """The paths of each channel, in the order of the channel numbers, when there are several files, each with a
+    channel number in its name, and at least two channels; None otherwise (one recording in parts)."""
+    if len(paths) < 2:
+        return None
+    numbers = [tiff_channel(Path(p).name) for p in paths]
+    if any(n is None for n in numbers) or len(set(numbers)) < 2:
+        return None
+    return [[p for p, n in zip(paths, numbers) if n == channel] for channel in sorted(set(numbers))]
+
+
+def _tiff_series(paths, samples):
+    """The pages of TIFF files one after another, as height x width x frames, or height x width x samples x frames
+    for pages of several samples (refused unless samples)."""
+    from nansen.stacks import Stack, pages
+    with _tifffile().TiffFile(paths[0]) as tif:
+        frame_shape, dtype = _page_shape(tif.pages[0]), tif.pages[0].dtype
+    if len(frame_shape) != 2 and not (samples and len(frame_shape) == 3):
+        raise NansenError("invalid-data", f"{paths[0]} holds pages of {frame_shape}; a TIFF stack of grayscale frames"
+                                          + (", or of frames of several samples," if samples else " in a file per channel") + " is read")
+    count, read_pages = pages(paths, _page_info, _read_pages, frame_shape, dtype)
+    return Stack(frame_shape + (count,), dtype, lambda start, stop: np.moveaxis(read_pages(start, stop), 0, -1))
+
+
+def _page_shape(page):
+    """A TIFF page's shape, its samples last (height x width x samples) also when they are stored planar."""
+    shape = tuple(page.shape)
+    return shape[1:] + shape[:1] if len(shape) == 3 and page.axes.startswith("S") else shape
+
+
+def _page_array(page):
+    data = page.asarray()
+    return np.moveaxis(data, 0, -1) if data.ndim == 3 and page.axes.startswith("S") else data
+
+
 def _page_info(path):
-    """A TIFF file's page count, and its first page's shape and type."""
+    """A TIFF file's page count, and its first page's shape (samples last) and type."""
     with _tifffile().TiffFile(str(path)) as tif:
-        return len(tif.pages), tuple(tif.pages[0].shape), tif.pages[0].dtype
+        return len(tif.pages), _page_shape(tif.pages[0]), tif.pages[0].dtype
 
 
 def _read_pages(path, start, stop):
     with _tifffile().TiffFile(str(path)) as tif:
-        return np.stack([tif.pages[i].asarray() for i in range(start, stop)], axis=0)
+        return np.stack([_page_array(tif.pages[i]) for i in range(start, stop)], axis=0)
 
 
 def _tifffile():

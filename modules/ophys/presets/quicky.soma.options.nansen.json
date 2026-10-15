@@ -1,0 +1,21 @@
+{
+  "schemaType": "nansen.options",
+  "schemaVersion": "0.1.0",
+  "method": {
+    "id": "ophys.quicky",
+    "version": "1.0.0"
+  },
+  "name": "soma",
+  "description": "dev's Quicky preset Soma: optimized for detecting soma-like structures (flufinder's defaults)",
+  "values": {
+    "roiDiameter": 12,
+    "binSize": 5,
+    "smoothingSigma": 20,
+    "binarizationPercentile": 93,
+    "observationsRequired": 2,
+    "maxRois": 300,
+    "useShapeDetection": true,
+    "innerRadius": 3,
+    "outerRadius": 5
+  }
+}

@@ -1,6 +1,13 @@
-function [count, reader, first] = tiffPages(paths)
+function [count, reader, first] = tiffPages(paths, samples)
 %tiffPages The pages of TIFF files as one sequence: how many, a reader of pages a..b (1-based) as height x
 %width x n, and the first page's Tiff tags (Software, ImageDescription, Artist)
+%
+%   tiffPages(paths, true) also takes pages of several samples (RGB, or
+%   grayscale with extra samples), read as height x width x samples x n;
+%   without it, only grayscale pages are read.
+    if nargin < 2
+        samples = false;
+    end
     warning("off", "imageio:tiffmexutils:libtiffWarning");
     warning("off", "MATLAB:imagesci:tiffmexutils:libtiffWarning");
     paths = reshape(string(paths), 1, []);
@@ -30,7 +37,7 @@ function [count, reader, first] = tiffPages(paths)
         close(file);
         counts(i) = n;
     end
-    if ~ismatrix(first.Page)
+    if ~ismatrix(first.Page) && ~(samples && ndims(first.Page) == 3)
         nansen.internal.throwError("invalid-data", "%s does not hold grayscale pages", paths(1))
     end
     offsets = [0, cumsum(counts)];
@@ -55,7 +62,11 @@ function data = readPages(paths, offsets, page, a, b)
                 file.nextDirectory();
             end
             k = k + 1;
-            data(:, :, k) = file.read();
+            if ismatrix(page)
+                data(:, :, k) = file.read();
+            else
+                data(:, :, :, k) = file.read();
+            end
         end
         clear closer
     end
