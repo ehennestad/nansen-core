@@ -1504,6 +1504,17 @@ def test_viewer_projections_and_roi_display_options(empty_app, page):
     wait_until(lambda: 0 < page.evaluate(colourful) < filled)
     page.click(".viewer-grid")
     assert "active" in page.get_attribute(".viewer-grid", "class")
+    page.select_option(".viewer-mode", "frame")
+    page.click(".viewer-roi-list li[data-roi='1']")   # its signal goes under the frames
+    page.click(".viewer-export")
+    page.click(".menu .item:has-text('Video')")   # imviewer's ROI signal video
+    page.fill(".video-dialog .field:has-text('Last frame') input", "6")
+    page.fill(".video-dialog .field:has-text('Frames per second') input", "30")
+    with page.expect_download() as download:
+        page.click(".video-dialog .dialog-foot button:has-text('Record')")
+    assert download.value.suggested_filename.endswith("_frames1-6.webm")
+    import os
+    assert os.path.getsize(download.value.path()) > 500
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 

@@ -715,6 +715,75 @@
       N.toast("Image saved", name, "success", 2500);
     }
 
+    /**
+     * The frames as a WebM video, as imviewer's ROI signal video: each frame as shown (contrast, colormap, filter, ROIs), and
+     * under it the selected ROI's trace with the frame marked; frames first..last at a chosen rate. Recorded in the browser.
+     */
+    async function saveVideo() {
+      const values = await new Promise((resolve) => {
+        const form = N.schemaForm({ type: "object", properties: {
+          first: { type: "integer", title: "First frame", minimum: 1 },
+          last: { type: "integer", title: "Last frame", minimum: 1 },
+          fps: { type: "number", title: "Frames per second", minimum: 1, maximum: 60 },
+        } }, { first: 1, last: Math.min(state.frames, 300), fps: Math.min(60, (last && last.metadata && last.metadata.frameRate) || 20) });
+        const d = N.dialog({ title: "Save a video", narrow: true, content: h("div.viewer-video-form", { style: { padding: "12px 16px" } }, form.el),
+          buttons: [{ label: "Cancel", onClick: (close) => { resolve(null); close(); } },
+            { label: "Record", kind: "primary", onClick: (close) => { resolve(form.getValue()); close(); } }],
+          onClose: () => resolve(null) });
+        d.el.classList.add("video-dialog");
+      });
+      if (!values || !last) return;
+      const first = Math.max(1, Math.min(values.first, state.frames)) - 1, final = Math.max(first + 1, Math.min(values.last, state.frames)) - 1;
+      const scale = Math.max(1, Math.floor(512 / Math.max(last.width, last.height)));
+      const trace = tracePlot && tracePlot.el.style.visibility !== "hidden" ? tracePlot.canvas : null;
+      const out = document.createElement("canvas");
+      out.width = last.width * scale;
+      out.height = last.height * scale + (trace ? Math.round(trace.height * out.width / trace.width) : 0);
+      const ctx = out.getContext("2d");
+      const stream = out.captureStream(0);
+      const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+      const chunks = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      const done = new Promise((resolve) => { recorder.onstop = resolve; });
+      const frameCanvas = document.createElement("canvas");
+      const was = { mode: state.mode, frame: state.frame, playing: state.playing };
+      state.playing = false;
+      recorder.start();
+      N.toast("Recording", `frames ${first + 1}–${final + 1}…`);
+      try {
+        for (let f = first; f <= final; f++) {
+          const params = options.file ? { ...options.file, channel: state.channel, plane: state.plane, frame: f }
+            : { entityType, key, variable, channel: state.channel, plane: state.plane, frame: f };
+          if (options.file && state.adapter) params.adapter = state.adapter;
+          if (state.filter) params.filter = state.filter;
+          if (!state.auto) params.limits = [state.low, state.high];
+          const frame = await app.client.request(options.file ? "files.frame" : "data.frame", params);
+          paint(frameCanvas, frame, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap, state.outlines);
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, out.width, out.height);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(frameCanvas, 0, 0, last.width * scale, last.height * scale);
+          if (trace) {
+            tracePlot.cursor(f);
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(0, last.height * scale, out.width, out.height - last.height * scale);
+            ctx.drawImage(trace, 0, last.height * scale, out.width, out.height - last.height * scale);
+          }
+          stream.getVideoTracks()[0].requestFrame();
+          await new Promise((resolve) => setTimeout(resolve, 1000 / values.fps));
+        }
+      } catch (error) { N.showError(error, "Could not record the video"); }
+      recorder.stop();
+      await done;
+      if (tracePlot) tracePlot.cursor(was.mode === "frame" ? was.frame : null);
+      const name = `${options.file ? options.file.path.split("/").pop() : `${N.fmt.key(key)}_${variable}`}_frames${first + 1}-${final + 1}.webm`.replace(/[^\w.-]+/g, "_");
+      const link = h("a", { href: URL.createObjectURL(new Blob(chunks, { type: "video/webm" })), download: name });
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      N.toast("Video saved", name, "success", 2500);
+    }
+
     /** Export: the image as shown, as PNG, or frames of the stack as a TIFF file (ophys.export_tiff, when the project has it). */
     async function exportMenu() {
       let method = null;
@@ -722,6 +791,7 @@
         if (!options.file) method = (await app.client.request("methods.list", { entityType })).find((m) => m.id === "ophys.export_tiff") || null;
       } catch (error) { /* the PNG is still there */ }
       const items = [{ label: "Image as PNG", icon: "download", onClick: () => saveImage() }];
+      if (state.frames > 1 && window.MediaRecorder) items.push({ label: "Video with the ROI's signal…", icon: "play", onClick: () => saveVideo() });
       if (method && state.frames > 1) items.push({ label: "Stack as TIFF…", icon: "layers", onClick: () => exportTiff(method) });
       N.menu(exportButton, items);
     }
