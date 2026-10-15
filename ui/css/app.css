@@ -301,7 +301,7 @@ table.grid-table { border-collapse: separate; border-spacing: 0; width: max-cont
 .grid-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .grid-table td.editable:hover { box-shadow: inset 0 0 0 1px var(--border-strong); border-radius: 4px; cursor: text; }
 .grid-table td.editing { padding: 0 4px; }
-.grid-table td.editing input { width: 100%; height: 28px; border: 1px solid var(--accent); border-radius: 6px; padding: 0 8px; outline: none; background: var(--surface); box-shadow: 0 0 0 3px var(--accent-soft); }
+.grid-table td.editing input, .grid-table td.editing select { width: 100%; height: 28px; border: 1px solid var(--accent); border-radius: 6px; padding: 0 8px; outline: none; background: var(--surface); box-shadow: 0 0 0 3px var(--accent-soft); }
 .grid-table td.missing { color: var(--text-3); }
 .grid-table .sel { width: 40px; padding: 0 0 0 16px; }
 .grid-table .status { width: 30px; padding: 0 4px; }
@@ -447,3 +447,9 @@ ul.notes li { margin: 4px 0; font-size: 13px; }
 .note-form-foot .spacer { flex: 1; }
 .note-form-foot .form-message { margin: 0; padding: 4px 10px; }
 .btn.icon.small { width: 26px; }
+
+/* ---------------------------------------------------------------- column menu */
+.grid-table th.src-table, .grid-table th.src-key, .grid-table th.src-attribute { padding-right: 22px; }
+.grid-table th .col-menu { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); visibility: hidden; border: 0; background: transparent; color: var(--text-3); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 3px; border-radius: 4px; }
+.grid-table th:hover .col-menu, .grid-table th .col-menu:focus { visibility: visible; }
+.grid-table th .col-menu:hover { background: var(--surface-3); color: var(--text); }

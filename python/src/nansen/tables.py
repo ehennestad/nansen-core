@@ -251,6 +251,20 @@ class EntityTable:
         for row in self._rows:
             row.update(filled)
 
+    def remove_columns(self, names: Sequence[str], fragment: Optional[str] = None) -> None:
+        """Drop columns (never key columns) and their values; with fragment, the table stops recording it."""
+        keys = sorted(set(names) & set(self.spec.key))
+        if keys:
+            raise NansenError("read-only-column", f"cannot remove key column(s) {', '.join(keys)}")
+        fragments = {i: v for i, v in self.spec.fragments.items() if i != fragment}
+        self.spec = TableSpec(self.spec.entity_type, list(self.spec.key), [c for c in self.spec.columns if c.name not in names],
+                              fragments, self.spec.file, self.spec.revision)
+        for name in names:
+            self.defaults.pop(name, None)
+        for row in self._rows:
+            for name in names:
+                row.pop(name, None)
+
     def _normalize_key(self, key: Union[Sequence[Any], Dict[str, Any]]) -> Tuple[Any, ...]:
         if isinstance(key, dict):
             return tuple(key[name] for name in self.spec.key)

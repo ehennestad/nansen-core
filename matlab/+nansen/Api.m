@@ -38,7 +38,7 @@ classdef Api < handle
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "dataset.setRoot", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -345,6 +345,7 @@ classdef Api < handle
                     nansen.internal.throwError("read-only-column", "column '%s' cannot be edited", name)
                 end
             end
+            project.checkChoices(entityType, values);
             table.updateRow(key, values);
             table.write();
             obj.emit("entities", struct("entityTypes", {{char(entityType)}}, "keys", {{key}}));
@@ -357,6 +358,7 @@ classdef Api < handle
             key = nansen.Api.param(params, "key");
             row = nansen.internal.mergeStructs(key, nansen.internal.getField(params, "values", struct()));
             table = project.table(entityType);
+            project.checkChoices(entityType, nansen.internal.getField(params, "values", struct()));
             table.addRow(row);
             table.write();
             obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
@@ -485,6 +487,29 @@ classdef Api < handle
                 obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
             end
             result = nansen.Api.fragmentSummary(project.fragment(string(document.id)));
+        end
+
+        function result = apiFragmentsDetach(obj, params)
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            project.detachFragment(entityType, string(nansen.Api.param(params, "fragmentId")));
+            obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
+            entry = project.entityType(entityType);
+            result = struct("entityType", char(entityType), ...
+                "fragments", {nansen.internal.asCellstr(nansen.internal.getField(entry, "fragments", {}))});
+        end
+
+        function result = apiColumnsReset(obj, params)
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            column = string(nansen.Api.param(params, "column"));
+            if isfield(params, "keys")
+                count = project.resetColumn(entityType, column, nansen.internal.asCellOfStructs(params.keys));
+            else
+                count = project.resetColumn(entityType, column);
+            end
+            obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
+            result = struct("reset", count);
         end
 
         function result = apiFragmentsAttach(obj, params)
@@ -739,10 +764,14 @@ classdef Api < handle
                 if isKey
                     source = 'key';
                 end
-                columns{end + 1} = struct("name", char(column.Name), "dataType", char(column.DataType), ...
+                entry = struct("name", char(column.Name), "dataType", char(column.DataType), ...
                     "title", char(nansen.internal.getField(info, "title", column.Name)), "unit", unit, ...
                     "fragment", fragment, "source", source, ...
-                    "editable", ~isKey && ~ismember(column.Fragment, computed)); %#ok<AGROW>
+                    "editable", ~isKey && ~ismember(column.Fragment, computed));
+                if isfield(info, "choices")
+                    entry.choices = nansen.internal.asCellstr(info.choices);
+                end
+                columns{end + 1} = entry; %#ok<AGROW>
             end
             dataset = project.dataset();
             if ~isempty(dataset) && ismember(entityType, dataset.entityTypes())
@@ -812,7 +841,10 @@ classdef Api < handle
                 if ismember("core", modules)
                     fragments = "core.notes";
                 end
-                project.addDatasetEntityTypes(Fragments=fragments);
+                added = project.addDatasetEntityTypes(Fragments=fragments);
+                if ismember("core", modules) && ismember("subject", added)   % as dev's subject table: date of birth, sex, species
+                    project.attachFragment("subject", "core.subject");
+                end
             end
         end
 

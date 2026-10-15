@@ -253,7 +253,7 @@ def test_a_project_without_a_dataset_offers_to_set_one_up(empty_app, page):
     page.click(".dialog-foot button:has-text('Use this dataset')")
     page.wait_for_selector(".nav a:has-text('Sessions')")
     info = api.handle({"id": 2, "method": "project.info"})["result"]
-    assert [(e["name"], e["fragments"]) for e in info["entityTypes"]] == [("subject", ["core.notes"]), ("session", ["core.notes"])]
+    assert [(e["name"], e["fragments"]) for e in info["entityTypes"]] == [("subject", ["core.notes", "core.subject"]), ("session", ["core.notes"])]
 
 
 def test_add_a_column_to_a_table_with_rows(empty_app, page):
@@ -345,3 +345,42 @@ def test_save_and_delete_a_preset(empty_app, page):
     page.click(".dialog.narrow .dialog-foot button:has-text('Delete')")
     wait_until(lambda: presets() == ["default"])
     page.wait_for_function("() => !document.querySelector(\".preset-row button[title='Delete this preset']\")")
+
+
+def test_a_column_with_choices_reset_and_removed(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    listed = lambda: api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.click(".toolbar button:has-text('Columns')")
+    page.click(".menu .item:has-text('Add a column')")
+    page.fill(".dialog .field:has-text('Column name') input", "quality")
+    page.fill(".dialog .field:has-text('Default') input", "unknown")
+    page.fill(".dialog .field:has-text('Choices') input", "good, poor")
+    page.click(".dialog-foot button:has-text('Add column')")
+    assert "not one of the choices" in page.locator(".dialog .form-message").inner_text()
+    page.fill(".dialog .field:has-text('Choices') input", "good, poor, unknown")
+    page.click(".dialog-foot button:has-text('Add column')")
+    page.wait_for_selector(".grid-table th:has-text('quality')")
+    column = next(c for c in listed()["columns"] if c["name"] == "quality")
+    assert column["choices"] == ["good", "poor", "unknown"]
+
+    index = [c["name"] for c in listed()["columns"]].index("quality")
+    cell = page.locator(".grid-table tbody tr[data-id]").first.locator("td").nth(index + 2)  # after select and status
+    cell.click()
+    page.select_option(".grid-table td.editing select", "poor")
+    wait_until(lambda: listed()["rows"][0]["values"]["quality"] == "poor")
+
+    page.hover(".grid-table th:has-text('quality')")
+    page.click(".grid-table th:has-text('quality') .col-menu")
+    page.click(".menu .item:has-text('Reset in every row')")
+    page.click(".dialog-foot button:has-text('Reset')")
+    wait_until(lambda: all(r["values"]["quality"] == "unknown" for r in listed()["rows"]))
+
+    page.hover(".grid-table th:has-text('quality')")
+    page.click(".grid-table th:has-text('quality') .col-menu")
+    page.click(".menu .item:has-text('Remove')")
+    page.click(".dialog-foot button:has-text('Remove')")
+    wait_until(lambda: "quality" not in [c["name"] for c in listed()["columns"]])
+    page.wait_for_function("() => ![...document.querySelectorAll('.grid-table th')].some((th) => th.textContent.includes('quality'))")

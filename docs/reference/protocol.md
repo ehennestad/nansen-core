@@ -65,7 +65,7 @@ Events flow from the core to the frontend:
 | `project.info` | | `{name, title, description, folder, entityTypes[{name, title, fragments, rows, records}], modules, lastScan, dataset{environment, entityTypes, locations, roots}}` |
 | `project.scan` | `listing?` (a DSM DirectoryListing, instead of the file system) | `{scannedAt, records{type: count}, roots, unmatched}` |
 | `project.sync` | `entityType?` | `{added{type: [keys]}}` |
-| `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute, editable}], rows[{key, inStore, inTable, values, issues?}]}` |
+| `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute, editable, choices?}], rows[{key, inStore, inTable, values, issues?}]}` |
 | `entities.get` | `entityType`, `key` | A row plus `locations`, `issueDetails`, `data` (data variable status) |
 | `entities.update` | `entityType`, `key`, `values` | The updated row; key and computed columns are `read-only-column` |
 | `entities.add` | `entityType`, `key`, `values?` | The new row |
@@ -78,6 +78,8 @@ Events flow from the core to the frontend:
 | `fragments.list` | | `[{id, version, title, description, computed, columns}]` |
 | `fragments.create` | `document` (a `nansen.fragment`), `entityType?` | The fragment summary; with `entityType`, it is also added to that entity type (as `fragments.attach`) |
 | `fragments.attach` | `entityType`, `fragmentId` | `{entityType, fragments}`; existing rows get the columns' defaults |
+| `fragments.detach` | `entityType`, `fragmentId` | `{entityType, fragments}`; the fragment's columns and their values leave the table |
+| `columns.reset` | `entityType`, `column`, `keys?` | `{reset}`: how many rows got the column's default again (none if it has no default); key columns are `read-only-column` |
 | `fragments.update` | `entityType`, `fragmentId`, `keys?` | `{updated, failed}` |
 | `dataVariables.list` | `entityType?` | Data variable documents |
 | `data.status` | `entityType`, `key` | `[{name, dataLocation, fileAdapter, files}]` |

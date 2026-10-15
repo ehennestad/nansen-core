@@ -63,7 +63,8 @@
               "name": "subject",
               "title": "Subjects",
               "fragments": [
-                "core.notes"
+                "core.notes",
+                "core.subject"
               ],
               "rows": 0
             },
@@ -243,7 +244,7 @@
                 "name": "subject",
                 "fragments": [
                   "core.notes",
-                  "legacy.subject"
+                  "core.subject"
                 ],
                 "rows": 2
               },
@@ -341,7 +342,7 @@
               "name": "subject",
               "fragments": [
                 "core.notes",
-                "legacy.subject"
+                "core.subject"
               ]
             },
             {
@@ -394,7 +395,7 @@
           "entityType": "subject",
           "fragments": [
             "core.notes",
-            "legacy.subject",
+            "core.subject",
             "lab.qc"
           ]
         }
@@ -495,13 +496,14 @@
             "id": "legacy.session"
           },
           {
-            "id": "legacy.subject"
-          },
-          {
             "id": "core.notes"
           },
           {
             "id": "core.file_stats"
+          },
+          {
+            "id": "core.subject",
+            "computed": false
           }
         ]
       }

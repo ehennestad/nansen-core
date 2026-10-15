@@ -197,6 +197,35 @@ classdef EntityTable < handle
             end
         end
 
+        function removeColumns(obj, names, fragmentId)
+            %removeColumns Drop columns (never key columns) and their values; with a fragment id, the table stops recording it
+            arguments
+                obj
+                names (1,:) string
+                fragmentId (1,1) string = ""
+            end
+            keys = intersect(names, obj.Key);
+            if ~isempty(keys)
+                nansen.internal.throwError("read-only-column", "cannot remove key column(s) %s", strjoin(keys, ", "))
+            end
+            present = names(ismember(names, obj.columnNames()));
+            obj.Data = removevars(obj.Data, cellstr(present));
+            obj.Columns = obj.Columns(~ismember([obj.Columns.Name], present));
+            obj.Defaults = rmfield(obj.Defaults, cellstr(intersect(string(fieldnames(obj.Defaults)), present)));
+            keep = obj.FragmentIds ~= fragmentId;
+            obj.FragmentIds = obj.FragmentIds(keep);
+            obj.FragmentVersions = obj.FragmentVersions(keep);
+        end
+
+        function fillColumn(obj, name, value)
+            %fillColumn Give every row the same value in a (non-key) column
+            column = obj.Columns([obj.Columns.Name] == name);
+            if ismember(name, obj.Key)
+                nansen.internal.throwError("read-only-column", "cannot change key column '%s'", name)
+            end
+            obj.Data.(char(name)) = repmat(nansen.internal.checkValue(value, column, false), obj.numRows(), 1);
+        end
+
         % -- reading and writing --------------------------------------------------------
 
         function write(obj, sidecarPath)

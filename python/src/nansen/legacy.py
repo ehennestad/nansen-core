@@ -38,6 +38,9 @@ METADATA = {"Subject ID": ("subject_id", "string", "subject"), "Session ID": ("s
             "Experiment Date": ("session_date", "date", "session"), "Experiment Time": ("session_time", "time", "session")}
 ID_COLUMNS = {"sessionID": "session_id", "SessionID": "session_id", "subjectID": "subject_id", "SubjectID": "subject_id"}
 NOTES = {"Ignore": "ignore", "Description": "description"}
+# dev's subject table variables, in core.subject when their type matches: dev name -> (column, type)
+SUBJECT = {"DateOfBirth": ("date_of_birth", "date"), "BiologicalSex": ("sex", "string"), "Species": ("species", "string")}
+SEXES = ("female", "male", "not detected")
 NOTE_TYPES = {"informal": "informal", "important": "important", "todo": "todo", "question": "question"}
 # Columns the dev tables filled from the folder names; the DSM attributes hold them now.
 DERIVED = {"session": {"Date": "session_date", "Time": "session_time"}}
@@ -342,11 +345,13 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
         derived = DERIVED.get(entity_type, {})
         columns = {c["name"]: c["dataType"] for c in table.get("columns", [])}
         notes = [c for c in NOTES if c in columns]
+        subject = {c: SUBJECT[c][0] for c in SUBJECT
+                   if entity_type == "subject" and columns.get(c) == SUBJECT[c][1]}
         extra: List[dict] = []
         renames: Dict[str, str] = {}
-        taken = set(key_names) | attributes | {"ignore", "description"}
+        taken = set(key_names) | attributes | {"ignore", "description"} | set(subject.values())
         for column, data_type in columns.items():
-            if column in ID_COLUMNS or column in NOTES or (column in derived and derived[column] in attributes):
+            if column in ID_COLUMNS or column in NOTES or column in subject or (column in derived and derived[column] in attributes):
                 continue
             new = _identifier(column, "column", sep="_", lower=False)
             if new in taken:
@@ -359,7 +364,7 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
             extra.append(entry)
         for skipped in table.get("skippedColumns", []):
             warnings.append(f"table '{label}': column '{skipped}' holds values with no table type; left out")
-        fragment_ids = ["core.notes"] if notes else []
+        fragment_ids = (["core.notes"] if notes else []) + (["core.subject"] if subject else [])
         if extra:
             fragment_id = f"legacy.{entity_type}"
             fragments.append({"schemaType": "nansen.fragment", "schemaVersion": "0.1.0", "id": fragment_id,
@@ -370,6 +375,7 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
         seen: set = set()
         incomplete = 0
         identities: Dict[int, Tuple[Any, ...]] = {}  # row index -> identity, for the notes
+        odd_sexes = 0
         for index, legacy_row in enumerate(table.get("rows", [])):
             row: Dict[str, Any] = {}
             for column, value in legacy_row.items():
@@ -377,6 +383,16 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
                     row[ID_COLUMNS[column]] = value
                 elif column in NOTES:
                     row[NOTES[column]] = value
+                elif column in subject:
+                    if column == "BiologicalSex" and value is not None:
+                        text = str(value).strip().lower()
+                        if text in ("", "n/a", "na"):
+                            value = None
+                        elif text in SEXES:
+                            value = text
+                        else:
+                            odd_sexes += 1  # kept as written
+                    row[subject[column]] = value
                 elif column in renames:
                     row[renames[column]] = value
             if row.get("description") == "":
@@ -393,7 +409,9 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
                 continue
             seen.add(identity)
             rows.append({k: v for k, v in row.items() if k in key_names or k in ("ignore", "description")
-                         or k in renames.values()})
+                         or k in renames.values() or k in subject.values()})
+        if odd_sexes:
+            warnings.append(f"table '{label}': {odd_sexes} BiologicalSex value(s) not among {', '.join(SEXES)}; kept as written")
         if incomplete:
             warnings.append(f"table '{label}': {incomplete} row(s) with no {' or '.join(key_names)}; left out")
         notes = _notes(table, identities, key_names, label, warnings)

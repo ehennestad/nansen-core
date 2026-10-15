@@ -80,6 +80,12 @@ Run a method now with `project.run(methodId, entities, Options=…, Preset=…)`
 
 **Presets** are named option sets saved in `options/<methodId>/<name>.options.nansen.json` (`nansen.options`). Use `savePreset` / `save_preset`, `presets` and `deletePreset` / `delete_preset`, or the run dialog.
 
+## Columns with choices
+
+A string column of a fragment can list its `choices`: `entities.update` and `entities.add` refuse other values (none is always allowed) with `invalid-value`, and the dashboard edits it with a list. The CSV is read as written, so a value typed in by hand stays. `core.subject` has one: `sex` is `female`, `male` or `not detected`, as in dev.
+
+A fragment can be taken off an entity type again with `detachFragment` / `detach_fragment` (`fragments.detach`): its columns and their values leave the table. `resetColumn` / `reset_column` (`columns.reset`) gives a column its default again, in some rows or all.
+
 ## Computed fragments
 
 A fragment with `compute.method` is computed: its columns are filled by that method instead of typed in. The method returns a struct or dict with a value per column. `updateFragment(entityType, fragmentId)` / `update_fragment` runs it for every row, or for the given keys, and writes the table. In the dashboard, computed columns are read-only. This replaces NANSEN's table variables with update functions.

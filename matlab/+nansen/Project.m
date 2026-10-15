@@ -930,6 +930,86 @@ classdef Project < handle
             end
         end
 
+        function table = detachFragment(obj, entityType, fragmentId)
+            %detachFragment Take a fragment off an entity type: its columns, and their values, leave the table
+            arguments
+                obj
+                entityType (1,1) string
+                fragmentId (1,1) string
+            end
+            entry = obj.entityType(entityType);
+            listed = string(nansen.internal.asCellstr(nansen.internal.getField(entry, "fragments", {})));
+            if ~ismember(fragmentId, listed)
+                nansen.internal.throwError("unknown-fragment", "%s has no fragment '%s'", entityType, fragmentId)
+            end
+            table = obj.table(entityType);
+            table.removeColumns([table.Columns([table.Columns.Fragment] == fragmentId).Name], fragmentId);
+            table.write();
+            entry.fragments = cellstr(listed(listed ~= fragmentId));
+            document = obj.Document;
+            document.entityTypes{obj.EntityTypes == entityType} = entry;
+            obj.writeDocument(document);
+        end
+
+        function count = resetColumn(obj, entityType, column, keys)
+            %resetColumn Give a column its default again (none when it has none), in the given rows (a cell of keys) or all
+            table = obj.table(entityType);
+            column = string(column);
+            if ~ismember(column, table.columnNames())
+                nansen.internal.throwError("unknown-column", "%s has no column '%s'", entityType, column)
+            end
+            if ismember(column, table.Key)
+                nansen.internal.throwError("read-only-column", "cannot reset key column '%s'", column)
+            end
+            default = nansen.internal.getField(table.Defaults, column, []);
+            if nargin < 4
+                table.fillColumn(column, default);
+                count = table.numRows();
+            else
+                for i = 1:numel(keys)
+                    if ~table.hasRow(keys{i})
+                        nansen.internal.throwError("unknown-entity", "no row with this key")
+                    end
+                end
+                for i = 1:numel(keys)
+                    table.updateRow(keys{i}, struct(column, {default}));
+                end
+                count = numel(keys);
+            end
+            table.write();
+        end
+
+        function choices = columnChoices(obj, entityType)
+            %columnChoices The choices of the entity type's columns that have them (a struct: column -> string row)
+            choices = struct();
+            entry = obj.entityType(entityType);
+            for fragmentId = string(nansen.internal.asCellstr(nansen.internal.getField(entry, "fragments", {})))
+                for column = nansen.internal.asCellOfStructs(obj.fragment(fragmentId).Document.columns)
+                    if isfield(column{1}, "choices")
+                        choices.(column{1}.name) = reshape(string(nansen.internal.asCellstr(column{1}.choices)), 1, []);
+                    end
+                end
+            end
+        end
+
+        function checkChoices(obj, entityType, values)
+            %checkChoices invalid-value when a value is not among its column's choices (none is always allowed)
+            choices = obj.columnChoices(entityType);
+            for name = reshape(string(fieldnames(choices)), 1, [])
+                if ~isfield(values, name)
+                    continue
+                end
+                value = values.(name);
+                if (isnumeric(value) && isempty(value)) || (isstring(value) && isscalar(value) && ismissing(value))
+                    continue   % none; "" is a value, and has to be a choice
+                end
+                if ~(ischar(value) || isstring(value)) || ~ismember(string(value), choices.(name))
+                    nansen.internal.throwError("invalid-value", "'%s' is one of %s, not '%s'", name, ...
+                        strjoin(choices.(name), ", "), string(value))
+                end
+            end
+        end
+
         function table = attachFragment(obj, entityType, fragmentId)
             %attachFragment Add a fragment to an entity type that may already have rows; they get the columns' defaults
             arguments

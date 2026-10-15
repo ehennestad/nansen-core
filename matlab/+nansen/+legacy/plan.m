@@ -427,12 +427,24 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
             end
         end
         hasNotes = any(ismember(["Ignore", "Description"], columnNames));
+        % dev's subject table variables, in core.subject when their type matches
+        subject = struct();
+        if entityType == "subject"
+            known = ["DateOfBirth", "date_of_birth", "date"; "BiologicalSex", "sex", "string"; "Species", "species", "string"];
+            for k = 1:size(known, 1)
+                at = find(columnNames == known(k, 1), 1);
+                if ~isempty(at) && columnTypes(at) == known(k, 3)
+                    subject.(known(k, 1)) = known(k, 2);
+                end
+            end
+        end
+        subjectNames = string(struct2cell(subject))';
         extra = {};
         renames = struct();
-        taken = [keyNames, attributes, "ignore", "description"];
+        taken = [keyNames, attributes, "ignore", "description", subjectNames];
         for c = 1:numel(columnNames)
             column = columnNames(c);
-            if isfield(idColumns, column) || isfield(notesColumns, column) ...
+            if isfield(idColumns, column) || isfield(notesColumns, column) || isfield(subject, column) ...
                     || (isfield(derived, column) && ismember(derived.(column), attributes))
                 continue
             end
@@ -456,6 +468,9 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
         if hasNotes
             fragmentIds{end + 1} = 'core.notes'; %#ok<AGROW>
         end
+        if ~isempty(subjectNames)
+            fragmentIds{end + 1} = 'core.subject'; %#ok<AGROW>
+        end
         if ~isempty(extra)
             fragmentId = "legacy." + entityType;
             fragments{end + 1} = struct("schemaType", 'nansen.fragment', "schemaVersion", '0.1.0', ...
@@ -469,6 +484,7 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
         renamed = string(struct2cell(renames))';
         legacyRows = nansen.internal.asCellOfStructs(table.rows);
         identities = cell(1, numel(legacyRows));   % per row, its identity, for the notes
+        oddSexes = 0;
         for index = 1:numel(legacyRows)
             legacyRow = legacyRows{index};
             row = struct();
@@ -478,6 +494,18 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
                     row.(idColumns.(column)) = value;
                 elseif isfield(notesColumns, column)
                     row.(notesColumns.(column)) = value;
+                elseif isfield(subject, column)
+                    if column == "BiologicalSex" && (ischar(value) || isstring(value))
+                        text = lower(strtrim(string(value)));
+                        if ismember(text, ["", "n/a", "na"])
+                            value = [];
+                        elseif ismember(text, sexes())
+                            value = char(text);
+                        else
+                            oddSexes = oddSexes + 1;   % kept as written
+                        end
+                    end
+                    row.(subject.(column)) = value;
                 elseif isfield(renames, column)
                     row.(renames.(column)) = value;
                 end
@@ -509,12 +537,16 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
                 continue
             end
             seen(end + 1) = identityText; %#ok<AGROW>
-            keep = [keyNames, "ignore", "description", renamed];
+            keep = [keyNames, "ignore", "description", renamed, subjectNames];
             fields = string(fieldnames(row))';
             if any(~ismember(fields, keep))
                 row = rmfield(row, cellstr(fields(~ismember(fields, keep))));
             end
             rows{end + 1} = row; %#ok<AGROW>
+        end
+        if oddSexes
+            warnings{end + 1} = sprintf("table '%s': %d BiologicalSex value(s) not among %s; kept as written", ...
+                label, oddSexes, strjoin(sexes(), ", ")); %#ok<AGROW>
         end
         if incomplete
             warnings{end + 1} = sprintf("table '%s': %d row(s) with no %s; left out", label, incomplete, ...
@@ -653,4 +685,9 @@ end
 function out = regexEscape(value)
     % As Python's re.escape: a backslash before each character that is special in a pattern
     out = string(regexprep(char(value), '([()\[\]{}?*+\-|^$\\.&~# \t\n\r\v\f])', '\\$1'));
+end
+
+function values = sexes()
+    % core.subject's choices for sex
+    values = ["female", "male", "not detected"];
 end

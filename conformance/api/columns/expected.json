@@ -1,0 +1,4 @@
+{
+  "description": "Column management: a column with choices refuses other values (\"\" too) but takes none, a choice list on a non-string column is invalid, reset gives a column its default in some rows or all, a key column cannot be reset, and detaching a fragment takes its columns and values away (attaching it again gives the defaults).",
+  "steps": 19
+}

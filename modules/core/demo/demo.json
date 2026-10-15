@@ -34,7 +34,8 @@
       "name": "subject",
       "title": "Subjects",
       "fragments": [
-        "core.notes"
+        "core.notes",
+        "core.subject"
       ]
     },
     {

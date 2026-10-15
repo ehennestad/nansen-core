@@ -5,6 +5,7 @@
     "schemaVersion": "0.1.0",
     "name": "RatNav",
     "title": "Rat Navigation",
+    "description": "Imported from dev",
     "dataset": "dataset.dsm.json",
     "entityTypes": [
       {
@@ -12,7 +13,7 @@
         "title": "Subjects",
         "fragments": [
           "core.notes",
-          "legacy.subject"
+          "core.subject"
         ]
       },
       {
@@ -24,7 +25,6 @@
         ]
       }
     ],
-    "description": "Imported from dev",
     "modules": [
       {
         "id": "core"
@@ -215,23 +215,6 @@
           "default": false
         }
       ]
-    },
-    {
-      "schemaType": "nansen.fragment",
-      "schemaVersion": "0.1.0",
-      "id": "legacy.subject",
-      "version": "1.0.0",
-      "title": "Columns imported from the Subjects table",
-      "columns": [
-        {
-          "name": "DateOfBirth",
-          "dataType": "date"
-        },
-        {
-          "name": "BiologicalSex",
-          "dataType": "string"
-        }
-      ]
     }
   ],
   "dataVariables": [
@@ -265,23 +248,26 @@
         "subject_id",
         "ignore",
         "description",
-        "DateOfBirth",
-        "BiologicalSex"
+        "date_of_birth",
+        "sex",
+        "species"
       ],
       "rows": [
         {
           "subject_id": "m110",
           "ignore": false,
           "description": "Head-fixed",
-          "DateOfBirth": "2024-11-01",
-          "BiologicalSex": "female"
+          "date_of_birth": "2024-11-01",
+          "sex": "female",
+          "species": null
         },
         {
           "subject_id": "m111",
           "ignore": false,
           "description": null,
-          "DateOfBirth": null,
-          "BiologicalSex": "male"
+          "date_of_birth": null,
+          "sex": "unknown",
+          "species": null
         }
       ]
     },
@@ -335,7 +321,8 @@
     "table 'Sessions': 1 row(s) with no subject_id or session_id; left out",
     "table 'Sessions': a note of type 'Reminder' is imported as informal",
     "table 'Sessions': 1 note(s) on rows that were left out; left out",
-    "table 'Sessions': 1 note(s) with no time; left out"
+    "table 'Sessions': 1 note(s) with no time; left out",
+    "table 'Subjects': 1 BiologicalSex value(s) not among female, male, not detected; kept as written"
   ],
   "notebooks": [
     {

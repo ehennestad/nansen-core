@@ -80,8 +80,8 @@
         { "name": "BiologicalSex", "dataType": "string" }, { "name": "Description", "dataType": "string" }
       ],
       "rows": [
-        { "SubjectID": "m110", "DateOfBirth": "2024-11-01", "BiologicalSex": "female", "Description": "Head-fixed" },
-        { "SubjectID": "m111", "DateOfBirth": null, "BiologicalSex": "male", "Description": null }
+        { "SubjectID": "m110", "DateOfBirth": "2024-11-01", "BiologicalSex": "Female", "Description": "Head-fixed" },
+        { "SubjectID": "m111", "DateOfBirth": null, "BiologicalSex": "unknown", "Description": null }
       ],
       "notes": [
         { "row": 0, "createdAt": "2025-04-02T15:30:00", "author": "ana", "type": "Question", "title": "Window clear?", "text": "Check at week 6 #window" }

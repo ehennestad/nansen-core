@@ -201,7 +201,9 @@ class Api:
             project.add_module(module)
         if params.get("entityTypes"):
             core = any(m["id"] == "core" for m in project.document.get("modules", []))
-            project.add_dataset_entity_types(["core.notes"] if core else [])
+            added = project.add_dataset_entity_types(["core.notes"] if core else [])
+            if core and "subject" in added:  # as dev's subject table: date of birth, sex, species
+                project.attach_fragment("subject", "core.subject")
 
     def dataset__setRoot(self, params: dict) -> dict:
         """Where a data location is on this machine (or in the given environment)."""
@@ -311,6 +313,8 @@ class Api:
                             "title": info.get("title", column.name), "unit": column.unit or info.get("unit"),
                             "fragment": column.fragment, "source": "key" if is_key else "table",
                             "editable": not is_key and column.fragment not in computed})
+            if "choices" in info:
+                columns[-1]["choices"] = list(info["choices"])
         dataset = project.dataset
         if dataset is not None and entity_type in dataset.entity_types:
             definitions = dataset.config.definitions
@@ -343,6 +347,7 @@ class Api:
         for name in params["values"]:
             if name not in editable:
                 raise NansenError("read-only-column", f"column {name!r} cannot be edited")
+        project.check_choices(params["entityType"], params["values"])
         table.update(key, **params["values"])
         table.write()
         self.emit("entities", {"entityTypes": [params["entityType"]], "keys": [key]})
@@ -352,6 +357,7 @@ class Api:
     def entities__add(self, params: dict) -> dict:
         project = self._require_project()
         table = project.table(params["entityType"])
+        project.check_choices(params["entityType"], params.get("values", {}))
         table.add(dict(params["key"], **params.get("values", {})))
         table.write()
         self.emit("entities", {"entityTypes": [params["entityType"]]})
@@ -454,6 +460,18 @@ class Api:
         project.attach_fragment(params["entityType"], params["fragmentId"])
         self.emit("entities", {"entityTypes": [params["entityType"]]})
         return {"entityType": params["entityType"], "fragments": project.entity_type(params["entityType"])["fragments"]}
+
+    def fragments__detach(self, params: dict) -> dict:
+        project = self._require_project()
+        project.detach_fragment(params["entityType"], params["fragmentId"])
+        self.emit("entities", {"entityTypes": [params["entityType"]]})
+        return {"entityType": params["entityType"], "fragments": project.entity_type(params["entityType"]).get("fragments", [])}
+
+    def columns__reset(self, params: dict) -> dict:
+        project = self._require_project()
+        count = project.reset_column(params["entityType"], params["column"], params.get("keys"))
+        self.emit("entities", {"entityTypes": [params["entityType"]]})
+        return {"reset": count}
 
     def fragments__update(self, params: dict) -> dict:
         project = self._require_project()

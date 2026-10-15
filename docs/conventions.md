@@ -88,6 +88,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `key-mismatch` | A table's key differs from the identity the dataset gives its entity type |
 | `unknown-entity` | No entity of the type has the given key |
 | `cannot-open` | The system's file browser could not be started for a folder |
+| `unknown-column` | The entity type's table has no column of that name |
 | `unknown-note` | The entity type's notebook has no note with that id |
 | `unknown-location` | The dataset has no root for the data location in the active environment |
 | `read-only-column` | A key column, or a column of a computed fragment, cannot be edited |

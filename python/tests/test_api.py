@@ -110,7 +110,7 @@ def test_a_project_gets_its_dataset_later(tmp_path):
     api.handle({"id": 1, "method": "project.create", "params": {"path": str(tmp_path / "p"), "name": "P", "modules": ["core"]}})
     info = api.handle({"id": 2, "method": "project.setDataset", "params": {
         "datasetSource": str(demo_dir() / "dataset.dsm.json"), "entityTypes": True}})["result"]
-    assert [(e["name"], e["fragments"]) for e in info["entityTypes"]] == [("subject", ["core.notes"]), ("session", ["core.notes"])]
+    assert [(e["name"], e["fragments"]) for e in info["entityTypes"]] == [("subject", ["core.notes", "core.subject"]), ("session", ["core.notes"])]
     again = api.handle({"id": 3, "method": "project.setDataset", "params": {"datasetSource": str(demo_dir() / "dataset.dsm.json")}})
     assert again["error"]["code"] == "dataset-exists"
     api.close()
@@ -146,4 +146,39 @@ def test_files_resolve_and_reveal_stay_inside_the_project(tmp_path):
         assert api.handle({"id": 3, "method": "files.resolve", "params": bad})["error"]["code"] == "invalid-params"
     assert api.handle({"id": 4, "method": "files.reveal", "params": {"path": "nothing/here"}})["error"]["code"] == "file-not-found"
     assert len(opened) == 1
+    api.close()
+
+
+def test_choices_detach_and_reset(tmp_path):
+    from nansen.demo import create_demo
+
+    api = Api(project=create_demo(tmp_path / "demo"), start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    fragment = {"schemaType": "nansen.fragment", "schemaVersion": "0.1.0", "id": "qc", "version": "1.0.0",
+                "columns": [{"name": "quality", "dataType": "string", "choices": ["good", "poor"]},
+                            {"name": "checked", "dataType": "boolean", "default": False}]}
+    assert call("fragments.create", document=fragment, entityType="session")["result"]["id"] == "qc"
+    rows = call("entities.list", entityType="session")["result"]
+    quality = next(c for c in rows["columns"] if c["name"] == "quality")
+    assert quality["choices"] == ["good", "poor"] and quality["editable"]
+    key = rows["rows"][0]["key"]
+    assert call("entities.update", entityType="session", key=key, values={"quality": "poor"})["result"]["values"]["quality"] == "poor"
+    assert call("entities.update", entityType="session", key=key, values={"quality": "great"})["error"]["code"] == "invalid-value"
+    assert call("entities.update", entityType="session", key=key, values={"quality": None})["result"]["values"]["quality"] is None
+    bad = dict(fragment, id="bad", columns=[{"name": "n", "dataType": "integer", "choices": ["1"]}])
+    assert call("fragments.create", document=bad)["error"]["code"] == "schema-validation"
+
+    call("entities.update", entityType="session", key=key, values={"checked": True, "description": "x"})
+    assert call("columns.reset", entityType="session", column="checked", keys=[key])["result"] == {"reset": 1}
+    assert call("columns.reset", entityType="session", column="description")["result"]["reset"] == 14
+    values = call("entities.get", entityType="session", key=key)["result"]["values"]
+    assert values["checked"] is False and values["description"] is None
+    assert call("columns.reset", entityType="session", column="session_id")["error"]["code"] == "read-only-column"
+    assert call("columns.reset", entityType="session", column="nope")["error"]["code"] == "unknown-column"
+
+    assert call("fragments.detach", entityType="session", fragmentId="qc")["result"]["fragments"] == ["core.notes", "core.file_stats"]
+    names = [c["name"] for c in call("entities.list", entityType="session")["result"]["columns"]]
+    assert "quality" not in names and "checked" not in names
+    assert call("fragments.detach", entityType="session", fragmentId="qc")["error"]["code"] == "unknown-fragment"
+    assert call("fragments.attach", entityType="session", fragmentId="qc")["result"]  # and back, with defaults
     api.close()

@@ -1,0 +1,373 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.create",
+        "id": 2,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "qc",
+            "version": "1.0.0",
+            "columns": [
+              {
+                "name": "quality",
+                "dataType": "string",
+                "choices": [
+                  "good",
+                  "poor"
+                ]
+              },
+              {
+                "name": "checked",
+                "dataType": "boolean",
+                "default": false
+              }
+            ]
+          },
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "qc"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 3,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "quality": "poor",
+            "checked": true
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "quality": "poor",
+            "checked": true
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 4,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "quality": "great"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-value"
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 5,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "quality": ""
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-value"
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 6,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "quality": null
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "quality": null
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.create",
+        "id": 7,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "bad",
+            "version": "1.0.0",
+            "columns": [
+              {
+                "name": "n",
+                "dataType": "integer",
+                "choices": [
+                  "1"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "schema-validation"
+      }
+    },
+    {
+      "request": {
+        "method": "columns.reset",
+        "id": 8,
+        "params": {
+          "entityType": "session",
+          "column": "checked",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "reset": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 9,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "checked": false
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 10,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "description": "x"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "description": "x"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "columns.reset",
+        "id": 11,
+        "params": {
+          "entityType": "session",
+          "column": "description"
+        }
+      },
+      "expect": {
+        "result": {
+          "reset": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 12,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "description": null
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "columns.reset",
+        "id": 13,
+        "params": {
+          "entityType": "session",
+          "column": "session_id"
+        }
+      },
+      "expect": {
+        "error": "read-only-column"
+      }
+    },
+    {
+      "request": {
+        "method": "columns.reset",
+        "id": 14,
+        "params": {
+          "entityType": "session",
+          "column": "nope"
+        }
+      },
+      "expect": {
+        "error": "unknown-column"
+      }
+    },
+    {
+      "request": {
+        "method": "columns.reset",
+        "id": 15,
+        "params": {
+          "entityType": "session",
+          "column": "checked",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "nope"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "unknown-entity"
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.detach",
+        "id": 16,
+        "params": {
+          "entityType": "session",
+          "fragmentId": "qc"
+        }
+      },
+      "expect": {
+        "result": {
+          "entityType": "session"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.detach",
+        "id": 17,
+        "params": {
+          "entityType": "session",
+          "fragmentId": "qc"
+        }
+      },
+      "expect": {
+        "error": "unknown-fragment"
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.attach",
+        "id": 18,
+        "params": {
+          "entityType": "session",
+          "fragmentId": "qc"
+        }
+      },
+      "expect": {
+        "result": {
+          "entityType": "session"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 19,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "quality": null,
+            "checked": false
+          }
+        }
+      }
+    }
+  ]
+}

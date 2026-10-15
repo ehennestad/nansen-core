@@ -89,6 +89,7 @@
       onEdit: (row, column, value) => app.client.request("entities.update",
         { entityType, key: row.key, values: { [column.name]: value } }),
       onSelection: (rows) => renderSelection(rows),
+      onColumnMenu: (column, anchor) => columnMenu(column, anchor),
     });
     app.currentGrid = grid;
 
@@ -132,6 +133,46 @@
       columnsButton,
       app.project.dataset ? h("button.btn", { on: { click: () => app.sync(entityType) } }, N.icon("sync"), "Sync") : null,
       h("button.btn.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play"), "Run method"));
+
+    function columnMenu(column, anchor) {
+      const items = [{ heading: column.title || column.name },
+        { label: "Sort A → Z", icon: "sort-asc", onClick: () => grid.sortBy(column.name, 1) },
+        { label: "Sort Z → A", icon: "sort-desc", onClick: () => grid.sortBy(column.name, -1) },
+        { label: "Hide column", icon: "eye-off", onClick: () => grid.toggleColumn(column.name) }];
+      if (column.source === "table") {
+        const selected = grid.selectedRows().filter((r) => r.inTable);
+        const reset = async (rows) => {
+          const which = rows ? `${rows.length} selected row(s)` : "every row";
+          if (!(await N.confirm("Reset the column?", `${column.title || column.name} goes back to its default in ${which}.`, "Reset", "danger"))) return;
+          const params = { entityType, column: column.name };
+          if (rows) params.keys = rows.map((r) => r.key);
+          try {
+            const result = await app.client.request("columns.reset", params);
+            N.toast("Column reset", `${result.reset} row(s)`, "success");
+            app.reloadEntities();
+          } catch (error) { N.showError(error, "Could not reset the column"); }
+        };
+        items.push({ heading: "Values" });
+        if (selected.length) items.push({ label: `Reset in ${selected.length} selected row(s)`, icon: "refresh", onClick: () => reset(selected) });
+        items.push({ label: "Reset in every row", icon: "refresh", onClick: () => reset(null) });
+        if (column.fragment) {
+          const fragment = (app.fragments || []).find((f) => f.id === column.fragment) || { id: column.fragment, title: column.fragment, columns: [column] };
+          const names = fragment.columns.map((c) => c.title || c.name).join(", ");
+          items.push({ heading: "Columns" }, { label: `Remove ${fragment.title}…`, icon: "trash", onClick: async () => {
+            const message = `The column(s) ${names} and every value in them are removed from the ${type.title || entityType} table. ` +
+              "The fragment can be added again from the Columns menu, with its defaults.";
+            if (!(await N.confirm(`Remove ${fragment.title}?`, message, "Remove", "danger"))) return;
+            try {
+              await app.client.request("fragments.detach", { entityType, fragmentId: fragment.id });
+              await app.reloadProject();
+              app.render();
+              N.toast("Columns removed", fragment.title, "success");
+            } catch (error) { N.showError(error, "Could not remove the columns"); }
+          } });
+        }
+      }
+      N.menu(anchor, items);
+    }
 
     function updateMenu(anchor) {
       N.menu(anchor, [{ heading: "Recompute" }].concat(computed.map((f) => ({
@@ -729,6 +770,7 @@
         title: { type: "string", title: "Title" },
         dataType: { type: "string", title: "Type", enum: ["string", "number", "integer", "boolean", "date", "datetime"], default: "string" },
         default: { type: "string", title: "Default", description: "For existing and new rows; empty for none (yes/no columns: true or false, else false)" },
+        choices: { type: "string", title: "Choices", description: "Text columns only: the values it may take, separated by commas; empty for any text" },
         description: { type: "string", title: "Description" },
       } },
       submit: async (values) => {
@@ -742,6 +784,13 @@
           if (!Number.isFinite(number) || (values.dataType === "integer" && !Number.isInteger(number))) throw new Error(`Default: ${text} is not a${values.dataType === "integer" ? "n integer" : " number"}`);
           column.default = number;
         } else if (text !== undefined) column.default = text;
+        const choices = (values.choices || "").split(",").map((c) => c.trim()).filter(Boolean);
+        if (choices.length) {
+          if (values.dataType !== "string") throw new Error("Choices: only a text column can have choices");
+          if (new Set(choices).size !== choices.length) throw new Error("Choices: a choice is listed twice");
+          if (column.default !== undefined && !choices.includes(column.default)) throw new Error(`Default: ${column.default} is not one of the choices`);
+          column.choices = choices;
+        }
         const document = { schemaType: "nansen.fragment", schemaVersion: "0.1.0",
           id: `columns.${entityType.toLowerCase()}_${values.name.toLowerCase()}`, version: "1.0.0",
           title: values.title || values.name, columns: [column] };

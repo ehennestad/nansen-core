@@ -154,6 +154,22 @@ class Project:
         self.entity_type(entity_type)
         return Notebook(self.notebook_path(entity_type), entity_type, self.table(entity_type).spec.key)
 
+    def column_choices(self, entity_type: str) -> Dict[str, List[str]]:
+        """The choices of the entity type's columns that have them, from their fragments."""
+        choices: Dict[str, List[str]] = {}
+        for fragment_id in self.entity_type(entity_type).get("fragments", []):
+            for column in self.fragment(fragment_id).document["columns"]:
+                if "choices" in column:
+                    choices[column["name"]] = list(column["choices"])
+        return choices
+
+    def check_choices(self, entity_type: str, values: Dict[str, Any]) -> None:
+        """Raise invalid-value when a value is not among its column's choices (none is always allowed)."""
+        for name, allowed in self.column_choices(entity_type).items():
+            value = values.get(name)
+            if value is not None and value not in allowed:
+                raise NansenError("invalid-value", f"{name!r} is one of {', '.join(allowed)}, not {value!r}")
+
     def add_entity_type(
         self,
         name: str,
@@ -626,6 +642,35 @@ class Project:
         entry["fragments"] = list(entry.get("fragments", [])) + [fragment_id]
         self._check_and_save()
         return table
+
+    def detach_fragment(self, entity_type: str, fragment_id: str) -> EntityTable:
+        """Take a fragment off an entity type: its columns, and their values, leave the table."""
+        entry = self.entity_type(entity_type)
+        if fragment_id not in entry.get("fragments", []):
+            raise NansenError("unknown-fragment", f"{entity_type} has no fragment {fragment_id!r}")
+        table = self.table(entity_type)
+        table.remove_columns([c.name for c in table.spec.columns if c.fragment == fragment_id], fragment_id)
+        table.write()
+        entry["fragments"] = [f for f in entry["fragments"] if f != fragment_id]
+        self._check_and_save()
+        return table
+
+    def reset_column(self, entity_type: str, column: str, keys: Optional[List[Dict[str, Any]]] = None) -> int:
+        """Give a column its default again (none when it has none), in the given rows or all; returns how many."""
+        table = self.table(entity_type)
+        if column not in table.spec.column_names:
+            raise NansenError("unknown-column", f"{entity_type} has no column {column!r}")
+        if column in table.spec.key:
+            raise NansenError("read-only-column", f"cannot reset key column {column!r}")
+        targets = keys if keys is not None else [dict(zip(table.spec.key, table.key_of(row))) for row in table.rows]
+        for key in targets:
+            if not table.has(key):
+                raise NansenError("unknown-entity", f"no row with key {key}")
+        default = table.defaults.get(column)
+        for key in targets:
+            table.update(key, **{column: default})
+        table.write()
+        return len(targets)
 
     def _check_and_save(self) -> None:
         self.document = check_document(self.document, "nansen.project")

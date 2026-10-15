@@ -1,0 +1,27 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "core.subject",
+  "version": "1.0.0",
+  "title": "Subject",
+  "description": "Who the subject is: date of birth, sex and species, as dev's subject table has them.",
+  "columns": [
+    {
+      "name": "date_of_birth",
+      "dataType": "date",
+      "title": "Date of birth"
+    },
+    {
+      "name": "sex",
+      "dataType": "string",
+      "title": "Sex",
+      "choices": ["female", "male", "not detected"]
+    },
+    {
+      "name": "species",
+      "dataType": "string",
+      "title": "Species",
+      "description": "Ideally an openMINDS species term, such as mus musculus"
+    }
+  ]
+}

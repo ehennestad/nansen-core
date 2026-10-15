@@ -51,10 +51,19 @@
         "default": {
           "type": ["string", "number", "boolean", "null"],
           "description": "Value given to existing rows when the fragment is added, and to new rows. Dates and datetimes are written as in the CSV format."
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string" },
+          "description": "For a string column: the values it may take (besides none). The app edits it with a list, and the API refuses other values. The CSV is read as written."
         }
       },
-      "if": { "properties": { "dataType": { "const": "boolean" } } },
-      "then": { "required": ["default"] }
+      "allOf": [
+        { "if": { "properties": { "dataType": { "const": "boolean" } } }, "then": { "required": ["default"] } },
+        { "if": { "required": ["choices"] }, "then": { "properties": { "dataType": { "const": "string" } } } }
+      ]
     },
     "dataType": {
       "type": "string",

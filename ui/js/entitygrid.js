@@ -20,8 +20,9 @@
   }
 
   class EntityGrid {
-    constructor({ onOpen, onEdit, onSelection }) {
+    constructor({ onOpen, onEdit, onSelection, onColumnMenu }) {
       this.onOpen = onOpen;
+      this.onColumnMenu = onColumnMenu;
       this.onEdit = onEdit;
       this.onSelection = onSelection;
       this.data = null;
@@ -121,9 +122,13 @@
             on: { click: () => this.toggleSort(c.name) },
           }, c.source === "table" && !c.editable ? h("span.fx", "fx") : null, c.title || c.name,
           c.unit ? h("span.unit", ` (${c.unit})`) : null,
-          sorted ? h("span.sort", this.sort.dir > 0 ? "▲" : "▼") : null);
+          sorted ? h("span.sort", this.sort.dir > 0 ? "▲" : "▼") : null,
+          this.onColumnMenu ? h("button.col-menu", { title: "Column menu", "aria-label": `Menu of ${c.title || c.name}`,
+            on: { click: (e) => { e.stopPropagation(); this.onColumnMenu(c, e.currentTarget); } } }, "⋮") : null);
         })));
     }
+
+    sortBy(name, dir) { this.sort = dir ? { name, dir } : null; this.refresh(); }
 
     toggleSort(name) {
       if (!this.sort || this.sort.name !== name) this.sort = { name, dir: 1 };
@@ -201,7 +206,10 @@
       if (td.classList.contains("editing")) return;
       const value = row.values[column.name];
       const type = { integer: "number", number: "number", date: "date" }[column.dataType] || "text";
-      const input = h("input", { type, value: value === null || value === undefined ? "" : String(value) });
+      const input = column.choices
+        ? h("select", [h("option", { value: "" }, "—"), column.choices.map((c) => h("option", { value: c, selected: c === value }, c))])
+        : h("input", { type, value: value === null || value === undefined ? "" : String(value) });
+      if (column.choices) input.addEventListener("change", () => input.blur());
       if (column.dataType === "datetime") input.placeholder = "YYYY-MM-DDTHH:MM:SS";
       N.clear(td);
       td.classList.add("editing");

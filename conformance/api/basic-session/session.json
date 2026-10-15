@@ -465,6 +465,10 @@
           {
             "id": "core.file_stats",
             "computed": true
+          },
+          {
+            "id": "core.subject",
+            "computed": false
           }
         ]
       }
