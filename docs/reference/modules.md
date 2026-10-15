@@ -58,7 +58,7 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 | `ophys.fov_region` | Computes the `brain_region` column: the atlas region at the FOV's position |
 | `ophys.caiman_deconvolution` | CaImAn's constrained foopsi (Python) or OASIS through deconvolveCa (MATLAB), when installed |
 | `ophys.extract` | MATLAB: cells and traces by EXTRACT, when it is on the path |
-| `ophys.flowreg` | MATLAB: non-rigid motion correction by Flow-Registration, when it is on the path |
+| `ophys.flowreg` | Non-rigid motion correction by Flow-Registration: the MATLAB toolbox when it is on the path, pyflowreg (its Python port) in Python; both run in CI |
 | `ophys.suite2p` | Python: runs suite2p, when it is installed, and saves its cells and signals in the same variables |
 | `ophys.normcorre` | MATLAB: rigid or piecewise rigid motion correction with NoRMCorre, when it is on the path |
 | `ophys.open_in_imviewer` | MATLAB R2024b or older (imviewer uses Java figures), run by hand: opens a stack in dev's imviewer, when it and the Widgets Toolbox are on the path |

@@ -39,6 +39,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - Motion correction prepares resonant-scanner recordings as dev does: flyback rows left out, the back-scanned lines' offset corrected (once or per chunk), and the aligned stack optionally written as uint8 or uint16.
 - The viewer also draws polygon ROIs, grows and shrinks the selected ROI by a pixel, and undoes and redoes ROI edits (Ctrl+Z, Ctrl+Shift+Z: `rois.update` takes `restore` and `pixels`). It shows standard deviation and local correlation projections (`data.frame`, the same bytes in both languages) with a choice of colormaps, sorts the gallery by largest ΔF/F peak, and exports frames of the stack as a TIFF file (`ophys.export_tiff`, a chunk at a time; TIFF stacks can now be written a chunk at a time, `create`).
 - ΔF/F by dev's other methods too (`chen2013`, `dffMinusNeuropil`), with an optional running-percentile drift correction, checked against the ground truth in both languages. Signal plots show time in seconds when the session has a `frame_rate` (`data.traces` gives `frameRate`).
+- Flow-Registration in Python too (`ophys.flowreg` with pyflowreg), run against the real tool in CI.
 - A project shared in a git repository (on GitHub, say) is installed from the Projects page, as dev's installProject (`catalog.install`).
 - `ophys.find_plane` finds which plane of a z-stack a recording is (dev's zStackPlaneFinder), in both languages, checked against ground truth.
 - The viewer measures distances (a ruler: length in pixels and angle), as dev's imviewer.

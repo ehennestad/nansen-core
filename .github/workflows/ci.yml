@@ -112,12 +112,12 @@ jobs:
       - name: Install the package, suite2p (with CPU torch and torchvision, built together) and DeepInterpolation
         run: |
           pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
-          pip install -e ".[test,npy,ophys]" suite2p tensorflow-cpu h5py pynwb "git+https://github.com/AllenInstitute/deepinterpolation"
+          pip install -e ".[test,npy,ophys]" suite2p tensorflow-cpu h5py pynwb pyflowreg "git+https://github.com/AllenInstitute/deepinterpolation"
 
       - name: Run the wrappers with the real tools
         env:
-          NANSEN_REQUIRE_TOOLS: suite2p,deepinterpolation,tensorflow,pynwb
-        run: pytest -v -rs python/tests/test_external_tools.py -k "suite2p or deep_interpolation or nwb"
+          NANSEN_REQUIRE_TOOLS: suite2p,deepinterpolation,tensorflow,pynwb,pyflowreg
+        run: pytest -v -rs python/tests/test_external_tools.py -k "suite2p or deep_interpolation or nwb or flowreg"
 
   caiman-tools:
     name: External tools (CaImAn)

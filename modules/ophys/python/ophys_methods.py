@@ -1167,6 +1167,31 @@ def oasis_ar1(y, g, lam):
     return calcium, spikes
 
 
+def flowreg(entity, options, context):
+    """Non-rigid motion correction by optical flow with pyflowreg, Flow-Registration's Python port, as ophys.flowreg
+    runs the MATLAB toolbox: the reference is the average of the first referenceFrames frames, alpha the
+    smoothness and quality the toolbox's setting. The stack is read whole; the aligned one keeps its type."""
+    try:
+        from pyflowreg.motion_correction import compensate_arr
+        from pyflowreg.motion_correction.OF_options import OFOptions
+        from pyflowreg.motion_correction.compensate_recording import RegistrationConfig
+    except ImportError as error:
+        raise NansenError("dependency-missing", f"ophys.flowreg needs pyflowreg ({error}): pip install pyflowreg") from None
+    stack = _open_stack(entity, options["stack"], context, options)
+    frames = stack.shape[2]
+    video = np.moveaxis(np.asarray(stack[:, :, 0:frames], dtype=np.float64), 2, 0)   # frames x rows x columns
+    reference = video[:min(int(options["referenceFrames"]), frames)].mean(axis=0)
+    settings = OFOptions(alpha=float(options["alpha"]), quality_setting=str(options["quality"]))
+    context.log(f"{_name(entity)}: running Flow-Registration (pyflowreg) on {frames} frames")
+    registered, _ = compensate_arr(video, reference, settings, registration_config=RegistrationConfig(parallelization="sequential"))
+    aligned = np.moveaxis(np.asarray(registered).reshape(video.shape), 0, 2)
+    if np.issubdtype(stack.dtype, np.integer):
+        limits = np.iinfo(stack.dtype)
+        aligned = np.clip(np.floor(aligned + 0.5), limits.min, limits.max)
+    _save(entity, options["output"], aligned.astype(stack.dtype), context)
+    return {"frames": frames}
+
+
 def cnmf(entity, options, context):
     """Cells found by CaImAn's CNMF (greedy initialisation, spatial and temporal updates, merging) on the whole stack,
     saved as ROIs (the 8-connected pixels around each footprint's peak above threshold times it), their traces

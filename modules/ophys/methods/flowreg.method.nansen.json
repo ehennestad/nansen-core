@@ -6,8 +6,9 @@
   "title": "Correct motion (Flow-Registration)",
   "category": "Two-photon/Motion correction",
   "entityType": "*",
-  "description": "Non-rigid motion correction by optical flow with the Flow-Registration toolbox (OF_options and compensate_recording), when it is on the MATLAB path. Saves the aligned stack.",
+  "description": "Non-rigid motion correction by optical flow with the Flow-Registration toolbox (OF_options and compensate_recording), when it is on the MATLAB path. Saves the aligned stack. In Python, pyflowreg (Flow-Registration's Python port) runs it.",
   "implementations": {
+    "python": "ophys_methods:flowreg",
     "matlab": "ophys.flowreg"
   },
   "options": {

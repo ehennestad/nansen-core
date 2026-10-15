@@ -163,3 +163,21 @@ def test_export_nwb(api, tmp_path):
         assert np.allclose(fluorescence.data[:], signals) and list(fluorescence.rois.data[:]) == list(range(1, len(rois)))
         assert nwb.processing["ophys"]["DfOverF"]["Dff"].data.shape == signals.shape
         assert nwb.subject.subject_id == "m1" and nwb.session_description == "test"
+
+
+def test_flowreg(api):
+    need("pyflowreg")
+    frames = 60
+    shifts = [(round(3 * np.sin(t / 6)), round(2 * np.cos(t / 9))) for t in range(frames)]
+    moving = np.stack([np.roll(api.stack[:, :, t], shifts[t], axis=(0, 1)) for t in range(frames)], axis=2)
+    project = api.project
+    project.save(project.entity("session", SESSION), "TwoPhotonSeries_Denoised", moving)
+    result = run(api, "ophys.flowreg", {"stack": "TwoPhotonSeries_Denoised", "referenceFrames": 20, "quality": "fast"})
+    assert result == {"frames": frames}
+    aligned = load(api, "TwoPhotonSeries_Corrected")
+    assert aligned.shape == moving.shape and aligned.dtype == moving.dtype
+
+    def wobble(stack):   # how much the frames differ from their average, inside the borders
+        inner = stack[8:-8, 8:-8].astype(float)
+        return float(np.abs(inner - inner.mean(axis=2, keepdims=True)).mean())
+    assert wobble(aligned) < 0.8 * wobble(moving)
