@@ -102,15 +102,15 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             result = result{1};
             testCase.verifyEqual([result.frames, result.rois], [300, numel(rois)]);
             testCase.verifyEqual(string(result.signals), ["RoiSignals_MeanF", "RoiSignals_Dff"]);
-            nwb = nwbRead(char(path), "ignorecache");
-            data = nwb.acquisition.get("TwoPhotonSeries").data.load();
+            nwb = nwbRead(char(path), 'ignorecache');
+            data = nwb.acquisition.get('TwoPhotonSeries').data.load();
             testCase.verifyEqual(size(data), [128, 128, 300]);   % (frames, x, y) in the file
             testCase.verifyEqual(data, testCase.Clean);
-            module = nwb.processing.get("ophys");
-            segmentation = module.nwbdatainterface.get("ImageSegmentation").planesegmentation.get("PlaneSegmentation");
+            module = nwb.processing.get('ophys');
+            segmentation = module.nwbdatainterface.get('ImageSegmentation').planesegmentation.get('PlaneSegmentation');
             ids = cellfun(@(r) double(r.id), rois);
             testCase.verifyEqual(double(segmentation.id.data.load()), ids(:));
-            signals = module.nwbdatainterface.get("Fluorescence").roiresponseseries.get("RoiResponseSeries");
+            signals = module.nwbdatainterface.get('Fluorescence').roiresponseseries.get('RoiResponseSeries');
             testCase.verifyEqual(signals.data.load(), project.load(testCase.Session, "RoiSignals_MeanF")', AbsTol=1e-9);
             testCase.verifyEqual(double(signals.rois.data.load()), (1:numel(rois) - 1)');
         end

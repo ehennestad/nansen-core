@@ -37,9 +37,9 @@ function result = exportNwb(entity, options, context)
     if description == ""
         description = ophys.internal.entityName(entity);
     end
-    nwb = NwbFile("session_description", char(description), ...
-        "identifier", char(strjoin(cellfun(@string, keyValues), "_")), ...
-        "session_start_time", sessionStart(values));
+    nwb = NwbFile('session_description', char(description), ...
+        'identifier', char(strjoin(cellfun(@string, keyValues), "_")), ...
+        'session_start_time', sessionStart(values));
     if isfield(values, "session_id")
         nwb.general_session_id = char(string(values.session_id));
     end
@@ -47,16 +47,16 @@ function result = exportNwb(entity, options, context)
         nwb.general_subject = make("core.Subject", "subject_id", char(string(values.subject_id)));
     end
     device = make("core.Device", "description", "two-photon microscope");
-    nwb.general_devices.set("Microscope", device);
+    nwb.general_devices.set('Microscope', device);
     optical = make("core.OpticalChannel", "description", sprintf("channel %d", options.channel), "emission_lambda", NaN);
     indicator = string(nansen.internal.getField(values, "indicator", ""));
     if ismissing(indicator) || indicator == ""
         indicator = "unknown";
     end
-    plane = make("core.ImagingPlane", "optical_channel", optical, "description", "imaging plane", ...
+    plane = make("core.ImagingPlane", "OpticalChannel", optical, "description", "imaging plane", ...
         "device", make("untyped.SoftLink", device), "excitation_lambda", NaN, "imaging_rate", rate, ...
         "indicator", char(indicator), "location", "unknown");
-    nwb.general_optophysiology.set("ImagingPlane", plane);
+    nwb.general_optophysiology.set('ImagingPlane', plane);
     result = struct("frames", 0, "rois", 0, "signals", {{}});
 
     stack = readIf(options.stack, @(name) ophys.internal.openStack(context, entity, name, options));
@@ -66,7 +66,7 @@ function result = exportNwb(entity, options, context)
         step = ophys.internal.chunk();
         first = stack.frames(1, min(step, frames));
         pipe = make("untyped.DataPipe", "data", first, "maxSize", [height, width, frames], "axis", 3);
-        nwb.acquisition.set("TwoPhotonSeries", make("core.TwoPhotonSeries", "imaging_plane", make("untyped.SoftLink", plane), ...
+        nwb.acquisition.set('TwoPhotonSeries', make("core.TwoPhotonSeries", "imaging_plane", make("untyped.SoftLink", plane), ...
             "starting_time", 0, "starting_time_rate", rate, "data", pipe, "data_unit", "n.a."));
         result.frames = frames;
         rest = min(step, frames) + 1:step:frames;
@@ -95,12 +95,12 @@ function result = exportNwb(entity, options, context)
             "pixel_mask", pixelMask, ...
             "pixel_mask_index", make("hdmf_common.VectorIndex", "description", "the end of each ROI's pixels", ...
                 "target", make("untyped.ObjectView", pixelMask), "data", int64(cumsum(cellfun(@numel, x)))));
-        segmentation.vectordata.set("classification", make("hdmf_common.VectorData", "data", labels, ...
+        segmentation.vectordata.set('classification', make("hdmf_common.VectorData", "data", labels, ...
             "description", "accepted, rejected, or empty when not classified"));
         images = make("core.ImageSegmentation");
-        images.planesegmentation.set("PlaneSegmentation", segmentation);
+        images.planesegmentation.set('PlaneSegmentation', segmentation);
         module = make("core.ProcessingModule", "description", "ROIs and their signals");
-        module.nwbdatainterface.set("ImageSegmentation", images);
+        module.nwbdatainterface.set('ImageSegmentation', images);
         result.rois = count;
         kept = find(~strcmp(labels, "rejected"))' - 1;
         kinds = {"signals", "core.Fluorescence", "Fluorescence", "RoiResponseSeries"; "dff", "core.DfOverF", "DfOverF", "Dff"};
@@ -125,17 +125,17 @@ function result = exportNwb(entity, options, context)
             series = make("core.RoiResponseSeries", "rois", region, "data", signals', "data_unit", "n.a.", ...
                 "starting_time", 0, "starting_time_rate", rate);
             container = make(kinds{k, 2});
-            container.roiresponseseries.set(kinds{k, 4}, series);
-            module.nwbdatainterface.set(kinds{k, 3}, container);
+            container.roiresponseseries.set(char(kinds{k, 4}), series);
+            module.nwbdatainterface.set(char(kinds{k, 3}), container);
             result.signals{end + 1} = char(name);
         end
-        nwb.processing.set("ophys", module);
+        nwb.processing.set('ophys', module);
     end
 
     nwbExport(nwb, char(path));
     if ~isempty(rest)
-        written = nwbRead(char(path), "ignorecache");
-        data = written.acquisition.get("TwoPhotonSeries").data;
+        written = nwbRead(char(path), 'ignorecache');
+        data = written.acquisition.get('TwoPhotonSeries').data;
         for start = rest
             context.checkCancelled();
             last = min(start + ophys.internal.chunk() - 1, result.frames);
@@ -149,12 +149,17 @@ function result = exportNwb(entity, options, context)
 end
 
 function object = make(kind, varargin)
-    % A matnwb type, from types.* (or matnwb.types.* in the versions that moved them there)
+    % A matnwb type, from types.* (or matnwb.types.* in the versions that moved them there), strings given as char
     persistent prefix
     if isempty(prefix)
         prefix = "types.";
         if exist("matnwb.types.core.NWBFile", "class") == 8
             prefix = "matnwb.types.";
+        end
+    end
+    for i = 1:numel(varargin)   % matnwb keys containers.Map by the names: char, not string
+        if isstring(varargin{i}) && isscalar(varargin{i})
+            varargin{i} = char(varargin{i});
         end
     end
     object = feval(prefix + kind, varargin{:});
