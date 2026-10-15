@@ -1884,3 +1884,28 @@ def test_install_a_shared_project_from_git(empty_app, page):
     page.wait_for_selector(".toast:has-text('Installed')")
     page.wait_for_selector(".card li:has-text('Shared')")
     assert (empty_app["folder"] / "mine" / "project.nansen.json").is_file()
+
+
+def test_dff_explorer_matches_compute_dff_and_queues_its_settings(empty_app, page):
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    run = lambda method, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": [s1], "options": options})
+    api = ophys_project(empty_app, [run("ophys.motion_correction", referenceFrames=1), run("ophys.detect_rois", threshold=0.25, border=4),
+                                    run("ophys.extract_signals")])
+    computed = lambda **options: api.handle({"id": 1, "method": "methods.run", "params": {"methodId": "ophys.compute_dff", "entityType": "session",
+                                                                                         "keys": [s1], "options": options}})["result"]
+    peak = lambda: float(page.locator(".dx-stats").get_attribute("data-peak"))
+    page.goto(empty_app["server"].url + "#/page/ophys.dffexplorer")
+    page.wait_for_selector(".dx-peak")
+    assert page.locator(".dx-roi option").all_inner_texts() == ["ROI 1", "ROI 2", "ROI 3"]
+    expected = computed()["results"][0]["maxDff"]   # the page computes ΔF/F as compute_dff does (from 4-decimal signals)
+    assert abs(peak() - expected[0]) < 1e-3 * max(1, abs(expected[0]))
+    page.select_option(".dx-roi", "2")
+    wait_until(lambda: abs(peak() - expected[2]) < 1e-3 * max(1, abs(expected[2])))
+    page.locator("input.dx-baselineWindow").fill("10")   # a running baseline, and the chen2013 method
+    page.select_option(".dx-method", "chen2013")
+    expected = computed(baselineWindow=10, method="chen2013")["results"][0]["maxDff"]
+    wait_until(lambda: abs(peak() - expected[2]) < 1e-3 * max(1, abs(expected[2])))
+    page.click(".dx-queue-one")   # the settings, run as compute_dff
+    wait_until(lambda: len(api.handle({"id": 2, "method": "tasks.list", "params": {}})["result"]) == 1)
+    task = api.handle({"id": 3, "method": "tasks.list", "params": {}})["result"][0]
+    assert task["method"]["id"] == "ophys.compute_dff" and task["options"]["values"]["baselineWindow"] == 10 and task["options"]["values"]["method"] == "chen2013"

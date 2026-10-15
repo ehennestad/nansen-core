@@ -4048,6 +4048,10 @@
           {
             "module": "ophys",
             "path": "dashboard/roireview.js"
+          },
+          {
+            "module": "ophys",
+            "path": "dashboard/dffexplorer.js"
           }
         ]
       }

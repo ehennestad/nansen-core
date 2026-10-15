@@ -83,6 +83,8 @@ The ophys module's **FOV map** page (dev's fovmanager) draws the subjects' crani
 
 Its **ROI review** page (dev's classifyMultiSessionRois with roiclassifier) shows each ROI of the sessions that `ophys.align_sessions` copied ROIs to, side by side, cropped from each session's FOV image, and accepts or rejects an ROI in all of them at once.
 
+Its **ΔF/F explorer** page (dev's DffExplorer) shows one ROI's signal with its baseline (F0) and its ΔF/F while the settings of `ophys.compute_dff` change (method, neuropil factor, baseline percentile and window, drift correction): it reads the ROI's signal and neuropil columns with `data.traces` and computes ΔF/F in the page as the method does. Run on this session or Run on all queue `ophys.compute_dff` with those settings (`tasks.submit`).
+
 In the dashboard, an entity's image variables (data type `Image` or `ImageStack`, or arrays without a data type) have a View button in its drawer: frames one by one or played, the average or maximum over frames, contrast limits, and the ROIs of a variable of data type `RoiArray` drawn over them. ROIs are curated there, as in dev's roimanager and roiclassifier: select one in the image or the list, accept (a), reject (r), clear (u) or delete it, or add a round one by clicking (`rois.update`). `ophys.extract_signals` and `ophys.align_sessions` leave rejected ROIs out.
 
 ## Dashboard pages
