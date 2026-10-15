@@ -5,7 +5,9 @@ function result = quicky(entity, options, context)
 %   smooth (circular Gaussian) and slow (moving mean over 20 bins)
 %   background taken out, each bin thresholded at a percentile of all
 %   values and cleaned with disk-shaped morphology; areas that recur at the
-%   same place in several bins make an ROI.
+%   same place in several bins make an ROI. With useShapeDetection, somata
+%   found by their shape in the mean image (ophys.internal.shapeRois) come
+%   first, and activity ROIs overlapping one by more than 75 % are left out.
     stack = ophys.internal.loadStack(context, entity, options.stack, options);
     [height, width, ~] = size(stack);
     diameter = options.roiDiameter;
@@ -36,9 +38,22 @@ function result = quicky(entity, options, context)
         areas = areas(sizes <= largest);
     end
     rois = ophys.internal.uniqueRois(areas, height, width, diameter, options.observationsRequired, options.maxRois);
+    shaped = {};
+    useShape = logical(nansen.internal.getField(options, "useShapeDetection", false));
+    if useShape   % somata seen by their shape in the mean image, first
+        context.progress(0.8, "shape detection");
+        shaped = ophys.internal.shapeRois(mean(double(stack), 3), double(nansen.internal.getField(options, "innerRadius", 3)), ...
+            double(nansen.internal.getField(options, "outerRadius", 5)));
+        keep = cellfun(@(r) ~any(cellfun(@(s) ophys.internal.overlapShare(r, s) > 0.75, shaped)), rois);
+        rois = [reshape(shaped, 1, []), reshape(rois(keep), 1, [])];
+        rois = rois(1:min(numel(rois), options.maxRois));
+    end
     document = struct("imageSize", [height, width], "rois", {cellfun(@(p, n) ophys.internal.makeRoi(n, p), ...
         rois, num2cell(1:numel(rois)), UniformOutput=false)});
     ophys.internal.saveIf(context, entity, options.output, document);
     context.log("%s: %d ROIs from %d areas in %d bins", ophys.internal.entityName(entity), numel(rois), numel(areas), bins);
     result = struct("rois", numel(rois), "areas", {cellfun(@(p) size(p, 1), rois, UniformOutput=false)});
+    if useShape
+        result.shapeRois = min(numel(shaped), numel(rois));
+    end
 end

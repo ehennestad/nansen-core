@@ -13,6 +13,8 @@ computed here directly, not with either reader's ophys code:
   of the quadrant's own, of a pixel at most; 2 x 2 patches find each quadrant's shift.
 - s3, s4: a smooth scene, and the same scene turned by 3 degrees about the image centre after a move of
   (2, -1), drawn from its formula. Aligning s4 to s3 finds both, and moves s3's ROIs there.
+- s5: four ring-shaped somata (a dark nucleus in a bright ring) that are never active, on a background
+  with fixed noise; Quicky finds them by their shape alone, each with its centre where it was drawn.
 """
 
 import json
@@ -28,6 +30,7 @@ S1 = {"subject_id": "m1", "session_id": "s1"}
 S2 = {"subject_id": "m1", "session_id": "s2"}
 S3 = {"subject_id": "m1", "session_id": "s3"}
 S4 = {"subject_id": "m1", "session_id": "s4"}
+S5 = {"subject_id": "m1", "session_id": "s5"}
 
 
 def round_to(value, digits):
@@ -79,6 +82,21 @@ def piecewise():
     return {"frames": frames, "maxShift": int(np.abs(shifts).max()), "meanShift": round_to(lengths.mean(), 4)}
 
 
+SOMATA = [(20, 20), (22, 42), (42, 24), (44, 44)]
+
+
+def somata():
+    """s5: 64 x 64 x 10, uint16, the same frame ten times: rings of radius 4 around SOMATA, and fixed noise."""
+    rng = np.random.default_rng(14)
+    rows, columns = np.mgrid[0:64, 0:64].astype(float)
+    image = np.full((64, 64), 1000.0)
+    for cy, cx in SOMATA:
+        image += 1200 * np.exp(-((np.hypot(rows - cy, columns - cx) - 4.0) ** 2) / 2)
+    image = np.round(image + rng.normal(0, 30, image.shape))
+    save("s5", np.repeat(image[:, :, None], 10, axis=2).astype(np.uint16))
+    return {"rois": len(SOMATA), "shapeRois": len(SOMATA)}
+
+
 ANGLE, MOVE = 3.0, (2, -1)
 
 
@@ -128,6 +146,7 @@ def main():
         shutil.rmtree(HERE / "project" / "data")
     first, second = subpixel(), piecewise()
     rois, moved = rotated()
+    shaped = somata()
     # s3's ROIs, as the ophys methods write them (ophys/roi_array.json in the processed data)
     folder = HERE / "project" / "data" / "processed" / "sub-m1" / "ses-s3" / "ophys"
     folder.mkdir(parents=True)
@@ -137,8 +156,8 @@ def main():
         "methodId": method, "entityType": "session", "keys": keys, "options": options}}}
     steps = [
         {"request": {"method": "project.open", "id": 1, "params": {"path": "${project}"}}, "expect": {"result": {"name": "OphysMotion"}}},
-        {"request": {"method": "project.scan", "id": 2, "params": {}}, "expect": {"result": {"records": {"subject": 1, "session": 4}, "unmatched": 0}}},
-        {"request": {"method": "project.sync", "id": 3, "params": {}}, "expect": {"result": {"added": {"session": [S1, S2, S3, S4]}}}},
+        {"request": {"method": "project.scan", "id": 2, "params": {}}, "expect": {"result": {"records": {"subject": 1, "session": 5}, "unmatched": 0}}},
+        {"request": {"method": "project.sync", "id": 3, "params": {}}, "expect": {"result": {"added": {"session": [S1, S2, S3, S4, S5]}}}},
         {"request": {"method": "tools.run", "id": 4, "params": {"methodId": "ophys.setup_variables", "options": {
             "rawFilePattern": "recording", "rawFileAdapter": "npy", "addColumns": False}}},
          "expect": {"result": {"result": {"existing": []}}}},
@@ -154,11 +173,15 @@ def main():
         {"request": {"method": "data.frame", "id": 10, "params": {"entityType": "session", "key": S4, "variable": "TwoPhotonSeries_Original",
                                                                   "frame": 0, "rois": "RoiArray"}},
          "expect": {"result": {"width": 48, "height": 48, "rois": moved}}},
+        # somata that are never active are found by their shape; the activity part finds nothing in a still recording
+        {**run(11, "ophys.quicky", [S5], {"stack": "TwoPhotonSeries_Original", "roiDiameter": 10}), "expect": {"result": {"results": [shaped]}}},
+        {**run(12, "ophys.quicky", [S5], {"stack": "TwoPhotonSeries_Original", "roiDiameter": 10, "useShapeDetection": False}),
+         "expect": {"result": {"results": [{"rois": 0, "areas": []}]}}},
     ]
     (HERE / "session.json").write_text(json.dumps({"steps": steps}, indent=2) + "\n", encoding="utf-8")
     expected = {"description": "Motion correction finer than whole pixels: subpixel shifts on a texture moved by half pixels, piecewise rigid "
                                "correction (patches) of a texture whose quadrants move apart, and sessions aligned with a rotation, whose ROIs "
-                               "land where the ground truth puts them. make_data.py writes the recordings and the steps from the ground truth.",
+                               "land where the ground truth puts them; and Quicky's shape detection finding somata that are never active. make_data.py writes the recordings and the steps from the ground truth.",
                 "steps": len(steps)}
     (HERE / "expected.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
     print(json.dumps([first, second]))

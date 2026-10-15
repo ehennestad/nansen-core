@@ -303,3 +303,19 @@ def test_a_turned_image_is_turned_back():
     assert np.corrcoef(there_and_back[centre].ravel(), image[centre].ravel())[0, 1] > 0.6
     points = np.array([[19.5 + 10, 19.5]])
     assert ophys["rotate_points"](points, 90, 40, 40).tolist() == [[20.0, 30.0]]   # 10 rows below the centre, a quarter turn on
+
+
+def test_shape_detection_finds_ring_shaped_somata_where_they_are():
+    rng = np.random.default_rng(5)
+    rows, columns = np.mgrid[0:64, 0:64].astype(float)
+    centres = [(20, 20), (22, 42), (42, 24), (44, 44)]
+    image = np.full((64, 64), 100.0)
+    for cy, cx in centres:
+        image += 120 * np.exp(-((np.hypot(rows - cy, columns - cx) - 4.0) ** 2) / 2)
+    rois = ophys["shape_rois"](image + rng.normal(0, 3, image.shape), 3, 5)
+    assert len(rois) == 4
+    for roi, (cy, cx) in zip(rois, centres):
+        found = np.array(roi).mean(axis=0)
+        assert abs(found[0] - cy) < 0.5 and abs(found[1] - cx) < 0.5
+        assert 80 <= len(roi) <= 115   # the ring's outer edge, about 5.5 px out
+    assert ophys["shape_rois"](np.full((64, 64), 7.0), 3, 5) == []

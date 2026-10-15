@@ -24,7 +24,7 @@
         "result": {
           "records": {
             "subject": 1,
-            "session": 4
+            "session": 5
           },
           "unmatched": 0
         }
@@ -55,6 +55,10 @@
               {
                 "subject_id": "m1",
                 "session_id": "s4"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "s5"
               }
             ]
           }
@@ -520,6 +524,67 @@
                   33
                 ]
               ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 11,
+        "params": {
+          "methodId": "ophys.quicky",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s5"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Original",
+            "roiDiameter": 10
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 4,
+              "shapeRois": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 12,
+        "params": {
+          "methodId": "ophys.quicky",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s5"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Original",
+            "roiDiameter": 10,
+            "useShapeDetection": false
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 0,
+              "areas": []
             }
           ]
         }

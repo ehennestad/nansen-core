@@ -426,10 +426,196 @@ def quicky(entity, options, context):
         largest = float(_percentile(sizes.reshape(-1, 1), 99)[0])
         areas = [a for a in areas if len(a) <= largest]
     rois = unique_rois(areas, height, width, diameter, options["observationsRequired"], options["maxRois"])
+    shaped = []
+    if options.get("useShapeDetection", False):   # somata seen by their shape in the mean image, first
+        context.progress(0.8, "shape detection")
+        shaped = shape_rois(stack.astype(np.float64).mean(axis=2), int(options.get("innerRadius", 3)), int(options.get("outerRadius", 5)))
+        rois = (shaped + [r for r in rois if not any(overlap(r, s) > 0.75 for s in shaped)])[:options["maxRois"]]
     document = {"imageSize": [height, width], "rois": [_roi(n + 1, pixels) for n, pixels in enumerate(rois)]}
     _save(entity, options["output"], document, context)
     context.log(f"{_name(entity)}: {len(rois)} ROIs from {len(areas)} areas in {data.shape[2]} bins")
-    return {"rois": len(rois), "areas": [len(r) for r in rois]}
+    result = {"rois": len(rois), "areas": [len(r) for r in rois]}
+    if options.get("useShapeDetection", False):
+        result["shapeRois"] = min(len(shaped), len(rois))
+    return result
+
+
+SHAPE_ANGLES = 48      # directions a soma's edge is looked for in
+SHAPE_STEP = 0.25      # px between samples along each direction
+SHAPE_SAMPLES = 40     # samples along each direction after the centre: 10 px
+SHAPE_MARGIN = 15      # px a soma's centre is from the edge at least
+
+
+def shape_rois(image, inner, outer):
+    """Somata found by their shape in an image, as flufinder's shapeDetection: (row, column) pixels per ROI.
+
+    The image, scaled to 0..1, is correlated (Pearson, in a window the size of the template, the image 0
+    outside) with a ring template: a nucleus of radius inner at the image's 5th percentile, a ring to radius
+    outer at its 99th and the rest at its 50th, blurred by a Gaussian of 1 px. Where the correlation is above
+    sqrt(0.2) of its largest, areas (8-connected) of 5 pixels or more are candidates, at their centroid,
+    rounded half up, SHAPE_MARGIN px from the edge or more. Candidates whose 21 x 21 patch correlates with
+    the candidates' mean patch by 0.1 or less are left out. Each one's mask is found from the centre
+    outwards (soma_mask) and kept when the ring is brighter than both its edges in more than 60 % of
+    directions and it does not overlap a soma kept before it by more than 75 %.
+    """
+    im = np.asarray(image, dtype=np.float64)
+    im = im - im.min()
+    top = im.max()
+    if not top > 0:
+        return []
+    im = im / top
+    score = template_correlation(im, ring_kernel(im, inner, outer))
+    finite = score[np.isfinite(score)]
+    if not finite.size or not finite.max() > 0:
+        return []
+    with np.errstate(invalid="ignore"):
+        selected = np.nan_to_num(score / finite.max(), nan=0.0) > math.sqrt(0.2)
+    height, width = im.shape
+    centres = []
+    for area in components(selected, 8):
+        if len(area) < 5:
+            continue
+        cy = int(math.floor(sum(p[0] for p in area) / len(area) + 0.5))
+        cx = int(math.floor(sum(p[1] for p in area) / len(area) + 0.5))
+        if SHAPE_MARGIN <= cy <= height - 1 - SHAPE_MARGIN and SHAPE_MARGIN <= cx <= width - 1 - SHAPE_MARGIN:
+            centres.append((cy, cx))
+    if not centres:
+        return []
+    patches = [im[cy - 10:cy + 11, cx - 10:cx + 11] for cy, cx in centres]
+    mean_patch = sum(patches) / len(patches)
+    centres = [c for c, patch in zip(centres, patches) if _pearson(mean_patch, patch) > 0.1]
+    rois = []
+    for cy, cx in centres:
+        pixels, ridge = soma_mask(im, cy, cx)
+        if ridge > 0.6 and pixels and not any(overlap(pixels, r) > 0.75 for r in rois):
+            rois.append(pixels)
+    return rois
+
+
+def ring_kernel(im, inner, outer, sigma=1):
+    """The ring template: a square of 2 * outer + 2 * ceil(2 * sigma) + 1 px (see shape_rois)."""
+    size = 2 * outer + 2 * int(math.ceil(2 * sigma)) + 1
+    centre = (size - 1) / 2
+    rows, columns = np.mgrid[0:size, 0:size]
+    distance = (rows - centre) ** 2 + (columns - centre) ** 2
+    nucleus, background, ring = (float(_percentile(im.reshape(-1, 1), p)[0]) for p in (5, 50, 99))
+    kernel = np.where(distance <= inner ** 2, nucleus, np.where(distance <= outer ** 2, ring, background))
+    return _blur(_blur(kernel, 0), 1)
+
+
+def _blur(values, axis, circular=False):
+    """A Gaussian blur of 1 sample along an axis: 5 taps, edges repeated (or wrapped around, circular)."""
+    weights = np.exp(-np.arange(-2, 3) ** 2 / 2.0)
+    weights = weights / weights.sum()
+    size = values.shape[axis]
+    out = np.zeros(values.shape)
+    for k, weight in zip(range(-2, 3), weights):
+        index = np.arange(size) + k
+        index = index % size if circular else np.clip(index, 0, size - 1)
+        out = out + weight * np.take(values, index, axis=axis)
+    return out
+
+
+def template_correlation(im, kernel):
+    """The Pearson correlation of the template with the window around each pixel (the image 0 outside); NaN
+    where the window is uniform."""
+    size = kernel.shape[0]
+    half = (size - 1) // 2
+    height, width = im.shape
+    padded = np.zeros((height + 2 * half, width + 2 * half))
+    padded[half:half + height, half:half + width] = im
+    centred = kernel - kernel.mean()
+    total, squares, product = np.zeros(im.shape), np.zeros(im.shape), np.zeros(im.shape)
+    for dy in range(size):
+        for dx in range(size):
+            window = padded[dy:dy + height, dx:dx + width]
+            total += window
+            squares += window * window
+            product += centred[dy, dx] * window
+    spread = squares - total * total / (size * size)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        score = product / np.sqrt(spread * (centred * centred).sum())
+    score[spread <= 1e-12] = np.nan
+    return score
+
+
+def _pearson(a, b):
+    a = a - a.mean()
+    b = b - b.mean()
+    scale = math.sqrt(float((a * a).sum() * (b * b).sum()))
+    return float((a * b).sum()) / scale if scale > 0 else float("nan")
+
+
+def _circular_mean(values, window):
+    """A moving mean over a window of samples, wrapping around."""
+    half = window // 2
+    n = len(values)
+    return np.array([sum(values[(j + k) % n] for k in range(-half, half + 1)) / window for j in range(n)])
+
+
+def soma_mask(im, cy, cx):
+    """A soma's pixels around (cy, cx), from where the image rises (the nucleus's edge) and then falls (the
+    soma's edge) along SHAPE_ANGLES directions, as flufinder's findSomaMaskByEdgeDetection; and the share of
+    directions in which the ring between them is brighter than both edges.
+
+    The image is sampled bilinearly every SHAPE_STEP px out to SHAPE_SAMPLES samples and blurred (1 sample,
+    along each direction and across directions). The nucleus's edge is the largest rise in each direction,
+    smoothed over 5 directions; it counts when the mean of those rises is more than 1.5 times their spread
+    (standard deviation), and is the centre otherwise. The soma's edge is the largest fall beyond it, within
+    1.2 times the nucleus's mean radius, smoothed the same way. The mask is the pixels whose centre is inside
+    the polygon of the soma's edge, half a pixel further out.
+    """
+    count = SHAPE_SAMPLES
+    angles = 2 * math.pi * np.arange(SHAPE_ANGLES) / SHAPE_ANGLES
+    radii = SHAPE_STEP * np.arange(count + 1)
+    y = cy + np.outer(radii, np.sin(angles))
+    x = cx + np.outer(radii, np.cos(angles))
+    y0, x0 = np.floor(y).astype(int), np.floor(x).astype(int)
+    fy, fx = y - y0, x - x0
+    profile = (1 - fy) * ((1 - fx) * im[y0, x0] + fx * im[y0, x0 + 1]) + fy * ((1 - fx) * im[y0 + 1, x0] + fx * im[y0 + 1, x0 + 1])
+    profile = _blur(_blur(profile, 0), 1, circular=True)
+    rise = np.diff(profile, axis=0)   # rise[i] is between samples i and i + 1
+    first = rise.argmax(axis=0)
+    strength = rise[first, np.arange(SHAPE_ANGLES)]
+    spread = float(np.std(strength, ddof=1))
+    significant = strength.mean() / spread > 1.5 if spread > 0 else strength.mean() > 0
+    if significant:
+        nucleus = _circular_mean(first, 5)
+        start = np.floor(nucleus + 0.5).astype(int)
+        depth = min(count - int(math.floor(nucleus.min())), int(math.ceil(nucleus.mean() * 1.2)))
+    else:
+        nucleus = np.zeros(SHAPE_ANGLES)
+        start = np.zeros(SHAPE_ANGLES, dtype=int)
+        depth = count
+    beyond = np.zeros(SHAPE_ANGLES)
+    for j in range(SHAPE_ANGLES):
+        stop = min(start[j] + max(depth, 1), count)
+        beyond[j] = int(rise[start[j]:stop, j].argmin()) if stop > start[j] else 0
+    edge = np.clip(_circular_mean(beyond, 5) + nucleus, 0, count - 1)
+    middle = np.floor((nucleus + edge + 1) / 2 + 0.5).astype(int)
+    columns = np.arange(SHAPE_ANGLES)
+    ring = profile[middle, columns]
+    ridge = float(np.mean((ring > profile[np.floor(nucleus + 0.5).astype(int), columns]) &
+                          (ring > profile[np.minimum(np.floor(edge + 0.5).astype(int) + 1, count), columns])))
+    radius = (edge + 0.5) * SHAPE_STEP + 0.5
+    polygon = np.stack([cx + radius * np.cos(angles), cy + radius * np.sin(angles)], axis=1)   # (x, y)
+    reach = int(math.ceil(radius.max()))
+    pixels = [(r, c) for r in range(cy - reach, cy + reach + 1) for c in range(cx - reach, cx + reach + 1)
+              if 0 <= r < im.shape[0] and 0 <= c < im.shape[1] and _inside(polygon, c, r)]
+    return pixels, ridge
+
+
+def _inside(points, px, py):
+    """Even-odd rule: is (px, py) inside the polygon of points (x, y)?"""
+    inside = False
+    j = len(points) - 1
+    for i in range(len(points)):
+        xi, yi = points[i]
+        xj, yj = points[j]
+        if (yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
 
 
 def _half_up(value):

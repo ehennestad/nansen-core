@@ -6,7 +6,7 @@
   "title": "Detect ROIs (Quicky)",
   "category": "Two-photon/Segmentation",
   "entityType": "*",
-  "description": "dev's Quicky (flufinder) detection, natively in both languages: frames are binned by their maximum, the smooth and slow background taken out, each bin thresholded at a percentile and cleaned with disk-shaped morphology, and the places where the thresholded areas come back in at least observationsRequired bins become ROIs. Saved as ophys.detect_rois saves them. Areas are compared deterministically (by centroids within 3 px of their median), where flufinder clusters them, and its shape detection is not part of it; ophys.flufinder runs flufinder itself.",
+  "description": "dev's Quicky (flufinder) detection, natively in both languages: frames are binned by their maximum, the smooth and slow background taken out, each bin thresholded at a percentile and cleaned with disk-shaped morphology, and the places where the thresholded areas come back in at least observationsRequired bins become ROIs. With shape detection, somata are also found by their shape in the mean image: a ring template is correlated with it, and each candidate's mask is found by where the image rises and falls along 48 directions from its centre. Saved as ophys.detect_rois saves them. Areas are compared deterministically (by centroids within 3 px of their median), where flufinder clusters them, and shape detection follows flufinder's steps at the image's own resolution; ophys.flufinder runs flufinder itself.",
   "implementations": {
     "python": "ophys_methods:quicky",
     "matlab": "ophys.quicky"
@@ -62,6 +62,24 @@
         "default": 1000,
         "minimum": 1,
         "title": "Most ROIs"
+      },
+      "useShapeDetection": {
+        "type": "boolean",
+        "default": true,
+        "title": "Also find somata by their shape",
+        "description": "Find ring-shaped somata (a dark nucleus in a bright ring) in the mean image, as flufinder's shape detection, also those that are never active. They come first, and an activity ROI that overlaps one by more than 75 % is left out."
+      },
+      "innerRadius": {
+        "type": "integer",
+        "default": 3,
+        "minimum": 1,
+        "title": "Nucleus radius (px)"
+      },
+      "outerRadius": {
+        "type": "integer",
+        "default": 5,
+        "minimum": 2,
+        "title": "Soma radius (px)"
       },
       "channel": {
         "type": "integer",
