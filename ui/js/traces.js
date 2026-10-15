@@ -31,7 +31,7 @@
    * A trace plot. plot.draw(data, labels) draws a data.traces result; onRange(start, stop) is called when frames
    * are dragged across (null, null on a double click), onPick(frame) on a click, and plot.cursor(frame) marks a frame.
    */
-  N.tracePlot = function ({ height = 120, onRange = null, onPick = null } = {}) {
+  N.tracePlot = function ({ height = 120, onRange = null, onPick = null, onMark = null } = {}) {
     const canvas = h("canvas.trace-canvas");
     const readout = h("div.trace-readout.mono", "");
     const el = h("div.trace-plot", readout, canvas);
@@ -40,6 +40,8 @@
     let cursorFrame = null;
     let drag = null;
     let hover = null;
+    let events = [];   // [{start, stop, label}]: drawn as patches over every panel (dev's signal viewer's events)
+    let marking = false;   // a drag marks an event (onMark) instead of zooming
     const pad = { left: 56, right: 12, top: 8, bottom: 22 };
     canvas.style.height = `${height + pad.bottom}px`;   // one panel's room before the first draw, so nothing moves when it comes
 
@@ -116,8 +118,15 @@
         ctx.textAlign = t === 0 ? "left" : t === ticks ? "right" : "center";   // the ends inside the plot
         ctx.fillText(timeLabel(frame), xOf(frame, width) + (t === 0 ? -2 : t === ticks ? 2 : 0), total - 6);
       }
+      for (const e of events) {
+        if (e.stop < data.start || e.start > lastFrame()) continue;
+        const a = xOf(Math.max(e.start, data.start), width), b = xOf(Math.min(e.stop, lastFrame()), width);
+        ctx.fillStyle = "rgba(255, 170, 0, 0.18)";
+        ctx.fillRect(a, 0, Math.max(2, b - a), total - pad.bottom);
+        if (e.label) { ctx.fillStyle = css("--text-2", "#475467"); ctx.textAlign = "left"; ctx.fillText(e.label, a + 3, total - pad.bottom - 4); }
+      }
       if (drag && drag.to !== null) {
-        ctx.fillStyle = "rgba(61, 90, 254, 0.12)";
+        ctx.fillStyle = marking ? "rgba(255, 170, 0, 0.3)" : "rgba(61, 90, 254, 0.12)";
         const a = Math.min(drag.from, drag.to), b = Math.max(drag.from, drag.to);
         ctx.fillRect(a, 0, b - a, total - pad.bottom);
       }
@@ -170,7 +179,10 @@
       const moved = drag.to !== null && Math.abs(drag.to - drag.from) > 4;
       const from = drag.from, to = drag.to;
       drag = null;
-      if (moved && onRange) {
+      if (moved && marking && onMark) {
+        const a = frameAt(Math.min(from, to), width), b = frameAt(Math.max(from, to), width);
+        if (b >= a) onMark(a, b);
+      } else if (moved && onRange) {
         const a = frameAt(Math.min(from, to), width), b = frameAt(Math.max(from, to), width);
         if (b > a) onRange(a, b + 1);
       } else if (event.target === canvas && onPick) {
@@ -184,6 +196,8 @@
       el, canvas,
       draw(result, names = []) { data = result; labels = names; draw(); },
       cursor(frame) { cursorFrame = frame; draw(); },
+      events(list) { events = list || []; draw(); },
+      mark(on) { marking = on; canvas.classList.toggle("marking", on); },
       redraw: draw,
     };
   };
@@ -195,7 +209,64 @@
     const plot = N.tracePlot({
       height: 150,
       onRange: (start, stop) => { state.range = [start, stop]; load(); },
+      onMark: (start, stop) => markEvent(start, stop),
     });
+    // Events marked on the traces, as dev's signal viewer's event annotator: frames start..stop of an ROI (a column of
+    // the signals), with a label, kept in the project (module data "trace_events" of ophys, or core, or the first module) with
+    // the entity they are of
+    const modules = ((app.project && app.project.modules) || []).map((m) => m.id);
+    const module = ["ophys", "core"].find((m) => modules.includes(m)) || modules[0] || null;
+    let stored = { events: [] }, revision = 0;
+    const sameKey = (a, b) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k]);
+    const mine = (e) => e.entityType === entityType && sameKey(e.key, key);
+    const markButton = h("button.btn.small.trace-mark", { title: "Drag across a plot to mark an event of the ROI", on: { click: () => {
+      const on = !markButton.classList.contains("active");
+      markButton.classList.toggle("active", on);
+      plot.mark(on);
+    } }, disabled: !module }, N.icon("edit", 13), "Mark events");
+    const eventList = h("ul.trace-events");
+    async function loadEvents() {
+      try {
+        if (!module) return;
+        const data = await app.client.request("modules.data", { module, name: "trace_events" });
+        stored = JSON.parse(data.text) || { events: [] };
+        stored.events = stored.events || [];
+        revision = data.revision;
+      } catch (error) { stored = { events: [] }; }
+      showEvents();
+    }
+    async function changeEvents(change) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        change(stored.events);
+        try {
+          revision = (await app.client.request("modules.saveData", { module, name: "trace_events", text: JSON.stringify(stored), revision })).revision;
+          break;
+        } catch (error) {
+          if (error.code !== "revision-conflict" || attempt) { N.showError(error, "Could not save the events"); break; }
+          await loadEvents();
+        }
+      }
+      showEvents();
+    }
+    function showEvents() {
+      const shown = stored.events.filter((e) => mine(e) && state.columns.includes(e.column));
+      plot.events(shown);
+      N.fill(eventList, shown.map((e) => h("li", { dataset: { start: e.start } },
+        h("span.swatch", { style: { background: "rgba(255, 170, 0, 0.7)" } }),
+        h("span.grow", `${labelOf(e.column)}: frames ${e.start}–${e.stop}` + (e.label ? ` · ${e.label}` : "")),
+        h("button.btn.ghost.icon.small.remove-event", { title: "Remove", on: { click: () => changeEvents((all) => {
+          const at = all.indexOf(e);
+          if (at >= 0) all.splice(at, 1);
+        }) } }, N.icon("trash", 12)))));
+    }
+    async function markEvent(start, stop) {
+      const column = state.columns[state.columns.length - 1];
+      const label = await N.prompt(`Event of ${labelOf(column)}`, `Frames ${start}–${stop}: a label (optional)`, "");
+      if (label === null) return;
+      const roi = (N.roiColumns(state.rois, state.count) ? [...N.roiColumns(state.rois, state.count)].find(([, c]) => c === column) : null);
+      await changeEvents((all) => all.push(Object.assign({ entityType, key, column, start, stop, label: label.trim() },
+        roi ? { roi: roi[0] } : {}, state.variables.length === 1 ? { variable: state.variables[0] } : {})));
+    }
     const list = h("ul.trace-roi-list");
     const pickers = signalVariables.map((name) => {
       const box = h("input", { type: "checkbox", checked: state.variables.includes(name), on: { change: () => {
@@ -239,6 +310,7 @@
         state.names = (result.traces.find((t) => t.columnNames) || {}).columnNames || null;
         state.count = Math.min(...result.traces.map((t) => t.count));
         plot.draw(result, state.columns.map(labelOf));
+        showEvents();
         status.textContent = `${result.frames} frames` + (result.frameRate ? ` at ${N.fmt.number(result.frameRate)} Hz` : "") + (start !== null ? ` · showing ${result.start}–${result.start + (result.points - 1) * result.step} (double-click for all)` : " · drag across a plot to zoom") +
           (result.step > 1 ? ` · every ${result.step}th frame` : "");
         renderList();
@@ -254,11 +326,13 @@
     };
     document.addEventListener("keydown", onKey);
     const content = h("div.traces",
-      h("div.trace-bar", h("span.muted", "Signals"), pickers, h("div.spacer"), status),
-      h("div.trace-main", h("div.trace-side", h("div.trace-hint.muted", "Click an ROI; Ctrl-click to add more. ↑ and ↓ move."), list), h("div.trace-stage", plot.el)));
+      h("div.trace-bar", h("span.muted", "Signals"), pickers, h("div.spacer"), markButton, status),
+      h("div.trace-main", h("div.trace-side", h("div.trace-hint.muted", "Click an ROI; Ctrl-click to add more. ↑ and ↓ move."), list),
+        h("div.trace-stage", plot.el, eventList)));
     const dialog = N.dialog({ title: `Signals · ${N.fmt.key(key)}`, content, onClose: () => document.removeEventListener("keydown", onKey) });
     dialog.el.classList.add("traces-dialog");
     window.addEventListener("resize", plot.redraw);
+    await loadEvents();
     await load();
     return dialog;
   };

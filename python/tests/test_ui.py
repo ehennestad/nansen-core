@@ -1367,6 +1367,25 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     page.mouse.move(box["x"] + 300, box["y"] + 60, steps=5)
     page.mouse.up()
     page.wait_for_selector(".trace-status:has-text('double-click for all')")
+    # the signal viewer's event annotator: a drag marks an event of the ROI, kept with the session
+    page.click(".trace-mark")
+    page.mouse.move(box["x"] + 150, box["y"] + 60)
+    page.mouse.down()
+    page.mouse.move(box["x"] + 250, box["y"] + 60, steps=5)
+    page.mouse.up()
+    page.fill(".dialog.narrow input", "burst")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".trace-events li:has-text('ROI 2'):has-text('burst')")
+    import json
+    events = lambda: json.loads(empty_app["api"].handle({"id": 7, "method": "modules.data", "params": {"module": "ophys", "name": "trace_events"}})["result"]["text"])["events"]
+    marked = events()[0]
+    assert (marked["entityType"], marked["column"], marked["roi"], marked["label"]) == ("session", 1, 2, "burst") and marked["stop"] > marked["start"]
+    page.click(".trace-roi-list li[data-column='0']")   # another ROI's events only
+    wait_until(lambda: page.locator(".trace-events li").count() == 0)
+    page.click(".trace-roi-list li[data-column='1']")
+    page.wait_for_selector(".trace-events li:has-text('burst')")
+    page.click(".trace-events li .remove-event")
+    wait_until(lambda: events() == [])
     page.locator(".traces-dialog .dialog-head button[title='Close']").click()
 
     # time series: the per-frame image stats and the motion shifts, their columns named
