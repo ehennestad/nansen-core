@@ -64,7 +64,6 @@ Not carried over, by choice or not yet:
 - **Add-on and toolbox management.** Out of scope for the core.
 - **The domain modules and viewer apps.** dev's `ophys.twophoton` methods (motion correction, suite2p, EXTRACT, CaImAn, signal extraction, dF/F, ROI curation), its ScanImage, SciScan and ROI file adapters, and the imviewer, fovmanager and roimanager apps are not part of the core. They belong in modules: a module declares methods, adapters and presets that wrap dev's code (the viewers as project tools or methods run by hand), with no change to the core.
 
-
 ## Decisions recorded so far
 
 - **Monorepo.** Schemas, conformance cases, both implementations and the frontend live in one repository, so a schema change and both implementations move in one pull request. This can be split once the schemas settle.
