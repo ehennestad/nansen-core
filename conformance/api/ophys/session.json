@@ -124,6 +124,7 @@
               "RoiSignals_Dff",
               "RoiSignals_Deconvolved",
               "RoiSignals_Denoised",
+              "RoiImages",
               "TwoPhotonSeries_Denoised",
               "TwoPhotonSeries_Deinterleaved",
               "TwoPhotonSeries_Cropped"
@@ -635,6 +636,122 @@
     },
     {
       "request": {
+        "method": "methods.run",
+        "id": 1705,
+        "params": {
+          "methodId": "ophys.roi_images",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "boxSize": 8
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "boxSize": 9,
+              "stats": {
+                "peakDff": [
+                  9.1859,
+                  7.0495,
+                  7.3852
+                ],
+                "salience": [
+                  1.402,
+                  1.0732,
+                  2.1103
+                ],
+                "meanSimilarity": [
+                  0.9513,
+                  0.9562,
+                  0.9784
+                ],
+                "correlationSimilarity": [
+                  0.9822,
+                  0.9824,
+                  0.9851
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.value",
+        "id": 1706,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiImages"
+        }
+      },
+      "expect": {
+        "result": {
+          "value": {
+            "boxSize": 9,
+            "ids": [
+              1,
+              2,
+              3
+            ],
+            "stats": {
+              "peakDff": [
+                9.1859,
+                7.0495,
+                7.3852
+              ],
+              "salience": [
+                1.402,
+                1.0732,
+                2.1103
+              ],
+              "meanSimilarity": [
+                0.9513,
+                0.9562,
+                0.9784
+              ],
+              "correlationSimilarity": [
+                0.9822,
+                0.9824,
+                0.9851
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.value",
+        "id": 1707,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiSignals_Dff"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
         "method": "data.traces",
         "id": 18,
         "params": {
@@ -850,6 +967,13 @@
             "dataLocation": "processed",
             "files": [
               "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/roi_array.json"
+            ]
+          },
+          {
+            "name": "RoiImages",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/roi_images.json"
             ]
           },
           {
@@ -4016,6 +4140,7 @@
               "RoiSignals_Dff",
               "RoiSignals_Deconvolved",
               "RoiSignals_Denoised",
+              "RoiImages",
               "TwoPhotonSeries_Denoised",
               "TwoPhotonSeries_Deinterleaved",
               "TwoPhotonSeries_Cropped"

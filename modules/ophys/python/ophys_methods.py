@@ -1800,6 +1800,7 @@ VARIABLES = [
     ("RoiSignals_Dff", "ROI ΔF/F", "roi_signals_dff.npy", "npy", "RoiSignals"),
     ("RoiSignals_Deconvolved", "Deconvolved spikes", "roi_signals_deconvolved.npy", "npy", "RoiSignals"),
     ("RoiSignals_Denoised", "Denoised calcium", "roi_signals_denoised.npy", "npy", "RoiSignals"),
+    ("RoiImages", "ROI images and statistics", "roi_images.json", "json", "RoiImages"),
     ("TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack"),
     ("TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"),
     ("TwoPhotonSeries_Cropped", "Cropped stack", "two_photon_series_cropped.npy", "npy", "ImageStack"),
@@ -1934,6 +1935,102 @@ def _pick(stack, name, channel, plane):
 def _load_stack(entity, name, context, options=None):
     """The variable as a height x width x frames array, read whole (for methods that need every frame at once)."""
     return np.asarray(_open_stack(entity, name, context, options))
+
+
+def roi_images(entity, options, context):
+    """dev's ROI classifier images and statistics (computeRoiImages, imageprops, dffprops), for the gallery.
+
+    Around each ROI's center (rounded half up) a box of boxSize pixels (odd) is cut from three images: the mean of the
+    frames weighted by the ROI's ΔF/F (normalised to 0..1, then 1 / (1 + exp(-10 (x - 0.5)))), the mean of the frames
+    of its top 1% ΔF/F (at least 50, or all frames when there are fewer; ties in frame order), both less the box's
+    mean over every frame, and the FOV's local correlation image, each scaled to 0..255 (dev's AutoAdjust). Outside the
+    image the box is 0. The statistics are
+    the peak ΔF/F, the salience ((ROI - surround + 1) / (surround + 1) of the top 1% image, its mean inside and
+    outside the ROI in the box) and the Pearson correlation of each weighted-mean and correlation image with their
+    mean over the ROIs (dev's templateSimilarity). Signal columns are the ROIs', or those not rejected when there
+    are fewer, as extract_signals saves them. Values are rounded to 4 decimals; null where undefined."""
+    from nansen.frames import local_correlation, rois_at
+    stack = _open_stack(entity, options["stack"], context, options)
+    height, width, frames = stack.shape
+    document = rois_at(context.project.load(entity, options["rois"]), options.get("plane", 1), options.get("channel", 1))
+    rois = document.get("rois", [])
+    dff = _as_traces(context.project.load(entity, options["signals"]))
+    if dff.shape[0] != frames:
+        raise NansenError("invalid-data", f"{options['signals']} has {dff.shape[0]} frames; the stack has {frames}")
+    if len(rois) != dff.shape[1]:
+        rois = [roi for roi in rois if roi.get("classification") != "rejected"]
+        if len(rois) != dff.shape[1]:
+            raise NansenError("invalid-data", f"{options['signals']} has {dff.shape[1]} columns, not one per ROI")
+    size = int(options["boxSize"]) | 1   # odd, so the center is a pixel
+    half = size // 2
+    top_count = int(np.floor(frames * 0.01 + 0.5))
+    if top_count < 50:
+        top_count = min(50, frames)
+    boxes, weights, tops = [], [], []
+    for k, roi in enumerate(rois):
+        r0, c0 = (int(np.floor(v + 0.5)) for v in roi["center"])
+        rows, columns = np.arange(r0 - half, r0 + half + 1), np.arange(c0 - half, c0 + half + 1)
+        boxes.append((rows, columns, (rows >= 0) & (rows < height), (columns >= 0) & (columns < width)))
+        d = dff[:, k]
+        span = d.max() - d.min()
+        normalised = (d - d.min()) / span if span > 0 else np.zeros(frames)
+        weights.append(1 / (1 + np.exp(-10 * (normalised - 0.5))))
+        top = np.zeros(frames, dtype=bool)
+        top[np.argsort(-d, kind="stable")[:top_count]] = True
+        tops.append(top)
+    total = np.zeros(len(rois))
+    weighted = np.zeros((len(rois), size, size))
+    topped = np.zeros((len(rois), size, size))
+    for start in range(0, frames, CHUNK):
+        chunk = stack.frames(start, start + CHUNK).astype(np.float64)
+        for k, (rows, columns, in_rows, in_columns) in enumerate(boxes):
+            patch = np.zeros((size, size, chunk.shape[2]))
+            patch[np.ix_(in_rows, in_columns)] = chunk[np.ix_(rows[in_rows], columns[in_columns])]
+            total[k] += patch.sum()
+            weighted[k] += patch @ weights[k][start:start + chunk.shape[2]]
+            topped[k] += patch[:, :, tops[k][start:start + chunk.shape[2]]].sum(axis=2)
+    correlation = local_correlation(stack)
+    images = {"activityWeightedMean": [], "top1Percent": [], "localCorrelation": []}
+    stats = {"peakDff": [], "salience": [], "meanSimilarity": [], "correlationSimilarity": []}
+    for k, (roi, (rows, columns, in_rows, in_columns)) in enumerate(zip(rois, boxes)):
+        valid = np.outer(in_rows, in_columns)
+        mean = total[k] / (valid.sum() * frames)
+        mean_image = np.where(valid, weighted[k] / frames - mean * weights[k].sum() / frames, 0.0)
+        top_image = np.where(valid, topped[k] / top_count - mean, 0.0)
+        correlation_image = np.zeros((size, size))
+        correlation_image[np.ix_(in_rows, in_columns)] = correlation[np.ix_(rows[in_rows], columns[in_columns])]
+        mean_image, top_image, correlation_image = (_autoadjust(image, valid) for image in (mean_image, top_image, correlation_image))
+        images["activityWeightedMean"].append(mean_image)
+        images["top1Percent"].append(top_image)
+        images["localCorrelation"].append(correlation_image)
+        inside = np.zeros((size, size), dtype=bool)
+        for r, c in roi.get("pixels", []):
+            if rows[0] <= r <= rows[-1] and columns[0] <= c <= columns[-1]:
+                inside[r - rows[0], c - columns[0]] = True
+        outside = valid & ~inside
+        roi_mean = top_image[inside].mean() if inside.any() else np.nan
+        surround = top_image[outside].mean() if outside.any() else np.nan
+        stats["peakDff"].append(dff[:, k].max())
+        stats["salience"].append((roi_mean - surround + 1) / (surround + 1))
+    for name, key in (("activityWeightedMean", "meanSimilarity"), ("localCorrelation", "correlationSimilarity")):
+        template = np.mean(images[name], axis=0) if images[name] else None
+        stats[key] = [_pearson(template.ravel(), image.ravel()) for image in images[name]]
+    rounded = lambda v: None if v is None or not np.isfinite(v) else float(np.floor(v * 1e4 + 0.5) / 1e4)
+    output = {"boxSize": size, "ids": [roi.get("id", k + 1) for k, roi in enumerate(rois)],
+              "images": {name: [[rounded(v) for v in image.ravel()] for image in values] for name, values in images.items()},
+              "stats": {name: [rounded(v) for v in values] for name, values in stats.items()}}
+    _save(entity, options["output"], output, context)
+    context.log(f"{_name(entity)}: images and statistics of {len(rois)} ROIs")
+    return {"rois": len(rois), "boxSize": size, "stats": output["stats"]}
+
+
+def _autoadjust(image, valid):
+    """An ROI image scaled to 0..255 over the box's pixels inside the image, as dev's AutoAdjust (kept as floats); 0
+    outside, and everywhere when the image is flat."""
+    low, high = image[valid].min(), image[valid].max()
+    if not high > low:
+        return np.zeros_like(image)
+    return np.where(valid, (image - low) / (high - low) * 255, 0.0)
 
 
 def _as_traces(data):

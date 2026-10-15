@@ -717,6 +717,40 @@
         const result = await app.client.request("data.traces", { entityType, key, variables: ["RoiSignals_Dff"], columns: ids.map((id) => map.get(id)), maxPoints: 4000 });
         result.traces[0].columns.forEach((trace, i) => { peaks[ids[i]] = Math.max(...trace.values.filter((v) => v !== null)); });
       }
+      // dev's classifier images and statistics, when ophys.roi_images has saved them (RoiImages)
+      let classifier = null;
+      const imageOf = (roi, name) => {
+        if (!classifier || name === "frame") return null;
+        const at = classifier.ids.indexOf(roi.id);
+        return at < 0 ? null : classifier.images[name][at];
+      };
+      const statOf = (roi, name) => {
+        const at = classifier ? classifier.ids.indexOf(roi.id) : -1;
+        const value = at < 0 ? null : classifier.stats[name][at];
+        return value === null || value === undefined ? Infinity : -value;   // largest first; none last
+      };
+      const loadClassifier = app.client.request("data.value", { entityType, key, variable: "RoiImages" }).then(({ value }) => {
+        const list = (v) => [].concat(v);   // one ROI's lists may come back as a single value
+        classifier = { boxSize: value.boxSize, ids: list(value.ids), images: {}, stats: {} };
+        for (const [name, images] of Object.entries(value.images || {})) classifier.images[name] = list(images).map(list);
+        if (classifier.ids.length === 1) for (const name of Object.keys(classifier.images)) classifier.images[name] = [classifier.images[name].flat()];
+        for (const [name, values] of Object.entries(value.stats || {})) classifier.stats[name] = list(values);
+        for (const [name, label] of [["activityWeightedMean", "Activity-weighted mean"], ["top1Percent", "Top 1% ΔF/F frames"], ["localCorrelation", "Local correlation"]]) {
+          if (classifier.images[name]) imagePick.appendChild(h("option", { value: name }, label));
+        }
+        for (const [name, label] of [["salience", "Most salient first"], ["meanSimilarity", "Most typical image first"], ["correlationSimilarity", "Most typical correlation first"]]) {
+          if (classifier.stats[name]) sortPick.appendChild(h("option", { value: name }, label));
+        }
+        if (classifier.stats.peakDff) Object.assign(peaks, Object.fromEntries(classifier.ids.map((id, i) => [id, classifier.stats.peakDff[i] ?? -Infinity])));
+        imagePick.disabled = false;
+      }).catch(() => { /* not computed: the frame's crops and the basic sorts */ });
+      let imageName = "frame";
+      const imagePick = h("select.input.roi-gallery-image", { title: "The image of each tile", disabled: true, on: { change: () => { imageName = imagePick.value; render(); } } },
+        h("option", { value: "frame" }, "Frame shown"));
+      let showOnly = "all";
+      const showPick = h("select.input.roi-gallery-show", { title: "Show", on: { change: () => { showOnly = showPick.value; render(); } } },
+        h("option", { value: "all" }, "All ROIs"), h("option", { value: "accepted" }, "Accepted"), h("option", { value: "rejected" }, "Rejected"),
+        h("option", { value: "none" }, "Unclassified"));
       let sortBy = "id";
       const grid = h("div.roi-gallery");
       const sortPick = h("select.input.roi-gallery-sort", { on: { change: async () => {
@@ -728,18 +762,23 @@
       } } },
         h("option", { value: "id" }, "By id"), h("option", { value: "area" }, "Largest first"), h("option", { value: "brightness" }, "Brightest first"),
         signalVariables.includes("RoiSignals_Dff") ? h("option", { value: "peak" }, "Largest ΔF/F peak first") : null);
-      const ordered = () => visible().slice().sort((a, b) => sorts[sortBy](a) - sorts[sortBy](b) || a.id - b.id);
+      for (const name of ["salience", "meanSimilarity", "correlationSimilarity"]) sorts[name] = (r) => statOf(r, name);
+      const shown = (r) => showOnly === "all" || (showOnly === "none" ? !r.classification : r.classification === showOnly);
+      const ordered = () => visible().filter(shown).sort((a, b) => sorts[sortBy](a) - sorts[sortBy](b) || a.id - b.id);
       function tile(roi) {
-        const half = 8, size = 2 * half + 1;
+        const own = imageOf(roi, imageName);   // a classifier image: a box around the ROI's center, 0..255
+        const half = own ? (classifier.boxSize - 1) / 2 : 8, size = 2 * half + 1;
         const ys = roi.pixels.map((p) => p[0]), xs = roi.pixels.map((p) => p[1]);
-        const top = Math.round((Math.min(...ys) + Math.max(...ys)) / 2) - half, left = Math.round((Math.min(...xs) + Math.max(...xs)) / 2) - half;
+        const center = own ? [roi.pixels.reduce((t, p) => t + p[0], 0) / roi.pixels.length, roi.pixels.reduce((t, p) => t + p[1], 0) / roi.pixels.length].map((v) => Math.floor(Math.floor(v * 100 + 0.5) / 100 + 0.5))   // as roi_images: the saved center (2 decimals), rounded half up
+          : [Math.round((Math.min(...ys) + Math.max(...ys)) / 2), Math.round((Math.min(...xs) + Math.max(...xs)) / 2)];
+        const top = center[0] - half, left = center[1] - half;
         const crop = h("canvas.roi-tile-image");
         crop.width = size;
         crop.height = size;
         const ctx = crop.getContext("2d");
         const image = ctx.createImageData(size, size);
         for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-          const v = value(top + y, left + x), i = 4 * (y * size + x);
+          const v = own ? Math.round(own[y * size + x] ?? 0) : value(top + y, left + x), i = 4 * (y * size + x);
           image.data[i] = v; image.data[i + 1] = v; image.data[i + 2] = v; image.data[i + 3] = 255;
         }
         const [r, g, b] = roi.classification === "rejected" ? [230, 70, 70] : roi.classification === "accepted" ? [70, 200, 110] : [255, 196, 0];
@@ -779,10 +818,11 @@
       document.addEventListener("keydown", keys, true);
       onSelect = render;
       const view = N.dialog({ title: `ROIs · ${N.fmt.key(key)}`, content: h("div.roi-gallery-body",
-        h("div.roi-gallery-bar", sortPick, h("span.muted", "Click a tile to select it; a, r and u classify it, the arrow keys go through them.")), grid),
+        h("div.roi-gallery-bar", imagePick, sortPick, showPick, h("span.muted", "Click a tile to select it; a, r and u classify it, the arrow keys go through them.")), grid),
         onClose: () => { document.removeEventListener("keydown", keys, true); onSelect = null; } });
       view.el.classList.add("roi-gallery-dialog");
       render();
+      loadClassifier.then(render);
     }
 
     // --- the frame --------------------------------------------------------------------------------------------------

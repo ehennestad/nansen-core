@@ -1367,6 +1367,36 @@ def test_view_a_stack_with_channels_and_planes(empty_app, page):
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_the_roi_gallery_shows_the_classifier_images_and_statistics(empty_app, page):
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    run = lambda method, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": s1, "options": options})
+    api = ophys_project(empty_app, [run("ophys.motion_correction", referenceFrames=1), run("ophys.detect_rois", threshold=0.25, border=4),
+                                    run("ophys.extract_signals"), run("ophys.compute_dff"), run("ophys.roi_images", boxSize=9),
+                                    ("rois.update", {"entityType": "session", "key": s1[0], "variable": "RoiArray",
+                                                     "classify": [{"id": 2, "classification": "rejected"}]})])
+    value = api.handle({"id": 1, "method": "data.value", "params": {"entityType": "session", "key": s1[0], "variable": "RoiImages"}})["result"]["value"]
+    salient = [i for _, i in sorted(zip(value["stats"]["salience"], value["ids"]), key=lambda pair: -pair[0])]
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+    page.click(".viewer-gallery")
+    page.wait_for_selector(".roi-gallery-image:not([disabled])")
+    assert page.locator(".roi-gallery-image option").all_inner_texts() == ["Frame shown", "Activity-weighted mean", "Top 1% ΔF/F frames", "Local correlation"]
+    assert page.evaluate("document.querySelector('.roi-tile-image').width") == 17   # the frame's crops
+    page.select_option(".roi-gallery-image", "localCorrelation")
+    wait_until(lambda: page.evaluate("document.querySelector('.roi-tile-image').width") == 9)   # the saved box
+    page.select_option(".roi-gallery-sort", "salience")
+    wait_until(lambda: [int(t) for t in page.eval_on_selector_all(".roi-tile", "els => els.map(e => e.dataset.roi)")] == salient)
+    page.select_option(".roi-gallery-show", "rejected")   # dev's Show: one class
+    wait_until(lambda: page.eval_on_selector_all(".roi-tile", "els => els.map(e => e.dataset.roi)") == ["2"])
+    page.select_option(".roi-gallery-show", "none")
+    wait_until(lambda: sorted(page.eval_on_selector_all(".roi-tile", "els => els.map(e => e.dataset.roi)")) == ["1", "3"])
+    page.keyboard.press("Escape")
+
+
 def test_view_any_stack_file_from_the_file_tree(empty_app, page):
     ophys_project(empty_app)
     page.goto(empty_app["server"].url + "#/entities/session")

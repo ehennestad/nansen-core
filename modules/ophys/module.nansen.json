@@ -18,6 +18,7 @@
     "methods/caiman_deconvolution.method.nansen.json",
     "methods/cnmf.method.nansen.json",
     "methods/compute_dff.method.nansen.json",
+    "methods/roi_images.method.nansen.json",
     "methods/crop.method.nansen.json",
     "methods/deconvolve.method.nansen.json",
     "methods/deep_interpolation.method.nansen.json",

@@ -962,6 +962,14 @@ class Api:
                               for r in roi_outlines(project.load(entity, params["rois"]))]
         return result
 
+    def data__value(self, params: dict) -> dict:
+        """The value of a JSON data variable of an entity (as ophys.roi_images saves), for a page to show."""
+        project = self._require_project()
+        variable = project.data_variable(params["variable"])
+        if variable.file_adapter != "json":
+            raise NansenError("invalid-params", f"{variable.name} is not a JSON variable; data.frame and data.traces read arrays")
+        return {"value": project.load(self._entity(params), variable.name)}
+
     def data__cache(self, params: dict) -> dict:
         """The project's data cache: what load keeps in memory (dev's DataCache)."""
         return self._require_project().data_cache.stats()

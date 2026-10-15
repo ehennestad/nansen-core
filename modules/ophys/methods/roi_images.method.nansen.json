@@ -1,0 +1,65 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.roi_images",
+  "version": "1.0.0",
+  "title": "ROI images and statistics",
+  "category": "Two-photon/ROI classification",
+  "entityType": "*",
+  "description": "dev's ROI classifier images and statistics (computeRoiImages, imageprops, dffprops), shown and sorted by in the viewer's ROI gallery. Around each ROI a box is cut from three images: the mean of the frames weighted by the ROI's ΔF/F, the mean of the frames of its top 1% ΔF/F (at least 50), both less the box's mean, and the local correlation image. The statistics are the peak ΔF/F, the salience of the ROI in its top 1% image, and how alike each ROI's weighted-mean and correlation images are to their mean over the ROIs (dev's templateSimilarity).",
+  "implementations": {
+    "python": "ophys_methods:roi_images",
+    "matlab": "ophys.roiImages"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the stack the ROIs were found in."
+      },
+      "rois": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "ROIs",
+        "description": "Variable that holds the ROIs."
+      },
+      "signals": {
+        "type": "string",
+        "default": "RoiSignals_Dff",
+        "title": "ΔF/F",
+        "description": "Variable that holds the ROIs' ΔF/F (frames x ROIs), as compute_dff saves it."
+      },
+      "boxSize": {
+        "type": "integer",
+        "default": 21,
+        "minimum": 5,
+        "maximum": 101,
+        "title": "Box size",
+        "description": "Width and height of each ROI's images, in pixels (an even size is made odd)."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiImages",
+        "title": "Output",
+        "description": "Variable the images and statistics are saved to."
+      },
+      "channel": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Channel",
+        "description": "Of a stack with channels: the one to use, from 1"
+      },
+      "plane": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Plane",
+        "description": "Of a stack with planes: the one to use, from 1"
+      }
+    }
+  }
+}
