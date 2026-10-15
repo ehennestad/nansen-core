@@ -993,8 +993,10 @@
     N.fill(content, 
       h("div.hero", h("div", h("h1", "Data"), h("p", "Where the data is, how it is named, and what the project adds to it."))),
       h("div.grid",
-        h("div.card", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
-          dataset ? h("span.muted", `environment: ${dataset.environment || "default"}`) : null),
+        h("div.card.data-locations", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
+          dataset ? h("span.muted", `environment: ${dataset.environment || "default"}`) : null,
+          dataset ? h("button.btn.small.edit-config", { title: "Edit the dataset config: locations, folder levels, file patterns, naming rules",
+            on: { click: () => datasetConfigDialog(app) } }, N.icon("edit", 14), "Edit config") : null),
           dataset ? h("table.simple", h("thead", h("tr", ["Location", "Category", "Access", "Root", "", ""].map((t) => h("th", t)))),
             h("tbody", dataset.roots.map((root) => {
               const loc = dataset.locations.find((l) => l.id === root.dataLocation) || {};
@@ -1198,6 +1200,52 @@
       ],
     });
     loadOptions(true);
+  }
+
+  /* The DSM config as text. DSM checks it before it is written, so a config it refuses is never kept. */
+  async function datasetConfigDialog(app) {
+    let got;
+    try { got = await app.client.request("dataset.get"); } catch (error) { N.showError(error, "Could not read the dataset config"); return; }
+    const editor = h("textarea.input.mono.config-text", { spellcheck: false, style: { width: "100%", height: "52vh", resize: "vertical", fontSize: "12.5px", lineHeight: "1.45", tabSize: "2" } });
+    editor.value = got.text;
+    const message = h("div.form-message.hidden");
+    const status = h("span.muted.config-status");
+    const check = () => {
+      try { JSON.parse(editor.value); status.textContent = "Valid JSON"; status.className = "muted config-status"; }
+      catch (error) { status.textContent = "Not valid JSON: " + error.message; status.className = "config-status bad-text"; }
+    };
+    editor.addEventListener("input", check);
+    editor.addEventListener("keydown", (event) => {   // Tab indents instead of leaving the editor
+      if (event.key !== "Tab") return;
+      event.preventDefault();
+      const start = editor.selectionStart;
+      editor.setRangeText("  ", start, editor.selectionEnd, "end");
+      check();
+    });
+    check();
+    N.dialog({
+      title: "Dataset config",
+      content: h("div", { style: { padding: "14px 20px" } },
+        h("p.muted", { style: { marginTop: 0 } }, "The project's ", h("span.mono", got.path),
+          ": data locations, their roots, folder levels, file patterns and how names are read. DSM checks it before it is saved, and the tables' keys must still match the identity it gives; otherwise nothing changes. The same file is read by DSM's own tools."),
+        editor, h("div", { style: { marginTop: "6px" } }, status), message),
+      buttons: [
+        { label: "Cancel" },
+        { label: "Save", kind: "primary", onClick: async (close) => {
+          try {
+            app.project = await app.client.request("dataset.save", { text: editor.value });
+            close();
+            await app.reloadProject();
+            app.render();
+            N.toast("Dataset config saved", "Scan the stores to see what it finds", "success");
+          } catch (error) {
+            message.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error));
+            message.classList.remove("hidden");
+          }
+        } },
+      ],
+    });
+    editor.focus();
   }
 
   /* The modules the project can list: those in its modules folder and the built-in ones. */

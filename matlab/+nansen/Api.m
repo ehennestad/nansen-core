@@ -36,7 +36,7 @@ classdef Api < handle
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
-                "project.setDataset", "dataset.setRoot", "demo.create", "legacy.import", ...
+                "project.setDataset", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
@@ -195,6 +195,20 @@ classdef Api < handle
             obj.setProject(nansen.Project.open(project.Folder, Environment=project.Environment));
             obj.emit("project", struct("name", char(obj.Project.Name)));
             result = obj.apiProjectInfo(struct());
+        end
+
+        function result = apiDatasetGet(obj, ~)
+            % The DSM config's text, for editing
+            project = obj.requireProject();
+            text = project.datasetText();
+            result = struct("path", char(project.Document.dataset), "text", char(text));
+        end
+
+        function result = apiDatasetSave(obj, params)
+            % Replace the DSM config's text; refused (and nothing changed) unless DSM accepts it and the keys still match
+            project = obj.requireProject();
+            project.saveDatasetText(string(nansen.Api.param(params, "text")));
+            result = obj.reopen(project);
         end
 
         function result = apiDemoCreate(obj, params)

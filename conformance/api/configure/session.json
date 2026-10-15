@@ -401,6 +401,75 @@
           }
         ]
       }
+    },
+    {
+      "request": {
+        "method": "dataset.get",
+        "id": 24,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "path": "dataset.dsm.json"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.save",
+        "id": 25,
+        "params": {
+          "text": "{\"schemaVersion\": "
+        }
+      },
+      "expect": {
+        "error": "dataset-invalid"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.save",
+        "id": 26,
+        "params": {
+          "text": "[]"
+        }
+      },
+      "expect": {
+        "error": "dataset-invalid"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.save",
+        "id": 27,
+        "params": {
+          "text": "{\"schemaVersion\": \"0.1.0\"}"
+        }
+      },
+      "expect": {
+        "error": "dataset-invalid"
+      }
+    },
+    {
+      "request": {
+        "method": "project.info",
+        "id": 28,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "dataset": {
+            "locations": [
+              {
+                "id": "raw"
+              },
+              {
+                "id": "processed"
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }

@@ -242,6 +242,51 @@ class Project:
         self._check_and_save()
         return dataset
 
+    def dataset_text(self) -> str:
+        """The DSM config as written, so it can be edited with its formatting."""
+        self.require_dataset()
+        return (self.folder / self.document["dataset"]).read_text(encoding="utf-8")
+
+    def save_dataset_text(self, text: str) -> Dataset:
+        """Replace the DSM config with this text once DSM accepts it and the tables' keys still match it.
+
+        The file is written as given. If the new config cannot be used, the old text is put back.
+        """
+        import dsm
+
+        self.require_dataset()
+        name = self.document["dataset"]
+        try:
+            document = json.loads(text)
+        except ValueError as error:
+            raise NansenError("dataset-invalid", f"{name}: not valid JSON: {error}") from None
+        if not isinstance(document, dict):
+            raise NansenError("dataset-invalid", f"{name}: a DSM config is a JSON object")
+        try:
+            dsm.validate_config(document)
+        except dsm.ConfigError as error:
+            raise NansenError("dataset-invalid", f"{name}: {error}") from None
+        config_path = self.folder / name
+        old = config_path.read_text(encoding="utf-8")
+        with open(config_path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        self._dataset = None
+        try:
+            dataset = self.require_dataset()
+            for entry in self.document["entityTypes"]:
+                if entry["name"] in dataset.entity_types and self.table_path(entry["name"]).is_file():
+                    key = list(self.table(entry["name"]).spec.key)
+                    expected = [n for n, _ in dataset.key_columns(entry["name"])]
+                    if expected != key:
+                        raise NansenError("key-mismatch", f"the {entry['name']} table's key {key} differs from the "
+                                                          f"identity the new config gives it {expected}")
+        except NansenError:
+            with open(config_path, "w", encoding="utf-8", newline="") as f:
+                f.write(old)
+            self._dataset = None
+            raise
+        return dataset
+
     def set_root(self, data_location: str, path: str, environment: Optional[str] = None,
                  root_storage_path: Optional[str] = None) -> Dataset:
         """Say where a data location is: a given root, or the location in this machine's environment or another.

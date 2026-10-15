@@ -64,6 +64,33 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(response.error.code), "invalid-params");
         end
 
+        function theDatasetConfigIsEditedAsText(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            api = nansen.Api(Project=project);
+            configPath = fullfile(project.Folder, "dataset.dsm.json");
+            got = api.handle(struct("id", 1, "method", "dataset.get")).result;
+            testCase.verifyEqual(string(got.path), "dataset.dsm.json");
+            testCase.verifyEqual(string(got.text), string(nansen.internal.readText(configPath)));
+
+            edited = replace(string(got.text), '"displayName": "Processed"', '"displayName": "Processed data"');
+            info = api.handle(struct("id", 2, "method", "dataset.save", "params", struct("text", edited))).result;
+            locations = nansen.internal.asCellOfStructs(info.dataset.locations);
+            testCase.verifyEqual(cellfun(@(l) string(l.title), locations), ["Raw two-photon data", "Processed data"]);
+            testCase.verifyEqual(string(nansen.internal.readText(configPath)), edited);   % as written
+
+            % A config DSM accepts, but whose identity no longer fits the session table, is not kept
+            changed = replace(edited, '"identifierRef": "session_id"', '"identifierRef": "session_date"');
+            response = api.handle(struct("id", 3, "method", "dataset.save", "params", struct("text", changed)));
+            testCase.verifyEqual(string(response.error.code), "key-mismatch");
+            testCase.verifyEqual(string(nansen.internal.readText(configPath)), edited);
+            response = api.handle(struct("id", 4, "method", "dataset.save", "params", struct("text", "{")));
+            testCase.verifyEqual(string(response.error.code), "dataset-invalid");
+            testCase.verifyEqual(string(nansen.internal.readText(configPath)), edited);
+            rows = api.handle(struct("id", 5, "method", "entities.list", "params", struct("entityType", "session"))).result.rows;
+            testCase.verifyNotEmpty(rows);
+        end
+
         function catalogListsTheLastOpenedFirstWithinOneSecond(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));

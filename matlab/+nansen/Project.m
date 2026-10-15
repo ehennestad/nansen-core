@@ -219,6 +219,61 @@ classdef Project < handle
             obj.writeDocument(document);
         end
 
+        function text = datasetText(obj)
+            %datasetText The DSM config as written, so it can be edited with its formatting
+            obj.requireDataset();
+            text = string(nansen.internal.readText(fullfile(obj.Folder, obj.Document.dataset)));
+        end
+
+        function dataset = saveDatasetText(obj, text)
+            %saveDatasetText Replace the DSM config with this text once DSM accepts it and the tables' keys still match it
+            %
+            %   The file is written as given. If the new config cannot be used,
+            %   the old text is put back.
+            obj.requireDataset();
+            name = string(obj.Document.dataset);
+            try
+                document = jsondecode(char(text));
+            catch err
+                nansen.internal.throwError("dataset-invalid", "%s: not valid JSON: %s", name, err.message)
+            end
+            if ~isstruct(document) || ~isscalar(document)
+                nansen.internal.throwError("dataset-invalid", "%s: a DSM config is a JSON object", name)
+            end
+            try
+                dsm.validateConfig(document);
+            catch err
+                if isa(err, "dsm.ConfigError")
+                    nansen.internal.throwError("dataset-invalid", "%s: %s", name, err.message)
+                end
+                rethrow(err)
+            end
+            configPath = fullfile(obj.Folder, name);
+            old = nansen.internal.readText(configPath);
+            nansen.internal.writeText(configPath, string(text));
+            obj.DatasetCache = [];
+            try
+                dataset = obj.requireDataset();
+                for entry = obj.Document.entityTypes
+                    entityType = string(entry{1}.name);
+                    if ismember(entityType, dataset.entityTypes()) && isfile(obj.tablePath(entityType))
+                        key = obj.table(entityType).Key;
+                        keyColumns = dataset.keyColumns(entityType);
+                        expected = [keyColumns.Name];
+                        if ~isequal(expected, key)
+                            nansen.internal.throwError("key-mismatch", ...
+                                "the %s table's key %s differs from the identity the new config gives it %s", ...
+                                entityType, strjoin(key, ","), strjoin(expected, ","))
+                        end
+                    end
+                end
+            catch err
+                nansen.internal.writeText(configPath, string(old));
+                obj.DatasetCache = [];
+                rethrow(err)
+            end
+        end
+
         function dataset = setRoot(obj, dataLocation, path, options)
             %setRoot Say where a data location is: a given root, or the location in this machine's environment or another
             %

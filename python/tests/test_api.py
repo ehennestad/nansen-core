@@ -182,3 +182,28 @@ def test_choices_detach_and_reset(tmp_path):
     assert call("fragments.detach", entityType="session", fragmentId="qc")["error"]["code"] == "unknown-fragment"
     assert call("fragments.attach", entityType="session", fragmentId="qc")["result"]  # and back, with defaults
     api.close()
+
+
+def test_the_dataset_config_is_edited_as_text(tmp_path):
+    from nansen.demo import create_demo
+
+    api = Api(project=create_demo(tmp_path / "demo"), start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    got = call("dataset.get")["result"]
+    assert got["path"] == "dataset.dsm.json"
+    config = tmp_path / "demo" / "dataset.dsm.json"
+    assert got["text"] == config.read_text()
+
+    edited = got["text"].replace('"displayName": "Processed"', '"displayName": "Processed data"')
+    info = call("dataset.save", text=edited)["result"]
+    assert [l["title"] for l in info["dataset"]["locations"]] == ["Raw two-photon data", "Processed data"]
+    assert config.read_text() == edited  # as written, formatting and all
+
+    # A config DSM accepts, but whose identity no longer fits the session table, is not kept
+    changed = edited.replace('"identifierRef": "session_id"', '"identifierRef": "session_date"')
+    assert changed != edited
+    assert call("dataset.save", text=changed)["error"]["code"] == "key-mismatch"
+    assert config.read_text() == edited
+    assert call("dataset.save", text="{")["error"]["code"] == "dataset-invalid"
+    assert config.read_text() == edited
+    assert call("entities.list", entityType="session")["result"]["rows"]

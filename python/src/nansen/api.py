@@ -214,6 +214,20 @@ class Api:
         self.emit("project", {"name": self.project.name})
         return self.project__info({})
 
+    def dataset__get(self, params: dict) -> dict:
+        """The DSM config's text, for editing."""
+        project = self._require_project()
+        text = project.dataset_text()
+        return {"path": project.document["dataset"], "text": text}
+
+    def dataset__save(self, params: dict) -> dict:
+        """Replace the DSM config's text; refused (and nothing changed) unless DSM accepts it and the keys still match."""
+        project = self._require_project()
+        project.save_dataset_text(params["text"])
+        self._set_project(Project.open(project.folder, environment=project.environment))
+        self.emit("project", {"name": self.project.name})
+        return self.project__info({})
+
     def demo__create(self, params: dict) -> dict:
         from .demo import create_demo
 

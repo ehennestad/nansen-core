@@ -138,6 +138,7 @@ def test_run_method_in_the_queue(app, page):
     rows(page).nth(1).locator("td.sel input").click()
     page.click(".selection-bar button:has-text('Run method')")
     page.click(".method-item:has-text('Wait')")
+    page.wait_for_selector(".method-detail:has(h3:text-is('Wait')) .preset-row")
     page.fill(".field:has-text('Seconds') input", "0")
     page.click(".dialog-foot button:has-text('Add to queue')")
     page.wait_for_selector(".task")
@@ -335,7 +336,8 @@ def test_save_and_delete_a_preset(empty_app, page):
     page.wait_for_selector(".grid-table tbody td.key")
     page.click(".toolbar button:has-text('Run method')")
     page.click(".method-item:has-text('Wait')")
-    page.wait_for_selector(".preset-row")
+    # The dialog opens on the first method; its preset row must not be taken for Wait's
+    page.wait_for_selector(".method-detail:has(h3:text-is('Wait')) .preset-row")
     assert page.locator(".preset-row button[title='Delete this preset']").count() == 0  # not the default
     page.click(".preset-row button:has-text('Save as')")
     page.fill(".dialog.narrow input", "quick")
@@ -532,3 +534,23 @@ def test_add_and_remove_modules(empty_app, page):
     assert listed() == ["core"]
     page.click(".dialog-foot button:has-text('Close')")
     page.wait_for_selector(".modules li:has-text('NANSEN core')")
+
+
+def test_edit_the_dataset_config(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    config = empty_app["folder"] / "demo" / "dataset.dsm.json"
+    page.goto(empty_app["server"].url + "#/data")
+    page.click(".data-locations .edit-config")
+    page.wait_for_selector(".dialog .config-text")
+    text = page.locator(".dialog .config-text").input_value()
+    assert text == config.read_text()
+    page.fill(".dialog .config-text", "{")
+    assert page.locator(".dialog .config-status").inner_text().startswith("Not valid JSON")
+    page.click(".dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".dialog .form-message:has-text('dataset-invalid')")
+    assert config.read_text() == text
+    page.fill(".dialog .config-text", text.replace('"displayName": "Processed"', '"displayName": "Processed data"'))
+    page.click(".dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".data-locations td:has-text('Processed data')")
+    assert '"displayName": "Processed data"' in config.read_text()
