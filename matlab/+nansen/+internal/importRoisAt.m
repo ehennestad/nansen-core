@@ -1,4 +1,4 @@
-function [document, added] = importRoisAt(document, plane, channel, source, mode)
+function [document, added] = importRoisAt(document, plane, channel, source, mode, firstId)
 %importRoisAt Combine the ROIs of another ROI file into a file's ROIs at a plane and channel (from 1)
 %
 %   As roimanager adds loaded ROIs to those it has. The source's ROIs at
@@ -11,8 +11,11 @@ function [document, added] = importRoisAt(document, plane, channel, source, mode
 %   ROIs that stay keep everything; the imported ones get the next free
 %   ids, in the source's order, as updateRois adds ROIs, and keep their
 %   classification, cell type, tags, uid (unless an ROI of the file has it
-%   already) and their links among themselves. added are their ids. As
-%   Python's nansen.frames.import_rois_at.
+%   already) and their links among themselves. added are their ids (from
+%   firstId on at least, when given). As Python's nansen.frames.import_rois_at.
+    if nargin < 6
+        firstId = 1;
+    end
     mode = string(mode);
     if ~(isscalar(mode) && any(mode == ["replace", "append", "appendNonOverlapping"]))
         nansen.internal.throwError("invalid-params", "an import's mode is replace, append or appendNonOverlapping, not '%s'", strjoin(mode, ""))
@@ -71,7 +74,7 @@ function [document, added] = importRoisAt(document, plane, channel, source, mode
     for i = 1:numel(pixelsIn)
         add{i} = struct("pixels", pixelsIn{i});
     end
-    [document, added] = nansen.internal.updateRoisAt(document, plane, channel, [], remove, add, [], [], [], missing);
+    [document, added] = nansen.internal.updateRoisAt(document, plane, channel, [], remove, add, [], [], [], missing, [], [], firstId);
 
     addedIds = zeros(1, numel(added));
     for i = 1:numel(added)

@@ -201,6 +201,8 @@
    * Open the viewer on a variable of an entity. roiVariables are the entity's variables that hold ROIs, and
    * signalVariables its signals, shown for the selected ROI. options.select is an ROI to select once the ROIs are
    * read, and options.mode the image to start on ("mean", ...); options.onClose is called when the viewer closes.
+   * With options.mirror (true or false), the viewer offers "All aligned sessions": each ROI edit is also made, through the
+   * alignment, to the sessions ophys.align_sessions aligned this one with (rois.update's mirror: dev's synchEntries Mirror).
    */
   N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = [], options = {}) {
     let initial = options.select ?? null;
@@ -322,6 +324,12 @@
     const exportButton = h("button.btn.ghost.icon.small.viewer-export", { title: "Export", on: { click: () => exportMenu() } }, N.icon("download", 14));
     const zoomLabel = h("button.btn.ghost.small.viewer-zoom.mono", { title: "Fit the image (double-click it)", style: { display: "none" }, on: { click: () => zoomTo(1) } }, "");
     const status = h("div.viewer-status.muted", "Loading…");
+    // dev's MultiSessionRoiCollection 'Mirror': edits made in the aligned sessions too (rois.update's mirror)
+    state.mirror = Boolean(options.mirror);
+    const mirrorToggle = h("input.viewer-mirror", { type: "checkbox", checked: state.mirror, on: { change: () => { state.mirror = mirrorToggle.checked; } } });
+    const mirrorLabel = options.mirror === undefined ? null : h("label.viewer-mirror-label", {
+      title: "Add, move, reshape, delete and classify ROIs in every session aligned with this one too (through each session's alignment)" },
+      mirrorToggle, "All aligned sessions");
     const where = h("span.viewer-where.mono.muted", "");
     let last = null;
 
@@ -870,7 +878,7 @@
       const before = snapshot();
       try {
         const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, channel: state.channel, plane: state.plane,
-          ...(last ? { imageSize: [last.height, last.width] } : {}), ...change });   // the size, for a variable's first ROIs
+          ...(last ? { imageSize: [last.height, last.width] } : {}), ...(state.mirror ? { mirror: true } : {}), ...change });   // the size, for a variable's first ROIs
         if (history === "record") { state.undo.push(before); state.redo = []; }
         else if (history === "undo") state.redo.push(before);
         else if (history === "redo") state.undo.push(before);
@@ -882,7 +890,8 @@
         renderList();
         showSignal();
         if (onSelect) onSelect();
-        status.textContent = `${last.height} × ${last.width} · ${state.rois.length} ROIs`;
+        const others = (result.mirrored || []).filter((m) => m.added.length || m.changed.length || m.removed.length).length;
+        status.textContent = `${last.height} × ${last.width} · ${state.rois.length} ROIs` + (result.mirrored ? ` · also in ${others} aligned session${others === 1 ? "" : "s"}` : "");
       } catch (error) { N.showError(error, "Could not change the ROIs"); }
     }
     const selectedIds = () => [...state.selection].sort((a, b) => a - b);
@@ -1350,7 +1359,7 @@
       h("div.viewer-bar",
         playButton, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, scaleButton,
+        binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, mirrorLabel, measurement, measureButton, scaleButton,
         exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,

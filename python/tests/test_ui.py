@@ -2100,6 +2100,56 @@ def test_review_rois_across_sessions(empty_app, page):
     assert sorted(map(tuple, load(s1)[0]["pixels"])) == before[("m1", "s1")]   # the other session's is as it was
 
 
+def test_roi_edits_go_to_all_aligned_sessions(empty_app, page):
+    s1, s3 = {"subject_id": "m1", "session_id": "s1"}, {"subject_id": "m1", "session_id": "s3"}
+    run = lambda method_id, keys, options=None: ("methods.run", {"methodId": method_id, "entityType": "session", "keys": keys, "options": options or {}})
+    api = ophys_project(empty_app, [
+        run("ophys.motion_correction", [s1, s3], {"referenceFrames": 1}),
+        run("ophys.image_stats", [s1, s3]),
+        run("ophys.detect_rois", [s1], {"threshold": 0.25, "border": 4}),
+        run("ophys.align_sessions", [s1, s3])])
+    load = lambda key: api.project.load(api.project.entity("session", key), "RoiArray", cached=False)["rois"]
+    def settled(check):
+        def ready():
+            try:
+                return check()
+            except ValueError:   # a JSON file read while the app writes it
+                return False
+        wait_until(ready)
+    before, before3 = sorted(map(tuple, load(s1)[0]["pixels"])), sorted(map(tuple, load(s3)[0]["pixels"]))
+    page.goto(empty_app["server"].url + "#/page/ophys.roireview")
+    page.wait_for_selector(".rr-table tbody tr")
+    page.check(".rr-mirror")
+    # ROI 1 moved in s3's viewer moves in s1 too, through the alignment (a whole-pixel shift here)
+    page.locator(".rr-table tr[data-roi='1'] td").nth(2).dblclick()
+    page.wait_for_selector(".viewer-dialog .viewer-roi-list li[data-roi='1'].selected")
+    assert page.locator(".viewer-dialog .viewer-mirror").is_checked()
+    page.keyboard.press("Alt+ArrowDown")
+    settled(lambda: sorted(map(tuple, load(s1)[0]["pixels"])) == [(r + 1, c) for r, c in before])
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('also in 1 aligned session')")
+    # ROI 2 deleted there is deleted in s1 too
+    page.locator(".viewer-dialog .viewer-roi-list li[data-roi='2']").click()
+    page.keyboard.press("Delete")
+    settled(lambda: [r["id"] for r in load(s1)] == [1, 3])
+    assert [r["id"] for r in load(s3)] == [1, 3]
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+    page.wait_for_selector(".rr-table tbody tr[data-roi='2']", state="detached")
+    # the review deletes an ROI from every session
+    page.click(".rr-table tbody tr[data-roi='3']")
+    page.click(".rr-delete")
+    page.click(".dialog-foot button:has-text('Delete')")
+    page.wait_for_selector(".rr-table tbody tr[data-roi='3']", state="detached")
+    assert [r["id"] for r in load(s1)] == [1] and [r["id"] for r in load(s3)] == [1]
+    # unchecked, the viewer edits only the session it shows
+    page.uncheck(".rr-mirror")
+    page.locator(".rr-table tr[data-roi='1'] td").nth(2).dblclick()
+    page.wait_for_selector(".viewer-dialog .viewer-roi-list li[data-roi='1'].selected")
+    assert not page.locator(".viewer-dialog .viewer-mirror").is_checked()
+    page.keyboard.press("Alt+ArrowUp")
+    settled(lambda: sorted(map(tuple, load(s3)[0]["pixels"])) == before3)
+    assert sorted(map(tuple, load(s1)[0]["pixels"])) == [(r + 1, c) for r, c in before]
+
+
 def test_install_and_remove_add_ons_from_the_settings_page(empty_app, page, monkeypatch):
     import io
     import zipfile

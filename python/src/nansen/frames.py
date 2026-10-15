@@ -268,7 +268,7 @@ CLASSES = ("accepted", "rejected", "unresolved")
 def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[list] = None,
                 add: Optional[list] = None, move: Optional[list] = None, merge: Optional[list] = None,
                 pixels: Optional[list] = None, restore: Optional[list] = None, cell_type: Optional[list] = None,
-                link: Optional[list] = None) -> Any:
+                link: Optional[list] = None, first_id: int = 1) -> Any:
     """The ROI file with ROIs restored, classified, reshaped, moved, merged, removed and added, in that order;
     returns (document, ids of the added ROIs).
 
@@ -284,6 +284,8 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
     is [[id, id, ...]]: the first ROI is linked with each of the others (links go both ways, roimanager's connected
     ROIs). A restored ROI has the uid, cell type, tags and links given (null for none), or else those its id had. A removed or
     merged-away ROI is taken out of the others' links. Cell types and links are set after the classifications.
+
+    Added ROIs get ids from first_id on at least (rois.update's mirror: ids free in every aligned entity).
     """
     roi_outlines(value)  # checks the shape
     rois = [dict(roi, id=roi.get("id", number)) for number, roi in enumerate(value.get("rois", []), start=1)]
@@ -375,7 +377,7 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
             roi["links"] = [i for i in roi["links"] if i not in gone]
             if not roi["links"]:
                 del roi["links"]
-    next_id = max([int(i) for i in by_id] + [0]) + 1
+    next_id = max([int(i) for i in by_id] + [0, int(first_id) - 1]) + 1
     added = []
     for new in add or []:
         roi = {"id": next_id}
@@ -437,7 +439,7 @@ def rois_overlap(a: List[Any], b: List[Any]) -> bool:
     return 4 * shared > 3 * min(len(a), len(b))
 
 
-def import_rois_at(value: Any, plane: int, channel: int, source: Any, mode: str = "append") -> Any:
+def import_rois_at(value: Any, plane: int, channel: int, source: Any, mode: str = "append", first_id: int = 1) -> Any:
     """Combine the ROIs of another ROI file into a file's ROIs at a plane and channel (from 1), as roimanager adds
     loaded ROIs to those it has. Returns (document, ids of the imported ROIs).
 
@@ -466,7 +468,7 @@ def import_rois_at(value: Any, plane: int, channel: int, source: Any, mode: str 
     remove = [roi["id"] for roi in here] if mode == "replace" else []
     if mode == "appendNonOverlapping":
         incoming = [(roi, pixels) for roi, pixels in incoming if not any(rois_overlap(pixels, other["pixels"]) for other in here)]
-    document, added = update_rois_at(value, plane, channel, remove=remove, add=[{"pixels": pixels} for _, pixels in incoming])
+    document, added = update_rois_at(value, plane, channel, remove=remove, add=[{"pixels": pixels} for _, pixels in incoming], first_id=first_id)
     new_id = {roi["id"]: added[i] for i, (roi, _) in enumerate(incoming)}
     by_id = {roi["id"]: roi for roi in document["rois"]}
     taken = {roi.get("uid") for roi in document["rois"] if roi["id"] not in added and roi.get("uid")}
@@ -484,6 +486,159 @@ def import_rois_at(value: Any, plane: int, channel: int, source: Any, mode: str 
         if links:
             target["links"] = links
     return document, added
+
+
+# ROIs carried between entities whose images were aligned (ophys.align_sessions, and rois.update's mirror). An ROI file's
+# "alignment" is {reference, imageSize, entities: [{key, variable, shift, rotation, patches?, rowShifts?, columnShifts?}]}:
+# for each entity aligned with the reference (the reference among them), where a point p of the reference's image is in
+# its own: q = turn(rotation) * (p + d(p) + shift - centre) + centre, d the displacement field its patches' shifts give
+# (rowShifts and columnShifts, patch (i, j) at i * patches + j; none without patches). MATLAB's nansen.internal.alignedPoints,
+# referencePoints and mirrorRoisAt compute the same.
+
+INVERSE_STEPS = 20   # fixed-point steps that undo a displacement field (it changes by much less than a pixel per pixel)
+
+
+def _patch_place(coordinates: Any, size: int, count: int):
+    """For coordinates along an axis (any real values): the patches (count of them along size) whose centres each lies
+    between, and how far it is from the first (0..1), as the motion correction interpolates its patches' shifts; before
+    the first centre or after the last, that patch's alone."""
+    import numpy as np
+    edges = [(i * size) // count for i in range(count + 1)]
+    centres = np.array([(a + b - 1) / 2 for a, b in zip(edges, edges[1:])])
+    coordinates = np.asarray(coordinates, dtype=np.float64)
+    first = np.zeros(coordinates.shape, dtype=int)
+    second = np.zeros(coordinates.shape, dtype=int)
+    share = np.zeros(coordinates.shape)
+    for n, y in enumerate(coordinates):
+        if y <= centres[0]:
+            continue
+        if y >= centres[-1]:
+            first[n] = second[n] = count - 1
+            continue
+        k = int(np.sum(centres <= y)) - 1
+        first[n], second[n], share[n] = k, k + 1, (y - centres[k]) / (centres[k + 1] - centres[k])
+    return first, second, share
+
+
+def _displacement(points: Any, entry: dict, height: int, width: int) -> Any:
+    """The displacement field of an aligned entity's patches at points (n x 2: rows, columns), interpolated bilinearly
+    between the patch centres: n x 2; zero without patches."""
+    import numpy as np
+    count = int(entry.get("patches") or 1)
+    out = np.zeros(points.shape)
+    if count < 2:
+        return out
+    r0, r1, fy = _patch_place(points[:, 0], height, count)
+    c0, c1, fx = _patch_place(points[:, 1], width, count)
+    for axis, name in enumerate(("rowShifts", "columnShifts")):
+        s = np.asarray(entry[name], dtype=np.float64).reshape(count, count)
+        out[:, axis] = (1 - fy) * ((1 - fx) * s[r0, c0] + fx * s[r0, c1]) + fy * ((1 - fx) * s[r1, c0] + fx * s[r1, c1])
+    return out
+
+
+def _turned(points: Any, angle: float, height: int, width: int) -> Any:
+    """Points (n x 2: rows, columns) turned by angle degrees about the image centre: [[cos, -sin], [sin, cos]]."""
+    import numpy as np
+    if not angle:
+        return points
+    radians = math.radians(angle)
+    cos, sin = math.cos(radians), math.sin(radians)
+    cy, cx = (height - 1) / 2, (width - 1) / 2
+    y, x = points[:, 0] - cy, points[:, 1] - cx
+    return np.stack([cos * y - sin * x + cy, sin * y + cos * x + cx], axis=1)
+
+
+def aligned_points(points: Any, entry: dict, height: int, width: int) -> Any:
+    """Where points of the reference's image (n x 2: rows, columns) are in an aligned entity's (its alignment entry), not
+    rounded: the displacement field and the shift added, then turned by the rotation."""
+    import numpy as np
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    moved = points + _displacement(points, entry, height, width) + np.asarray(entry.get("shift", [0, 0]), dtype=np.float64)
+    return _turned(moved, float(entry.get("rotation", 0)), height, width)
+
+
+def reference_points(points: Any, entry: dict, height: int, width: int) -> Any:
+    """Where points of an aligned entity's image (n x 2) are in the reference's, as aligned_points has them, not rounded:
+    turned back, less the shift, and the displacement field undone by INVERSE_STEPS steps of p = u - d(p) from p = u."""
+    import numpy as np
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    target = _turned(points, -float(entry.get("rotation", 0)), height, width) - np.asarray(entry.get("shift", [0, 0]), dtype=np.float64)
+    found = target
+    if int(entry.get("patches") or 1) >= 2:
+        for _ in range(INVERSE_STEPS):
+            found = target - _displacement(found, entry, height, width)
+    return found
+
+
+def carried_pixels(pixels: Any, source: dict, target: dict, height: int, width: int) -> List[List[int]]:
+    """An ROI's pixels in one aligned entity's image (source, its alignment entry) where they are in another's (target):
+    through the reference's image, rounded half up, each once, in row-major order, and those outside the image left out."""
+    import numpy as np
+    if not len(pixels):
+        return []
+    points = np.floor(aligned_points(reference_points(pixels, source, height, width), target, height, width) + 0.5)
+    kept = {(int(y), int(x)) for y, x in points if 0 <= y < height and 0 <= x < width}
+    return [list(p) for p in sorted(kept)]
+
+
+def alignment_entry(alignment: Any, key: Dict[str, Any]) -> Optional[dict]:
+    """The entry of an ROI file's alignment for an entity's key (its key fields as the entry has them), or None."""
+    if not isinstance(alignment, dict) or not isinstance(alignment.get("entities"), list):
+        return None
+    for entry in alignment["entities"]:
+        if isinstance(entry, dict) and isinstance(entry.get("key"), dict) and all(key.get(k) == v for k, v in entry["key"].items()):
+            return entry
+    return None
+
+
+def mirror_rois_at(value: Any, plane: int, channel: int, before: list, after: list, source: dict, target: dict,
+                   size: List[int]) -> Any:
+    """The ROI file of an aligned entity (target, its alignment entry) with an edit of another's ROIs (source) made to it
+    too, at the same plane and channel (from 1), as dev's synchEntries mirrors: rois.update's mirror. before and after are
+    the edited entity's ROIs there (roi_outlines) before and after the edit; size the aligned images' [height, width].
+    Returns (document, {added, changed, removed}).
+
+    An ROI the edit removed is removed here. An ROI it added or whose pixels it changed gets its pixels carried here
+    (carried_pixels): an ROI of that id here takes them (and is removed when none land inside the image); otherwise it is
+    added with that id, its classification and cell type, unless no pixel lands inside or an ROI of another plane or
+    channel has the id. A classification or cell type the edit changed is set here too. Other ROIs here stay as they are.
+    """
+    old = {roi["id"]: roi for roi in before}
+    new = {roi["id"]: roi for roi in after}
+    shape = lambda roi: sorted((int(p[0]), int(p[1])) for p in roi["pixels"])
+    reshaped = sorted(i for i in new if i not in old or shape(new[i]) != shape(old[i]))
+    height, width = int(size[0]), int(size[1])
+    here = {roi["id"] for roi in roi_outlines(rois_at(value, plane, channel))}
+    everywhere = {roi["id"] for roi in roi_outlines(value)}
+    remove = [i for i in sorted(old) if i not in new and i in here]
+    reshape, add, wanted = [], [], []
+    for roi_id in reshaped:
+        pixels = carried_pixels(new[roi_id]["pixels"], source, target, height, width)
+        if roi_id in here:
+            if pixels:
+                reshape.append({"id": roi_id, "pixels": pixels})
+            else:
+                remove.append(roi_id)
+        elif pixels and roi_id not in everywhere:
+            add.append({"pixels": pixels})
+            wanted.append(roi_id)
+    stays = lambda i: i in old and i in here and i not in remove
+    classify = [{"id": i, "classification": new[i].get("classification")} for i in sorted(new)
+                if stays(i) and new[i].get("classification") != old[i].get("classification")]
+    cell_type = [{"id": i, "cellType": new[i].get("cellType")} for i in sorted(new)
+                 if stays(i) and new[i].get("cellType") != old[i].get("cellType")]
+    document, got = update_rois_at(value, plane, channel, classify=classify, cell_type=cell_type, pixels=reshape,
+                                   remove=sorted(remove), add=add)
+    names = dict(zip(got, wanted))
+    for roi in document["rois"]:
+        if roi["id"] in names:   # an added ROI takes the id it has in the entity edited, and its classification and cell type
+            roi["id"] = names.pop(roi["id"])
+            if new[roi["id"]].get("classification") in CLASSES:
+                roi["classification"] = new[roi["id"]]["classification"]
+            if new[roi["id"]].get("cellType"):
+                roi["cellType"] = new[roi["id"]]["cellType"]
+    changed = sorted({c["id"] for c in reshape} | {c["id"] for c in classify} | {c["id"] for c in cell_type})
+    return document, {"added": sorted(wanted), "changed": changed, "removed": sorted(remove)}
 
 
 def detect_roi(image: Any, point: List[int], radius: int = 6) -> List[List[int]]:

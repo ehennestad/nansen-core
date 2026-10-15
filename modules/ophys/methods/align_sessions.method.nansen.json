@@ -6,7 +6,7 @@
   "title": "Align sessions and copy ROIs",
   "category": "Two-photon/ROI registration",
   "entityType": "*",
-  "description": "Aligns each selected entity's FOV image to the first one's by phase correlation (whole pixels), and saves the first entity's ROIs, moved by that shift, as each other entity's ROIs. With a largest rotation, each image is also turned back by every angle up to it, in steps, and the angle that correlates best is taken; the ROIs are turned by it about the image centre. Rejected ROIs are left out, and pixels moved outside the image are dropped. Stacks are averaged over frames.",
+  "description": "Aligns each selected entity's FOV image to the first one's by phase correlation (whole pixels), and saves the first entity's ROIs, moved by that shift, as each other entity's ROIs. With a largest rotation, each image is also turned back by every angle up to it, in steps, and the angle that correlates best is taken; the ROIs are turned by it about the image centre. With patches, the image is then aligned piecewise (as the motion correction's patches) and each ROI pixel moved by the displacement field there. Rejected ROIs are left out, and pixels moved outside the image are dropped. An entity that has ROIs already keeps their classifications for the ROIs of the same id, and its own ROIs, unless Existing ROIs is replace. Every entity's ROI file keeps the alignment, so an ROI edited in one can be added, moved or removed in all of them (rois.update with mirror). Stacks are averaged over frames.",
   "batchMode": "batch",
   "implementations": {
     "python": "ophys_methods:align_sessions",
@@ -52,6 +52,31 @@
         "default": 0.5,
         "exclusiveMinimum": 0,
         "title": "Rotation step (degrees)"
+      },
+      "patches": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "maximum": 16,
+        "title": "Patches per side",
+        "description": "1 to align rigidly only; above 1, the rest is aligned piecewise with this many patches down and across (each at least 4 pixels), and the ROIs warped by the displacement field."
+      },
+      "maxDeviation": {
+        "type": "integer",
+        "default": 3,
+        "minimum": 0,
+        "title": "Largest patch deviation (px)",
+        "description": "How far a patch's shift may be from the image's rigid alignment."
+      },
+      "existingRois": {
+        "type": "string",
+        "enum": [
+          "keepCuration",
+          "replace"
+        ],
+        "default": "keepCuration",
+        "title": "Existing ROIs",
+        "description": "When an entity has ROIs already: keepCuration keeps their classification, cell type, tags, uid and links for the copies of the same id, and its ROIs of ids the reference does not have; replace overwrites them with the copies."
       }
     }
   }

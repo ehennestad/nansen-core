@@ -748,6 +748,122 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(numel(nansen.internal.asCellOfStructs(queue.runNext().skipped)), 2);   % both done now
             testCase.verifyEqual(string(queue.runNext().status), "completed");
         end
+
+        function pointsGoToAnAlignedEntityAndBack(testCase)
+            % as test_ophys.py's test_points_go_to_an_aligned_entity_and_back
+            entry = struct("key", struct("session_id", "b"), "shift", [2, -3], "rotation", 2.5, "patches", 3, ...
+                "rowShifts", [0, 1, 0, -1, 0, 1, 2, 0, -1], "columnShifts", [1, 0, 0, 0, -1, 0, 0, 1, 1]);
+            points = [0, 0; 10.5, 33.25; 47, 49; -2, 50; 23.5, 24; 39.5, 7.5];
+            there = nansen.internal.alignedPoints(points, entry, 48, 50);
+            testCase.verifyLessThan(max(abs(nansen.internal.referencePoints(there, entry, 48, 50) - points), [], "all"), 1e-9);
+            % the displacement field is the motion correction's: the patches' shifts at their centres, bilinear between them
+            [columns, rows] = meshgrid(0:49, 0:47);
+            field = nansen.internal.alignmentField([rows(:), columns(:)], entry, 48, 50);
+            across = {ophys.internal.axisWeights(ophys.internal.patchEdges(48, 3), 48), ophys.internal.axisWeights(ophys.internal.patchEdges(50, 3), 50)};
+            testCase.verifyEqual(reshape(field(:, 1), 48, 50), ophys.internal.shiftField(reshape(entry.rowShifts, 3, 3).', across{:}));
+            testCase.verifyEqual(reshape(field(:, 2), 48, 50), ophys.internal.shiftField(reshape(entry.columnShifts, 3, 3).', across{:}));
+            testCase.verifyEqual(nansen.internal.alignmentField([23.5, 24; 39.5, 7.5], entry, 48, 50), [0, -1; 2, 0]);
+            % an ROI carried from an entity to itself stays; from the reference it goes where alignedPoints puts it
+            reference = struct("key", struct("session_id", "a"), "shift", [0, 0], "rotation", 0);
+            pixels = [20, 20; 20, 21; 21, 20; 21, 21];
+            testCase.verifyEqual(nansen.internal.carriedPixels(pixels, entry, entry, 48, 50), pixels);
+            testCase.verifyEqual(nansen.internal.carriedPixels(pixels, reference, entry, 48, 50), ...
+                unique(floor(nansen.internal.alignedPoints(pixels, entry, 48, 50) + 0.5), "rows"));
+            testCase.verifyEmpty(nansen.internal.carriedPixels([0, 0], reference, struct("shift", [-5, -5], "rotation", 0), 48, 50));
+            testCase.verifyEqual(nansen.internal.alignmentEntry(struct("entities", {{reference, entry}}), struct("subject_id", "m1", "session_id", "b")), entry);
+            testCase.verifyEmpty(nansen.internal.alignmentEntry(struct("entities", {{reference, entry}}), struct("session_id", "c")));
+        end
+
+        function anEditIsMirroredToAnAlignedEntity(testCase)
+            % as test_ophys.py's test_an_edit_is_mirrored_to_an_aligned_entity
+            source = struct("shift", [0, 0], "rotation", 0);
+            target = struct("shift", [1, 2], "rotation", 0);
+            before = nansen.internal.roiOutlines(jsondecode(['{"rois": [{"id": 1, "pixels": [[3, 3]]}, {"id": 2, "pixels": [[5, 5]]}, ' ...
+                '{"id": 3, "pixels": [[7, 7]]}, {"id": 4, "pixels": [[9, 9]]}]}']));
+            after = nansen.internal.roiOutlines(jsondecode(['{"rois": [{"id": 1, "pixels": [[3, 4]]}, ' ...
+                '{"id": 2, "pixels": [[5, 5]], "classification": "rejected"}, {"id": 4, "pixels": [[19, 19]]}, ' ...
+                '{"id": 6, "pixels": [[1, 1], [1, 2]], "classification": "accepted"}, {"id": 7, "pixels": [[2, 2]]}]}']));
+            here = jsondecode(['{"imageSize": [20, 20], "rois": [{"id": 1, "pixels": [[4, 5]], "cellType": "axon", "plane": 1, "channel": 1}, ' ...
+                '{"id": 2, "pixels": [[6, 7]], "plane": 1, "channel": 1}, {"id": 3, "pixels": [[8, 9]], "plane": 1, "channel": 1}, ' ...
+                '{"id": 4, "pixels": [[10, 11]], "plane": 1, "channel": 1}, {"id": 5, "pixels": [[0, 0]], "plane": 1, "channel": 1}, ' ...
+                '{"id": 7, "pixels": [[0, 1]], "plane": 2, "channel": 1}]}']);
+            [document, summary] = nansen.internal.mirrorRoisAt(here, 1, 1, before, after, source, target, [20, 20]);
+            summary = jsondecode(jsonencode(summary));
+            testCase.verifyEqual(summary.added, 6);
+            testCase.verifyEqual(summary.changed(:)', [1, 2]);
+            testCase.verifyEqual(summary.removed(:)', [3, 4]);
+            document = jsondecode(jsonencode(document));   % as the file has it
+            rois = nansen.internal.asCellOfStructs(document.rois);
+            ids = cellfun(@(r) r.id, rois);
+            testCase.verifyEqual(sort(ids), [1, 2, 5, 6, 7]);
+            one = rois{ids == 1};
+            testCase.verifyEqual(nansen.internal.roiPixels(one), [4, 6]);
+            testCase.verifyEqual(string(one.cellType), "axon");
+            two = rois{ids == 2};
+            testCase.verifyEqual(string(two.classification), "rejected");
+            testCase.verifyEqual(nansen.internal.roiPixels(two), [6, 7]);
+            six = rois{ids == 6};
+            testCase.verifyEqual(nansen.internal.roiPixels(six), [2, 3; 2, 4]);
+            testCase.verifyEqual(string(six.classification), "accepted");
+            testCase.verifyEqual([six.plane, six.channel], [1, 1]);
+            seven = rois{ids == 7};
+            testCase.verifyEqual(seven.plane, 2);
+        end
+
+        function roisFollowAFieldOfViewThatBendsAndEditsAreMirrored(testCase)
+            % as test_ophys.py's test_rois_follow_a_field_of_view_that_bends_only_with_patches (the ground truth is
+            % checked by the ophys-motion conformance case)
+            folder = fullfile(testCase.Folder, "motion");
+            copyfile(fullfile(nansen.internal.repoRoot(), "conformance", "api", "ophys-motion", "project"), folder);
+            project = nansen.Project.open(folder);
+            project.scan();
+            project.sync("subject");
+            project.sync("session");
+            project.runTool("ophys.setup_variables", Options=struct("rawFilePattern", "recording", "rawFileAdapter", "npy", "addColumns", false));
+            api = nansen.Api(Project=project);
+            s8 = struct("subject_id", "m1", "session_id", "s8");
+            s9 = struct("subject_id", "m1", "session_id", "s9");
+            call = @(method, params) api.handle(struct("id", 1, "method", method, "params", params));
+            align = @(patches) call("methods.run", struct("methodId", "ophys.align_sessions", "entityType", "session", "keys", {{s8, s9}}, ...
+                "options", struct("image", "TwoPhotonSeries_Original", "maxShift", 6, "patches", patches, "maxDeviation", 2)));
+            response = align(3);
+            results = nansen.internal.asCellOfStructs(response.result.results);
+            shifts = nansen.internal.asCellOfStructs(results{1}.shifts);
+            testCase.verifyEqual(shifts{2}.shift, [-2, 3]);
+            testCase.verifyEqual(shifts{2}.rowShifts, [0, 1, 0, 0, 0, -1, 1, 0, 0]);
+            testCase.verifyEqual(shifts{2}.columnShifts, [1, 0, 0, 0, 0, 0, 0, -1, 1]);
+            alignment = project.load(project.entity("session", s8), "RoiArray", Cached=false).alignment;
+            testCase.verifyEqual(string(alignment.reference.session_id), "s8");
+            % an ROI added in s9 with mirror goes to s8; an undo (a restore of what there was) with mirror takes it out again
+            update = @(key, more) call("rois.update", nansen.internal.mergeStructs(struct("entityType", "session", "key", key, "variable", "RoiArray"), more));
+            before = update(s9, struct()).result.rois;
+            added = update(s9, struct("add", {{struct("pixels", [40, 40; 40, 41])}}, "mirror", true)).result;
+            testCase.verifyEqual(added.added, {4});
+            mirrored = jsondecode(jsonencode(added.mirrored));
+            testCase.verifyEqual(string(mirrored.key.session_id), "s8");
+            testCase.verifyEqual(mirrored.added, 4);
+            undone = update(s9, struct("restore", {before}, "mirror", true)).result;
+            mirrored = jsondecode(jsonencode(undone.mirrored));
+            testCase.verifyEqual(mirrored.removed, 4);
+            rois = nansen.internal.asCellOfStructs(project.load(project.entity("session", s8), "RoiArray", Cached=false).rois);
+            testCase.verifyEqual(cellfun(@(r) r.id, rois), [1, 2, 3]);
+            % aligned again, s9's classification is kept; with existingRois replace it is not
+            update(s9, struct("classify", struct("id", 2, "classification", "accepted")));
+            response = align(3);
+            results = nansen.internal.asCellOfStructs(response.result.results);
+            testCase.verifyEqual(results{1}.kept, 1);
+            rois = nansen.internal.asCellOfStructs(project.load(project.entity("session", s9), "RoiArray", Cached=false).rois);
+            testCase.verifyEqual(string(rois{2}.classification), "accepted");
+            response = call("methods.run", struct("methodId", "ophys.align_sessions", "entityType", "session", "keys", {{s8, s9}}, ...
+                "options", struct("image", "TwoPhotonSeries_Original", "maxShift", 6, "existingRois", "replace")));
+            results = nansen.internal.asCellOfStructs(response.result.results);
+            testCase.verifyEqual(results{1}.kept, 0);
+            rois = nansen.internal.asCellOfStructs(project.load(project.entity("session", s9), "RoiArray", Cached=false).rois);
+            testCase.verifyFalse(isfield(rois{2}, "classification"));
+            % no alignment, nothing to mirror to
+            s1 = struct("subject_id", "m1", "session_id", "s1");
+            testCase.verifyEqual(string(update(s1, struct("add", {{struct("pixels", [1, 1])}}, "mirror", true)).error.code), "invalid-params");
+        end
     end
 
     methods (Access = private)
