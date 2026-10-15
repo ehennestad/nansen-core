@@ -5,7 +5,8 @@ function result = imageFrame(data, frame, channel, projection, limits, plane, fi
 %   or height x width x channels x planes x frames: an array, or a
 %   nansen.Stack read a chunk of frames at a time. frame, channel and
 %   plane are 0-based; projection is "", "mean", "max", "min",
-%   "std", "correlation" (each pixel's with its 8 neighbours) or "peakTime"
+%   "std", "correlation" (each pixel's with its 8 neighbours), "globalCorrelation"
+%   (each pixel's with the frame's mean) or "peakTime"
 %   (the frame of each pixel's peak, with brightness: its peak, 8-bit); limits is [] or [low, high]. Values from low to high are scaled
 %   to 0..255 as floor((v - low) / (high - low) * 255 + 0.5), cut at both
 %   ends; NaN is 0. low and high are the limits given, or else the smallest
@@ -74,13 +75,16 @@ function result = imageFrame(data, frame, channel, projection, limits, plane, fi
         case "correlation"
             image = nansen.internal.localCorrelation(stack);
             frame = [];
+        case "globalCorrelation"
+            image = nansen.internal.globalCorrelation(stack);
+            frame = [];
         case ""
             if frame < 0 || frame >= frames || frame ~= round(frame)
                 nansen.internal.throwError("invalid-params", "there are %d frames; frame %d is not one", frames, frame)
             end
             image = double(stack.frames(frame + 1, frame + 1));
         otherwise
-            nansen.internal.throwError("invalid-params", "projection is mean, max, min, std, correlation or peakTime, not '%s'", projection)
+            nansen.internal.throwError("invalid-params", "projection is mean, max, min, std, correlation, globalCorrelation or peakTime, not '%s'", projection)
     end
     if strlength(string(filter)) > 0
         image = nansen.internal.filterImage(image, filter);

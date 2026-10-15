@@ -59,12 +59,14 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         image, frame = _std(stack), None
     elif projection == "correlation":
         image, frame = local_correlation(stack), None
+    elif projection == "globalCorrelation":
+        image, frame = global_correlation(stack), None
     elif projection is None:
         if not 0 <= frame < frames:
             raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
         image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
     else:
-        raise NansenError("invalid-params", f"projection is mean, max, min, std, correlation or peakTime, not {projection!r}")
+        raise NansenError("invalid-params", f"projection is mean, max, min, std, correlation, globalCorrelation or peakTime, not {projection!r}")
     if filter:
         image = filter_image(image, filter)
     if limits is not None:
@@ -183,6 +185,29 @@ def local_correlation(stack) -> Any:
         total[here] += products[(dy, dx)][here] / frames
         count[here] += 1
     return np.divide(total, count, out=np.zeros_like(total), where=count > 0)
+
+
+def global_correlation(stack) -> Any:
+    """Each pixel's Pearson correlation over time with the mean of the whole frame (dev's globalCorrelation projection),
+    read a chunk of frames at a time in two passes: each pixel's mean and the frames' means, then the sums over time of
+    its deviations squared and times the frame mean's deviations. A pixel that does not change correlates 0."""
+    import numpy as np
+    from .stacks import as_stack
+    stack = as_stack(stack)
+    height, width, frames = stack.shape
+    chunks = lambda: ((start, stack.frames(start, start + CHUNK).astype(np.float64)) for start in range(0, frames, CHUNK))
+    mean = _mean(stack)[:, :, None]
+    signal = np.zeros(frames)
+    for start, chunk in chunks():
+        signal[start:start + chunk.shape[2]] = chunk.sum(axis=(0, 1)) / (height * width)
+    signal = signal - signal.sum() / frames
+    squares, products = np.zeros((height, width)), np.zeros((height, width))
+    for start, chunk in chunks():
+        deviation = chunk - mean
+        squares += (deviation ** 2).sum(axis=2)
+        products += (deviation * signal[None, None, start:start + chunk.shape[2]]).sum(axis=2)
+    spread = np.sqrt(squares * (signal ** 2).sum())
+    return np.divide(products, spread, out=np.zeros_like(products), where=spread > 0)
 
 
 def _mean(stack) -> Any:

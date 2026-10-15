@@ -146,6 +146,7 @@
     const mode = h("select.input.viewer-mode", { on: { change: () => { state.mode = mode.value; show(); } } },
       h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "max" }, "Maximum"),
       h("option", { value: "min" }, "Minimum"), h("option", { value: "std" }, "Standard deviation"), h("option", { value: "correlation" }, "Local correlation"),
+      h("option", { value: "globalCorrelation" }, "Global correlation"),
       h("option", { value: "peakTime" }, "Time of peak (colour)"));
     // imviewer's 2-D filters, applied to the frame or projection shown
     const filterPick = h("select.input.viewer-filter", { title: "Filter", on: { change: () => { state.filter = filterPick.value; show(); } } },

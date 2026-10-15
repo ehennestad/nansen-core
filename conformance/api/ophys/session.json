@@ -1596,6 +1596,32 @@
     {
       "request": {
         "method": "data.frame",
+        "id": 2617,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "globalCorrelation",
+          "limits": [
+            -1,
+            1
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "frame": null,
+          "frames": 40,
+          "pixels": "rLetl5aXlpWWlpeXlpaXl5aWlpaXl5eXl5aXlpegnZXAy8Gtrq6trq+vrq+vrq6vrq2urq6ur62ura6urbWwnrfDv6ysrKyrraytraysrK2srKytrqytrKytq62tuLCdrbq7hFNqgH9sgYSOgJlrcJpziGuLdGuLl0+acF2clYWturtwfGN2bZmDjk5/jnWDta5dooSahIuPoXqJh5uXhq26vJCHf6R2XX16l6VufYBthHFxbnVUkWxYZXKBm5eGrLq7dGJtpnqNZV9gq3yJanxpd69nd3hyZKWObnyclYaturtrf4h9gq50apV4b6Jna1ZvaIaDdoxzrF6de52Xh626u3lmkYl2g514jcNsaWyMeINsf5CNaWRohISOm5WGrbq7mI+JdHGRd4bDxMOSenyHcqOUfqF8Z4dfeJ2bmYasuruSoF95fYyHxMPDw8RUcYVmg4iFiXyGiEZ/d5yWhq27u4JXe1asU5WAxMTDcqKJkX5mo4Ztl2tugHmempaGrbq7aHZ3dW9xlXR/xI16hJBvbo2LbXZ9d5J6b22aloasur2ZiqJ/fIyYsIV+UpaDiWmWr2S0fX19eVliiJmWhq27u36Oh6l7eHhvtntocHCEiYFdeXx9fX18qnp5nJaGrbq7jZFgeH19lpaCgIGXdYByc465fnx9fYRzjZSbloeturpsn21+fGWJnXNoXpt6d5akhIGWgXxgendjbpuWhq26vHmIWop7X4V7gndqfWiAdpxtZpmyf5yelWmKnJaGrbq7iJRwhXuBaYZ7fZCgjI5wXGFycXJxkaBzdpqbl4asuruBh4NzjJ2HfYeKfYeTgJiJioCJelp+ineJq5uVh626u4NuqXWFiJpzYI9TdmSOiXlucpeQdI2ie4Rym5aGrbq7m5idk5WZmpp4qY2dmXucgYNRkWNpWmNvfn6cloWsu7pySkVsmpqZmpl1kIF9enyIi4Z2bYBjaIaEmZqWh6y6u4iEj5GrmZqamIStXmlZjYZsb4d7n2aacn9mmpaGrbq6V6JkdXFrmqCAco2JgF17b5SXeHtva5aTfXialoasu7uHXXF5dFiJkXubhJpxeJt+fqt6n3ZtqoN2l52Wh626uniKZYN4clt8dneEgYF1sGB8nYR5lYWDkHOHm5aHrbq7aHZwn31vf3yFsHRgcmmIqHmEiWSXl29laX6bloWtu7t1f5Zrg4l0i5WHd5hvjZCSlHdmj351fYiTUZ2WhbnGzaSlpaWlp6WnpqWkpqalpaWlpqSkpKelpKWlq6eYqbS+l5iYmJmWmZeYmJeZmJeXmJiYmJiXl5iYlZagnpmqtLyYmpqZmZiYmpiZmJiZmJmYmJiZmZmZmJiZmp+fnA=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
         "id": 2620,
         "params": {
           "entityType": "session",
