@@ -9,16 +9,19 @@ function result = crop(entity, options, context)
     [top, bottom] = span(options.firstRow, options.lastRow, height, "rows");
     [left, right] = span(options.firstColumn, options.lastColumn, width, "columns");
     dimensions = [bottom - top + 1, right - left + 1, frames];
-    writer = context.Project.stackWriter(entity, options.output, dimensions, stack.ClassName);
+    checkpoint = context.Project.checkpoint(entity, options.output, dimensions, stack.ClassName, options, stack, Method=context.Method);
+    writer = checkpoint.writer();   % a run that stopped goes on where it stopped (nansen.Checkpoint)
     closer = onCleanup(@() writer.close());
-    for start = 1:ophys.internal.chunk():frames
+    for start = 1 + checkpoint.FramesDone:ophys.internal.chunk():frames
         context.checkCancelled();
         stop = min(start + ophys.internal.chunk() - 1, frames);
         part = stack.frames(start, stop);
         writer.write(start, part(top:bottom, left:right, :));
+        checkpoint.save(1, stop);
         context.progress(stop / frames, sprintf("frame %d/%d", stop, frames));
     end
     writer.close();
+    checkpoint.finish();
     context.log("%s: %d x %d x %d kept", ophys.internal.entityName(entity), dimensions(1), dimensions(2), dimensions(3));
     result = struct("height", dimensions(1), "width", dimensions(2), "frames", dimensions(3));
 end

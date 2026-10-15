@@ -131,6 +131,24 @@ class BinaryStack:
         target = np.memmap(path, dtype=self._disk(dtype), mode="w+", shape=tuple(int(n) for n in shape), order="F")
         return StackWriter(shape, dtype, target=target)
 
+    def reopen(self, path, shape, dtype):
+        """A writer that goes on writing into a stack create began (nansen.progress): None unless its .ini gives this
+        size and class. A file cut short (by MATLAB's writer, which writes frames in order) is filled out with zeros;
+        frames_on_disk is how many frames it held."""
+        from nansen.stacks import StackWriter
+        shape, dtype = tuple(int(n) for n in shape), np.dtype(dtype)
+        found = self.info(path)
+        if found is None or tuple(found[0]) != shape or found[1] != self._disk(dtype):
+            return None
+        frame_bytes = self._disk(dtype).itemsize * int(np.prod(shape[:-1]))
+        size = Path(path).stat().st_size
+        if size < frame_bytes * shape[-1]:
+            with open(path, "r+b") as f:
+                f.truncate(frame_bytes * shape[-1])
+        writer = StackWriter(shape, dtype, target=np.memmap(path, dtype=self._disk(dtype), mode="r+", shape=shape, order="F"))
+        writer.frames_on_disk = min(shape[-1], size // frame_bytes) if frame_bytes else shape[-1]
+        return writer
+
     @staticmethod
     def _disk(dtype):
         name = next((n for n, code in DEV_CLASSES.items() if np.dtype(code) == np.dtype(dtype).newbyteorder("<")), None)

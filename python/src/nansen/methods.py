@@ -193,8 +193,11 @@ def run_tool(method: Method, project, options: Optional[dict] = None, context: O
 
 
 def run_method(method: Method, entities: List[Any], options: Optional[dict] = None,
-               context: Optional[MethodContext] = None) -> List[Any]:
-    """Run a method in this process: once per entity (serial) or once for all (batch). Returns the results."""
+               context: Optional[MethodContext] = None, on_done: Optional[Callable[[List[Any]], None]] = None) -> List[Any]:
+    """Run a method in this process: once per entity (serial) or once for all (batch). Returns the results.
+
+    on_done is told the entities the method has completed on as it goes: each one as soon as it is done (serial), or
+    all of them at the end (batch), so a run that stops part way still records those it finished."""
     if not entities:
         return []
     wrong = [e for e in entities if not method.applies_to(e.entity_type)]
@@ -206,11 +209,15 @@ def run_method(method: Method, entities: List[Any], options: Optional[dict] = No
     if method.batch_mode == "batch":
         context.check_cancelled()
         result = [function(list(entities), resolved, context)]
+        if on_done:
+            on_done(list(entities))
         context.progress(1.0)
         return result
     results = []
     for number, entity in enumerate(entities):
         context.check_cancelled()
         results.append(function(entity, resolved, context))
+        if on_done:
+            on_done([entity])
         context.progress((number + 1) / len(entities))
     return results

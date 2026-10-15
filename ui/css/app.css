@@ -422,7 +422,7 @@ fieldset.group { border: 1px solid var(--border); border-radius: 10px; padding: 
 fieldset.group legend { font-weight: 700; padding: 0 6px; }
 .preset-row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed var(--border); }
 .preset-default.active { color: var(--warn, #e8a200); opacity: 1; }
-.each-entity { display: flex; gap: 6px; align-items: center; font-size: 13px; margin: -6px 0 14px; color: var(--text-2); }
+.each-entity, .skip-completed { display: flex; gap: 6px; align-items: center; font-size: 13px; margin: -6px 0 14px; color: var(--text-2); }
 .entity-options { padding: 16px 20px; }
 
 .menu { position: fixed; z-index: 40; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg); padding: 6px; min-width: 220px; max-height: 60vh; overflow: auto; }

@@ -1040,6 +1040,30 @@ def test_options_for_each_entity(empty_app, page):   # dev's per-session options
     assert tasks[0]["entities"][0]["key"] != tasks[1]["entities"][0]["key"]
 
 
+def test_skip_entities_where_it_already_ran(empty_app, page):   # dev's RedoIfCompleted off
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody tr[data-id]")
+    first = api.project.entities("session")[0]
+    api.handle({"id": 2, "method": "methods.run", "params": {"methodId": "core.wait", "entityType": "session", "keys": [first.key],
+                                                              "options": {"seconds": 0}}})
+    for n in range(2):
+        rows(page).nth(n).locator("td.sel input").click()
+    page.click(".selection-bar button:has-text('Run method')")
+    page.click(".method-item:has-text('Wait')")
+    page.wait_for_selector(".method-detail:has(h3:text-is('Wait')) .preset-row")
+    page.fill(".method-detail .field:has-text('Seconds') input", "0")
+    page.check(".skip-completed input")
+    page.click(".dialog-foot button:has-text('Add to queue')")
+    page.wait_for_url("**#/tasks/*")
+    task = api.handle({"id": 3, "method": "tasks.list", "params": {}})["result"][-1]
+    assert task["skipCompleted"] is True and len(task["entities"]) == 2
+    page.wait_for_selector(".task-skipped")   # the task's detail says which it leaves out
+    ran = api.handle({"id": 4, "method": "tasks.runNext", "params": {}})["result"]
+    assert ran["skipped"] == ([dict(first.key)] if dict(first.key) in [e["key"] for e in task["entities"]] else [])
+
+
 def test_table_text_size(empty_app, page):   # dev's table font size, kept in this browser
     empty_app["api"].handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
     page.goto(empty_app["server"].url + "#/entities/session")

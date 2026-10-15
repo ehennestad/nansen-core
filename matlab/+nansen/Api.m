@@ -1550,6 +1550,8 @@ classdef Api < handle
         end
 
         function result = apiMethodsRun(obj, params)
+            % Run a method now and wait for it; with skipCompleted, the entities it already completed on whose
+            % outputs are there are left out (skipped)
             project = obj.requireProject();
             method = project.method(string(nansen.Api.param(params, "methodId")));
             params.preset = char(obj.presetOf(params));
@@ -1557,10 +1559,24 @@ classdef Api < handle
                 result = obj.runInWorker(method, params);
                 return
             end
-            results = project.run(string(nansen.Api.param(params, "methodId")), obj.entities(params), ...
-                Options=obj.optionsOf(params), Preset=string(nansen.internal.getField(params, "preset", "")));
-            obj.emit("entities", struct("entityTypes", {{char(params.entityType)}}));
-            result = struct("results", {results});
+            entities = obj.entities(params);
+            skipped = {};
+            preset = string(nansen.internal.getField(params, "preset", ""));
+            if nansen.Api.flag(params, "skipCompleted")
+                values = struct();
+                if preset ~= ""
+                    values = project.preset(method.Id, preset);
+                end
+                done = project.alreadyDone(method.Id, entities, nansen.internal.mergeStructs(values, obj.optionsOf(params)));
+                skipped = cellfun(@(e) e.Key, entities(done), UniformOutput=false);
+                entities = entities(~done);
+            end
+            results = {};
+            if ~isempty(entities)
+                results = project.run(method.Id, entities, Options=obj.optionsOf(params), Preset=preset);
+                obj.emit("entities", struct("entityTypes", {{char(params.entityType)}}));
+            end
+            result = struct("results", {results}, "skipped", {skipped});
         end
 
         function result = runInWorker(obj, method, params)
@@ -1570,7 +1586,8 @@ classdef Api < handle
             language = method.Languages(1);
             queue = obj.queue();
             task = queue.submit(method.Id, obj.entities(params), Options=obj.optionsOf(params), ...
-                Preset=string(nansen.internal.getField(params, "preset", "")), Language=language);
+                Preset=string(nansen.internal.getField(params, "preset", "")), Language=language, ...
+                SkipCompleted=nansen.Api.flag(params, "skipCompleted"));
             obj.apiQueueStartWorker(struct("language", char(language)));
             timeout = double(nansen.internal.getField(params, "startTimeout", 300));
             started = tic;
@@ -1595,10 +1612,16 @@ classdef Api < handle
             if isfield(task, "result")
                 results = task.result;
             end
-            if method.BatchMode ~= "serial"
+            skipped = {};
+            if isfield(task, "skipped")
+                skipped = nansen.internal.asCellOfStructs(task.skipped);
+            end
+            if numel(skipped) == numel(nansen.internal.asCellOfStructs(task.entities))
+                results = {};   % every entity was left out
+            elseif method.BatchMode ~= "serial"
                 results = {results};
             end
-            result = struct("results", {results}, "taskId", task.id, "language", char(language));
+            result = struct("results", {results}, "skipped", {skipped}, "taskId", task.id, "language", char(language));
         end
 
         function result = apiMethodsPreview(obj, params)
@@ -1847,7 +1870,8 @@ classdef Api < handle
         function result = apiTasksSubmit(obj, params)
             result = obj.queue().submit(string(nansen.Api.param(params, "methodId")), obj.entities(params), ...
                 Options=obj.optionsOf(params), Preset=obj.presetOf(params), ...
-                Language=string(nansen.internal.getField(params, "language", "")));
+                Language=string(nansen.internal.getField(params, "language", "")), ...
+                SkipCompleted=nansen.Api.flag(params, "skipCompleted"));
         end
 
         function result = apiTasksComment(obj, params)
@@ -1874,7 +1898,12 @@ classdef Api < handle
         end
 
         function result = apiTasksRetry(obj, params)
-            result = obj.queue().retry(string(nansen.Api.param(params, "id")));
+            % A finished task queued again (dev's Restart); skipCompleted, when given, replaces the task's
+            skip = [];
+            if isfield(params, "skipCompleted")
+                skip = nansen.Api.flag(params, "skipCompleted");
+            end
+            result = obj.queue().retry(string(nansen.Api.param(params, "id")), SkipCompleted=skip);
         end
 
         function result = apiTasksHold(obj, params)
@@ -2286,6 +2315,14 @@ classdef Api < handle
                     rethrow(err)
                 end
                 value = struct("rois", {{}});
+            end
+        end
+
+        function value = flag(params, name)
+            % A true-or-false parameter, false when not given
+            value = nansen.internal.getField(params, name, false);
+            if ~(islogical(value) && isscalar(value))
+                nansen.internal.throwError("invalid-params", "%s is true or false", name)
             end
         end
 

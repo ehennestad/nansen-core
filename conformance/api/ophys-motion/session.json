@@ -818,6 +818,102 @@
       "expect": {
         "error": "invalid-options"
       }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 21,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            },
+            {
+              "subject_id": "m1",
+              "session_id": "s2"
+            },
+            {
+              "subject_id": "m1",
+              "session_id": "s3"
+            }
+          ],
+          "options": {
+            "referenceFrames": 1,
+            "iterations": 1
+          },
+          "skipCompleted": true
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 2
+            }
+          ],
+          "skipped": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            },
+            {
+              "subject_id": "m1",
+              "session_id": "s2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 22,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s3"
+            }
+          ],
+          "skipCompleted": true
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [],
+          "skipped": [
+            {
+              "subject_id": "m1",
+              "session_id": "s3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 23,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s3"
+            }
+          ],
+          "skipCompleted": "yes"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
     }
   ]
 }

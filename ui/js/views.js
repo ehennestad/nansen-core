@@ -1146,6 +1146,8 @@
 
     // dev's per-session options: each selected entity's options edited before it runs, starting from those in the form
     let eachEntity = false;
+    // dev's RedoIfCompleted off: entities the method already completed on, with its outputs there, are left out
+    let skipCompleted = false;
     const askOptions = (method, key, n, total, values) => new Promise((resolve) => {
       const own = N.schemaForm(method.options || {}, values);
       let answer = null;
@@ -1219,6 +1221,9 @@
         rows.length > 1 && method.batchMode !== "batch" ? h("label.each-entity", { title: "Edit the options of each selected entity before it runs, starting from these" },
           h("input", { type: "checkbox", checked: eachEntity, on: { change: (event) => { eachEntity = event.target.checked; } } }),
           ` Options for each of the ${rows.length}`) : null,
+        h("label.skip-completed", { title: "Leave out the entities this method has already completed on whose outputs are there. A run that stopped part way is not one: it goes on where it stopped." },
+          h("input", { type: "checkbox", checked: skipCompleted, on: { change: (event) => { skipCompleted = event.target.checked; } } }),
+          " Skip entities where it already ran"),
         form.el);
     }
 
@@ -1239,6 +1244,7 @@
       if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
       const params = { methodId: current.id, entityType, options: form.getValue() };
       if (rows.length) params.keys = rows.map((r) => r.key);
+      if (skipCompleted) params.skipCompleted = true;
       if (eachEntity && rows.length > 1 && current.batchMode !== "batch") {
         const method = current;
         close();
@@ -1252,6 +1258,7 @@
           const tasks = [];
           for (let i = 0; i < rows.length; i++) {
             const own = { methodId: method.id, entityType, keys: [rows[i].key], options: chosen[i] };
+            if (params.skipCompleted) own.skipCompleted = true;
             if (queued) tasks.push(await app.client.request("tasks.submit", own));
             else await app.client.request("methods.run", own);
           }
@@ -1272,8 +1279,9 @@
           const language = app.info && app.info.language;
           const other = language && current.languages && !current.languages.includes(language) ? current.languages[0] : null;
           N.toast("Running", other ? `${current.title} on ${target}, in a ${other === "matlab" ? "MATLAB" : "Python"} worker…` : `${current.title} on ${target}…`);
-          await app.client.request("methods.run", params);
-          N.toast("Done", `${current.title} finished`, "success");
+          const answer = await app.client.request("methods.run", params);
+          const skipped = (answer && answer.skipped) || [];
+          N.toast("Done", skipped.length ? `${current.title} finished; ${skipped.length} skipped, where it already ran` : `${current.title} finished`, "success");
           if (app.reloadEntities) app.reloadEntities();
         }
       } catch (error) { N.showError(error, `${current.title} failed`); }
@@ -1519,7 +1527,7 @@
           task.comment ? h("div.sub.task-comment-text", N.icon("note", 11), " ", task.comment) : null),
         h("div.actions", queueActions,
           task.status === "queued" || task.status === "running" ? h("button.btn.small", { on: { click: (e) => { e.stopPropagation(); act("tasks.cancel", task); } } }, N.icon("stop", 14), "Cancel") : null,
-          ["failed", "cancelled", "completed"].includes(task.status) ? h("button.btn.small", { on: { click: (e) => { e.stopPropagation(); act("tasks.retry", task); } } }, N.icon("retry", 14), "Retry") : null,
+          ["failed", "cancelled", "completed"].includes(task.status) ? h("button.btn.small", { title: "Queue it again. A stack it was writing when it stopped goes on where it stopped.", on: { click: (e) => { e.stopPropagation(); act("tasks.retry", task); } } }, N.icon("retry", 14), "Retry") : null,
           task.status !== "running" ? h("button.btn.small.ghost.icon", { title: "Remove", on: { click: (e) => { e.stopPropagation(); act("tasks.remove", task); } } }, N.icon("trash", 14)) : null),
         task.status === "queued" ? null : h("div.progress" + progressClass, h("span", { style: { width: pct + "%" } })));
       return el;
@@ -1546,6 +1554,8 @@
             h("dt", "Method"), h("dd", `${task.method.id} ${task.method.version}`),
             h("dt", "Entities"), h("dd", task.entities.map((e) => h("div.mono", { style: { fontSize: "12px" } }, N.fmt.key(e.key)))),
             h("dt", "Options"), h("dd.mono", { style: { fontSize: "12px", whiteSpace: "pre-wrap" } }, JSON.stringify(task.options.values, null, 1)),
+            task.skipCompleted ? [h("dt", "Skipped"), h("dd.task-skipped", task.skipped ? (task.skipped.length ? task.skipped.map((key) => h("div.mono", { style: { fontSize: "12px" } }, N.fmt.key(key))) : "none: it had not run on any")
+              : "entities where it already ran, when it runs")] : null,
             h("dt", "Queued"), h("dd", N.fmt.time(task.createdAt)),
             task.startedAt ? [h("dt", "Started"), h("dd", N.fmt.time(task.startedAt))] : null,
             task.finishedAt ? [h("dt", "Finished"), h("dd", N.fmt.time(task.finishedAt))] : null,

@@ -13,9 +13,14 @@ function result = denoise(entity, options, context)
     end
     step = max(1, ophys.internal.chunk() - 2 * halo);   % each read, halo included, is a chunk at most
     sigmas = [options.spatialSigma, options.spatialSigma, temporal];
-    writer = context.Project.stackWriter(entity, options.output, [height, width, frames], "single");
+    checkpoint = context.Project.checkpoint(entity, options.output, [height, width, frames], "single", options, stack, ...
+        Method=context.Method);
+    writer = checkpoint.writer();   % a run that stopped goes on where it stopped (nansen.Checkpoint)
     total = 0;
-    for start = 1:step:frames
+    if checkpoint.FramesDone > 0
+        total = checkpoint.State.total(1);
+    end
+    for start = checkpoint.FramesDone + 1:step:frames
         context.checkCancelled();
         stop = min(start + step - 1, frames);
         first = max(1, start - halo);
@@ -27,9 +32,11 @@ function result = denoise(entity, options, context)
         piece = single(block(:, :, start - first + 1:stop - first + 1));
         writer.write(start, piece);
         total = total + sum(double(piece), "all");
+        checkpoint.save(1, stop, struct("total", total));
         context.progress(stop / frames, sprintf("frame %d/%d", stop, frames));
     end
     writer.close();
+    checkpoint.finish();
     context.log("%s: smoothed %d frames", ophys.internal.entityName(entity), frames);
     result = struct("frames", frames, "height", height, "width", width, ...
         "meanIntensity", ophys.internal.roundTo(total / (height * width * frames), 4));

@@ -143,6 +143,10 @@ classdef TaskQueue < handle
 
         function task = submit(obj, methodId, entities, options)
             %submit Queue a method on a cell array of entities; options are resolved and validated now
+            %
+            %   With SkipCompleted, the task leaves out, when it runs, the
+            %   entities the method already completed on whose outputs are there
+            %   (Project.alreadyDone), and lists them as skipped.
             arguments
                 obj
                 methodId (1,1) string
@@ -150,6 +154,7 @@ classdef TaskQueue < handle
                 options.Options = struct()
                 options.Preset (1,1) string = ""
                 options.Language (1,1) string = ""
+                options.SkipCompleted (1,1) logical = false
             end
             method = obj.Project.method(methodId);
             if ~method.Queueable
@@ -164,6 +169,9 @@ classdef TaskQueue < handle
                 end
             end
             task = obj.makeTask(method, entities, options.Options, options.Preset, options.Language);
+            if options.SkipCompleted
+                task.skipCompleted = true;
+            end
             obj.save(task)
         end
 
@@ -277,8 +285,18 @@ classdef TaskQueue < handle
             end
         end
 
-        function task = retry(obj, taskId)
-            %retry Queue a finished task again, as a new task with the same method, entities and options
+        function task = retry(obj, taskId, options)
+            %retry Queue a finished task again, as a new task with the same method, entities and options (dev's Restart)
+            %
+            %   A stack the task was writing when it stopped is gone on with
+            %   where it stopped (nansen.Checkpoint). With SkipCompleted (when
+            %   given; else as the task had it), the entities it already
+            %   completed on are left out.
+            arguments
+                obj
+                taskId (1,1) string
+                options.SkipCompleted = []
+            end
             old = obj.get(taskId);
             if ~ismember(string(old.status), ["completed", "failed", "cancelled"])
                 nansen.internal.throwError("task-active", "task %s is %s", taskId, old.status)
@@ -292,6 +310,13 @@ classdef TaskQueue < handle
             end
             if isfield(old, "pipeline")
                 task.pipeline = old.pipeline;
+            end
+            skip = isfield(old, "skipCompleted") && old.skipCompleted;
+            if ~isempty(options.SkipCompleted)
+                skip = logical(options.SkipCompleted);
+            end
+            if skip
+                task.skipCompleted = true;
             end
             obj.save(task)
         end

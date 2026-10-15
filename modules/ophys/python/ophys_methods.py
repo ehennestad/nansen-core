@@ -82,7 +82,8 @@ def motion_correction(entity, options, context):
     and every channel is aligned by them; in one with planes, the options' plane is aligned (height x width x
     channels x frames), or with plane 0 every plane, each by its own reference and shifts, one plane after the
     other in each chunk (height x width x channels x planes x frames; the planes' shifts joined along their last
-    axis). Only the frames firstFrame..lastFrame are aligned and written.
+    axis). Only the frames firstFrame..lastFrame are aligned and written. A run that stopped goes on where it
+    stopped, to the same result (nansen.progress).
     """
     whole, stacks, every = _plane_stacks(entity, options["stack"], context, options)
     height, width, frames = stacks[0].shape
@@ -125,17 +126,32 @@ def motion_correction(entity, options, context):
     shape = (height, width) + tuple(target.shape[2:-1]) + ((len(planes),) if every else ()) + (frames,)
     dtype = target.dtype if output_type == "same" else np.dtype(output_type)
     iterations = options["iterations"]
-    for iteration in range(iterations):
+    count_planes = len(planes)
+    # a run that stopped goes on where it stopped: from its iteration's references and what it had found
+    # (nansen.progress); each plane's state on the last axis (height x width x planes, frames x 2 x patches x patches x planes)
+    checkpoint = context.project.checkpoint(entity, options["output"], shape, dtype, options, whole, iterations, context.method)
+    if checkpoint.resumed:
+        references = checkpoint.state["reference"].reshape(height, width, count_planes)
+        for n, plane in enumerate(planes):
+            plane["reference"] = references[:, :, n]
+        context.log(f"{_name(entity)}: going on from frame {checkpoint.frames_done} of iteration {checkpoint.pass_number}")
+    for iteration in range(checkpoint.pass_number - 1, iterations):
         last = iteration == iterations - 1
-        for plane in planes:
+        first = checkpoint.first_frame(iteration + 1)
+        for n, plane in enumerate(planes):
             reference = plane["reference"]
             plane["shifts"] = np.zeros((frames, 2, patches, patches))
             plane["reference_fft"] = _reference_fft(reference, tapered)
             plane["patch_ffts"] = [[_reference_fft(reference[r0:r1, c0:c1], True) for c0, c1 in zip(column_edges, column_edges[1:])]
                                    for r0, r1 in zip(row_edges, row_edges[1:])]
             plane["total"] = np.zeros((height, width))
-        with (context.project.stack_writer(entity, options["output"], shape, dtype) if last else _NoWriter()) as out:
-            for start in range(0, frames, CHUNK):
+            if first and last:
+                plane["shifts"][:first] = checkpoint.state["shifts"].reshape(first, 2, patches, patches, count_planes)[..., n]
+            elif first:
+                plane["total"] = checkpoint.state["total"].reshape(height, width, count_planes)[:, :, n].copy()
+        references = np.stack([plane["reference"] for plane in planes], axis=-1)
+        with (checkpoint.writer() if last else _NoWriter()) as out:
+            for start in range(first, frames, CHUNK):
                 context.check_cancelled()
                 stop = min(start + CHUNK, frames)
                 aligned = []
@@ -159,6 +175,11 @@ def motion_correction(entity, options, context):
                                                                  for c in range(channels.shape[2])], axis=2)))
                 if last:
                     out.write(start, np.stack(aligned, axis=-2) if every else aligned[0])
+                    checkpoint.save(iteration + 1, stop, reference=references,
+                                    shifts=np.stack([plane["shifts"][:stop] for plane in planes], axis=-1))
+                else:
+                    checkpoint.save(iteration + 1, stop, reference=references,
+                                    total=np.stack([plane["total"] for plane in planes], axis=-1))
                 context.progress((iteration * frames + stop) / (iterations * frames), f"iteration {iteration + 1}: frame {stop}/{frames}")
         for plane in planes:
             plane["reference"] = plane["total"] / frames
@@ -171,6 +192,7 @@ def motion_correction(entity, options, context):
         if mode != "none":
             found[-1]["bidirectionalOffset"] = plane["offsets"][0]
     _save(entity, options["shiftsOutput"], np.concatenate(saved, axis=-1) if every else saved[0], context)
+    checkpoint.finish()
     if every:
         result = dict(frames=frames, **_shift_summary(np.stack([plane["shifts"] for plane in planes]), subpixel),
                       planes=[dict(plane=n + 1, **summary) for n, summary in enumerate(found)])
@@ -1705,13 +1727,16 @@ def deinterleave(entity, options, context):
         raise NansenError("invalid-options", f"{options['stack']} has {total} frames, fewer than {channels} channels x {planes} planes")
     shape = (height, width) + ((channels, planes) if planes > 1 else (channels,) if channels > 1 else ()) + (frames,)
     step = max(1, CHUNK // per)
-    with context.project.stack_writer(entity, options["output"], shape, stack.dtype) as out:
-        for start in range(0, frames, step):
+    checkpoint = context.project.checkpoint(entity, options["output"], shape, stack.dtype, options, stack, 1, context.method)
+    with checkpoint.writer() as out:   # a run that stopped goes on where it stopped (nansen.progress)
+        for start in range(checkpoint.frames_done, frames, step):
             context.check_cancelled()
             stop = min(start + step, frames)
             chunk = stack[:, :, start * per:stop * per].reshape(height, width, stop - start, planes, channels)
             out.write(start, chunk.transpose(0, 1, 4, 3, 2).reshape(shape[:-1] + (stop - start,)))
+            checkpoint.save(1, stop)
             context.progress(stop / frames, f"frame {stop}/{frames}")
+    checkpoint.finish()
     context.log(f"{_name(entity)}: {frames} frames of {channels} channel(s) and {planes} plane(s)")
     return {"frames": frames, "channels": channels, "planes": planes}
 
@@ -1726,10 +1751,12 @@ def denoise(entity, options, context):
     height, width, frames = stack.shape
     temporal = options["temporalSigma"]
     halo = int(math.ceil(3 * temporal)) if temporal > 0 else 0
-    total = 0.0
     step = max(1, CHUNK - 2 * halo)   # each read, halo included, is a chunk at most
-    with context.project.stack_writer(entity, options["output"], (height, width, frames), np.float32) as out:
-        for start in range(0, frames, step):
+    checkpoint = context.project.checkpoint(entity, options["output"], (height, width, frames), np.float32, options, stack, 1,
+                                            context.method)
+    total = float(checkpoint.state["total"].flat[0]) if checkpoint.frames_done else 0.0
+    with checkpoint.writer() as out:   # a run that stopped goes on where it stopped (nansen.progress)
+        for start in range(checkpoint.frames_done, frames, step):
             context.check_cancelled()
             stop = min(start + step, frames)
             first, last = max(0, start - halo), min(frames, stop + halo)
@@ -1739,7 +1766,9 @@ def denoise(entity, options, context):
             piece = block[:, :, start - first:stop - first].astype(np.float32)
             out.write(start, piece)
             total += float(piece.astype(np.float64).sum())
+            checkpoint.save(1, stop, total=np.array([[total]]))
             context.progress(stop / frames, f"frame {stop}/{frames}")
+    checkpoint.finish()
     context.log(f"{_name(entity)}: smoothed {frames} frames")
     return {"frames": frames, "height": height, "width": width, "meanIntensity": round_to(total / (height * width * frames), 4)}
 
@@ -1783,12 +1812,15 @@ def crop(entity, options, context):
     top, bottom = span(options["firstRow"], options["lastRow"], height, "rows")
     left, right = span(options["firstColumn"], options["lastColumn"], width, "columns")
     shape = (bottom - top, right - left, frames)
-    with context.project.stack_writer(entity, options["output"], shape, stack.dtype) as out:
-        for start in range(0, frames, CHUNK):
+    checkpoint = context.project.checkpoint(entity, options["output"], shape, stack.dtype, options, stack, 1, context.method)
+    with checkpoint.writer() as out:   # a run that stopped goes on where it stopped (nansen.progress)
+        for start in range(checkpoint.frames_done, frames, CHUNK):
             context.check_cancelled()
             stop = min(start + CHUNK, frames)
             out.write(start, stack.frames(start, stop)[top:bottom, left:right])
+            checkpoint.save(1, stop)
             context.progress(stop / frames, f"frame {stop}/{frames}")
+    checkpoint.finish()
     context.log(f"{_name(entity)}: {shape[0]} x {shape[1]} x {shape[2]} kept")
     return {"height": shape[0], "width": shape[1], "frames": shape[2]}
 

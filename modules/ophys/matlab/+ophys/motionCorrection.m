@@ -16,7 +16,8 @@ function result = motionCorrection(entity, options, context)
 %   plane, each by its own reference and shifts, one plane after the other
 %   in each chunk (height x width x channels x planes x frames; the planes'
 %   shifts joined along their last dimension). Only the frames
-%   firstFrame..lastFrame are aligned and written.
+%   firstFrame..lastFrame are aligned and written. A run that stopped goes
+%   on where it stopped, to the same result (nansen.Checkpoint).
     [whole, stacks, every] = ophys.internal.planeStacks(context, entity, options.stack, options);
     [height, width, frames] = size(stacks{1});
     flyback = double(nansen.internal.getField(options, "numFlybackLines", 0));
@@ -94,8 +95,31 @@ function result = motionCorrection(entity, options, context)
         planes{p} = plane;
     end
     iterations = options.iterations;
-    for iteration = 1:iterations
+    first = planes{1};
+    if isempty(first.target)
+        dimensions = [height, width, frames];
+        className = outputClass(outputType, first.stack.ClassName);
+    elseif every
+        dimensions = [height, width, first.target.Size(3:end - 1), count, frames];
+        className = outputClass(outputType, first.target.ClassName);
+    else
+        dimensions = [height, width, first.target.Size(3:end)];
+        className = outputClass(outputType, first.target.ClassName);
+    end
+    % a run that stopped goes on where it stopped: from its iteration's references and what it had found
+    % (nansen.Checkpoint); each plane's state on the last dimension (height x width x planes, frames x 2 x patches x patches x planes)
+    checkpoint = context.Project.checkpoint(entity, options.output, dimensions, className, options, whole, ...
+        Passes=iterations, Method=context.Method);
+    if checkpoint.Resumed
+        references = reshape(checkpoint.State.reference, height, width, count);
+        for p = 1:count
+            planes{p}.reference = references(:, :, p);
+        end
+        context.log("%s: going on from frame %d of iteration %d", ophys.internal.entityName(entity), checkpoint.FramesDone, checkpoint.PassNumber);
+    end
+    for iteration = checkpoint.PassNumber:iterations
         last = iteration == iterations;
+        firstFrame = checkpoint.firstFrame(iteration);
         for p = 1:count
             reference = planes{p}.reference;
             planes{p}.shifts = zeros(frames, 2, patches, patches);
@@ -108,19 +132,22 @@ function result = motionCorrection(entity, options, context)
             end
             planes{p}.patchFfts = patchFfts;
             planes{p}.total = zeros(height, width);
-        end
-        if last
-            first = planes{1};
-            if isempty(first.target)
-                writer = context.Project.stackWriter(entity, options.output, [height, width, frames], outputClass(outputType, first.stack.ClassName));
-            elseif every
-                writer = context.Project.stackWriter(entity, options.output, [height, width, first.target.Size(3:end - 1), count, frames], ...
-                    outputClass(outputType, first.target.ClassName));
-            else
-                writer = context.Project.stackWriter(entity, options.output, [height, width, first.target.Size(3:end)], outputClass(outputType, first.target.ClassName));
+            if firstFrame > 1 && last
+                kept = reshape(checkpoint.State.shifts, firstFrame - 1, 2, patches, patches, count);
+                planes{p}.shifts(1:firstFrame - 1, :, :, :) = kept(:, :, :, :, p);
+            elseif firstFrame > 1
+                totals = reshape(checkpoint.State.total, height, width, count);
+                planes{p}.total = totals(:, :, p);
             end
         end
-        for start = 1:ophys.internal.chunk():frames
+        references = zeros(height, width, count);
+        for p = 1:count
+            references(:, :, p) = planes{p}.reference;
+        end
+        if last
+            writer = checkpoint.writer();
+        end
+        for start = firstFrame:ophys.internal.chunk():frames
             context.checkCancelled();
             stop = min(start + ophys.internal.chunk() - 1, frames);
             aligned = cell(1, count);
@@ -160,6 +187,19 @@ function result = motionCorrection(entity, options, context)
             elseif last
                 writer.write(start, aligned{1});
             end
+            if last
+                found = zeros(stop, 2, patches, patches, count);
+                for p = 1:count
+                    found(:, :, :, :, p) = planes{p}.shifts(1:stop, :, :, :);
+                end
+                checkpoint.save(iteration, stop, struct("reference", references, "shifts", found));
+            else
+                totals = zeros(height, width, count);
+                for p = 1:count
+                    totals(:, :, p) = planes{p}.total;
+                end
+                checkpoint.save(iteration, stop, struct("reference", references, "total", totals));
+            end
             context.progress(((iteration - 1) * frames + stop) / (iterations * frames), ...
                 sprintf("iteration %d: frame %d/%d", iteration, stop, frames));
         end
@@ -197,6 +237,7 @@ function result = motionCorrection(entity, options, context)
     end
     if every
         ophys.internal.saveIf(context, entity, options.shiftsOutput, cat(2 + (patches > 1), saved{:}));
+        checkpoint.finish();
         summary = shiftSummary(everyShift, subpixel);
         result = struct("frames", frames, "maxShift", summary.maxShift, "meanShift", summary.meanShift);
         perPlane = cell(1, count);
@@ -209,6 +250,7 @@ function result = motionCorrection(entity, options, context)
         result.planes = perPlane;
     else
         ophys.internal.saveIf(context, entity, options.shiftsOutput, saved{1});
+        checkpoint.finish();
         result = struct("frames", frames, "maxShift", found{1}.maxShift, "meanShift", found{1}.meanShift);
         if isfield(found{1}, "bidirectionalOffset")
             result.bidirectionalOffset = found{1}.bidirectionalOffset;

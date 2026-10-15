@@ -113,6 +113,33 @@ class NpyAdapter:
         target = numpy.lib.format.open_memmap(str(path), mode="w+", dtype=numpy.dtype(dtype), shape=tuple(shape), fortran_order=True)
         return StackWriter(shape, dtype, target=target)
 
+    def reopen(self, path: Path, shape: Any, dtype: Any) -> Any:
+        """A writer that goes on writing into an array file create began (nansen.progress): None unless the file is
+        an array of this shape and type, frames together. A file cut short (by MATLAB's writer, which writes
+        frames in order) is filled out with zeros; frames_on_disk is how many frames it held."""
+        numpy = _optional("numpy", "npy")
+        from .stacks import StackWriter
+        shape, dtype = tuple(int(n) for n in shape), numpy.dtype(dtype)
+        with open(path, "rb") as f:
+            version = numpy.lib.format.read_magic(f)
+            read_header = numpy.lib.format.read_array_header_1_0 if version == (1, 0) else numpy.lib.format.read_array_header_2_0
+            found, fortran, kind = read_header(f)
+            offset = f.tell()
+        if tuple(found) != shape or not fortran or kind != dtype.newbyteorder("<") and kind != dtype:
+            return None
+        frame_bytes = dtype.itemsize
+        for n in shape[:-1]:
+            frame_bytes *= n
+        size = Path(path).stat().st_size
+        needed = offset + frame_bytes * shape[-1]
+        if size < needed:
+            with open(path, "r+b") as f:
+                f.truncate(needed)
+        target = numpy.memmap(str(path), dtype=kind, mode="r+", offset=offset, shape=shape, order="F")
+        writer = StackWriter(shape, dtype, target=target)
+        writer.frames_on_disk = min(shape[-1], (size - offset) // frame_bytes) if frame_bytes else shape[-1]
+        return writer
+
 
 def read_mat73(path: Path) -> Dict[str, Any]:
     """A v7.3 .mat file's variables, read with h5py as scipy reads older files (squeezed, cells simplified):

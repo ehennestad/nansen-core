@@ -75,6 +75,22 @@ classdef Npy < nansen.FileAdapter
             writer = nansen.StackWriter(dimensions, className, Path=path, Header=header);
         end
 
+        function writer = reopen(~, path, dimensions, className)
+            %reopen A writer that goes on writing into an array file create began (nansen.Checkpoint): [] unless the
+            %file is an array of this size and class, frames together, little-endian. Its FramesOnDisk is how many
+            %frames the file holds (a writer that stopped wrote those in order).
+            writer = [];
+            [precision, byteOrder, shape, fortran, offset, logicalValues] = nansen.adapters.Npy.header(path);
+            found = string(precision);
+            if logicalValues
+                found = "logical";
+            end
+            if ~fortran || byteOrder ~= "ieee-le" || found ~= string(className) || ~isequal(double(shape(:)'), double(dimensions))
+                return
+            end
+            writer = nansen.StackWriter(dimensions, className, Path=path, Reopen=true, Offset=offset);
+        end
+
         function write(~, path, data)
             if ~(isnumeric(data) || islogical(data)) || ~isreal(data)
                 nansen.internal.throwError("invalid-params", "the npy adapter writes real numeric or logical arrays")

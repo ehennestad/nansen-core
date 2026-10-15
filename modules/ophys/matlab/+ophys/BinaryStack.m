@@ -64,6 +64,17 @@ classdef BinaryStack < nansen.FileAdapter
             ophys.BinaryStack.writeIni(path, dimensions, string(className));
             writer = nansen.StackWriter(dimensions, className, Path=path, Header=uint8([]));
         end
+
+        function writer = reopen(~, path, dimensions, className)
+            %reopen A writer that goes on writing into a stack create began (nansen.Checkpoint): [] unless its .ini
+            %gives this size and class. Its FramesOnDisk is how many frames the file holds.
+            writer = [];
+            [found, foundClass] = ophys.BinaryStack.info(path);
+            if isempty(found) || foundClass ~= string(className) || ~isequal(double(found), double(dimensions))
+                return
+            end
+            writer = nansen.StackWriter(dimensions, className, Path=path, Reopen=true, Offset=0);
+        end
     end
 
     methods (Static)

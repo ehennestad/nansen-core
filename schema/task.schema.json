@@ -133,6 +133,23 @@
     "result": {
       "description": "What the method returned, when it is JSON and small; one item per entity for a serial method."
     },
+    "skipCompleted": {
+      "type": "boolean",
+      "description": "Leave out, when the task runs, the entities the method already completed on (the run journal) whose outputs are there (dev's RedoIfCompleted off)."
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        }
+      },
+      "description": "Keys of the entities left out by skipCompleted, set when the task ran."
+    },
     "after": {
       "type": "array",
       "uniqueItems": true,

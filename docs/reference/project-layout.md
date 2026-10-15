@@ -26,6 +26,8 @@ A project is a folder. Everything about it is in that folder, in files that foll
   exports/                                   files written by export methods
 ```
 
+In the data locations, beside a stack a method is writing a chunk at a time, `<file>.progress.json` (`nansen.progress`) says how far it got, so a run that stopped goes on where it stopped; it is removed once the stack is complete ([modules](modules.md#going-on-where-a-run-stopped)).
+
 Everything except `cache/`, `tasks/` and `exports/` is authored and belongs under version control. The [modules](modules.md) page covers methods, presets, pipelines and tasks.
 
 ## Rules

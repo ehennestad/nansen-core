@@ -1481,11 +1481,78 @@ classdef Project < handle
             context = options.Context;
             if isempty(context)
                 context = nansen.MethodContext(Project=obj, Method=method);
-            elseif isempty(context.Project)
+            end
+            if isempty(context.Project)
                 context.Project = obj;
             end
-            results = nansen.runMethod(method, entities, values, context);
-            nansen.internal.recordRuns(obj.Folder, method.Id, method.Version, entities);
+            if isempty(context.Method)
+                context.Method = method;
+            end
+            folder = obj.Folder;
+            results = nansen.runMethod(method, entities, values, context, ...
+                OnDone=@(done) nansen.internal.recordRuns(folder, method.Id, method.Version, done));
+        end
+
+        function done = alreadyDone(obj, methodId, entities, options)
+            %alreadyDone For each entity, whether running the method on it again can be skipped (dev's RedoIfCompleted off)
+            %
+            %   It has completed on the entity (the run journal), and what it
+            %   writes is there: every data variable its options name as an
+            %   output (the option output, and those whose names end in Output;
+            %   empty ones are left out) has a file for the entity that is not
+            %   still being written (no progress document beside it,
+            %   nansen.Checkpoint). A method with no such options is done once
+            %   it has completed. A logical row; as Python's Project.already_done.
+            arguments
+                obj
+                methodId (1,1) string
+                entities (1,:) cell
+                options = struct()
+            end
+            method = obj.method(methodId);
+            if isempty(options)
+                options = struct();
+            end
+            values = method.resolveOptions(options);
+            names = fieldnames(values);
+            outputs = strings(1, 0);
+            for i = 1:numel(names)
+                value = values.(names{i});
+                if (names{i} == "output" || endsWith(names{i}, "Output")) && (ischar(value) || (isstring(value) && isscalar(value))) ...
+                        && strlength(string(value)) > 0
+                    outputs(end + 1) = string(value); %#ok<AGROW>
+                end
+            end
+            journals = containers.Map("KeyType", "char", "ValueType", "any");
+            done = false(1, numel(entities));
+            for e = 1:numel(entities)
+                entity = entities{e};
+                type = char(entity.EntityType);
+                if ~isKey(journals, type)
+                    journals(type) = nansen.internal.completedRuns(obj.Folder, type);
+                end
+                journal = journals(type);
+                id = nansen.internal.runKeyId(entity.Key);
+                if ~isKey(journal, id) || ~isKey(journal(id), char(method.Id))
+                    continue
+                end
+                there = true;
+                for name = outputs
+                    try
+                        files = obj.existingFiles(entity, name);
+                    catch err
+                        if ~isa(err, "nansen.NansenError")
+                            rethrow(err)
+                        end
+                        files = strings(1, 0);
+                    end
+                    if isempty(files) || any(arrayfun(@(f) isfile(nansen.Checkpoint.progressPath(f)), files))
+                        there = false;
+                        break
+                    end
+                end
+                done(e) = there;
+            end
         end
 
         function found = tools(obj)
@@ -1919,6 +1986,50 @@ classdef Project < handle
             end
         end
 
+        function progress = checkpoint(obj, entity, name, dimensions, className, options, source, settings)
+            %checkpoint The progress of the variable as a stack being written a chunk at a time (nansen.Checkpoint)
+            %
+            %   So a run that stopped goes on where it stopped: kept in
+            %   <file>.progress.json beside the variable's file while it is
+            %   written. It goes on only from a run with the same options, input
+            %   stack (source, a nansen.Stack: its size and class) and method
+            %   version, into a file an adapter with reopen can go on writing;
+            %   otherwise it starts over. An empty name keeps nothing. As
+            %   Python's Project.checkpoint.
+            arguments
+                obj
+                entity
+                name
+                dimensions (1, :) double
+                className (1, 1) string
+                options
+                source
+                settings.Passes (1, 1) double = 1
+                settings.Method = []
+            end
+            inputs = struct("options", options, "stack", struct("shape", source.Size, ...
+                "dtype", char(nansen.Checkpoint.typeName(source.ClassName))));
+            reference = [];
+            if ~isempty(settings.Method)
+                reference = struct("id", char(settings.Method.Id), "version", char(settings.Method.Version));
+            end
+            if strlength(string(name)) == 0
+                progress = nansen.Checkpoint("", "", dimensions, className, inputs, Passes=settings.Passes, Method=reference);
+                return
+            end
+            variable = obj.dataVariable(name);
+            path = obj.writePath(entity, name);
+            adapter = obj.adapters().get(variable.FileAdapter);
+            reopen = [];
+            if ismethod(adapter, "reopen")
+                cache = obj.DataCache;
+                key = nansen.Project.cacheKey(variable.FileAdapter, path);
+                reopen = @() nansen.Project.reopenAndForget(adapter, path, dimensions, className, cache, key);
+            end
+            progress = nansen.Checkpoint(path, string(name), dimensions, className, inputs, Passes=settings.Passes, ...
+                Method=reference, Create=@() obj.stackWriter(entity, name, dimensions, className), Reopen=reopen);
+        end
+
         function path = save(obj, entity, name, data)
             %save Write the variable for the entity, creating folders as needed; returns the path written
             %
@@ -2214,6 +2325,11 @@ classdef Project < handle
         function writeAndForget(adapter, path, data, cache, key)
             adapter.write(path, data);
             cache.remove(key);
+        end
+
+        function writer = reopenAndForget(adapter, path, dimensions, className, cache, key)
+            cache.remove(key);
+            writer = adapter.reopen(path, dimensions, className);
         end
 
         function key = cacheKey(adapterId, path)

@@ -206,6 +206,8 @@ class StackWriter:
 
     ``target`` is an array-like the chunks are put in (a memory-mapped .npy file), and ``finish`` is called
     with it at the end (to write a file from an array in memory, for an adapter that cannot write in parts).
+    ``frames_on_disk`` is how many frames the file held when a writer reopened it to go on writing
+    (an adapter's ``reopen``; nansen.progress), 0 for a new one.
     """
 
     def __init__(self, shape: Tuple[int, ...], dtype: Any, target: Any = None, finish: Callable[[Any], None] = None):
@@ -216,6 +218,7 @@ class StackWriter:
         self._finish = finish
         self.written = 0
         self.closed = False
+        self.frames_on_disk = 0
 
     def write(self, start: int, chunk: Any) -> None:
         if self.target is None:
@@ -229,6 +232,11 @@ class StackWriter:
             raise NansenError("invalid-params", f"a {chunk.shape} chunk at frame {start} does not fit a {self.shape} stack")
         self.target[..., int(start):stop] = chunk.astype(self.dtype, copy=False)
         self.written += chunk.shape[-1]
+
+    def flush(self) -> None:
+        """Put the frames written so far in the file (a memory-mapped one), before saying they are there."""
+        if self.target is not None and hasattr(self.target, "flush"):
+            self.target.flush()
 
     def close(self) -> None:
         if self.closed:
