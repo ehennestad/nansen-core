@@ -1736,6 +1736,55 @@ classdef Project < handle
             stack.MaxFrames = obj.StackFrameLimit;
         end
 
+        function [stack, adapterId, candidates] = openFileStack(obj, path, adapterId)
+            %openFileStack Any file as a nansen.Stack, as dev's imviewer opens one
+            %
+            %   With the adapter given, or the first of those that read its
+            %   extension as image stacks (AdapterRegistry.forStacks) that opens
+            %   it. Returns the stack, the adapter's id and the candidates.
+            arguments
+                obj
+                path (1,1) string
+                adapterId (1,1) string = ""
+            end
+            [~, name, extension] = fileparts(path);
+            candidates = obj.adapters().forStacks(extension);
+            tries = candidates;
+            if adapterId ~= ""
+                tries = adapterId;
+            end
+            if isempty(tries)
+                if extension == ""
+                    extension = "these";
+                end
+                nansen.internal.throwError("unsupported-file", "no file adapter of the project reads %s files as image stacks", extension)
+            end
+            problems = strings(1, 0);
+            for candidate = tries
+                adapter = obj.adapters().get(candidate);
+                try
+                    if ismethod(adapter, "open")
+                        stack = adapter.open(path);
+                    else
+                        stack = adapter.read(path);
+                    end
+                    if ~isa(stack, "nansen.Stack")
+                        stack = nansen.Stack.fromArray(stack);
+                    end
+                catch err
+                    if adapterId ~= "" || ~startsWith(string(err.identifier), "nansen:")
+                        rethrow(err)
+                    end
+                    problems(end + 1) = candidate + ": " + string(err.message); %#ok<AGROW>
+                    continue
+                end
+                stack.MaxFrames = obj.StackFrameLimit;
+                adapterId = candidate;
+                return
+            end
+            nansen.internal.throwError("invalid-data", "%s could not be read as a stack: %s", name + extension, strjoin(problems, "; "))
+        end
+
         function writer = stackWriter(obj, entity, name, dimensions, className)
             %stackWriter A nansen.StackWriter of the variable as a stack of the given size, a chunk of frames at a time
             %

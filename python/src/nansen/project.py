@@ -1085,6 +1085,29 @@ class Project:
         stack.max_frames = self.stack_frame_limit
         return stack
 
+    def open_file_stack(self, path: PathLike, adapter_id: Optional[str] = None) -> Tuple[Stack, str, List[str]]:
+        """Any file as a stack, as dev's imviewer opens one: with the adapter given, or the first of those that read its
+        extension as image stacks (AdapterRegistry.for_stacks) that opens it. Returns the stack, the adapter's id and
+        the candidates."""
+        path = Path(path)
+        candidates = self.adapters.for_stacks(path.suffix)
+        tries = [adapter_id] if adapter_id else candidates
+        if not tries:
+            raise NansenError("unsupported-file", f"no file adapter of the project reads {path.suffix or 'these'} files as image stacks")
+        problems = []
+        for candidate in tries:
+            adapter = self.adapters.get(candidate)
+            try:
+                stack = as_stack(adapter.open([path]) if hasattr(adapter, "open") else adapter.read(path))
+            except NansenError as error:
+                if adapter_id:
+                    raise
+                problems.append(f"{candidate}: {error.message}")
+                continue
+            stack.max_frames = self.stack_frame_limit
+            return stack, candidate, candidates
+        raise NansenError("invalid-data", f"{path.name} could not be read as a stack: " + "; ".join(problems))
+
     def stack_writer(self, entity: Entity, name: str, shape: Any, dtype: Any) -> StackWriter:
         """A writer of the variable as a stack of the given shape, a chunk of frames at a time.
 

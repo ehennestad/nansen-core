@@ -3326,6 +3326,207 @@
     },
     {
       "request": {
+        "method": "files.frame",
+        "id": 4810,
+        "params": {
+          "path": "data/raw/sub-m1/ses-s1/zstack.tiff",
+          "frame": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 5,
+          "channels": 1,
+          "planes": 1,
+          "frame": 2,
+          "low": 36,
+          "high": 447,
+          "pixels": "FhU9Qkk4KR8dISQoMDI8NzEmIjc1UT9NJh4GER0cFAARCS86RCYgISYrND43KjIrIhwbLSpFPUgtKhELDAkFCRAqNzUoNDU0KygiISgwN0E4SUI/JigmKSg4PSAWGCMLGTVMUUFJSUI/OjU1PVBUWUBORkYwMjk8NUtJQy4qLBEaNkRVQ1hbXF9USUhfa1tWR0Y6PUxTY1xVY09VN0crGiMxR2Njf31zd25ud3h/V2BER0JWdm16dHRwVnJjZUAbKzxOWoCFem5uZWGAf4JZc2BrVmZze316e3xza11GOB8qRG5uf25eU0pTZYV2bVV4Y3Zhbm1ucGyAcoJzc0g+ITVOfYGOb1NQPklSf4SIhZCLkHpsYWtzaX1ygV5WODkuOVSKgFxTT2BMUWJpbm54gXV1V2BeaGVrcVtwVlQ1PzI/S3JnQ0ROX2JOVuKBiX+OdXRLZmBpV2heSUIwOjxRODhTe0wWL19/d0+4qNBja3dgYTlfWE4ySjctJTAqJjswMk5aNik/ZFpfx7rC5P+LiHdgR15ZXlFhRUMiLCI0OC8aLzo/VmRsTExBqqS/U25TZUQ1OkxrcGk6OSU4JCsqICInKSxKTFlHSlZKwz9BUUA1EAQqTnvXgFJsWGhHRDArEBE1SWZeY15LUkM6NiAxFhsCEThs1LewMlxjgFtEMSAkQGFNVF17aU1GSS4pCyo3OC0oTLa6nL6fb2yZfVwwIyc/ZW55e21XRUFHNT8lPUxhYGBmZ8rF1VRVWIOIYTcYQVVrTE1ebXVjWU5JXFB1gIx4b3VZa8+hiG9RW3hkQSVOXnJtb3Fjd4WGd2FsZYN/fHB+gW9da4qFfWFYWFNAL091hGtjaW5yeG5xZYdpinV7anyMf299kXpwVE9NWk8yQWV/f2t0WU5gbohpjGJlRFlsiJKLZmZ9dYRobVVZOyUtS3ZmWGZQRKs2W2iWboBceGmBjIqFg5eCdWtycmRPFi04bFRUVDu7u8JcYZCBfGNrcYSemY10h4ySiGxjWEUOOER3W2NXucK5q7FIdXF1cnNygIqWiIR7ioySeGtfUxJATnRfV0dG3evcX2Jta1dcWWuHjZyDhm+Hin1VUE1HG0Bce3RVWU9o3nJ0b1thdmlzTHNNgW2HZHN4bGNmYkkrL1ZwbkdJUGllbnqDYWdrc3RbclFoZ4R/gnFaPklNSCErSldMOEFSaF9pcoyHkZWIc0VXSWhrbnx6eWFSYVdGHhQzWkJCN2Nzf1ZiiqujhXllZ25pa2Jjc4iNgWZTSkQHHDhiUVBUXWFfOkNkqa6mgWZOVWNmZ1djWGppemNiSwYWKFRQYE5JN0ktMThXUVpRVEM9RUxcSUo6QjdFNEAqAA==",
+          "metadata": {},
+          "adapter": "ophys.tiff_stack",
+          "adapters": [
+            "ophys.scanimage_tiff",
+            "ophys.thorlabs_tiffs",
+            "ophys.tiff_stack"
+          ],
+          "name": "zstack.tiff"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 4811,
+        "params": {
+          "path": "data/raw/sub-m1/ses-s4/rec_00001.tif",
+          "channel": 1,
+          "plane": 1
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 16,
+          "width": 64,
+          "frames": 1,
+          "channels": 2,
+          "planes": 2,
+          "frame": 0,
+          "low": 0,
+          "high": 3993,
+          "pixels": "m+b3qllEsTnq+E48El8Qqxhh6IC/5RA7ZMjISPj/1r9oEXnWKuEkMBv+lfl+C/8cMHxmxD5IIfm5CPQb+r9cJJbTuznL/kBSKaRzVSSR1uePPvxvgrvJ63Alb7x38DuAG378UX8a+GgSCdmDOYz8znlkv6c7RXh77LDbR22fuPYL20BglVf1QFDclK0B5X/AnTflYA8XyjgU1m2q2nriH/q4eOZ5kOXx35uSa5Qek/EcsY34+Hl5AdWQtpeJZlDM/Um1rJoXltuvgq6deHwRXDYHJ9pOb/GAn9X24H+z0P5Cd0mlrmPNr+uy7Tdp0Hkem45aOWImIiW15kAPsIM7acregVIp00f7W2V8Z5f2cJwEpg9Ff48qMg7zcMLkI9XeRHUjpGyZVaSS5psx/iACErgFSfh6a1IOovFmWyYZcHW8ei08Oy7XWAS43xnudX+1j0X580LbgpuAT77FOa58AYrfvOwU6sXDTwJWE3EguNwucRAKHEFSfZxMK6oosu7JMEaDo6MacYL/RpEwvvhu8WHa1zMMFTQOGl7B92ZkvXEkgaM5tcvDEylVeIXVADSqLxOCSXR5W+8UbhmpdbDVwMUpgRzj73vxpVebCYp9338HjVlKuZw2ewc84uZyB8Ub2Ijxh4rjjNHaXW4lOajx+w46rlt/DaBbpVirpkmNOwNfP/GQmi3ThfzNsF7eL66S4kiSfiArOvWgUgnQrJgWhWzXmvDEBAyg0UiFM7gTkRV4myKBx8X3YCvKrPBffwu3Et4d9rjnBYc/Zx9vV0OY1QOLlOBqlk7LxXii2wj6acXIdtrJEBwe6dww+ALesST78Q+Up6zs8N1fWOKYHJEqS3e9yPpRB/RNdEXnlIKmQOCslrcXOykwnXfhVMiaV1YvQD5/mRfOWAb1VrjJ1HXih4DmN65yvp/0Uahq/ILQ5S+9S2PxAzYoB0aWxC/P5Y34p9tkJCPzQhRZHSdc5SWFwY1GO8mS+yG1Uf7LVQcnpohc3EXfFmMX3JVzGnCnhgmho1B0GnbniDZUGSdyFUJ7OaD+jMAp2M8IZNVk8Z3f6PZ5WUtonZsmBNmkCFF5gF0qo3WwrpUa8zJlM70EtVBvENmdfX0JS8gwyrt83PEYVut+cVuMFbk8obzy4LX0W9XXZx/iV2C/A/dXqQ69bc1UmSW9ezn8Hcfo2WCI4QJdQQeKtARSa7RLvjx6gDbzV0oskl9bTfoYE7rS4AYtMVx+COK6xyXdTiyUutXJAm3LADi6TIihR2vmw2yQ6BFJ8OV4P6ym9uG9JHsrMF/uQB1XCxyEk4HUkiAMD5TQUqluFGHp0p/I2mQfIedzBV5XW8ZlYGurVJuvdGg8x66jNVXp4g==",
+          "metadata": {
+            "frameRate": 7.5,
+            "pixelSize": [
+              1.5,
+              1.5
+            ],
+            "zStep": 4.0
+          },
+          "adapter": "ophys.scanimage_tiff",
+          "adapters": [
+            "ophys.scanimage_tiff",
+            "ophys.thorlabs_tiffs",
+            "ophys.tiff_stack"
+          ],
+          "name": "rec_00001.tif"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 4812,
+        "params": {
+          "path": "data/raw/sub-m1/ses-s4/rec_00001.tif",
+          "adapter": "ophys.tiff_stack",
+          "projection": "max"
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 36,
+          "width": 32,
+          "frames": 7,
+          "channels": 1,
+          "planes": 1,
+          "frame": null,
+          "low": 1548,
+          "high": 9999,
+          "pixels": "Rj5GQ0U+JUdAR0VAMCY3QxklPzREPkJGSENJPEZKQixINT86MklBRkFGSkRBRTc/QUVIR0E3N0BERTFASUNGQkg6PTJER0VGQDkxSD1BJkozRD0zASJGNzo2RkI5OzxFSUhFPjwwLTkyQDQ/IiEvQTdDGUNFHUUPSEFGPT0/SUkzQUgzRkk6SEJHSDQeRSVBSEU/Ljw/PjsrRElGPUpESkgxJ0JEG0hBG0lHOkNGQScuQ0pESEEXP0VDK0Y+JEZHQjhJLj5EOyRKOzA0QkY/Qzc4RjdEMzUyRDNHRj9GSTM9KTc+PUJJQx8IG0M7PUgnNi02SUgxNjQ2QUVARTEuOCA+Rko+BDhBSTIkRjpJRUA8N0oeSDtHSB0wPj05Q0E1LjpIRjE+RkMiRC0zPUU8QDRBQz8yMStJOzpDOUBHLDo0Pz9HLEZFRixCRkBHSj87NzYsRUlFOUg0PEkwMkM9MEcxK0M/QkJFITJDIzM9PkcgRkFGRUg3RzUyPzE+SjktLTw+Fkc/MztKRUI0PQcxHyJKHUZGRUJFQjxIQ0RDP0Y+Q0RHRDxFIUIuOklDM0JBNzcrM0EwKEAqREQ3RUU2N0RJPEU5NSFERSBIJEkREiY2QhYxSEc7STs7QipCJkBCRkI2RTxHRTtEQzNCRUNHEilGJEZJNSU3OT5DSEE+ST7//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////zA4Rj5IQUc4RUlFRzhESjk4JTI0LUJJRy45RUVHNTEZQkpJREIzSSghOT5IRkRJMkY+LEVDSS47QUE5REA3R0ZIKDdFSTZFQzs/RT1DNUlDPiU/R0ZHOSw2IDVCJUlEPD8KRzk9SDIxQEZDRjtJRkk8REFHGURAPTQ+PTokMzYvSSFBQkdJSTc9Pj0xSTExRkpENEYeQy4XQEM8QzJIKjNIOypBRkNIQ0BCEkc8RkY5SkZDQkcYLEA4ICU3Nz9FRCZKMjxHRjRCRzxFLEBGEzk9OCpBREk9Qko8O0gvMUc9RDtDMCU9QjxGOzQ/LzRDSEhGRyUNNzg4PUgiSTUxGj1JSUpIQiQ+HTlDNkAtQDUoMz9ERzlBRkI7Qz1DACo/NjA4QzA6J0JAOjBGMjopKEhDJC0gMUFDOhYvQjBAOkU1OwFAMDhBQydFEUM/PD48SUFESUMdQBxFRjY6SCpDRzgpSQxKSUkyOzZJN0U0HTI4RUZJOz8lNTsjREpERixHQTE0KjhDPUAnODY9D0lFQxouLUhIJzpJRz8rNkFDN0QgOzM8SElHNkY1LEFIRjlIRUpHSTxJJzVEPEBCOwE8Qzo8RTs7RC48SEVJQUlCPTIhLjg0LkgwQjlHNj9HM0NKRD81Rkg4Ojc2PkNFQkRFQkBARkgyPSRINDlII0dDMz88",
+          "metadata": {},
+          "adapter": "ophys.tiff_stack",
+          "adapters": [
+            "ophys.scanimage_tiff",
+            "ophys.thorlabs_tiffs",
+            "ophys.tiff_stack"
+          ],
+          "name": "rec_00001.tif"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 4813,
+        "params": {
+          "path": "data/raw/sub-m1/ses-s1/rec.raw",
+          "frame": 3,
+          "adapter": "ophys.sciscan_raw"
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 40,
+          "channels": 1,
+          "planes": 1,
+          "frame": 3,
+          "low": 34,
+          "high": 603,
+          "pixels": "SFVfWVZOWD1EMzw0L05PU1FVUkVLS1RNSURGZFJOKThRUE9ZVlZKQDozP0dLXlNtcHBNOkVJS1BRQ0A+S1JERVJQQlBRTkRAOzg+SVFdU2tfWj1BPEE+UVk0LjFMU0Q/VFZIT09IQkI7PURZWl5FVExMNTc+Qj1RUEk9O0dQUkQ9TEBOUlNUS0E+VGBRS0NCNzVCSldUS1dJTT1PPUUyQjNJR1xdVFdSUVlaXUFIMzQwP1ZOWlZVUD1TU1pPQjtBOkNfX1lQTklHXVpeQVNGUD9MVFpaWVpXVFBOPkE5PEdOTlxPRTw2O0piVFE9WkhXR1NPUlJOYFRfUV9BSTxGOFxbZ1I/Oi40Pl5gZ2JqZmhbT0hNUkpcU19DSTNCR0k+ZF1EOzlHODtHTlNQWF5TVT9GQ0tJUFJGUz5HMEpSUjhRTDEyOUVHOj9PX2VbaFZWOEpGTUFNRDQzIjU2W19bR1s3ESVEW1g6MiZFSU1XQ0coRUE7JjcqHxsjJCZGWVpDQScfLEpBRjs0OVFmZGRVRjRGQkU+SDMyGiIdMUJHTEksL0FJTzo2MCgjOD5OPUoyJys6UE9OKywcKRwoMz1HSB0fNzlBNDdBOTgtMjwvJwwEIDhaxF09TkJMPjs4ODhOKDhLRkhHOTkyLScYJBQVAA0rTcCnpiZESVxKPTw6N0ZINj1DW044MzQkHgkeKSgjHzerrZixm1BOcWVTOCQxQktSV1tPPjQwNCcuHC45R0lFSUq5ucQ/Pz5fcFlAHjY4UDg5RE9TSEE7N0Q4Vl1mV1FWQU2/dWZSOUNhV0gmO0tTUFJSSVlfX1hIT0lfXVxQXF5RQ05jYlxGQEdJSTo5TWFRSktSUlZPUExjS2RWWk1aZV1SXGtXUkA8QU1bXERhW15OVkE4RlJjTWRHSTBDT2NpZEpJW1RhS09IUkVQOFtWSEFKOjLVKEROa1JbQVlMXmlmYWBwX1VQVFxaWFlGT048PUAt4d/mRUhqX1pITlFgc25pVWNlaWNOUU5OQD9KVkNKQN/k3dXYN1ZSVFZVUlxjbGZjWmNlaVhYVVxOWE1VRUI0M/f/9ERHT09BQkFQYmh0XmVSY2RbP0JFUTpSQ1pUPkE8TfhVVFJDR1ROVThVOF5RYEhWVk5JUldSMDkwUFAyNztNS09XYUVMTlVVQVE9S0tfXl9SQS09RVIxMihBOCswOUpESlNkYWpsY1MzQjVNTk5bWFhIPVJNUDtDREQzMCdJU11AR2V7eGJYS0xQTk9GRlJkZ19HR0VNUVlIRjs6PUVKRSsvR3p9eWBNOEFHS0xBRkFOTVhPVlZXV05PSFlMRTNFKy83UU5STU8/OUJHVEVDOEE0QTdHQElLSg==",
+          "metadata": {
+            "frameRate": 30.9,
+            "pixelSize": [
+              16.0,
+              12.0
+            ]
+          },
+          "adapter": "ophys.sciscan_raw",
+          "adapters": [
+            "ophys.binary_stack",
+            "ophys.sciscan_raw"
+          ],
+          "name": "rec.raw"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 4814,
+        "params": {
+          "path": "tables/session.csv"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 4815,
+        "params": {
+          "path": "data/raw"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 4816,
+        "params": {
+          "path": "data/raw/nothing.tif"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 4817,
+        "params": {
+          "path": "data/raw/sub-m1/ses-s1/zstack.tiff",
+          "adapter": "ophys.sciscan_raw"
+        }
+      },
+      "expect": {
+        "error": "invalid-data"
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 4818,
+        "params": {
+          "path": "data/raw/sub-m1/ses-s1/zstack.tiff",
+          "adapter": "ophys.no_such"
+        }
+      },
+      "expect": {
+        "error": "unknown-file-adapter"
+      }
+    },
+    {
+      "request": {
         "method": "methods.run",
         "id": 49,
         "params": {

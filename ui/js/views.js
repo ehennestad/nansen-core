@@ -654,6 +654,9 @@
                     if (shown && shown.classList.contains("hdf5-tree")) { shown.remove(); return; }
                     li.after(hdf5Tree(app, where(child)));
                   } } }, N.icon("database", 13)) : null,
+                /\.(tiff?|raw|seq|tsm|h5|hdf5|npy|avi|mp4|mov|png|jpe?g|bmp|gif)$/i.test(entry.name) ? h("button.btn.ghost.icon.small.view-file",
+                  { title: "View the frames (as imviewer)", on: { click: () => N.views.stackViewer(app, null, null, entry.name, [], [], { file: where(child) }) } },
+                  N.icon("image", 13)) : null,
                 h("button.btn.ghost.icon.small.open-file", { title: "Open in its app", on: { click: () => app.client.request("files.open", where(child))
                   .catch((error) => N.showError(error, "Could not open the file")) } }, N.icon("eye", 13)),
                 pathActions(child));

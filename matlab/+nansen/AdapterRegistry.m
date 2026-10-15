@@ -75,6 +75,25 @@ classdef AdapterRegistry < handle
                 "languages", {languages}, "builtIn", true);
         end
 
+        function ids = forStacks(obj, extension)
+            %forStacks Ids of the adapters that read files of an extension as image stacks, in id order
+            %
+            %   Those declared with data type ImageStack, and the built-in npy for .npy.
+            extension = lower(string(extension));
+            ids = strings(1, 0);
+            for id = string(keys(obj.Declarations))
+                doc = obj.Declarations(char(id));
+                extensions = lower(string(nansen.internal.asCellstr(nansen.internal.getField(doc, "extensions", {}))));
+                if string(nansen.internal.getField(doc, "dataType", "")) == "ImageStack" && any(extensions == extension)
+                    ids(end + 1) = id; %#ok<AGROW>
+                end
+            end
+            if extension == ".npy"
+                ids(end + 1) = "npy";
+            end
+            ids = sort(ids);
+        end
+
         function adapter = get(obj, adapterId)
             adapterId = char(adapterId);
             if isKey(obj.Adapters, adapterId)

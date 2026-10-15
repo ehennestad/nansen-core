@@ -1367,6 +1367,25 @@ def test_view_a_stack_with_channels_and_planes(empty_app, page):
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_view_any_stack_file_from_the_file_tree(empty_app, page):
+    ophys_project(empty_app)
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").nth(3).locator("td.key").first.click()   # s4: ScanImage files
+    tree = ".drawer .loc:has(.loc-head:has-text('raw'))"
+    page.wait_for_selector(f"{tree} .path-list .browse")
+    page.locator(f"{tree} .path-list .browse").first.click()
+    page.click(f"{tree} li[data-name='rec_00001.tif'] .view-file")   # no data variable: as imviewer opens a file
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('16 × 64')")
+    assert page.locator(".viewer-dialog .dialog-head").inner_text().startswith("rec_00001.tif")
+    assert page.locator(".viewer-adapter option").all_inner_texts() == ["ophys.scanimage_tiff", "ophys.thorlabs_tiffs", "ophys.tiff_stack"]
+    assert page.locator(".viewer-adapter").input_value() == "ophys.scanimage_tiff"
+    assert page.locator(".viewer-channel").is_visible()
+    page.select_option(".viewer-adapter", "ophys.tiff_stack")   # its pages, one after the other
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('36 × 32')")
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_the_viewer_shows_a_scalebar_and_the_time_the_files_give(empty_app, page):
     ophys_project(empty_app)   # session 1's SciScan recording: 30.9 frames per second, 16 µm pixels
     page.goto(empty_app["server"].url + "#/entities/session")

@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
@@ -705,6 +705,33 @@ classdef Api < handle
             result.format = layout.format;
             result.items = layout.items;
             result.truncated = layout.truncated;
+        end
+
+        function result = apiFilesFrame(obj, params)
+            % A frame (or a projection) of any stack file, as data.frame gives one of a variable: dev's imviewer on a
+            % file. The adapter is the one given, or the first that reads the file (Project.openFileStack)
+            project = obj.requireProject();
+            resolved = obj.apiFilesResolve(params);
+            if ~resolved.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", resolved.path)
+            end
+            if resolved.isFolder
+                nansen.internal.throwError("invalid-params", "%s is a folder", resolved.path)
+            end
+            limits = nansen.internal.getField(params, "limits", []);
+            if ~isempty(limits) && (~isnumeric(limits) || numel(limits) ~= 2)
+                nansen.internal.throwError("invalid-params", "limits is [low, high]")
+            end
+            [stack, adapterId, candidates] = project.openFileStack(string(resolved.path), string(nansen.internal.getField(params, "adapter", "")));
+            result = nansen.internal.imageFrame(stack, ...
+                double(nansen.internal.getField(params, "frame", 0)), double(nansen.internal.getField(params, "channel", 0)), ...
+                string(nansen.internal.getField(params, "projection", "")), double(limits), ...
+                double(nansen.internal.getField(params, "plane", 0)));
+            result.metadata = stack.Metadata;
+            result.adapter = char(adapterId);
+            result.adapters = cellstr(candidates);
+            [~, name, extension] = fileparts(string(resolved.path));
+            result.name = char(name + extension);
         end
 
         function result = apiFilesOpen(obj, params)

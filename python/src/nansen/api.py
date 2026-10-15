@@ -718,6 +718,23 @@ class Api:
             raise NansenError("invalid-params", f"{resolved['path']} is a folder; files.list shows folders")
         return dict(resolved, **inspect(Path(resolved["path"]), int(params.get("limit", FILES_INSPECT_LIMIT))))
 
+    def files__frame(self, params: dict) -> dict:
+        """A frame (or a projection) of any stack file, as data.frame gives one of a variable: dev's imviewer on a file.
+        The adapter is the one given, or the first that reads the file (Project.open_file_stack)."""
+        project = self._require_project()
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        if resolved["isFolder"]:
+            raise NansenError("invalid-params", f"{resolved['path']} is a folder")
+        limits = params.get("limits")
+        if limits is not None and (not isinstance(limits, list) or len(limits) != 2):
+            raise NansenError("invalid-params", "limits is [low, high]")
+        stack, adapter, candidates = project.open_file_stack(Path(resolved["path"]), params.get("adapter"))
+        result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
+                             int(params.get("plane", 0)))
+        return dict(result, metadata=dict(stack.metadata), adapter=adapter, adapters=candidates, name=Path(resolved["path"]).name)
+
     def files__open(self, params: dict) -> dict:
         """Open a file in its default app, as files.resolve finds it."""
         resolved = self.files__resolve(params)

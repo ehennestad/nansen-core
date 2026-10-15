@@ -159,6 +159,9 @@
     const scalebar = h("div.viewer-scalebar", { style: { display: "none" } }, scaleLine, scaleLabel);
     holder.appendChild(scalebar);
     const timeLabel = h("span.viewer-time.mono", "");
+    // which file adapter reads a file opened on its own, when more than one could
+    const adapterPick = h("select.input.viewer-adapter", { title: "Read the file as", style: { display: "none" },
+      on: { change: () => { state.adapter = adapterPick.value; state.frame = 0; slider.value = "0"; show(); } } });
     const exportButton = h("button.btn.ghost.icon.small.viewer-export", { title: "Export", on: { click: () => exportMenu() } }, N.icon("download", 14));
     const zoomLabel = h("button.btn.ghost.small.viewer-zoom.mono", { title: "Fit the image (double-click it)", style: { display: "none" }, on: { click: () => zoomTo(1) } }, "");
     const status = h("div.viewer-status.muted", "Loading…");
@@ -664,7 +667,7 @@
     async function exportMenu() {
       let method = null;
       try {
-        method = (await app.client.request("methods.list", { entityType })).find((m) => m.id === "ophys.export_tiff") || null;
+        if (!options.file) method = (await app.client.request("methods.list", { entityType })).find((m) => m.id === "ophys.export_tiff") || null;
       } catch (error) { /* the PNG is still there */ }
       const items = [{ label: "Image as PNG", icon: "download", onClick: () => saveImage() }];
       if (method && state.frames > 1) items.push({ label: "Stack as TIFF…", icon: "layers", onClick: () => exportTiff(method) });
@@ -786,12 +789,20 @@
     async function show() {
       if (state.busy) { state.pending = true; return; }
       state.busy = true;
-      const params = { entityType, key, variable, channel: state.channel, plane: state.plane };
+      // a file of no entity (options.file: as files.resolve takes it) is read by files.frame, as dev's imviewer opens any file
+      const params = options.file ? { ...options.file, channel: state.channel, plane: state.plane }
+        : { entityType, key, variable, channel: state.channel, plane: state.plane };
+      if (options.file && state.adapter) params.adapter = state.adapter;
       if (state.mode === "frame") params.frame = state.frame; else params.projection = state.mode;
       if (!state.auto) params.limits = [state.low, state.high];
       if (state.showRois && state.roiVariable && !state.rois) params.rois = state.roiVariable;
       try {
-        const frame = await app.client.request("data.frame", params);
+        const frame = await app.client.request(options.file ? "files.frame" : "data.frame", params);
+        if (frame.adapters && frame.adapters.length > 1 && adapterPick.options.length !== frame.adapters.length) {
+          N.fill(adapterPick, frame.adapters.map((id) => h("option", { value: id }, id)));
+          adapterPick.style.display = "";
+        }
+        if (frame.adapter) adapterPick.value = frame.adapter;
         if (frame.rois) state.rois = frame.rois;
         if (initial !== null && state.rois && state.rois.some((r) => r.id === initial)) {
           const id = initial;
@@ -840,14 +851,14 @@
 
     const content = h("div.viewer" + (signalPanel ? ".with-signal" : ""),
       h("div.viewer-bar",
-        playButton, slider, frameLabel, timeLabel, mode, channelPick, planePick,
+        playButton, slider, frameLabel, timeLabel, mode, channelPick, planePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
         colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, scaleButton,
         exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel));
-    const dialog = N.dialog({ title: `${variable} · ${N.fmt.key(key)}`, content, onClose: () => {
+    const dialog = N.dialog({ title: options.file ? options.file.path.split("/").pop() : `${variable} · ${N.fmt.key(key)}`, content, onClose: () => {
       if (options.onClose) options.onClose();
       state.playing = false;
       resizing.disconnect();
