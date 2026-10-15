@@ -28,10 +28,10 @@ classdef PrairieTSeries < nansen.FileAdapter
         function stack = openOne(path)
             text = fileread(path);
             folder = fileparts(path);
-            bodies = regexp(text, '<Frame\b[^>]*>(.*?)</Frame>', "tokens");
+            bodies = regexp(text, '<Frame(?:\s[^>]*)?>(.*?)</Frame>', "tokens");
             files = {};   % per frame: channel numbers, file names and pages
             for f = 1:numel(bodies)
-                tags = regexp(bodies{f}{1}, '<File\b[^>]*>', "match");
+                tags = regexp(bodies{f}{1}, '<File\s[^>]*>', "match");
                 channels = [];
                 names = strings(0);
                 pages = [];

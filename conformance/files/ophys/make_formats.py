@@ -177,7 +177,7 @@ def mat73(expected):
             return where[name]
         put("matrix", np.array([[1.0, 2, 3], [4, 5, 6]]).T, "double")                      # MATLAB: 2 x 3
         put("name", np.array([[ord(c) for c in "roi"]], dtype=np.uint16).T, "char").attrs["MATLAB_int_decode"] = np.int32(2)
-        put("flags", np.array([[1, 0, 1]], dtype=np.uint8).T, "logical")                   # MATLAB: 1 x 3
+        put("flags", np.array([[1, 0, 1]], dtype=np.uint8).T, "logical").attrs["MATLAB_int_decode"] = np.int32(1)   # MATLAB: 1 x 3
         info = f.create_group("info")
         info.attrs["MATLAB_class"] = np.bytes_("struct")
         put("rate", np.array([[30.0]]), "double", info)
