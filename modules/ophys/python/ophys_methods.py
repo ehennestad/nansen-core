@@ -411,10 +411,15 @@ def caiman_deconvolution(entity, options, context):
 
 
 def deep_interpolation(entity, options, context):
-    """Denoise the stack with DeepInterpolation's inference, with a trained model."""
+    """Denoise the stack with DeepInterpolation and a trained model.
+
+    Each frame is predicted from preFrames before and postFrames after it (leaving omittedFrames out next to
+    it); frames too close to the start or end to be predicted are kept as they were. Uses DeepInterpolation's
+    generator and inference classes (0.2) or its command line inference (0.1).
+    """
     try:
         import h5py
-        from deepinterpolation.cli.inference import Inference
+        import deepinterpolation  # noqa: F401
     except ImportError as error:
         raise NansenError("dependency-missing",
                           f"ophys.deep_interpolation needs deepinterpolation and h5py ({error}): see https://github.com/AllenInstitute/deepinterpolation") from None
@@ -424,28 +429,35 @@ def deep_interpolation(entity, options, context):
     import tempfile
     stack = _load_stack(entity, options["stack"], context)
     frames = stack.shape[2]
-    margin = options["preFrames"] + options["postFrames"] + 2 * options["omittedFrames"]
-    if frames <= margin:
-        raise NansenError("invalid-data", f"{frames} frames are too few for {margin} frames around each predicted one")
+    before = options["preFrames"] + options["omittedFrames"]
+    after = options["postFrames"] + options["omittedFrames"]
+    if frames <= before + after:
+        raise NansenError("invalid-data", f"{frames} frames are too few for {before + after} frames around each predicted one")
     with tempfile.TemporaryDirectory() as folder:
         source, target = Path(folder) / "input.h5", Path(folder) / "output.h5"
         with h5py.File(source, "w") as f:
             f.create_dataset("data", data=np.moveaxis(np.asarray(stack), 2, 0).astype(np.float32))
-        settings = {
-            "inference_params": {"model_source": {"local_path": str(model)}, "output_file": str(target)},
-            "generator_params": {"data_path": str(source), "name": "OphysGenerator", "pre_frame": options["preFrames"],
-                                 "post_frame": options["postFrames"], "pre_post_omission": options["omittedFrames"],
-                                 "start_frame": 0, "end_frame": -1},
-            "run_uid": "nansen", "output_full_args": False,
-        }
+        generator = {"movie_path": str(source), "train_path": str(source), "batch_size": 8, "steps_per_epoch": -1,  # <= 0: batches in order, not advanced per epoch
+                     "pre_frame": options["preFrames"], "post_frame": options["postFrames"],
+                     "pre_post_omission": options["omittedFrames"], "start_frame": 0, "end_frame": -1, "randomize": False}
         context.log(f"{_name(entity)}: running DeepInterpolation on {frames} frames")
-        Inference(input_data=settings, args=[]).run()
+        try:
+            from deepinterpolation.generator_collection import OphysGenerator
+            from deepinterpolation.inference_collection import core_inference
+            core_inference({"model_path": str(model), "output_file": str(target), "output_padding": True},
+                           OphysGenerator(generator)).run()
+        except ImportError:
+            from deepinterpolation.cli.inference import Inference
+            Inference(input_data={"inference_params": {"model_source": {"local_path": str(model)}, "output_file": str(target)},
+                                  "generator_params": dict(generator, data_path=str(source), name="OphysGenerator"),
+                                  "run_uid": "nansen", "output_full_args": False}, args=[]).run()
         with h5py.File(target, "r") as f:
-            denoised = np.asarray(f["data"])
-    out = np.moveaxis(denoised.reshape(denoised.shape[0], *stack.shape[:2]), 0, 2).astype(np.float32)
+            predicted = np.asarray(f["data"], dtype=np.float32)
+    out = np.asarray(stack, dtype=np.float32).copy()
+    count = min(predicted.shape[0], frames) - before
+    out[:, :, before:before + count] = np.moveaxis(predicted[before:before + count], 0, 2)
     _save(entity, options["output"], out, context)
-    return {"frames": out.shape[2], "height": out.shape[0], "width": out.shape[1]}
-
+    return {"frames": frames, "height": out.shape[0], "width": out.shape[1], "predicted": int(count)}
 
 def denoise(entity, options, context):
     """Gaussian smoothing in space and in time, with the weights renormalised at the edges."""
@@ -608,7 +620,11 @@ def setup_variables(project, options, context):
 
 
 def suite2p(entity, options, context):
-    """Run suite2p on the stack and keep its cells as ROIs, with their signals."""
+    """Run suite2p on the stack and keep its cells as ROIs, with their signals and spikes.
+
+    Works with suite2p 1.x (default_settings / default_db, torch on the GPU when there is one) and 0.x
+    (default_ops). Registration blocks are made to fit small frames.
+    """
     try:
         import suite2p as s2p
         import tifffile
@@ -620,11 +636,29 @@ def suite2p(entity, options, context):
     folder = context.project.write_path(entity, options["rois"]).parent / "suite2p"
     folder.mkdir(parents=True, exist_ok=True)
     tifffile.imwrite(folder / "input.tif", np.moveaxis(np.asarray(stack), 2, 0))
-    ops = s2p.default_ops()
-    ops.update({"fs": options["framesPerSecond"], "diameter": options["cellDiameter"], "nchannels": 1, "nplanes": 1})
-    db = {"data_path": [str(folder)], "tiff_list": ["input.tif"], "save_path0": str(folder)}
+    side = min(height, width)
+    block = max(16, min(128, 2 ** int(math.floor(math.log2(max(side // 2, 1))))))  # a block must be smaller than the frame
     context.log(f"{_name(entity)}: running suite2p in {folder}")
-    s2p.run_s2p(ops=ops, db=db)
+    if hasattr(s2p, "default_settings"):  # suite2p 1.x
+        settings = s2p.default_settings()
+        try:
+            import torch
+            settings["torch_device"] = "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            settings["torch_device"] = "cpu"
+        settings["fs"] = float(options["framesPerSecond"])
+        settings["diameter"] = [float(options["cellDiameter"])] * 2
+        settings["registration"]["block_size"] = (block, block)
+        settings["registration"]["nimg_init"] = min(settings["registration"]["nimg_init"], frames)
+        settings["detection"]["block_size"] = (min(64, block), min(64, block))
+        db = s2p.default_db()
+        db.update(data_path=[str(folder)], file_list=["input.tif"], save_path0=str(folder))
+        s2p.run_s2p(db=db, settings=settings)
+    else:  # suite2p 0.x
+        ops = s2p.default_ops()
+        ops.update({"fs": options["framesPerSecond"], "diameter": options["cellDiameter"], "nchannels": 1, "nplanes": 1,
+                    "block_size": [block, block], "nimg_init": min(ops.get("nimg_init", 200), frames)})
+        s2p.run_s2p(ops=ops, db={"data_path": [str(folder)], "tiff_list": ["input.tif"], "save_path0": str(folder)})
     plane = folder / "suite2p" / "plane0"
     stat = np.load(plane / "stat.npy", allow_pickle=True)
     keep = np.load(plane / "iscell.npy")[:, 0] > 0 if options["onlyCells"] else np.ones(len(stat), dtype=bool)
@@ -633,8 +667,8 @@ def suite2p(entity, options, context):
     context.project.save(entity, options["rois"], {"imageSize": [height, width], "rois": rois})
     _save(entity, options["output"], np.load(plane / "F.npy")[keep].T.astype(np.float64), context)
     _save(entity, options["neuropilOutput"], np.load(plane / "Fneu.npy")[keep].T.astype(np.float64), context)
+    _save(entity, options["spikesOutput"], np.load(plane / "spks.npy")[keep].T.astype(np.float64), context)
     return {"rois": len(rois), "frames": frames}
-
 
 def _load_stack(entity, name, context):
     stack = np.asarray(context.project.load(entity, name))

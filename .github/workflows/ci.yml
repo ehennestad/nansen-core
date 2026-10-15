@@ -98,3 +98,91 @@ jobs:
         uses: matlab-actions/run-command@v2
         with:
           command: addpath("dsm/src/matlab"); runMatlabTests();
+
+  python-tools:
+    name: External tools (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the package, suite2p (with CPU torch) and DeepInterpolation
+        run: |
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install -e ".[test,npy,ophys]" suite2p tensorflow-cpu h5py "git+https://github.com/AllenInstitute/deepinterpolation"
+
+      - name: Run the wrappers with the real tools
+        env:
+          NANSEN_REQUIRE_TOOLS: suite2p,deepinterpolation,tensorflow
+        run: pytest -v -rs python/tests/test_external_tools.py -k "suite2p or deep_interpolation"
+
+  caiman-tools:
+    name: External tools (CaImAn)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: caiman
+          create-args: python=3.11 caiman
+          condarc: |
+            channels:
+              - conda-forge
+
+      - name: Install the package
+        run: pip install -e ".[test,npy,ophys]"
+
+      - name: Run the wrapper with CaImAn
+        env:
+          NANSEN_REQUIRE_TOOLS: caiman
+        run: pytest -v -rs python/tests/test_external_tools.py -k caiman
+
+  matlab-tools:
+    name: External tools (MATLAB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the DSM reader
+        uses: actions/checkout@v4
+        with:
+          repository: framover/dataset-structure-model
+          ref: claude/nansen-core-rebuild-jl86j3
+          path: dsm
+
+      - name: Clone NoRMCorre, CaImAn-MATLAB, EXTRACT, Flow-Registration and NANSEN dev (for imviewer)
+        run: |
+          mkdir tools
+          for repo in flatironinstitute/NoRMCorre flatironinstitute/CaImAn-MATLAB schnitzer-lab/EXTRACT-public FlowRegSuite/flow_registration VervaekeLab/NANSEN; do
+            git clone -q --depth 1 "https://github.com/$repo" "tools/$(basename "$repo")"
+          done
+
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          products: >
+            Image_Processing_Toolbox
+            Signal_Processing_Toolbox
+            Statistics_and_Machine_Learning_Toolbox
+            Parallel_Computing_Toolbox
+            Bioinformatics_Toolbox
+            Econometrics_Toolbox
+            Wavelet_Toolbox
+
+      - name: Start a virtual display, for imviewer
+        run: |
+          sudo apt-get install -y -q xvfb > /dev/null
+          Xvfb :99 -screen 0 1600x1000x24 > /dev/null 2>&1 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Run the wrappers with the real tools
+        uses: matlab-actions/run-command@v2
+        with:
+          command: addpath("matlab"); runExternalToolTests("tools");

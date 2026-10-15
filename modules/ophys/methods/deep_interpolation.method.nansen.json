@@ -6,7 +6,7 @@
   "title": "Denoise stack (DeepInterpolation)",
   "category": "Two-photon/Image processing",
   "entityType": "*",
-  "description": "Removes independent noise with DeepInterpolation (Lecoq et al. 2021), as dev's Denoiser does, when the deepinterpolation package and h5py are installed: each frame is predicted from the frames around it by a trained network, given as modelPath (an .h5 model, such as the Allen Institute's pretrained two-photon models).",
+  "description": "Removes independent noise with DeepInterpolation (Lecoq et al. 2021), as dev's Denoiser does, when the deepinterpolation package and h5py are installed: each frame is predicted from the frames around it by a trained network, given as modelPath (an .h5 model, such as the Allen Institute's pretrained two-photon models). Frames too close to the start or end to be predicted are kept as they were.",
   "implementations": {
     "python": "ophys_methods:deep_interpolation"
   },

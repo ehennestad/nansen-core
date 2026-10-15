@@ -12,7 +12,7 @@ function result = caimanDeconvolution(entity, options, context)
     for i = 1:rois
         context.checkCancelled();
         if ~any(isnan(traces(:, i)))
-            [c, s] = feval("deconvolveCa", traces(:, i), char(model), "foopsi");
+            [c, s] = feval("deconvolveCa", traces(:, i), char(model));   % constrained foopsi, kernel and noise estimated
             calcium(:, i) = c(:);
             spikes(:, i) = s(:);
         end

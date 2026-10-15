@@ -6,7 +6,7 @@
   "title": "Run suite2p",
   "category": "Two-photon/Segmentation",
   "entityType": "*",
-  "description": "Runs suite2p (registration, cell detection and signal extraction) on the stack, when the suite2p package is installed, and saves its cells as ROIs and their signals in the same variables as the native methods. suite2p's own output is kept in a suite2p folder next to the ROI file.",
+  "description": "Runs suite2p (registration, cell detection, signal extraction and deconvolution) on the stack, when the suite2p package (0.x or 1.x) is installed, and saves its cells as ROIs, and their signals and spikes, in the same variables as the native methods. suite2p's own output is kept in a suite2p folder next to the ROI file.",
   "implementations": {
     "python": "ophys_methods:suite2p"
   },
@@ -36,6 +36,12 @@
         "default": "RoiSignals_NeuropilF",
         "title": "Neuropil signals",
         "description": "Variable the neuropil signals are saved to. Leave empty to not save it."
+      },
+      "spikesOutput": {
+        "type": "string",
+        "default": "RoiSignals_Deconvolved",
+        "title": "Spikes",
+        "description": "Variable suite2p's deconvolved spikes are saved to. Leave empty to not save it."
       },
       "framesPerSecond": {
         "type": "number",
