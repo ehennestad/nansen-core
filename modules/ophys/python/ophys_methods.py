@@ -410,6 +410,43 @@ def caiman_deconvolution(entity, options, context):
     return {"rois": rois, "frames": frames}
 
 
+def deep_interpolation(entity, options, context):
+    """Denoise the stack with DeepInterpolation's inference, with a trained model."""
+    try:
+        import h5py
+        from deepinterpolation.cli.inference import Inference
+    except ImportError as error:
+        raise NansenError("dependency-missing",
+                          f"ophys.deep_interpolation needs deepinterpolation and h5py ({error}): see https://github.com/AllenInstitute/deepinterpolation") from None
+    model = Path(options["modelPath"]).expanduser()
+    if not model.is_file():
+        raise NansenError("invalid-options", f"there is no model file {model}")
+    import tempfile
+    stack = _load_stack(entity, options["stack"], context)
+    frames = stack.shape[2]
+    margin = options["preFrames"] + options["postFrames"] + 2 * options["omittedFrames"]
+    if frames <= margin:
+        raise NansenError("invalid-data", f"{frames} frames are too few for {margin} frames around each predicted one")
+    with tempfile.TemporaryDirectory() as folder:
+        source, target = Path(folder) / "input.h5", Path(folder) / "output.h5"
+        with h5py.File(source, "w") as f:
+            f.create_dataset("data", data=np.moveaxis(np.asarray(stack), 2, 0).astype(np.float32))
+        settings = {
+            "inference_params": {"model_source": {"local_path": str(model)}, "output_file": str(target)},
+            "generator_params": {"data_path": str(source), "name": "OphysGenerator", "pre_frame": options["preFrames"],
+                                 "post_frame": options["postFrames"], "pre_post_omission": options["omittedFrames"],
+                                 "start_frame": 0, "end_frame": -1},
+            "run_uid": "nansen", "output_full_args": False,
+        }
+        context.log(f"{_name(entity)}: running DeepInterpolation on {frames} frames")
+        Inference(input_data=settings, args=[]).run()
+        with h5py.File(target, "r") as f:
+            denoised = np.asarray(f["data"])
+    out = np.moveaxis(denoised.reshape(denoised.shape[0], *stack.shape[:2]), 0, 2).astype(np.float32)
+    _save(entity, options["output"], out, context)
+    return {"frames": out.shape[2], "height": out.shape[0], "width": out.shape[1]}
+
+
 def denoise(entity, options, context):
     """Gaussian smoothing in space and in time, with the weights renormalised at the edges."""
     stack = _load_stack(entity, options["stack"], context)

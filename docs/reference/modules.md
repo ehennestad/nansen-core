@@ -45,6 +45,7 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 | `ophys.downsample` | Mean or maximum over bins of frames and of pixels |
 | `ophys.deconvolve` | Spikes and denoised calcium by OASIS for an AR(1) model, natively: the exact optimum of 1/2 |c - y|² + λ Σ s with s ≥ 0, g from `tauDecay` and the frame rate (`frameRate`, or the entity's `frame_rate`), λ = `sparsity` times the trace's noise |
 | `ophys.denoise` | Gaussian smoothing in space and time, renormalised at the edges (dev used DeepInterpolation, which needs a trained network) |
+| `ophys.deep_interpolation` | Python: DeepInterpolation with a trained model, as dev's Denoiser, when deepinterpolation and h5py are installed |
 | `ophys.align_sessions` | Batch: aligns the selected entities' FOV images to the first one's and copies its ROIs, moved, to the others (dev's migrateRoisToFovs) |
 | `ophys.fov_region` | Computes the `brain_region` column: the atlas region at the FOV's position |
 | `ophys.caiman_deconvolution` | CaImAn's constrained foopsi (Python) or deconvolveCa (MATLAB), when installed |

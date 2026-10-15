@@ -124,6 +124,17 @@ def test_roi_files_written_by_either_language_are_read(tmp_path):
     assert error.value.code == "invalid-data"
 
 
+def test_deep_interpolation_says_what_is_missing():
+    try:
+        import deepinterpolation  # noqa: F401
+        pytest.skip("deepinterpolation is installed")
+    except ImportError:
+        pass
+    with pytest.raises(NansenError) as error:
+        ophys["deep_interpolation"](None, {}, None)
+    assert error.value.code == "dependency-missing"
+
+
 def test_suite2p_says_what_is_missing():
     try:
         import suite2p  # noqa: F401

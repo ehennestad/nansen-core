@@ -17,6 +17,7 @@
     "methods/caiman_deconvolution.method.nansen.json",
     "methods/compute_dff.method.nansen.json",
     "methods/deconvolve.method.nansen.json",
+    "methods/deep_interpolation.method.nansen.json",
     "methods/denoise.method.nansen.json",
     "methods/detect_rois.method.nansen.json",
     "methods/downsample.method.nansen.json",

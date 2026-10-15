@@ -1,0 +1,55 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.deep_interpolation",
+  "version": "1.0.0",
+  "title": "Denoise stack (DeepInterpolation)",
+  "category": "Two-photon/Image processing",
+  "entityType": "*",
+  "description": "Removes independent noise with DeepInterpolation (Lecoq et al. 2021), as dev's Denoiser does, when the deepinterpolation package and h5py are installed: each frame is predicted from the frames around it by a trained network, given as modelPath (an .h5 model, such as the Allen Institute's pretrained two-photon models).",
+  "implementations": {
+    "python": "ophys_methods:deep_interpolation"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Denoised",
+        "title": "Denoised stack",
+        "description": "Variable the result is saved to."
+      },
+      "modelPath": {
+        "type": "string",
+        "default": "",
+        "title": "Model file",
+        "description": "Path of the trained model (.h5)"
+      },
+      "preFrames": {
+        "type": "integer",
+        "default": 30,
+        "minimum": 1,
+        "title": "Frames before"
+      },
+      "postFrames": {
+        "type": "integer",
+        "default": 30,
+        "minimum": 1,
+        "title": "Frames after"
+      },
+      "omittedFrames": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 4,
+        "title": "Frames left out next to the predicted one"
+      }
+    }
+  }
+}
