@@ -47,8 +47,11 @@ Each step was usable without a GUI before the next one started.
 | Table variables (with update functions) | Fragments; computed fragments for the ones with update functions |
 | Session methods with `OptionsManager` presets | Methods with JSON Schema options and preset documents; MATLAB and/or Python implementations |
 | Notebooks of sessions and subjects (`HasNotes`, note viewer) | Notebooks: dated, typed notes with #tags per entity, in one `nansen.notebook` per entity type; on an entity's drawer and the Notes page |
-| Batch processor with `task_list.mat` | Task queue of `nansen.task` files: claims, cancellation, logs, recovery, retry, dependencies |
-| Pipelines | Pipelines: one chain of tasks per entity |
+| Batch processor with `task_list.mat` | Task queue of `nansen.task` files: claims, cancellation, logs, recovery, retry, dependencies; queued tasks held, reordered and given new options |
+| Pipelines | Pipelines: one chain of tasks per entity; assigned to entities, with each one's progress from a run journal |
+| Extra metatables | Saved views of a table: rows (keys), column filters, hidden columns, a search |
+| Session context menu (copy, remove, open folder, send to workspace) | The selection bar and the drawer: copy keys, remove rows, show or copy folders, browse an entity's files, `workspace.send` (MATLAB's base workspace, or a Python namespace) |
+| Session method templates, project apps | `methods.create` from `templates/`; project tools (`entityType` `@project`) on the overview |
 | File adapters | File adapters: built-in `json`, `text`, `mat` (and `npy` in Python), others from modules |
 | `nansen.cache.DataCache`, one per MATLAB session | A data cache per project (`project.data_cache`, `project.DataCache`): the same 2 GiB least-recently-used budget, and an entry is read again when its file changes on disk |
 | Modules (`module.nansen.json`) | Modules listing fragments, methods, adapters and pipelines by path; code for either language; added and removed from the overview |
