@@ -48,6 +48,8 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 
 A method that needs a package that is not installed fails with `dependency-missing`. The file adapters are `ophys.sciscan_raw` (a SciScan `.raw` file and its `.ini` file, as written by the microscope: big-endian, one channel after the other in each frame) and `ophys.tiff_stack` (multi-page TIFF). The fragments are `ophys.imaging` (field of view, depth, indicator and frame rate, typed in) and `ophys.image_stats` (computed). The pipeline `ophys.preprocess` runs motion correction, image statistics, ROI detection, signal extraction and ΔF/F.
 
+In the dashboard, an entity's image variables (data type `Image` or `ImageStack`, or arrays without a data type) have a View button in its drawer: frames one by one or played, the average or maximum over frames, contrast limits, and the ROIs of a variable of data type `RoiArray` drawn over them.
+
 ## Methods
 
 A method is declared by a `nansen.method` document and implemented in either or both languages:

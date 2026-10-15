@@ -640,6 +640,9 @@
     const data = (detail.data || []).map((d) => h("li", { dataset: { variable: d.name } }, h("span.dot." + (d.files.length ? "good" : "warn")),
       h("div.grow", h("div.title", d.name), h("div.sub", `${d.dataLocation} · ${d.fileAdapter}`)),
       h("span.pill.plain", d.files.length ? `${d.files.length} file(s)` : "not written"),
+      N.isImageVariable(d) ? h("button.btn.ghost.icon.small.view-data", {
+        title: "View", on: { click: () => N.views.stackViewer(app, entityType, detail.key, d.name,
+          (detail.data || []).filter((r) => r.dataType === "RoiArray" && r.files.length).map((r) => r.name)) } }, N.icon("image", 13)) : null,
       d.files.length && app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-data", {
         title: "Load it into the workspace", on: { click: async () => {
           const name = await N.prompt(`Load ${d.name} into the workspace`, "Variable name", d.name);

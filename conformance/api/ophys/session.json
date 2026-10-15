@@ -582,8 +582,310 @@
     },
     {
       "request": {
-        "method": "tools.run",
+        "method": "data.frame",
         "id": 20,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected"
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 40,
+          "frame": 0,
+          "low": 41.0,
+          "high": 614.0,
+          "pixels": "ZFtaUE09S0pLQD00MTtJT1tNZFpZPD05OztSVjItMEhVVVxQVERLTkdAOzk6QFJXWkNTSEo1NTo+Nk5NRTg4Rko/SDpIO01OTlFJPjxRW05JOzsxNUFJU0xKVURJOEk8Qj44L0NFWVdPV01OUVRaO0YuNCw7UkpXUlFNOk9PVUVIRj8zQFpdVEtPRkBZWlo+UURKOkZRVVdUVlZSSUo/O0tHTU5NWU1EOjQ4R15RTDtVR1NDTExNUEpZUVtQWztDX1VVV1lkTjo4KjI3XF5iXGVgZVVNQ0pQSVhPW0FELz9oWVlhWkE8OEQ2OEVKTUxXWlFRPEE+SUVLTz1QOkIsQ3JiUUxJLzA3REE1O+hcXlpjUlEySEJLPEhAMC0hLjFWZFlZVzgQH0JZVDjIvtlFS1FDQSVCPTgjMiUcFyAgIkJhUVU+JB0tRj1B1crR6/9hXVVDMkFBQzhEMC0VHBsuPUoxNSgoOkdNNDUvv7zPOkw5RjEkKjVLT0koJholHSUzXTotGRo0Nj4xMzwy0i0rOSwjCAAdM1OIWjpMPUk3OjdJIhglM0lCREEzOzEoIhQhDhABDCRNhnFtIEBBW0c6OVA/R0I4OUBUSTcwNB8bBhwoJR4cMnByX3dfTkxrZFA5OkFDRk1SV007MC4wIioYKTFCQkJJRX59gzo6P1ptUTtRZFtMNDVATFBGPDUzPzlSW2JVTlE/S4BvYE03P19TR2J1Zk5NTE1EVV1dVEVKRltVVk5XWk5CSWFfWUE+RUhGaXl9X0pESktOUk1OSF9LYVVXSVZiWExXZVVNOzc9TlZQZWxYWklNOjZETV9JX0VHLj9KYGhiREVZUl1JTEVMQzhLUVNIPEU2LVMnQElpT1pBVUlaYWNdXWxcUUtQXFVVK0o/TTo6OyhbW189RGFbVkFKUV1tbGRNXmFoYEtNSkowWUhRO0E6XWFZUlQzVE9TUVNQWWFpXl5ZX2BlU1VPWUFjVVFCPDEwdYB1Q0NOSjtBPEpdZXBdXU1fYVk7PkBMXWRhVlM5PzVJeFBRTUBFVElRMVI1Wk1fRE9VTEZRVFFITl9NSjExN0hGTVZcQ0lIUFI9UDhKSV1ZWk89LTtBUEdIUDw2Jis5SEBKUWBdZmdfUTA9NUhKTVRUVUI6TUlNICg5QS8uJUZQWDpGYXhyXlZISE5HS0JGUmBiWEZAPU0eMz5BOTg6QUVBKS1GeHx1WUc1OkRGSDxFPkpLU1BUUBo4PUpGU0VDMUEqLDJNSU9GTDw3P0FSP0M0PDE/M0Q5JEE5SU5ZRTUnKCgvMjo8S0I7MC5EQV9NXS8nCxgrLzE3OydCT1w1MC81PUhTSTxDOzMpKD87W1NdPjscGBkbIQ=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 21,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "frame": 3,
+          "limits": [
+            0,
+            1000
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "frame": 3,
+          "low": 0.0,
+          "high": 1000.0,
+          "pixels": "AAAANzYuNjc1Ly0qKSwyNz44Rj88LC4rLSw3OyYjJTQAAAA4OTE2NjEuLiorLzs8PjA4NDQnKCwuKzc2MisqMQAAACw0LTU3ODkzLiw4Pzc0Ly4oJy4zOjgzOjI0KzYrAAAAJTIxPT05Ojc3Ozw9LjEmJyQtOjU8OTk2LDg4PDYAAAAqLz4/OzY1MjE9PD4uODE2LTQ5PDw7PDo4NjUsLQAAADU1PTYwKycqM0E4Nyw8MjoxODY3NzU/OT83Py4yAAAAPT1DNywqIycsPj9DQUVDRDw2MjQ4Mz04Py8yJi4AAABCPi8qKTEoKjE1ODY7Pjg5LDEvMzI2NzA4LDEkMwAAADc0JCUpMDEqLDY+Qj1EOjooMzA1LTQvJyUcJyg9AAAAPCgSHi89OyolHjAyNDovMR8wLioeKCEbGB0dHjEAAAAtHxoiMy4xKiYpN0NCQjkxJzAuMCwxJSUYHBkkLgAAACIjLTI2KickHxwpLDUrMyUfISo2NjUhIhkgGSAlAAAAGRooKS0mKC4pKSIlKyMfDwsbKDx4PSs1LjQsKikAAAAgKDMwMTEpKSUiHxYdFBUJECE1dmhnHi8yPTMrKwAAADIoKy88NSkmJh0aDhogIBwaKGprX25hNjVJQjgpAAAAMzg6PDYsJiQmHyMZIykxMjAyM3JyeCwsLD9IOy0AAAA2KCkvNjgxLSooLyk6PkM6NzouNXVLQzgpL0A6MgAAADg2NzcyOz8/OzE2Mj89PTY9PjcvNUFAPTEtMTIyAAAAQDczNDc3OjY2NEEzQjo8NTxCPjc9Rjo4LSstNTwAAAA8PjU6LSgxN0E1QjEyJC82QUVCMzI8OUA0NjE3MAAAADoyLTMqJYIgLzVGNz0uOzQ+RENAP0k+OTY4PTw7AAAANSssLSKIiIswMUU/PDI1Nz9KR0U5QUJFQTU3NTUAAAA6LzMth4qHgoMoOjc4Ojk3PUFGQ0E8QUJEOzs5PQAAADkwLiYmlZqULzE2Ni4uLTZAREo+QjdBQj0sLjA3AAAAPDksLis0ljk5OC8xOTU5KTkoPjc/MTo6NTI3OjgAAAA2NiUoKjQzNjpAMDQ1OTkuNys0ND8+PjctIiswNwAAAC4oISQpMy8zOEJARUZBOCUuJzU1NTw7OzIrODQ2AAAALyUkHzI4PS0xQk9NQDs0NDY1NjAxN0JDPzExMDQAAAAxKiorMDMwISMxTlBNPzQpLjEzNC4xLjU1OzY5OgAAADYyOzQwJTAhIyg3NTc0NiwpLjE5MC8pLiYtKDEtAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 22,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "max",
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "frame": null,
+          "low": 46.0,
+          "high": 820.0,
+          "pixels": "SUJCOjktNzg4LiwnJiw0OkI9TERBKywrLSw8QCUgIzY/QEQ7PjI4ODQxLioqMD5BRDI8NjgmKC0vKTo5NSsqMzcvNis1Kzg7Ojs2Li47RDk2Li0lJzE0Pzo1PzI2KjcsMS0qJTMzREE8Pzk6Pj9DLTIkJSIsPjk/PD06LDw7QDY3NTEpL0JGQDo5NDJDQkQuPDI3LTY8QUE/QEE7NzgtLjczNzk5QTgxKyYsNUY9OSw/ND4yOTk7OjhFO0Q8RS4ySD8/QERKOioqHyUqQ0VHRktITD84Mjc8N0E7RDAzJC9NQ0NIQjArKDEoKjM3OTk/Qz08LDAxNzU4Oy86LDIiNlVJPDw2IyMpMTMnLO9DR0JKPj0mNTI2LTcwJiEZIydBS0NCPygKFzJCPinb0eYzNz4zMh0yLSgbJxsWEhkYGDBJOz8uGxQhNS8x4Nre7/9ISD8yJjEvMCozIyMQFRMhLzckJx0gLTQ4KCch0dDeKzoqNSMbHyg3OzcdHRIdFRwlRCwhFBUnJy4lJywn3yEhKiAcCAEVKED8Qyo4LjcrKyg3GREaJjQyMzEnKiMeHBAZCw4ACB04+OrmGjAzRDgsKTotNDIoLDBBNykkJRcUBBUcHRcUKOnr3e7dOjhPSjooLDEzNDo/QDksIyIlGyATHycyMTI1NfTw/CsrLURRPi48SkQ3JykxOD40LignLyk9Q0k+Oj0tOPdURzopMEc/NkhYTDs4OzszPkZHPjI4NURCQTtBQzowOElGQTEuNDU0TFldRTczNzo8Pzo7NEc3SD5AOEFJQjlATUA6LCktOUA+S1FCQzg8LikyOUc4SDI0Ii05R01INTVBPUU2OTI4MCs3PT40LjYqI9kdLzZOOUMwQDdDSUhGRE9EPTg9Qz9AIDcuOSsrLB/j4eUvM0xEQTQ4O0ZTUEk8RklMRzg6ODgmQjg/LzMs4OXg2t0lPDo9Ozw7Q0lQR0VBSElMP0A8QzFKPzwxLiQk9PvyMTM5Ny0wLTlGSVJFRjpHSEEsLzE5RUpKQT0uLik28zo8Oi8xPTY8Jz0oRDlHNDw+ODM+Pjs4OUY7OiQlKTc1OUBENDY4PD0uOyo2NUVCRDsuHy0wOjU2PC0oHSErNjE2O0pHS01HPCMuJjc4OUJAPzMrOTc5GB4rLyIhHDQ8QywzSFpVRj80NTk3ODIzPEdLRDUxMDgWJi8zKiksMTMxHSIzWVtYQzUpLDM1NC0zLjc2QDo+PBUoLjY1PjQwJDAfICU6NTs1OCwoLjI8MDEnLCUtJjErGTEpNztAMyYeHR8jJS0uNjItJCExMEc5RCUdChMhIyUpKxwwOUIoJCQpLDQ9NyszLiQgHy4rRT1GLysWEBUUFw==",
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 23,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "frame": 40
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 24,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "median"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 25,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray"
+        }
+      },
+      "expect": {
+        "error": "invalid-data"
+      }
+    },
+    {
+      "request": {
+        "method": "tools.run",
+        "id": 26,
         "params": {
           "methodId": "ophys.setup_variables",
           "options": {

@@ -62,7 +62,7 @@ Each step was usable without a GUI before the next one started.
 Not carried over, by choice or not yet:
 
 - **Add-on and toolbox management.** Out of scope for the core.
-- **Parts of the domain modules, and the viewer apps.** The `ophys` module brings over dev's core two-photon workflow, natively in both languages (see [modules](reference/modules.md#the-ophys-module)), but not dev's EXTRACT, Quicky and flowreg wrappers, CaImAn deconvolution, stack denoising, the ScanImage multi-ROI adapter or ROI curation. The imviewer, fovmanager and roimanager apps are not rebuilt; `ophys.open_in_imviewer` opens a stack in dev's imviewer when it is on the MATLAB path.
+- **Parts of the domain modules, and the viewer apps.** The `ophys` module brings over dev's core two-photon workflow, natively in both languages (see [modules](reference/modules.md#the-ophys-module)), but not dev's EXTRACT, Quicky and flowreg wrappers, CaImAn deconvolution, stack denoising, the ScanImage multi-ROI adapter or ROI curation. The imviewer, fovmanager and roimanager apps are not rebuilt as apps: the dashboard's viewer shows the frames and projections of any image variable with the ROIs drawn over them (`data.frame`), in either language, and `ophys.open_in_imviewer` opens a stack in dev's imviewer when it is on the MATLAB path. Editing ROIs by hand is not carried over.
 
 ## Decisions recorded so far
 

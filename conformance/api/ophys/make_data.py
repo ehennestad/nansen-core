@@ -71,6 +71,14 @@ def ring(disk, others, gap, width):
     return out
 
 
+def frame_bytes(image, limits=None):
+    """The viewer's 8-bit frame, as the protocol describes it: base64 of the bytes, row after row."""
+    import base64
+    low, high = (image.min(), image.max()) if limits is None else limits
+    scaled = np.clip(np.floor((image - low) / (high - low) * 255 + 0.5), 0, 255).astype(np.uint8)
+    return {"low": float(low), "high": float(high), "pixels": base64.b64encode(scaled.tobytes()).decode("ascii")}
+
+
 def percentile(values, p):
     ordered = np.sort(values)
     position = (len(ordered) - 1) * p / 100
@@ -112,6 +120,11 @@ def main():
         "downsample": {"frames": FRAMES // 4, "height": HEIGHT // 2, "width": WIDTH // 2,
                        "meanIntensity": round_to(binned.astype(np.float32).astype(float).mean(), 4)},
     }
+    expected["frame0"] = {"height": HEIGHT, "width": WIDTH, "frames": FRAMES, "frame": 0, **frame_bytes(aligned[:, :, 0])}
+    expected["frame3"] = {"frame": 3, **frame_bytes(aligned[:, :, 3], (0, 1000))}
+    expected["maxProjection"] = {"frame": None, **frame_bytes(aligned.max(axis=2)),
+                                 "rois": [{"id": n + 1, "pixels": [[int(y), int(x)] for y, x in zip(*np.nonzero(d))]}
+                                          for n, d in enumerate(disks)]}
     print(json.dumps(expected, indent=1))
 
 

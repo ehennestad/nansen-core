@@ -1623,6 +1623,28 @@ classdef Project < handle
             path = obj.requireDataset().absolute(dataLocation, relative);
         end
 
+        function paths = existingFiles(obj, entity, name)
+            %existingFiles The files that hold the variable for the entity and exist
+            %
+            %   Where a scan found its folders, or else where save writes it, for a
+            %   folder made since the last scan.
+            variable = obj.dataVariable(name);
+            paths = obj.dataPaths(entity, name);
+            paths = paths(arrayfun(@isfile, paths));
+            if isempty(paths) && variable.FilePattern == ""
+                try
+                    written = obj.writePath(entity, name);
+                    if isfile(written)
+                        paths = written;
+                    end
+                catch err
+                    if ~isa(err, "nansen.NansenError")
+                        rethrow(err)
+                    end
+                end
+            end
+        end
+
         function data = load(obj, entity, name, options)
             %load Read the variable for the entity with its file adapter (the first file when several match)
             %
@@ -1635,18 +1657,7 @@ classdef Project < handle
                 options.Cached (1,1) logical = true
             end
             variable = obj.dataVariable(name);
-            paths = obj.dataPaths(entity, name);
-            paths = paths(arrayfun(@isfile, paths));
-            if isempty(paths) && variable.FilePattern == ""
-                % written to a folder made since the last scan: found where save put it
-                try
-                    written = obj.writePath(entity, name);
-                    if isfile(written)
-                        paths = written;
-                    end
-                catch
-                end
-            end
+            paths = obj.existingFiles(entity, name);
             if isempty(paths)
                 nansen.internal.throwError("data-not-found", "%s has no '%s'", entity.EntityType, name)
             end
@@ -1678,16 +1689,17 @@ classdef Project < handle
             status = {};
             for variable = obj.dataVariables(entity.EntityType)
                 try
-                    paths = obj.dataPaths(entity, variable.Name);
+                    files = obj.existingFiles(entity, variable.Name);
                 catch err
                     if ~isa(err, "nansen.NansenError")
                         rethrow(err)
                     end
-                    paths = strings(1, 0);
+                    files = strings(1, 0);
                 end
-                files = paths(arrayfun(@isfile, paths));
                 status{end + 1} = struct("name", char(variable.Name), "dataLocation", char(variable.DataLocation), ...
-                    "fileAdapter", char(variable.FileAdapter), "files", {cellstr(files)}); %#ok<AGROW>
+                    "fileAdapter", char(variable.FileAdapter), ...
+                    "dataType", nansen.internal.getField(variable.Document, "dataType", []), ...
+                    "files", {cellstr(files)}); %#ok<AGROW>
             end
         end
 

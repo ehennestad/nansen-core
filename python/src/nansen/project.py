@@ -1006,6 +1006,18 @@ class Project:
         location, relative = self.write_target(entity, name)
         return self.require_dataset().absolute(location, relative)
 
+    def existing_files(self, entity: Entity, name: str) -> List[Path]:
+        """The files that hold the variable for the entity and exist: where a scan found its folders, or else
+        where save writes it, for a folder made since the last scan."""
+        variable = self.data_variable(name)
+        existing = [p for p in self.data_paths(entity, name) if p.is_file()]
+        if not existing and variable.file_pattern is None:
+            try:
+                existing = [p for p in [self.write_path(entity, name)] if p.is_file()]
+            except NansenError:
+                pass
+        return existing
+
     def load(self, entity: Entity, name: str, cached: bool = True) -> Any:
         """Read the variable for the entity with its file adapter (the first file, when a pattern matches several).
 
@@ -1013,13 +1025,7 @@ class Project:
         reads the file and keeps nothing.
         """
         variable = self.data_variable(name)
-        existing = [p for p in self.data_paths(entity, name) if p.is_file()]
-        if not existing and variable.file_pattern is None:
-            # written to a folder made since the last scan: found where save put it
-            try:
-                existing = [p for p in [self.write_path(entity, name)] if p.is_file()]
-            except NansenError:
-                pass
+        existing = self.existing_files(entity, name)
         if not existing:
             raise NansenError("data-not-found", f"{entity.entity_type} {entity.key} has no {name!r}")
         adapter = self.adapters.get(variable.file_adapter)
@@ -1044,12 +1050,12 @@ class Project:
         status = []
         for variable in self.data_variables(entity.entity_type):
             try:
-                paths = self.data_paths(entity, variable.name)
+                files = self.existing_files(entity, variable.name)
             except NansenError:
-                paths = []
+                files = []
             status.append({"name": variable.name, "dataLocation": variable.data_location,
-                           "fileAdapter": variable.file_adapter,
-                           "files": [str(p) for p in paths if p.is_file()]})
+                           "fileAdapter": variable.file_adapter, "dataType": variable.document.get("dataType"),
+                           "files": [str(p) for p in files]})
         return status
 
     def add_fragment(self, document: dict) -> Fragment:

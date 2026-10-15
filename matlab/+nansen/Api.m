@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.send", "modules.list", "modules.add", "modules.remove", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.send", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -920,6 +920,23 @@ classdef Api < handle
             end
             obj.EditFile(path);
             result = struct("language", char(language), "path", char(path));
+        end
+
+        function result = apiDataFrame(obj, params)
+            % A frame (or a projection) of an image variable, scaled to 8 bits, with the ROIs of another variable
+            project = obj.requireProject();
+            entity = obj.entity(params);
+            limits = nansen.internal.getField(params, "limits", []);
+            if ~isempty(limits) && (~isnumeric(limits) || numel(limits) ~= 2)
+                nansen.internal.throwError("invalid-params", "limits is [low, high]")
+            end
+            result = nansen.internal.imageFrame(project.load(entity, string(nansen.Api.param(params, "variable"))), ...
+                double(nansen.internal.getField(params, "frame", 0)), double(nansen.internal.getField(params, "channel", 0)), ...
+                string(nansen.internal.getField(params, "projection", "")), double(limits));
+            rois = string(nansen.internal.getField(params, "rois", ""));
+            if rois ~= ""
+                result.rois = nansen.internal.roiOutlines(project.load(entity, rois));
+            end
         end
 
         function result = apiDataSend(obj, params)

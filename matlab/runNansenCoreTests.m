@@ -16,6 +16,12 @@ function results = runNansenCoreTests()
     end
     addDsmReader(thisDir)
     suite = matlab.unittest.TestSuite.fromFolder(fullfile(thisDir, "tests"));
+    % fromFolder only warns about a test file it cannot parse; leaving its tests out must fail the run
+    files = dir(fullfile(thisDir, "tests", "*Test.m"));
+    missing = setdiff(erase(string({files.name}), ".m"), string(unique({suite.TestParentName})));
+    if ~isempty(missing)
+        error("nansen:Tests:Excluded", "These test files define no tests that run: %s", strjoin(missing, ", "))
+    end
     results = run(suite);
     fprintf("%d passed, %d failed, %d incomplete\n", nnz([results.Passed]), nnz([results.Failed]), ...
         nnz([results.Incomplete]));

@@ -152,7 +152,6 @@ classdef DataTest < matlab.unittest.TestCase
                 testCase.verifyEqual(back, value{1});
             end
         end
-        end
 
         function loadIsCachedUntilTheFileChanges(testCase)
             project = testCase.Project;

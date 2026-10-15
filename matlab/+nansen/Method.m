@@ -130,7 +130,7 @@ classdef Method
                 addpath(obj.MatlabRoot);
             end
             name = string(obj.Document.implementations.matlab);
-            if ~exist(name, "file")
+            if ~exist(name, "file") && isempty(which(name))   % exist does not find a package function such as ophys.imageStats
                 nansen.internal.throwError("method-unavailable", "function %s is not on the path", name)
             end
             handle = str2func(name);

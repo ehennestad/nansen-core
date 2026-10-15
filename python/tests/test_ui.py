@@ -943,3 +943,42 @@ def test_a_column_drawn_as_a_badge_with_an_action(empty_app, page):
     page.wait_for_selector(".grid-table td .pill.bad:has-text('poor')")
     page.locator(".grid-table td.has-action").first.dblclick()
     page.wait_for_selector(".toast:has-text('Done')")
+
+
+def test_view_a_stack_with_its_rois(empty_app, page):
+    import shutil
+    from pathlib import Path
+
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "ophys"
+    shutil.copytree(Path(__file__).resolve().parents[2] / "conformance" / "api" / "ophys" / "project", folder)
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    for number, (method, params) in enumerate([
+            ("project.open", {"path": str(folder)}), ("project.scan", {}), ("project.sync", {}),
+            ("tools.run", {"methodId": "ophys.setup_variables", "options": {"rawFilePattern": "recording"}}),
+            ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}}),
+            ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": s1, "options": {"threshold": 0.25, "border": 4}})]):
+        assert "result" in api.handle({"id": number, "method": method, "params": params}), method
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Original'] .view-data")
+    assert page.locator(".drawer li[data-variable='RoiArray'] .view-data").count() == 0
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32 · 3 ROIs')")
+    assert page.evaluate("document.querySelector('.viewer-canvas').width") == 32
+    assert page.locator(".viewer-frame").inner_text() == "1 / 40"
+    page.locator(".viewer-slider").fill("9")
+    page.wait_for_selector(".viewer-frame:text-is('10 / 40')")
+    page.select_option(".viewer-mode", "max")
+    page.wait_for_selector(".viewer-frame:text-is('40 frames')")
+    assert page.locator(".viewer-slider").is_disabled()
+    page.locator(".viewer-high").fill("300")
+    page.locator(".viewer-high").press("Enter")
+    wait_until(lambda: not page.locator(".viewer-bar input[type=checkbox]").first.is_checked())
+    page.locator(".viewer-canvas").hover()
+    page.select_option(".viewer-mode", "frame")
+    page.click(".viewer-play")
+    wait_until(lambda: page.locator(".viewer-frame").inner_text() not in ("10 / 40", "11 / 40"))
+    page.click(".viewer-play")
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
