@@ -3,7 +3,8 @@
  * ROIs are curated here, as in dev's roimanager: selected (Ctrl-click for several), classified (a, r, u), deleted,
  * moved by dragging, merged, and added: as a circle, drawn freehand, or detected around a click (rois.detect).
  * The wheel zooms and dragging the image pans it; the image can be saved as PNG, the stack exported as TIFF, and the
- * ROIs shown as a gallery.
+ * ROIs shown as a gallery. The selected ROI's neuropil can be shown over it (rois.neuropil), and another stack of the
+ * entity, or of another one, beside it with the frame, zoom and pan in step (imviewer's Link to Another Viewer).
  */
 (function () {
   "use strict";
@@ -216,7 +217,7 @@
     const stem = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${N.fmt.key(key)}_${variable}`;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
-      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false, links: false,
+      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false, links: false, neuropil: false,
       // imviewer's channel colours and volume display: channels counted, shown together (null: not decided yet, on for a
       // stack with channels), which are shown in which colour, each one's contrast; planes one, side by side, or projected
       channels: 1, composite: null, shown: [], colors: [], channelLimits: [], planes: 1, volume: "single" };
@@ -284,7 +285,9 @@
     }
     function recolor(channel, rgb) {
       state.colors[channel] = rgb;
-      if (last && last.layers) last.layers.forEach((layer) => { if (layer.channel === channel) layer.color = rgb; });
+      for (const shown of [last, pane && pane.last]) {
+        if (shown && shown.layers) shown.layers.forEach((layer) => { if (layer.channel === channel) layer.color = rgb; });
+      }
       redraw();
     }
     /** Pick the channel at hand; with the channels in colour, each keeps its own contrast limits. */
@@ -340,6 +343,7 @@
       mirrorToggle, "All aligned sessions");
     const where = h("span.viewer-where.mono.muted", "");
     let last = null;
+    let pane = null;   // the linked stack, while one is shown (see showLinked)
 
     // --- where the pointer is: image coordinates (fractional) and pixels -------------------------------------------
     const pointAt = (event) => {
@@ -351,19 +355,23 @@
     const roiAt = (y, x) => roisOn() && state.rois ?visible().find((r) => r.pixels.some(([py, px]) => py === y && px === x)) || null : null;
 
     // --- size: the image fits the stage, times the zoom ---------------------------------------------------------------
+    /** Size a holder for a frame: the frame fitted to its stage (at most 640 px wide), times the zoom. */
+    function fit(into, frame, zoom) {
+      const room = Math.max(120, into.clientWidth - 24);
+      const tall = Math.max(120, window.innerHeight * (signalPanel ? 0.44 : 0.62) - 24);
+      const size = Math.min(room, 640, tall * frame.width / frame.height);
+      into.firstElementChild.style.width = `${Math.round(size * zoom)}px`;
+      into.firstElementChild.style.height = `${Math.round(size * zoom * frame.height / frame.width)}px`;
+      into.classList.toggle("zoomed", zoom > 1);
+    }
     function layout() {
       if (!last) return;
-      const room = Math.max(120, stage.clientWidth - 24);
-      const tall = Math.max(120, window.innerHeight * (signalPanel ? 0.44 : 0.62) - 24);
-      const fit = Math.min(room, 640, tall * last.width / last.height);
-      const width = Math.round(fit * state.zoom), height = Math.round(fit * state.zoom * last.height / last.width);
-      holder.style.width = `${width}px`;
-      holder.style.height = `${height}px`;
+      fit(stage, last, state.zoom);
       zoomLabel.textContent = `${Math.round(state.zoom * 100)}%`;
       zoomLabel.style.display = state.zoom > 1 ? "" : "none";
-      stage.classList.toggle("zoomed", state.zoom > 1);
       drawOverlay();
       drawScalebar();
+      layoutLinked();
     }
     /** The scalebar: about a fifth of the image's width, rounded down to 1, 2 or 5 times a power of ten µm. */
     function drawScalebar() {
@@ -413,6 +421,12 @@
       const ctx = overlay.getContext("2d");
       ctx.setTransform(ratio * width / last.width, 0, 0, ratio * height / last.height, 0, 0);   // image coordinates
       ctx.clearRect(0, 0, last.width, last.height);
+      const around = neuropilShown();
+      if (around) {   // roimanager's neuropil mask: the selected ROI's, under everything else drawn here
+        ctx.fillStyle = "rgba(255, 150, 40, 0.5)";
+        around.pixels.forEach(([y, x]) => ctx.fillRect(x, y, 1, 1));
+      }
+      canvas.dataset.neuropil = around ? String(around.pixels.length) : "";
       const drag = state.drag;
       if (drag && drag.kind === "draw" && drag.points.length > 1) {
         ctx.strokeStyle = "rgba(255, 210, 60, 0.95)";
@@ -547,12 +561,13 @@
         const [y, x] = pixelAt(event);
         drag.dy = y - drag.from[0];
         drag.dx = x - drag.from[1];
-      } else {
+      } else {   // a pan, of this stack or (drag.stage) the linked one
         const dx = event.clientX - drag.from[0], dy = event.clientY - drag.from[1];
+        const panned = drag.stage || stage;
         if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-        stage.scrollLeft = drag.scroll[0] - dx;
-        stage.scrollTop = drag.scroll[1] - dy;
-        stage.classList.toggle("panning", drag.moved);
+        panned.scrollLeft = drag.scroll[0] - dx;
+        panned.scrollTop = drag.scroll[1] - dy;
+        panned.classList.toggle("panning", drag.moved);
       }
       drawOverlay();
     };
@@ -560,8 +575,9 @@
       const drag = state.drag;
       if (!drag) return;
       state.drag = null;
-      stage.classList.remove("panning");
+      (drag.stage || stage).classList.remove("panning");
       drawOverlay();
+      if (drag.stage) return;   // the linked stack was panned
       if (drag.kind === "box" && (Math.abs(drag.to[0] - drag.from[0]) >= 1 || Math.abs(drag.to[1] - drag.from[1]) >= 1)) {
         // every ROI shown whose centre is inside, added to the selection with Ctrl too
         const [x0, x1] = [Math.min(drag.from[0], drag.to[0]), Math.max(drag.from[0], drag.to[0])];
@@ -776,6 +792,43 @@
     const labelToggle = h("input.viewer-roi-labels", { type: "checkbox", on: { change: () => { state.labels = labelToggle.checked; drawOverlay(); } } });
     const linkToggle = h("input.viewer-roi-links", { type: "checkbox", on: { change: () => { state.links = linkToggle.checked; drawOverlay(); } } });
     const outlineToggle = h("input.viewer-roi-outlines", { type: "checkbox", on: { change: () => { state.outlines = outlineToggle.checked; redraw(); } } });
+    // roimanager's showNeuropilMask (Shift+N): the selected ROI's neuropil as signal extraction takes it (rois.neuropil),
+    // with ophys.extract_signals's preferred preset when the project has the method; read again when the ROIs change
+    const neuropilToggle = h("input.viewer-roi-neuropil", { type: "checkbox", on: { change: () => setNeuropil(neuropilToggle.checked) } });
+    const neuropilLabel = h("label.viewer-display-option", { title: "The selected ROI's neuropil, as signal extraction takes it (Shift+N)" }, neuropilToggle, "Neuropil");
+    let neuropil = null;   // {roi, rois, pixels, options}: the neuropil read for the selected ROI of these ROIs
+    let neuropilAsked = null;   // {roi, rois} of the request on its way
+    let neuropilMethod;    // the method whose options the neuropil takes: undefined until looked up, null for none
+    const neuropilShown = () => (state.neuropil && neuropil && roisOn() && neuropil.roi === state.selected && neuropil.rois === state.rois ? neuropil : null);
+    function setNeuropil(on) {
+      state.neuropil = on;
+      neuropilToggle.checked = on;
+      showNeuropil();
+    }
+    async function showNeuropil() {
+      if (!state.neuropil || readOnly || state.selected === null || !state.rois || !roisOn() || !last || neuropilShown()) { drawOverlay(); return; }
+      const roi = state.selected, rois = state.rois;
+      if (neuropilAsked && neuropilAsked.roi === roi && neuropilAsked.rois === rois) return;   // on its way
+      neuropilAsked = { roi, rois };
+      try {
+        if (neuropilMethod === undefined) {
+          const methods = await app.client.request("methods.list", { entityType }).catch(() => []);
+          neuropilMethod = methods.some((m) => m.id === "ophys.extract_signals") ? "ophys.extract_signals" : null;
+        }
+        const result = await app.client.request("rois.neuropil", { entityType, key, variable: state.roiVariable, roi, channel: state.channel, plane: state.plane,
+          imageSize: [last.height, last.width], ...(neuropilMethod ? { methodId: neuropilMethod } : {}) });
+        if (state.selected !== roi || state.rois !== rois) return;   // another ROI, or changed ROIs, meanwhile
+        neuropil = { roi, rois, pixels: result.pixels, options: result.options };
+        const o = result.options;
+        neuropilLabel.title = `ROI ${roi}'s neuropil: ${result.pixels.length} px, ` + (o.neuropilMethod === "expansion"
+          ? `${o.neuropilExpansionFactor} × its area, ${o.neuropilSeparation} px from every ROI` : `a ring ${o.neuropilGap + 1}–${o.neuropilGap + o.neuropilWidth} px out`) + " (Shift+N)";
+        drawOverlay();
+      } catch (error) {
+        status.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error));
+      } finally {
+        if (neuropilAsked && neuropilAsked.roi === roi && neuropilAsked.rois === rois) neuropilAsked = null;
+      }
+    }
     const roiList = h("ul.viewer-roi-list");
     // ROIs read only (no project to save them into): seen, selected and gone through in the gallery, not changed
     const roiPanel = h("div.viewer-roi-panel",
@@ -783,7 +836,7 @@
         : h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
       readOnly ? null : h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, addFromButton, h("div.spacer"), radius),
       h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
-        h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links")),
+        h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links"), readOnly ? null : neuropilLabel),
       roiList);
 
     // The selected ROI's signal under the image: the frame shown is marked, a click on the trace goes to that frame.
@@ -860,7 +913,12 @@
       galleryButton.disabled = !state.rois || !state.rois.length;
       roiPanel.style.display = state.rois && roisOn() ? "" : "none";
     }
-    function redraw() { if (last) paint(canvas, last, state.rois, roisOn(),state.selection, state.hideRejected, state.colormap, state.outlines); drawOverlay(); }
+    function redraw() {
+      if (last) paint(canvas, last, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines);
+      if (pane && pane.last) paint(paneCanvas, pane.last, null, false, new Set(), false, state.colormap, false);
+      drawOverlay();
+      showNeuropil();
+    }
     let onSelect = null;   // the gallery, while it is open
     /** Select an ROI (null for none); with add, add it to the selection, or take it out. */
     function select(id, add = false) {
@@ -980,6 +1038,7 @@
       else if (event.key === "I") setCellType("inhibitory");
       else if (event.key === "X") setCellType("axon");
       else if (event.key === "C") linkRois();
+      else if (event.key === "N" && !readOnly) setNeuropil(!state.neuropil);
       else if (event.key === "Delete" || event.key === "Backspace") remove();
       else if (event.altKey && event.key.startsWith("Arrow")) {   // move the selected ROI a pixel
         if (state.selected === null) return;
@@ -1242,6 +1301,196 @@
       loadClassifier.then(render);
     }
 
+    // --- a linked stack, side by side: imviewer's Link to Another Viewer --------------------------------------------
+    // Another image variable of this entity (raw beside motion-corrected, say) or of another entity of its type, shown
+    // beside this one through fetchView, as this one is shown (mode, filter, binning, channel and plane) but on its own
+    // contrast. While Linked is on, the two keep the same frame, zoom and pan, either way (dev's linkprop of the
+    // frame number and of the axes' limits); off, the linked stack is browsed, zoomed and panned on its own.
+    const paneCanvas = h("canvas.viewer-linked-canvas");
+    const paneStage = h("div.viewer-linked-stage", h("div.viewer-holder", paneCanvas));
+    const paneTitle = h("span.viewer-linked-title.mono", "");
+    const paneFrame = h("span.viewer-linked-frame.mono.muted", "");
+    const paneSlider = h("input.viewer-linked-slider", { type: "range", min: 0, max: 0, value: 0, on: { input: () => goLinked(Number(paneSlider.value)) } });
+    const paneToggle = h("input.viewer-linked-toggle", { type: "checkbox", checked: true, on: { change: () => setLinked(paneToggle.checked) } });
+    const linkedPanel = h("div.viewer-linked", { style: { display: "none" } }, paneStage,
+      h("div.viewer-linked-bar", paneSlider, paneFrame),
+      h("div.viewer-linked-bar", paneTitle, h("div.spacer"),
+        h("label.viewer-linked-label", { title: "Keep the frame, zoom and pan in step with the stack on the left" }, paneToggle, "Linked"),
+        h("button.btn.ghost.icon.small.viewer-linked-close", { title: "Close the linked stack", on: { click: () => closeLinked() } }, N.icon("x", 13))));
+    const linkButton = options.file || viewable ? null : h("button.btn.ghost.icon.small.viewer-link", {
+      title: "Link to another stack: shown beside this one, with the frame, zoom and pan in step", on: { click: () => linkMenu() } }, N.icon("link", 14));
+    async function linkMenu() {
+      let data = [];
+      try { data = await app.client.request("data.status", { entityType, key }); } catch (error) { N.showError(error, "Could not list the data variables"); return; }
+      const others = data.filter((d) => N.isImageVariable(d) && d.name !== variable);
+      N.menu(linkButton, [{ heading: "Show beside this one" }].concat(others.map((d) => ({ label: d.name, onClick: () => openLinked(key, d.name) })),
+        [{ label: `A stack of another ${entityType}…`, onClick: () => pickLinked() }],
+        pane ? [{ label: "Close the linked stack", icon: "x", onClick: () => closeLinked() }] : []));
+    }
+    /** Pick an entity of this type, then one of its image variables. */
+    async function pickLinked() {
+      let rows = [];
+      try { rows = (await app.client.request("entities.list", { entityType })).rows.filter((r) => r.inStore); } catch (error) { N.showError(error, "Could not list them"); return; }
+      const self = N.fmt.key(key);
+      const first = Math.max(0, rows.findIndex((r) => N.fmt.key(r.key) !== self));
+      const entityPick = h("select.input.viewer-linked-entity", { on: { change: () => fillVariables() } },
+        rows.map((r, i) => h("option", { value: i, selected: i === first }, N.fmt.key(r.key))));
+      const variablePick = h("select.input.viewer-linked-variable");
+      async function fillVariables() {
+        const row = rows[Number(entityPick.value)];
+        N.fill(variablePick);
+        if (!row) return;
+        try {
+          const data = await app.client.request("data.status", { entityType, key: row.key });
+          if (rows[Number(entityPick.value)] !== row) return;   // another one picked meanwhile
+          N.fill(variablePick, data.filter(N.isImageVariable).map((d) => h("option", { value: d.name, selected: d.name === variable }, d.name)));
+        } catch (error) { N.showError(error, "Could not list its data variables"); }
+      }
+      N.dialog({
+        title: "Link to another stack", narrow: true,
+        content: h("div.viewer-linked-form", { style: { padding: "12px 20px" } },
+          h("div.field", h("label.name", entityType), entityPick), h("div.field", h("label.name", "Stack"), variablePick)),
+        buttons: [{ label: "Cancel" }, { label: "Show", kind: "primary", icon: "link", onClick: (close) => {
+          const row = rows[Number(entityPick.value)];
+          if (!row || !variablePick.value) { N.toast("Pick a stack", `The ${entityType} has no stack to show`, "error"); return; }
+          close();
+          openLinked(row.key, variablePick.value);
+        } }],
+      });
+      fillVariables();
+    }
+    function openLinked(other, name) {
+      pane = { entityType, key: other, variable: name, linked: true, frame: state.frame, frames: null, channels: 1, planes: 1, zoom: state.zoom,
+        last: null, busy: false, pending: false };
+      paneToggle.checked = true;
+      paneTitle.textContent = N.fmt.key(other) === N.fmt.key(key) ? name : `${name} · ${N.fmt.key(other)}`;
+      paneFrame.textContent = "Loading…";
+      linkedPanel.style.display = "";
+      linkButton.classList.add("active");
+      layout();   // this stack has half the room now
+      showLinked();
+    }
+    function closeLinked() {
+      pane = null;
+      linkedPanel.style.display = "none";
+      linkButton.classList.remove("active");
+      layout();
+    }
+    function setLinked(on) {
+      if (!pane) return;
+      pane.linked = on;
+      if (!on) return;
+      pane.zoom = state.zoom;   // in step again: this stack's frame, zoom and pan
+      layoutLinked();
+      follow(stage, paneStage);
+      showLinked();
+    }
+    /** The linked stack's slider: both stacks' frame while linked, else its own. */
+    function goLinked(frame) {
+      if (!pane) return;
+      pane.frame = frame;
+      if (!pane.linked) { showLinked(); return; }
+      state.frame = Math.min(frame, state.frames - 1);
+      slider.value = String(state.frame);
+      show();
+    }
+    /** Show the linked stack's frame (this stack's while linked) or projection. */
+    async function showLinked() {
+      const own = pane;
+      if (!own) return;
+      if (own.busy) { own.pending = true; return; }
+      own.busy = true;
+      try {
+        if (own.linked) own.frame = state.frame;
+        if (own.frames !== null) own.frame = Math.min(own.frame, own.frames - 1);
+        const binning = state.mode === "frame" && state.bin ? { bin: { method: state.bin.split(":")[0], size: Number(state.bin.split(":")[1]) } } : {};
+        // its first frame first, to count its frames, channels and planes
+        const at = own.frames === null ? { frame: 0 } : state.mode === "frame" ? { frame: own.frame, ...binning } : { projection: state.mode };
+        const frame = await fetchView(at, false, own);
+        if (pane !== own) return;   // closed, or another one linked, meanwhile
+        const counted = { frames: frame.frames, channels: frame.channels || 1, planes: frame.planes || 1 };
+        if (own.frames === null || counted.channels !== own.channels || counted.planes !== own.planes) own.pending = true;   // again, now they are known
+        const resized = !own.last || own.last.width !== frame.width || own.last.height !== frame.height;
+        Object.assign(own, counted, { last: frame });
+        paint(paneCanvas, frame, null, false, new Set(), false, state.colormap, false);
+        paneSlider.max = String(Math.max(0, frame.frames - 1));
+        paneSlider.value = String(own.frame);
+        paneSlider.disabled = state.mode !== "frame" || frame.frames < 2;
+        paneFrame.textContent = state.mode === "frame" ? `${own.frame + 1} / ${frame.frames}` : `${frame.frames} frames`;
+        if (resized) layoutLinked();
+      } catch (error) {
+        paneFrame.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error));
+      } finally {
+        own.busy = false;
+        if (own.pending && pane === own) { own.pending = false; showLinked(); }
+      }
+    }
+    /** The linked stack's size: fitted to its stage as this one is, times this one's zoom while linked, else its own. */
+    function layoutLinked() {
+      if (!pane || !pane.last) return;
+      if (pane.linked) pane.zoom = state.zoom;
+      fit(paneStage, pane.last, pane.zoom);
+      follow(stage, paneStage);
+    }
+    // the pan, in step: the same share of the room to scroll, either way while linked
+    const echoes = new Map();   // stage -> the scroll follow gave it, whose scroll event is not followed back
+    function follow(from, to) {
+      if (!pane || !pane.linked) return;
+      const share = (size, room, at) => (size > room ? at / (size - room) : 0);
+      const left = share(from.scrollWidth, from.clientWidth, from.scrollLeft) * Math.max(0, to.scrollWidth - to.clientWidth);
+      const top = share(from.scrollHeight, from.clientHeight, from.scrollTop) * Math.max(0, to.scrollHeight - to.clientHeight);
+      if (Math.abs(to.scrollLeft - left) < 1 && Math.abs(to.scrollTop - top) < 1) return;
+      to.scrollLeft = left;
+      to.scrollTop = top;
+      echoes.set(to, [to.scrollLeft, to.scrollTop]);
+    }
+    function scrolled(from, to) {
+      const echo = echoes.get(from);
+      echoes.delete(from);
+      if (echo && Math.abs(from.scrollLeft - echo[0]) < 1 && Math.abs(from.scrollTop - echo[1]) < 1) return;   // follow's own
+      follow(from, to);
+    }
+    stage.addEventListener("scroll", () => scrolled(stage, paneStage));
+    paneStage.addEventListener("scroll", () => scrolled(paneStage, stage));
+    /** The place on this stack's canvas of the same point of the image as (clientX, clientY) on the linked one. */
+    function across(clientX, clientY) {
+      const from = paneCanvas.getBoundingClientRect(), to = canvas.getBoundingClientRect();
+      return [to.left + (clientX - from.left) / from.width * to.width, to.top + (clientY - from.top) / from.height * to.height];
+    }
+    /** Zoom the linked stack: both while linked (as zoomTo), else it alone, keeping the point under (clientX, clientY). */
+    function zoomLinked(zoom, clientX, clientY) {
+      if (pane.linked) { zoomTo(zoom, ...across(clientX, clientY)); return; }
+      zoom = Math.min(16, Math.max(1, zoom));
+      if (zoom === pane.zoom) return;
+      const before = paneCanvas.getBoundingClientRect();
+      const fx = (clientX - before.left) / before.width, fy = (clientY - before.top) / before.height;
+      pane.zoom = zoom;
+      fit(paneStage, pane.last, zoom);
+      const after = paneCanvas.getBoundingClientRect();
+      paneStage.scrollLeft += after.left + fx * after.width - clientX;
+      paneStage.scrollTop += after.top + fy * after.height - clientY;
+    }
+    paneStage.addEventListener("wheel", (event) => {
+      if (!pane || !pane.last) return;
+      event.preventDefault();
+      zoomLinked((pane.linked ? state.zoom : pane.zoom) * (event.deltaY < 0 ? 1.25 : 0.8), event.clientX, event.clientY);
+    }, { passive: false });
+    paneCanvas.addEventListener("dblclick", (event) => {
+      if (pane && pane.last) zoomLinked((pane.linked ? state.zoom : pane.zoom) > 1 ? 1 : 4, event.clientX, event.clientY);
+    });
+    paneCanvas.addEventListener("mousedown", (event) => {
+      if (!pane || event.button !== 0) return;
+      state.drag = { kind: "pan", stage: paneStage, from: [event.clientX, event.clientY], scroll: [paneStage.scrollLeft, paneStage.scrollTop], moved: false };
+      event.preventDefault();
+    });
+    paneCanvas.addEventListener("mousemove", (event) => {
+      if (!pane || !pane.last) return;
+      const rect = paneCanvas.getBoundingClientRect();
+      where.textContent = `row ${Math.floor((event.clientY - rect.top) / rect.height * pane.last.height)}, column ${Math.floor((event.clientX - rect.left) / rect.width * pane.last.width)}`;
+    });
+    paneCanvas.addEventListener("mouseleave", () => { where.textContent = ""; });
+    resizing.observe(paneStage);
+
     // --- the frame --------------------------------------------------------------------------------------------------
     /**
      * The frame or projection at ({frame} or {projection}) as it is shown. One channel and plane is data.frame's (or
@@ -1249,29 +1498,36 @@
      * per channel and plane (imviewer's setChColors and plane montage and projection): each channel scaled by its own
      * limits, and every plane of a channel brought to one scale, from the lowest low to the highest high of them. The
      * composed view has the answer's fields, its size, layers ({channel, bytes, color}) and, for the montage, tiles.
+     * With linked (the linked stack: {entityType, key, variable, channels, planes}), that stack's, by data.frame, as this
+     * one is shown, on its own contrast: at the channel and plane at hand when it has them, its channels in colour when
+     * it has as many as this one.
      */
-    async function fetchView(at, withRois) {
+    async function fetchView(at, withRois, linked = null) {
       // a file of no entity (options.file: as files.resolve takes it) is read by files.frame, as dev's imviewer opens any
       // file; what `nansen view` was given, by view.frame, with no project
-      const base = viewable ? { viewable: viewable.id, ...at } : options.file ? { ...options.file, ...at } : { entityType, key, variable, ...at };
-      if ((options.file || viewable) && state.adapter) base.adapter = state.adapter;
+      const base = linked ? { entityType: linked.entityType, key: linked.key, variable: linked.variable, ...at }
+        : viewable ? { viewable: viewable.id, ...at } : options.file ? { ...options.file, ...at } : { entityType, key, variable, ...at };
+      if (!linked && (options.file || viewable) && state.adapter) base.adapter = state.adapter;
       if (state.filter) base.filter = state.filter;
-      const method = viewable ? "view.frame" : options.file ? "files.frame" : "data.frame";
+      const method = linked ? "data.frame" : viewable ? "view.frame" : options.file ? "files.frame" : "data.frame";
       const limitsOf = (c) => {
+        if (linked) return null;
         if (c === state.channel) return state.auto ? null : [state.low, state.high];
         const own = state.channelLimits[c];
         return own && !own.auto ? [own.low, own.high] : null;
       };
       const ask = (c, p, more = {}) => app.client.request(method, { ...base, channel: c, plane: p, ...(limitsOf(c) ? { limits: limitsOf(c) } : {}), ...more });
-      const rois = withRois && state.showRois && state.roiVariable && !state.rois ? { rois: viewable ? true : state.roiVariable } : {};
-      const colour = composite() && at.projection !== "peakTime";   // the time of peak has its own colours
-      const planes = state.volume !== "single" && state.planes > 1 && at.projection !== "peakTime" ? range(state.planes) : null;
-      if (!colour && !planes) return ask(state.channel, state.plane, rois);
+      const rois = !linked && withRois && state.showRois && state.roiVariable && !state.rois ? { rois: viewable ? true : state.roiVariable } : {};
+      const [channel, plane] = linked ? [Math.min(state.channel, linked.channels - 1), Math.min(state.plane, linked.planes - 1)] : [state.channel, state.plane];
+      const planeCount = linked ? linked.planes : state.planes;
+      const colour = composite() && (!linked || linked.channels === state.channels) && at.projection !== "peakTime";   // the time of peak has its own colours
+      const planes = state.volume !== "single" && planeCount > 1 && at.projection !== "peakTime" ? range(planeCount) : null;
+      if (!colour && !planes) return ask(channel, plane, rois);
       // the channel at hand is read even when hidden: its ROIs and limits
-      const channels = colour ? range(state.channels).filter((c) => state.shown[c] || c === state.channel) : [state.channel];
-      const answers = await Promise.all(channels.map((c) => Promise.all((planes || [state.plane]).map((p) =>
-        ask(c, p, !planes && c === state.channel ? rois : {})))));
-      const first = answers[0][0], own = answers[channels.indexOf(state.channel)];
+      const channels = colour ? range(state.channels).filter((c) => state.shown[c] || c === channel) : [channel];
+      const answers = await Promise.all(channels.map((c) => Promise.all((planes || [plane]).map((p) =>
+        ask(c, p, !planes && c === channel ? rois : {})))));
+      const first = answers[0][0], own = answers[channels.indexOf(channel)];
       const view = { ...first, pixels: planes ? undefined : own[0].pixels, rois: planes ? undefined : own[0].rois, brightness: undefined, layers: [] };
       const size = first.width * first.height;
       const layout = planes && state.volume === "montage" ? N.montageLayout(planes.length, first.height, first.width) : null;
@@ -1291,8 +1547,8 @@
             bytes[i] = state.volume === "max" ? top : Math.floor(sum / each.length + 0.5);
           }
         }
-        if (c === state.channel) Object.assign(view, { low, high });
-        else if (!(state.channelLimits[c] && !state.channelLimits[c].auto)) state.channelLimits[c] = { auto: true, low, high };
+        if (c === channel) Object.assign(view, { low, high });
+        else if (!linked && !(state.channelLimits[c] && !state.channelLimits[c].auto)) state.channelLimits[c] = { auto: true, low, high };
         if (!colour || state.shown[c]) view.layers.push({ channel: c, bytes, color: colour ? state.colors[c] : null });
       });
       return view;
@@ -1338,6 +1594,8 @@
         showTime();
         paint(canvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines);
         if (resized) layout(); else { drawOverlay(); drawScalebar(); }
+        showNeuropil();
+        showLinked();
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
         const planes = frame.layers && state.volume !== "single" && state.planes > 1 && state.mode !== "peakTime"
@@ -1373,13 +1631,14 @@
         playButton, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
         binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, mirrorLabel, measurement, measureButton, scaleButton,
-        exportButton),
-      h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
+        linkButton, exportButton),
+      h("div.viewer-main", stage, linkedPanel, roiVariables.length ? roiPanel : null),
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel, gridButton));
     const dialog = N.dialog({ title, content, onClose: () => {
       if (options.onClose) options.onClose();
       state.playing = false;
+      pane = null;
       resizing.disconnect();
       document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("mousemove", onMove);

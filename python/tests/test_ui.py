@@ -1944,6 +1944,103 @@ def test_the_viewer_shows_a_scalebar_and_the_time_the_files_give(empty_app, page
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_a_linked_stack_beside_the_viewer_keeps_its_frame_zoom_and_pan(empty_app, page):   # imviewer's Link to Another Viewer
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    assert not page.locator(".viewer-linked").is_visible()
+    page.click(".viewer-link")   # the raw stack beside the motion-corrected one
+    page.click(".menu .item:has-text('TwoPhotonSeries_Original')")
+    page.wait_for_selector(".viewer-linked-frame:text-is('1 / 40')")
+    assert page.locator(".viewer-linked-title").inner_text() == "TwoPhotonSeries_Original"
+    assert page.evaluate("document.querySelector('.viewer-linked-canvas').width") == 32
+    page.locator(".viewer-slider").first.fill("9")   # the frame, in step
+    page.wait_for_selector(".viewer-linked-frame:text-is('10 / 40')")
+    page.locator(".viewer-linked-slider").fill("14")   # either way
+    page.wait_for_selector(".viewer-frame:text-is('15 / 40')")
+    page.wait_for_selector(".viewer-linked-frame:text-is('15 / 40')")
+    width = "(selector) => document.querySelector(selector).parentElement.getBoundingClientRect().width"
+    before = page.evaluate(width, ".viewer-canvas")
+    page.locator(".viewer-stage").first.hover()
+    page.mouse.wheel(0, -100)   # the zoom, in step
+    page.wait_for_selector(".viewer-zoom:text-is('125%')")
+    page.mouse.wheel(0, -100)
+    page.wait_for_selector(".viewer-zoom:text-is('156%')")
+    wait_until(lambda: abs(page.evaluate(width, ".viewer-linked-canvas") - page.evaluate(width, ".viewer-canvas")) < 1)
+    assert page.evaluate(width, ".viewer-canvas") > before * 1.5
+    scroll = "(selector) => { const s = document.querySelector(selector); return [s.scrollLeft / Math.max(1, s.scrollWidth - s.clientWidth), s.scrollWidth - s.clientWidth]; }"
+    page.evaluate("document.querySelector('.viewer-linked-stage').scrollLeft = 1e6")   # the pan, in step: both at the far right
+    wait_until(lambda: page.evaluate(scroll, ".viewer-stage")[1] > 0 and page.evaluate(scroll, ".viewer-stage")[0] > 0.99)
+    page.uncheck(".viewer-linked-toggle")   # unlinked: browsed on its own
+    page.locator(".viewer-slider").first.fill("29")
+    page.wait_for_selector(".viewer-frame:text-is('30 / 40')")
+    page.locator(".viewer-linked-slider").fill("4")
+    page.wait_for_selector(".viewer-linked-frame:text-is('5 / 40')")
+    assert page.locator(".viewer-frame").inner_text() == "30 / 40"
+    page.locator(".viewer-linked-stage").hover()
+    page.mouse.wheel(0, -100)
+    wait_until(lambda: page.evaluate(width, ".viewer-linked-canvas") > page.evaluate(width, ".viewer-canvas") + 1)
+    assert page.locator(".viewer-zoom").inner_text() == "156%"
+    page.check(".viewer-linked-toggle")   # linked again: this one's frame and zoom
+    page.wait_for_selector(".viewer-linked-frame:text-is('30 / 40')")
+    wait_until(lambda: abs(page.evaluate(width, ".viewer-linked-canvas") - page.evaluate(width, ".viewer-canvas")) < 1)
+    page.click(".viewer-link")   # a stack of another session instead
+    page.click(".menu .item:has-text('of another session')")
+    page.select_option(".viewer-linked-entity", label="m1 / s3")
+    page.wait_for_selector(".viewer-linked-variable option[value='TwoPhotonSeries_Original']", state="attached")
+    page.select_option(".viewer-linked-variable", "TwoPhotonSeries_Original")
+    page.click(".dialog-foot button:has-text('Show')")
+    page.wait_for_selector(".viewer-linked-title:text-is('TwoPhotonSeries_Original · m1 / s3')")
+    page.wait_for_selector(".viewer-linked-frame:text-is('30 / 40')")
+    page.click(".viewer-linked-close")
+    page.wait_for_selector(".viewer-linked", state="hidden")
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
+def test_the_selected_rois_neuropil_is_shown_as_signal_extraction_takes_it(empty_app, page):   # roimanager's showNeuropilMask
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    api = ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}}),
+        ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": s1, "options": {"threshold": 0.25, "border": 4}}),
+        ("presets.save", {"methodId": "ophys.extract_signals", "name": "wide", "values": {"neuropilGap": 2, "neuropilWidth": 4}}),
+        ("presets.setDefault", {"methodId": "ophys.extract_signals", "name": "wide"})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+    page.click(".viewer-roi-list li[data-roi='1']")
+    page.keyboard.press("Shift+N")
+    page.wait_for_selector(".viewer-canvas:not([data-neuropil=''])")
+
+    def neuropil(roi):   # what the extraction takes, with its preferred preset
+        response = api.handle({"id": 1, "method": "rois.neuropil", "params": {"entityType": "session", "key": s1[0], "variable": "RoiArray",
+                                                                              "roi": roi, "methodId": "ophys.extract_signals"}})
+        assert response["result"]["options"]["neuropilGap"] == 2
+        return str(len(response["result"]["pixels"]))
+
+    assert page.get_attribute(".viewer-canvas", "data-neuropil") == neuropil(1)
+    assert page.locator(".viewer-roi-neuropil").is_checked()
+    page.click(".viewer-roi-list li[data-roi='2']")   # it follows the selection
+    page.wait_for_selector(f".viewer-canvas[data-neuropil='{neuropil(2)}']")
+    assert "ROI 2's neuropil" in page.get_attribute("label:has(.viewer-roi-neuropil)", "title")
+    page.keyboard.press("r")   # and it is read again when the ROIs change
+    page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('rejected')")
+    page.click(".viewer-roi-list li[data-roi='1']")
+    page.wait_for_selector(f".viewer-canvas[data-neuropil='{neuropil(1)}']")
+    page.keyboard.press("Shift+N")
+    page.wait_for_selector(".viewer-canvas[data-neuropil='']")
+    assert not page.locator(".viewer-roi-neuropil").is_checked()
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_fov_map_images_photos_undo_and_svg(empty_app, page):
     import json
     imageio = pytest.importorskip("imageio.v2")

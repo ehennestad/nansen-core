@@ -107,7 +107,7 @@ To try an option before running a method, select one session and press **Preview
 
 Open a session's drawer again. Press the image button of **TwoPhotonSeries_Corrected**. The ROIs of `RoiArray` are drawn over the frames.
 
-- The cells now stay in place. Compare **Maximum** with the raw recording's maximum.
+- The cells now stay in place. Compare **Maximum** with the raw recording's maximum, or press the link button and pick **TwoPhotonSeries_Original** to see the raw frames beside the corrected ones, at the same frame, zoom and pan.
 - **Local correlation** shows the cells that ROI detection found: they are the pixels whose activity matches their neighbours'.
 - Click an ROI to select it. Its trace is shown under the image.
 
@@ -121,6 +121,7 @@ In the viewer, with an ROI selected:
 | Go to the next or previous ROI | `↓`, `↑` |
 | Grow or shrink it by a pixel | `+`, `-` |
 | Merge several (Ctrl-click to select them) | `m` |
+| Show its neuropil, as signal extraction takes it | Shift+N |
 | Delete it | `Delete` |
 | Undo or redo | Ctrl+Z, Ctrl+Shift+Z |
 

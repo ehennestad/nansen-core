@@ -12,6 +12,7 @@ np = pytest.importorskip("numpy")
 
 from nansen.adapters import load_object  # noqa: E402
 from nansen.errors import NansenError  # noqa: E402
+from nansen.frames import neuropil_masks  # noqa: E402
 from nansen.modules import Module  # noqa: E402
 
 PYTHON = Path(__file__).resolve().parents[2] / "modules" / "ophys" / "python"
@@ -55,13 +56,14 @@ def test_components_are_4_connected_and_in_row_major_order():
     assert ophys["components"](mask) == [[(0, 2), (0, 3), (1, 3)], [(1, 0), (2, 0), (2, 1)], [(3, 2)]]
 
 
-def test_dilate_by_square_distance_and_the_neuropil_ring():
+def test_the_neuropil_ring_is_at_a_square_distance_outside_every_roi():
+    # extraction's neuropil is the core's (nansen.frames.neuropil_masks, as rois.neuropil gives it)
     mask = np.zeros((7, 7), dtype=bool)
     mask[3, 3] = True
-    assert ophys["dilate"](mask, 2).sum() == 25
-    union = mask.copy()
-    union[3, 5] = True  # another ROI in the ring
-    ring = ophys["neuropil_ring"](mask, union, 1, 1)
+    assert neuropil_masks([mask], {"neuropilGap": 0, "neuropilWidth": 2})[0].sum() == 25 - 1
+    other = np.zeros((7, 7), dtype=bool)
+    other[3, 5] = True  # another ROI in the ring
+    ring = neuropil_masks([mask, other], {"neuropilGap": 1, "neuropilWidth": 1}, [0])[0]
     assert ring.sum() == 16 - 1 and not ring[3, 5] and not ring[3, 4]
 
 
@@ -72,10 +74,11 @@ def test_dev_neuropil_grows_around_the_roi_outside_every_roi():
     b = np.zeros((9, 9), bool)
     b[3:5, 3:5] = True
     pixels = lambda m: [[int(y), int(x)] for y, x in zip(*np.nonzero(m))]
-    first, second = ophys["expansion_neuropil"]([a, b], a | b, 2, 1)
+    expansion = {"neuropilMethod": "expansion", "neuropilExpansionFactor": 2}
+    first, second = neuropil_masks([a, b], dict(expansion, neuropilSeparation=1))
     assert pixels(first) == [[0, 1], [0, 2], [0, 3], [0, 4], [1, 0], [1, 5], [2, 0], [3, 0], [4, 0], [5, 1]]
     assert pixels(second) == [[1, 5], [2, 6], [3, 6], [4, 6], [5, 1], [5, 6], [6, 2], [6, 3], [6, 4], [6, 5]]
-    first, _ = ophys["expansion_neuropil"]([a, b], a | b, 2, 0)
+    first, = neuropil_masks([a, b], expansion, [0])
     assert len(pixels(first)) == 22 and not (first & (a | b)).any()
 
 

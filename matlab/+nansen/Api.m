@@ -51,7 +51,7 @@ classdef Api < handle
             names = ["app.info", "app.openUrl", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "rois.neuropil", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.comment", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
@@ -1653,6 +1653,70 @@ classdef Api < handle
             trace = nansen.internal.roiSignal(stack, pixels, start, stop);
             result = nansen.internal.signalTraces({char(variable)}, {trace}, 0, start, stop, nansen.internal.getField(params, "maxPoints", 2000));
             result.frameRate = nansen.Api.frameRate(params, entity);
+        end
+
+        function result = apiRoisNeuropil(obj, params)
+            % An ROI's neuropil, as ophys.extractSignals takes it (nansen.internal.neuropilMasks), among the ROIs of its
+            % plane and channel: the viewer's neuropil overlay, as dev's roimanager's showNeuropilMask
+            project = obj.requireProject();
+            entity = obj.entity(params);
+            variable = string(nansen.Api.param(params, "variable"));
+            plane = double(nansen.internal.getField(params, "plane", 0)) + 1;
+            channel = double(nansen.internal.getField(params, "channel", 0)) + 1;
+            options = obj.neuropilOptions(project, params);
+            document = nansen.internal.roisAt(nansen.Api.roisOf(project, entity, variable, true), plane, channel);
+            imageSize = nansen.internal.getField(document, "imageSize", []);
+            if isempty(imageSize)
+                imageSize = nansen.internal.getField(params, "imageSize", []);
+            end
+            if ~isnumeric(imageSize) || numel(imageSize) ~= 2
+                nansen.internal.throwError("invalid-params", "the ROIs of %s have no imageSize: give it", variable)
+            end
+            roi = nansen.internal.getField(params, "roi", []);
+            pixels = nansen.internal.roiNeuropil(document, roi, options, double(imageSize(1)), double(imageSize(2)));
+            result = struct("roi", roi, "pixels", {num2cell(pixels, 2)'}, "options", options);
+        end
+
+        function options = neuropilOptions(obj, project, params)
+            % rois.neuropil's options: those given on ophys.extract_signals's defaults, or with methodId, the method's
+            % options as methods.run takes them (its preset, or the preferred one when neither a preset nor options are
+            % given, with the options on top), validated by its schema. As Python's Api._neuropil_options.
+            values = nansen.internal.getField(params, "options", struct());
+            if isempty(values)
+                values = struct();
+            end
+            if ~(isstruct(values) && isscalar(values))
+                nansen.internal.throwError("invalid-params", "options is an object")
+            end
+            methodId = nansen.internal.getField(params, "methodId", "");
+            if ~isempty(methodId) && string(methodId) ~= ""
+                method = project.method(string(methodId));
+                preset = obj.presetOf(params);
+                given = values;
+                values = struct();
+                if preset ~= ""
+                    values = project.preset(string(methodId), preset);
+                end
+                values = method.resolveOptions(nansen.internal.mergeStructs(values, given));
+            end
+            options = struct("neuropilMethod", 'ring', "neuropilGap", 1, "neuropilWidth", 3, "neuropilExpansionFactor", 4, ...
+                "neuropilSeparation", 0, "includeRejected", false);
+            for name = reshape(string(fieldnames(options)), 1, [])
+                if isfield(values, name)
+                    options.(name) = values.(name);
+                end
+            end
+            whole = @(value, low) isnumeric(value) && isscalar(value) && value == floor(value) && value >= low;
+            kind = options.neuropilMethod;
+            valid = (ischar(kind) || (isstring(kind) && isscalar(kind))) && any(string(kind) == ["ring", "expansion"]) ...
+                && whole(options.neuropilGap, 0) && whole(options.neuropilWidth, 1) && whole(options.neuropilSeparation, 0) ...
+                && isnumeric(options.neuropilExpansionFactor) && isscalar(options.neuropilExpansionFactor) && options.neuropilExpansionFactor > 0 ...
+                && islogical(options.includeRejected) && isscalar(options.includeRejected);
+            if ~valid
+                nansen.internal.throwError("invalid-options", "the neuropil is a ring (neuropilGap 0 or more, neuropilWidth 1 or more) or an " + ...
+                    "expansion (neuropilExpansionFactor above 0, neuropilSeparation 0 or more)")
+            end
+            options.neuropilMethod = char(kind);
         end
 
         function result = apiDataSend(obj, params)

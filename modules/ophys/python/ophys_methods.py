@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from nansen.errors import NansenError
+from nansen.frames import neuropil_masks
 from nansen.stacks import as_stack
 
 SMOOTHING = 1.15  # pixels: the phase correlation is smoothed by a Gaussian of this width, as suite2p does
@@ -1093,18 +1094,12 @@ def _signals(stack, document, options, context, progress):
     masks = roi_masks(document, height, width)
     signals = np.full((frames, len(masks)), np.nan)
     neuropil = np.full((frames, len(masks)), np.nan)
-    union = np.zeros((height, width), dtype=bool)
     covered = np.zeros((height, width), dtype=np.int64)
     for mask in masks:
-        union |= mask
         covered += mask
     own = [mask & (covered == 1) for mask in masks] if options.get("excludeOverlaps", False) else masks
     inside = [np.flatnonzero(mask) for mask in own]
-    if options.get("neuropilMethod", "ring") == "expansion":
-        around = expansion_neuropil(masks, union, options.get("neuropilExpansionFactor", 4), options.get("neuropilSeparation", 0))
-    else:
-        around = [neuropil_ring(mask, union, options["neuropilGap"], options["neuropilWidth"]) for mask in masks]
-    rings = [np.flatnonzero(ring) for ring in around]
+    rings = [np.flatnonzero(ring) for ring in neuropil_masks(masks, options)]   # the core's, as rois.neuropil shows it
     for start in range(0, frames, CHUNK):
         context.check_cancelled()
         stop = min(start + CHUNK, frames)
@@ -1130,62 +1125,6 @@ def roi_masks(document, height, width):
         mask[pixels[:, 0], pixels[:, 1]] = True
         masks.append(mask)
     return masks
-
-
-def neuropil_ring(mask, union, gap, width):
-    """Pixels at square distance gap+1 .. gap+width from the ROI that are in no ROI."""
-    return dilate(mask, gap + width) & ~dilate(mask, gap) & ~union
-
-
-def expansion_neuropil(masks, union, factor, separation):
-    """dev's neuropil masks (estimateNeuropilMasks): each ROI's mask dilated, alternately by its four sides (even
-    steps) and its four diagonals (odd steps), less the ROI, until the part outside the ignored pixels covers
-    factor times the ROI's area (at most the rest of the image), or after 101 steps; the ignored pixels (every ROI,
-    dilated separation times, from a diagonal step) are then taken out."""
-    ignored = union.copy()
-    for step in range(1, separation + 1):
-        ignored = _dilate_odd_even(ignored, step)
-    out = []
-    for mask in masks:
-        area = int(mask.sum())
-        target = min(mask.size - area, factor * area)
-        grown, covered, step = mask.copy(), 0, 0
-        while covered < target and step <= 100:
-            grown = _dilate_odd_even(grown, step)
-            grown &= ~mask
-            covered = int((grown & ~ignored).sum())
-            step += 1
-        out.append(grown & ~ignored)
-    return out
-
-
-def _dilate_odd_even(mask, step):
-    """One dilation by the four sides (step even) or the four diagonals (step odd), nothing past the edges."""
-    out = mask.copy()
-    offsets = [(1, 0), (-1, 0), (0, 1), (0, -1)] if step % 2 == 0 else [(1, 1), (1, -1), (-1, 1), (-1, -1)]
-    height, width = mask.shape
-    for dy, dx in offsets:
-        out[max(dy, 0):height + min(dy, 0), max(dx, 0):width + min(dx, 0)] |= \
-            mask[max(-dy, 0):height + min(-dy, 0), max(-dx, 0):width + min(-dx, 0)]
-    return out
-
-
-def dilate(mask, distance):
-    """Pixels within square (Chebyshev) distance of the mask."""
-    out = mask.copy()
-    for axis in (0, 1):
-        grown = out.copy()
-        size = out.shape[axis]
-        for step in range(1, distance + 1):
-            if step >= size:
-                break
-            lead = [slice(None), slice(None)]
-            trail = [slice(None), slice(None)]
-            lead[axis], trail[axis] = slice(step, None), slice(None, -step)
-            grown[tuple(lead)] |= out[tuple(trail)]
-            grown[tuple(trail)] |= out[tuple(lead)]
-        out = grown
-    return out
 
 
 def compute_dff(entity, options, context):
