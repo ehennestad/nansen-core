@@ -231,7 +231,7 @@ classdef OphysTest < matlab.unittest.TestCase
             if exist("normcorre", "file") ~= 2
                 testCase.verifyError(@() ophys.normcorre(struct(), struct(), []), "nansen:DependencyMissing");
             end
-            for name = ["extract", "flowreg", "caimanDeconvolution", "flufinder"]
+            for name = ["extract", "flowreg", "caimanDeconvolution", "flufinder", "cnmf"]
                 testCase.verifyError(@() feval("ophys." + name, struct(), struct(), []), "nansen:DependencyMissing", name);
             end
             if ~exist("imviewer", "file")

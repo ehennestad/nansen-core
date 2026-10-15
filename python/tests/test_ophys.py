@@ -174,6 +174,17 @@ def test_export_nwb_says_what_is_missing():
     assert error.value.code == "dependency-missing"
 
 
+def test_cnmf_says_what_is_missing():
+    try:
+        import caiman  # noqa: F401
+        pytest.skip("caiman is installed")
+    except ImportError:
+        pass
+    with pytest.raises(NansenError) as error:
+        ophys["cnmf"](None, {}, None)
+    assert error.value.code == "dependency-missing"
+
+
 def test_suite2p_says_what_is_missing():
     try:
         import suite2p  # noqa: F401

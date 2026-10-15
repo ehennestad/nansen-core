@@ -1,0 +1,30 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.cnmf",
+  "version": "1.0.0",
+  "title": "CNMF (CaImAn)",
+  "category": "Two-photon/Segmentation",
+  "entityType": "*",
+  "description": "Finds cells with CaImAn's CNMF (constrained non-negative matrix factorization: greedy initialisation, then spatial and temporal updates and merging), as dev's roimanager could. Its cells are saved as ROIs (the connected pixels around each footprint's peak whose weight is above threshold times the peak's), their traces (denoised calcium plus residual) as signals and the denoised calcium too. The stack is read whole. CaImAn in Python, CaImAn-MATLAB in MATLAB.",
+  "implementations": {
+    "python": "ophys_methods:cnmf",
+    "matlab": "ophys.cnmf"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": { "type": "string", "default": "TwoPhotonSeries_Corrected", "title": "Stack" },
+      "rois": { "type": "string", "default": "RoiArray", "title": "ROIs", "description": "Variable the cells are saved to as ROIs." },
+      "output": { "type": "string", "default": "RoiSignals_MeanF", "title": "Signals", "description": "Each cell's denoised calcium plus residual (frames x cells). Leave empty to not save it." },
+      "denoisedOutput": { "type": "string", "default": "RoiSignals_Denoised", "title": "Denoised calcium", "description": "Each cell's denoised calcium. Leave empty to not save it." },
+      "components": { "type": "integer", "default": 30, "minimum": 1, "title": "Cells to look for", "description": "CNMF's K: components initialised." },
+      "cellRadius": { "type": "integer", "default": 4, "minimum": 1, "title": "Cell radius (px)", "description": "CNMF's gSig." },
+      "mergeThreshold": { "type": "number", "default": 0.85, "minimum": 0, "maximum": 1, "title": "Merge threshold", "description": "Components whose traces correlate more than this are merged." },
+      "frameRate": { "type": "number", "default": 0, "minimum": 0, "title": "Frame rate (Hz)", "description": "0 for the entity's frame_rate, else 30." },
+      "threshold": { "type": "number", "default": 0.2, "exclusiveMinimum": 0, "maximum": 1, "title": "Mask threshold", "description": "Share of a cell's largest spatial weight a pixel needs to be part of its ROI" },
+      "channel": { "type": "integer", "default": 1, "minimum": 1, "title": "Channel" },
+      "plane": { "type": "integer", "default": 1, "minimum": 1, "title": "Plane" }
+    }
+  }
+}

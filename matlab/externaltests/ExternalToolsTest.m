@@ -75,6 +75,17 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function cnmfFindsTheCells(testCase)
+            result = testCase.Project.run("ophys.cnmf", {testCase.Session}, Options=struct("components", 20, "cellRadius", 4, "frameRate", 30));
+            testCase.verifyEqual(result{1}.frames, 300);
+            rois = ophys.internal.roiList(testCase.Project.load(testCase.Session, "RoiArray", Cached=false));
+            centers = cell2mat(cellfun(@(r) reshape(double(r.center), 1, 2) + 1, rois(:), UniformOutput=false));   % 1-based like Centers
+            found = sum(arrayfun(@(i) any(vecnorm(centers - testCase.Centers(i, :), 2, 2) <= 4), 1:size(testCase.Centers, 1)));
+            testCase.verifyGreaterThanOrEqual(found, 10);
+            testCase.verifySize(testCase.Project.load(testCase.Session, "RoiSignals_MeanF"), [300, numel(rois)]);
+            testCase.verifySize(testCase.Project.load(testCase.Session, "RoiSignals_Denoised"), [300, numel(rois)]);
+        end
+
         function exportNwbWritesTheStackRoisAndSignals(testCase)
             % ophys.exportNwb with matnwb, read back with nwbRead (Python's test_external_tools reads its own with pynwb)
             project = testCase.Project;

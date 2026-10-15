@@ -1167,6 +1167,47 @@ def oasis_ar1(y, g, lam):
     return calcium, spikes
 
 
+def cnmf(entity, options, context):
+    """Cells found by CaImAn's CNMF (greedy initialisation, spatial and temporal updates, merging) on the whole stack,
+    saved as ROIs (the 8-connected pixels around each footprint's peak above threshold times it), their traces
+    (C + YrA) as signals and their denoised calcium (C)."""
+    try:
+        from caiman.source_extraction.cnmf import cnmf as caiman_cnmf
+        from caiman.source_extraction.cnmf import params as caiman_params
+    except ImportError as error:
+        raise NansenError("dependency-missing", f"ophys.cnmf needs CaImAn ({error}): see https://github.com/flatironinstitute/CaImAn") from None
+    from nansen.adapters import load_object
+    adapters = Path(__file__).resolve().parent
+    weights_pixels = load_object("ophys_adapters:weights_pixels", adapters)
+    roi_document = load_object("ophys_adapters:roi_document", adapters)
+    stack = _open_stack(entity, options["stack"], context, options)
+    height, width, frames = stack.shape
+    rate = float(options.get("frameRate") or entity.get("frame_rate") or 30)
+    images = np.ascontiguousarray(np.moveaxis(np.asarray(stack[:, :, 0:frames], dtype=np.float32), 2, 0))   # frames x rows x columns
+    radius = int(options["cellRadius"])
+    parameters = caiman_params.CNMFParams(params_dict={
+        "fr": rate, "decay_time": 0.4, "p": 1, "nb": 1, "rf": None, "K": int(options["components"]),
+        "gSig": [radius, radius], "merge_thr": float(options["mergeThreshold"]), "method_init": "greedy_roi",
+        "ssub": 1, "tsub": 1})
+    context.log(f"{_name(entity)}: running CNMF on {frames} frames")
+    model = caiman_cnmf.CNMF(n_processes=1, params=parameters, dview=None).fit(images)
+    estimates = model.estimates
+    footprints = estimates.A.tocsc()
+    rois, kept = [], []
+    for k in range(footprints.shape[1]):
+        weights = np.asarray(footprints[:, k].todense()).reshape((height, width), order="F")   # CaImAn's pixels in Fortran order
+        pixels = weights_pixels(weights, options["threshold"])
+        if pixels:
+            rois.append((sorted(pixels), None))
+            kept.append(k)
+    context.project.save(entity, options["rois"], roi_document([height, width], rois))
+    calcium = np.asarray(estimates.C)[kept].T
+    _save(entity, options.get("output", ""), calcium + np.asarray(estimates.YrA)[kept].T, context)
+    _save(entity, options.get("denoisedOutput", ""), calcium, context)
+    context.log(f"{_name(entity)}: CNMF kept {len(rois)} cells")
+    return {"rois": len(rois), "frames": frames}
+
+
 def caiman_deconvolution(entity, options, context):
     """Spikes and denoised calcium of each trace by CaImAn's constrained foopsi."""
     try:

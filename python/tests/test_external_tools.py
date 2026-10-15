@@ -125,6 +125,17 @@ def test_caiman_deconvolution(api):
         assert np.corrcoef(found[:, i], spikes[:, i])[0, 1] > 0.5
 
 
+def test_caiman_cnmf(api):
+    need("caiman")
+    result = run(api, "ophys.cnmf", {"stack": "TwoPhotonSeries_Original", "components": 20, "cellRadius": 4, "frameRate": 30})
+    assert result["frames"] == FRAMES and result["rois"] >= 10
+    rois = load(api, "RoiArray")["rois"]
+    found = sum(any(np.hypot(*(np.array(r["center"]) - c)) <= 4 for r in rois) for c in api.centers)
+    assert found >= 10, found   # most cells: an ROI's centre within 4 px of a true centre
+    assert load(api, "RoiSignals_MeanF").shape == (FRAMES, len(rois))
+    assert load(api, "RoiSignals_Denoised").shape == (FRAMES, len(rois))
+
+
 def test_export_nwb(api, tmp_path):
     pynwb = need("pynwb")
     run(api, "ophys.motion_correction", {"stack": "TwoPhotonSeries_Original", "referenceFrames": 20})

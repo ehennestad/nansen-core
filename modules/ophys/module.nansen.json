@@ -15,6 +15,7 @@
   "methods": [
     "methods/align_sessions.method.nansen.json",
     "methods/caiman_deconvolution.method.nansen.json",
+    "methods/cnmf.method.nansen.json",
     "methods/compute_dff.method.nansen.json",
     "methods/crop.method.nansen.json",
     "methods/deconvolve.method.nansen.json",
