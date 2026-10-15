@@ -31,10 +31,30 @@ def round_to(value, digits):
 
 def image_stats(entity, options, context):
     """Size and intensity of the stack; saves its average and maximum projections, and each frame's mean, minimum,
-    maximum and standard deviation (frames x 4, as dev's per-frame image stats, for plotting). Reads a chunk at a time."""
-    stack = _open_stack(entity, options["stack"], context, options)
+    maximum and standard deviation (frames x 4, as dev's per-frame image stats, for plotting). Reads a chunk at a time.
+    With plane 0, of every plane: the intensity of them all and of each, the projections as height x width x 1 x
+    planes x 1 (a stack of one frame per plane) and the frame statistics of the planes joined (frames x 4 planes)."""
+    _, stacks, every = _plane_stacks(entity, options["stack"], context, options)
+    height, width, frames = stacks[0].shape
+    found = [_image_stats(stack) for stack in stacks]   # (average, maximum, frame statistics, total) of each plane
+    _save_planes(entity, options["averageOutput"], [f[0] for f in found], every, context)
+    _save_planes(entity, options["maximumOutput"], [f[1] for f in found], every, context)
+    _save(entity, options.get("frameStatsOutput", ""), np.concatenate([f[2] for f in found], axis=1), context)
+    context.log(f"{_name(entity)}: {frames} frames of {height} x {width}" + (f" in {len(stacks)} planes" if every else ""))
+    size = height * width * frames
+    result = {"n_frames": frames, "height": height, "width": width,
+              "mean_intensity": round_to(sum(f[3] for f in found) / (size * len(found)), 4),
+              "max_intensity": max(float(f[1].max()) for f in found)}
+    if every:
+        result["planes"] = [{"plane": n + 1, "mean_intensity": round_to(f[3] / size, 4), "max_intensity": float(f[1].max())}
+                            for n, f in enumerate(found)]
+    return result
+
+
+def _image_stats(stack):
+    """The average and maximum projections of a height x width x frames stack, each frame's mean, minimum, maximum
+    and standard deviation, and the sum of its values, read a chunk at a time."""
     height, width, frames = stack.shape
-    total = 0.0
     maximum = None
     average = np.zeros((height, width))
     per_frame = np.zeros((frames, 4))
@@ -46,13 +66,7 @@ def image_stats(entity, options, context):
         peak = chunk.max(axis=2)
         maximum = peak if maximum is None else np.maximum(maximum, peak)
     total = float(average.sum())
-    average /= frames
-    _save(entity, options["averageOutput"], average, context)
-    _save(entity, options["maximumOutput"], maximum, context)
-    _save(entity, options.get("frameStatsOutput", ""), per_frame, context)
-    context.log(f"{_name(entity)}: {frames} frames of {height} x {width}")
-    return {"n_frames": frames, "height": height, "width": width,
-            "mean_intensity": round_to(total / stack.size, 4), "max_intensity": float(maximum.max())}
+    return average / frames, maximum, per_frame, total
 
 
 def motion_correction(entity, options, context):
@@ -66,17 +80,12 @@ def motion_correction(entity, options, context):
     same way, so a recording need not fit in memory. Each iteration but the last makes the next reference:
     the average of the frames aligned. In a stack with channels, the shifts are found in the options' channel
     and every channel is aligned by them; in one with planes, the options' plane is aligned (height x width x
-    channels x frames).
+    channels x frames), or with plane 0 every plane, each by its own reference and shifts, one plane after the
+    other in each chunk (height x width x channels x planes x frames; the planes' shifts joined along their last
+    axis). Only the frames firstFrame..lastFrame are aligned and written.
     """
-    stack = _open_stack(entity, options["stack"], context, options)
-    whole = context.project.open_stack(entity, options["stack"])
-    if whole.ndim == 5:
-        target = whole.select(slice(None), slice(None), slice(None), options.get("plane", 1) - 1)
-    elif whole.ndim == 4:
-        target = whole
-    else:
-        target = stack
-    height, width, frames = stack.shape
+    whole, stacks, every = _plane_stacks(entity, options["stack"], context, options)
+    height, width, frames = stacks[0].shape
     flyback = int(options.get("numFlybackLines", 0))
     if flyback >= height - 1:
         raise NansenError("invalid-options", f"{flyback} flyback lines leave too little of a frame of {height} rows")
@@ -90,7 +99,8 @@ def motion_correction(entity, options, context):
         width = len(plan[0])
     elif options.get("stretchCorrection", "none") != "none":
         raise NansenError("invalid-options", f"stretchCorrection is none or sciscan, not {options['stretchCorrection']!r}")
-    prepare, offsets = scan_preparation(stack, flyback, options.get("bidirectionalCorrection", "none"), int(options.get("maxBidirectionalOffset", 10)), plan)
+    mode = options.get("bidirectionalCorrection", "none")
+    preparations = [scan_preparation(stack, flyback, mode, int(options.get("maxBidirectionalOffset", 10)), plan) for stack in stacks]
     height -= flyback
     subpixel = bool(options.get("subpixel", False))
     patches = int(options.get("patches", 1))
@@ -101,60 +111,85 @@ def motion_correction(entity, options, context):
     weights = (_axis_weights(row_edges, height), _axis_weights(column_edges, width))
     tapered = subpixel or patches > 1   # whole-pixel rigid alignment works on the frames as they are
     count = min(options["referenceFrames"], frames)
-    reference = prepare(stack.frames(0, count), 0).astype(np.float64).mean(axis=2)
     output_type = options.get("outputType", "same")
-    recast = _recaster(prepare(stack.frames(0, min(CHUNK, frames)), 0), output_type, float(options.get("saturation", 0.5)))
-    shape = (height, width) + tuple(target.shape[2:])
+    planes = []   # each plane aligned: its stack, the frames written (with every channel), preparation and reference
+    for number, (stack, (prepare, offsets)) in enumerate(zip(stacks, preparations)):
+        if whole.ndim == 5:
+            target = whole.select(slice(None), slice(None), slice(None), number if every else options.get("plane", 1) - 1)
+        else:
+            target = whole if whole.ndim == 4 else stack
+        planes.append({"stack": stack, "target": target, "prepare": prepare, "offsets": offsets,
+                       "reference": prepare(stack.frames(0, count), 0).astype(np.float64).mean(axis=2),
+                       "recast": _recaster(prepare(stack.frames(0, min(CHUNK, frames)), 0), output_type, float(options.get("saturation", 0.5)))})
+    target = planes[0]["target"]
+    shape = (height, width) + tuple(target.shape[2:-1]) + ((len(planes),) if every else ()) + (frames,)
     dtype = target.dtype if output_type == "same" else np.dtype(output_type)
     iterations = options["iterations"]
     for iteration in range(iterations):
         last = iteration == iterations - 1
-        shifts = np.zeros((frames, 2, patches, patches))
-        reference_fft = _reference_fft(reference, tapered)
-        patch_ffts = [[_reference_fft(reference[r0:r1, c0:c1], True) for c0, c1 in zip(column_edges, column_edges[1:])]
-                      for r0, r1 in zip(row_edges, row_edges[1:])]
-        total = np.zeros((height, width))
+        for plane in planes:
+            reference = plane["reference"]
+            plane["shifts"] = np.zeros((frames, 2, patches, patches))
+            plane["reference_fft"] = _reference_fft(reference, tapered)
+            plane["patch_ffts"] = [[_reference_fft(reference[r0:r1, c0:c1], True) for c0, c1 in zip(column_edges, column_edges[1:])]
+                                   for r0, r1 in zip(row_edges, row_edges[1:])]
+            plane["total"] = np.zeros((height, width))
         with (context.project.stack_writer(entity, options["output"], shape, dtype) if last else _NoWriter()) as out:
             for start in range(0, frames, CHUNK):
                 context.check_cancelled()
                 stop = min(start + CHUNK, frames)
-                chunk = prepare(stack.frames(start, stop), start)
-                if patches == 1:
-                    shifts[start:stop, :, 0, 0] = estimate_shifts(chunk, reference_fft, options["maxShift"], subpixel, tapered)
-                else:
-                    rigid = estimate_shifts(chunk, reference_fft, options["maxShift"], tapered=True)
-                    shifts[start:stop] = estimate_patch_shifts(chunk, patch_ffts, row_edges, column_edges, rigid,
-                                                               options["maxShift"], deviation, subpixel)
-                align = lambda frames_: align_frames(frames_, shifts[start:stop], weights, subpixel)
-                if last:
-                    if target is stack:
-                        out.write(start, recast(align(chunk)))
+                aligned = []
+                for plane in planes:
+                    shifts, prepare = plane["shifts"], plane["prepare"]
+                    chunk = prepare(plane["stack"].frames(start, stop), start)
+                    if patches == 1:
+                        shifts[start:stop, :, 0, 0] = estimate_shifts(chunk, plane["reference_fft"], options["maxShift"], subpixel, tapered)
                     else:
-                        channels = prepare(target.frames(start, stop), start)
-                        out.write(start, recast(np.stack([align(channels[:, :, c, :]) for c in range(channels.shape[2])], axis=2)))
-                else:
-                    total += align(chunk).astype(np.float64).sum(axis=2)
+                        rigid = estimate_shifts(chunk, plane["reference_fft"], options["maxShift"], tapered=True)
+                        shifts[start:stop] = estimate_patch_shifts(chunk, plane["patch_ffts"], row_edges, column_edges, rigid,
+                                                                   options["maxShift"], deviation, subpixel)
+                    here = shifts[start:stop]
+                    if not last:
+                        plane["total"] += align_frames(chunk, here, weights, subpixel).astype(np.float64).sum(axis=2)
+                    elif plane["target"] is plane["stack"]:
+                        aligned.append(plane["recast"](align_frames(chunk, here, weights, subpixel)))
+                    else:
+                        channels = prepare(plane["target"].frames(start, stop), start)
+                        aligned.append(plane["recast"](np.stack([align_frames(channels[:, :, c, :], here, weights, subpixel)
+                                                                 for c in range(channels.shape[2])], axis=2)))
+                if last:
+                    out.write(start, np.stack(aligned, axis=-2) if every else aligned[0])
                 context.progress((iteration * frames + stop) / (iterations * frames), f"iteration {iteration + 1}: frame {stop}/{frames}")
-        reference = total / frames
-    if patches == 1:
-        saved = shifts[:, :, 0, 0] if subpixel else shifts[:, :, 0, 0].astype(np.int32)
+        for plane in planes:
+            plane["reference"] = plane["total"] / frames
+    saved, found = [], []
+    for plane in planes:
+        shifts = plane["shifts"]
+        kept = shifts[:, :, 0, 0] if patches == 1 else shifts.reshape(frames, 2, patches * patches)   # patch (i, j) is i * patches + j
+        saved.append(kept if subpixel else kept.astype(np.int32))
+        found.append(_shift_summary(shifts, subpixel))
+        if mode != "none":
+            found[-1]["bidirectionalOffset"] = plane["offsets"][0]
+    _save(entity, options["shiftsOutput"], np.concatenate(saved, axis=-1) if every else saved[0], context)
+    if every:
+        result = dict(frames=frames, **_shift_summary(np.stack([plane["shifts"] for plane in planes]), subpixel),
+                      planes=[dict(plane=n + 1, **summary) for n, summary in enumerate(found)])
     else:
-        saved = shifts.reshape(frames, 2, patches * patches)   # patch (i, j) is i * patches + j
-        saved = saved if subpixel else saved.astype(np.int32)
-    _save(entity, options["shiftsOutput"], saved, context)
-    distance = np.sqrt(shifts[:, 0] ** 2 + shifts[:, 1] ** 2)
-    largest = float(np.abs(shifts).max(initial=0))
-    if subpixel:   # found to 1/UPSAMPLE of a pixel, and good to about a tenth
-        largest, mean = round_to(largest, 1), round_to(distance.mean(), 1)
-    else:
-        largest, mean = int(largest), round_to(distance.mean(), 4)
-    context.log(f"{_name(entity)}: largest shift {largest} px")
-    result = {"frames": frames, "maxShift": largest, "meanShift": mean}
-    if options.get("bidirectionalCorrection", "none") != "none":
-        result["bidirectionalOffset"] = offsets[0]
+        result = dict(frames=frames, **found[0])
+    context.log(f"{_name(entity)}: largest shift {result['maxShift']} px")
     if plan is not None:
         result["stretchZoom"] = zoom
     return result
+
+
+def _shift_summary(shifts, subpixel):
+    """The largest shift and the mean distance moved of shifts (... x 2 x patches x patches: rows and columns on the
+    axis before the patches'), rounded as motion_correction returns them."""
+    distance = np.sqrt(shifts[..., 0, :, :] ** 2 + shifts[..., 1, :, :] ** 2)
+    largest = float(np.abs(shifts).max(initial=0))
+    if subpixel:   # found to 1/UPSAMPLE of a pixel, and good to about a tenth
+        return {"maxShift": round_to(largest, 1), "meanShift": round_to(distance.mean(), 1)}
+    return {"maxShift": int(largest), "meanShift": round_to(distance.mean(), 4)}
 
 
 STRETCH = Path(__file__).resolve().parents[1] / "calibration" / "sciscan_stretch.json"
@@ -472,20 +507,38 @@ def _smoothing(height, width):
 
 def detect_rois(entity, options, context):
     """ROIs as 4-connected areas of pixels whose average correlation with their 8 neighbours reaches the threshold.
-    Reads the stack a chunk at a time (three times)."""
-    stack = _open_stack(entity, options["stack"], context, options)
-    height, width, frames = stack.shape
-    image = correlation_image(stack)
+    Reads the stack a chunk at a time (three times). With plane 0, the ROIs of every plane, in one file: each with its
+    plane and channel (from 1), the first plane's first, numbered on from one plane to the next."""
+    _, stacks, every = _plane_stacks(entity, options["stack"], context, options)
+    height, width, _ = stacks[0].shape
     border = options["border"]
-    image[:border] = image[height - border:] = -np.inf
-    image[:, :border] = image[:, width - border:] = -np.inf
-    rois = []
-    for pixels in components(image >= options["threshold"]):
-        if options["minSize"] <= len(pixels) <= options["maxSize"]:
-            rois.append(_roi(len(rois) + 1, pixels))
+    found = []
+    for stack in stacks:
+        image = correlation_image(stack)
+        image[:border] = image[height - border:] = -np.inf
+        image[:, :border] = image[:, width - border:] = -np.inf
+        found.append([pixels for pixels in components(image >= options["threshold"])
+                      if options["minSize"] <= len(pixels) <= options["maxSize"]])
+    rois = _placed_rois(found, every, options)
     _save(entity, options["output"], {"imageSize": [height, width], "rois": rois}, context)
     context.log(f"{_name(entity)}: {len(rois)} ROIs")
-    return {"rois": len(rois), "areas": [roi["area"] for roi in rois]}
+    result = {"rois": len(rois), "areas": [roi["area"] for roi in rois]}
+    if every:
+        result["planes"] = [{"plane": n + 1, "rois": len(pixels)} for n, pixels in enumerate(found)]
+    return result
+
+
+def _placed_rois(found, every, options):
+    """The ROIs of each plane's pixel lists, numbered from 1 across the planes; with every plane, each ROI with its
+    place (its plane, from 1, and the options' channel), as nansen.frames.rois_at reads them."""
+    rois = []
+    for number, areas in enumerate(found):
+        for pixels in areas:
+            roi = _roi(len(rois) + 1, pixels)
+            if every:
+                roi["plane"], roi["channel"] = number + 1, int(options.get("channel", 1))
+            rois.append(roi)
+    return rois
 
 
 def correlation_image(stack):
@@ -541,8 +594,32 @@ def quicky(entity, options, context):
     several bins make an ROI: the most observed pixel picks the areas around it, their centroids within
     3 px of the median, and the ROI is the largest area of their overlap image above the mid-point of its
     50th and 95th percentile, holes filled. ROIs overlapping an earlier one by 75 % or more are left out.
+    With plane 0, each plane's ROIs are found on their own (maxRois in each) and saved in one file with their
+    places, as detect_rois does.
     """
-    stack = _open_stack(entity, options["stack"], context, options)
+    _, stacks, every = _plane_stacks(entity, options["stack"], context, options)
+    height, width, _ = stacks[0].shape
+    found, shaped, areas, bins = [], 0, 0, 0
+    for stack in stacks:
+        rois, shapes, count, binned = _quicky(stack, options, context)
+        found.append(rois)
+        shaped += min(shapes, len(rois))
+        areas += count
+        bins += binned
+    rois = _placed_rois(found, every, options)
+    _save(entity, options["output"], {"imageSize": [height, width], "rois": rois}, context)
+    context.log(f"{_name(entity)}: {len(rois)} ROIs from {areas} areas in {bins} bins")
+    result = {"rois": len(rois), "areas": [roi["area"] for roi in rois]}
+    if options.get("useShapeDetection", False):
+        result["shapeRois"] = shaped
+    if every:
+        result["planes"] = [{"plane": n + 1, "rois": len(pixels)} for n, pixels in enumerate(found)]
+    return result
+
+
+def _quicky(stack, options, context):
+    """Quicky's ROIs of a height x width x frames stack (their pixels), the number of them found by their shape, the
+    areas they were made from and the bins."""
     height, width, frames = stack.shape
     diameter = options["roiDiameter"]
     shape_wanted = options.get("useShapeDetection", False)
@@ -574,13 +651,7 @@ def quicky(entity, options, context):
         context.progress(0.8, "shape detection")
         shaped = shape_rois(average, int(options.get("innerRadius", 3)), int(options.get("outerRadius", 5)))
         rois = (shaped + [r for r in rois if not any(overlap(r, s) > 0.75 for s in shaped)])[:options["maxRois"]]
-    document = {"imageSize": [height, width], "rois": [_roi(n + 1, pixels) for n, pixels in enumerate(rois)]}
-    _save(entity, options["output"], document, context)
-    context.log(f"{_name(entity)}: {len(rois)} ROIs from {len(areas)} areas in {data.shape[2]} bins")
-    result = {"rois": len(rois), "areas": [len(r) for r in rois]}
-    if options.get("useShapeDetection", False):
-        result["shapeRois"] = min(len(shaped), len(rois))
-    return result
+    return rois, len(shaped), len(areas), data.shape[2]
 
 
 SHAPE_ANGLES = 48      # directions a soma's edge is looked for in
@@ -949,14 +1020,55 @@ def extract_signals(entity, options, context):
     The neuropil is a ring (neuropilGap pixels from the ROI, neuropilWidth wide), or with neuropilMethod "expansion"
     dev's: grown from the ROI until it covers neuropilExpansionFactor times the ROI's area outside every ROI (and
     neuropilSeparation pixels around them), by dilations that alternate between the four sides and the four
-    diagonals, as FISSA does."""
-    stack = _open_stack(entity, options["stack"], context, options)
-    height, width, frames = stack.shape
+    diagonals, as FISSA does. With plane 0, each ROI's signal is read from its own plane (its place; the ROIs of the
+    other channels are left out), and the ROIs of a plane are those every ROI and neuropil is reckoned with: the
+    columns are the ROIs in the file's order, whatever their planes, as data.traces and the viewer read them."""
     from nansen.frames import rois_at
-    # the ROIs of the plane and channel used, when they have places (dev's RoiGroup of several)
-    document = rois_at(context.project.load(entity, options["rois"]), options.get("plane", 1), options.get("channel", 1))
+    _, stacks, every = _plane_stacks(entity, options["stack"], context, options)
+    height, width, frames = stacks[0].shape
+    channel = int(options.get("channel", 1))
+    value = context.project.load(entity, options["rois"])
+    if every:   # the ROIs of the channel used, each on its plane
+        document = dict(value, rois=[roi for roi in value.get("rois", []) if roi.get("channel", channel) == channel])
+    else:   # the ROIs of the plane and channel used, when they have places (dev's RoiGroup of several)
+        document = rois_at(value, options.get("plane", 1), channel)
     kept = [roi for roi in document.get("rois", []) if options["includeRejected"] or roi.get("classification") != "rejected"]
-    masks = roi_masks(dict(document, rois=kept), height, width)
+    places = [_roi_plane(roi, len(stacks), options["rois"]) if every else 1 for roi in kept]
+    signals = np.full((frames, len(kept)), np.nan)
+    neuropil = np.full((frames, len(kept)), np.nan)
+    counts = []
+    for number, stack in enumerate(stacks):
+        columns = [i for i, place in enumerate(places) if place == number + 1]
+        counts.append(len(columns))
+        progress = lambda stop: context.progress((number + stop / frames) / len(stacks), f"frame {stop}/{frames}")
+        signals[:, columns], neuropil[:, columns] = _signals(stack, dict(document, rois=[kept[i] for i in columns]), options, context, progress)
+    _save(entity, options["output"], signals, context)
+    _save(entity, options["neuropilOutput"], neuropil, context)
+    context.log(f"{_name(entity)}: signals of {len(kept)} ROIs in {frames} frames")
+    result = {"rois": len(kept), "frames": frames, "ids": [roi.get("id", n + 1) for n, roi in enumerate(kept)],
+              "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
+              "meanNeuropil": [round_to(v, 4) for v in neuropil.mean(axis=0)]}
+    if every:
+        result["planes"] = [{"plane": n + 1, "rois": count} for n, count in enumerate(counts)]
+    return result
+
+
+def _roi_plane(roi, planes, name):
+    """The plane (from 1) of an ROI extracted with every plane: its place, or the one plane of a stack of one."""
+    plane = roi.get("plane")
+    if plane is None and planes == 1:
+        return 1
+    if plane is None:
+        raise NansenError("invalid-data", f"ROI {roi.get('id')} of {name} has no plane, so it is of every plane: extract its signals one plane at a time")
+    if not 1 <= int(plane) <= planes:
+        raise NansenError("invalid-data", f"ROI {roi.get('id')} of {name} is of plane {plane}; the stack has {planes}")
+    return int(plane)
+
+
+def _signals(stack, document, options, context, progress):
+    """The signals and neuropil (frames x ROIs) of the ROIs of an ROI file in a height x width x frames stack."""
+    height, width, frames = stack.shape
+    masks = roi_masks(document, height, width)
     signals = np.full((frames, len(masks)), np.nan)
     neuropil = np.full((frames, len(masks)), np.nan)
     union = np.zeros((height, width), dtype=bool)
@@ -980,13 +1092,8 @@ def extract_signals(entity, options, context):
                 signals[start:stop, i] = flat[inside[i]].astype(np.float64).mean(axis=0)
             if rings[i].size:
                 neuropil[start:stop, i] = flat[rings[i]].astype(np.float64).mean(axis=0)
-        context.progress(stop / frames, f"frame {stop}/{frames}")
-    _save(entity, options["output"], signals, context)
-    _save(entity, options["neuropilOutput"], neuropil, context)
-    context.log(f"{_name(entity)}: signals of {len(masks)} ROIs in {frames} frames")
-    return {"rois": len(masks), "frames": frames, "ids": [roi.get("id", n + 1) for n, roi in enumerate(kept)],
-            "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
-            "meanNeuropil": [round_to(v, 4) for v in neuropil.mean(axis=0)]}
+        progress(stop)
+    return signals, neuropil
 
 
 def roi_masks(document, height, width):
@@ -1380,11 +1487,10 @@ def export_stack(entity, options, context):
     """Frames firstFrame..lastFrame of the stack written to a file a chunk at a time, as dev's imviewer exports one:
     tiff (a page per frame), binary (dev's .raw beside its .ini), npy, or video (Motion JPEG AVI of 8-bit frames,
     the values from low to high scaled to 0..255; both 0 for the 0.5th and 99.5th percentiles of the first frames)."""
-    stack = _open_stack(entity, options["stack"], context, options)
+    stack = _open_stack(entity, options["stack"], context, options)   # frames firstFrame..lastFrame
     height, width, frames = stack.shape
-    first, last = int(options.get("firstFrame", 1)), int(options.get("lastFrame", 0)) or frames
-    if not 1 <= first <= last <= frames:
-        raise NansenError("invalid-options", f"frames {first} to {last} are not frames of the stack's {frames}")
+    first = int(options.get("firstFrame", 1))
+    last = first + frames - 1
     form = options.get("format", "tiff")
     if form not in EXPORT_FORMATS:
         raise NansenError("invalid-options", f"format is one of {', '.join(EXPORT_FORMATS)}")
@@ -1392,7 +1498,7 @@ def export_stack(entity, options, context):
     if not path.is_absolute():
         path = Path(context.project.folder) / path
     path.parent.mkdir(parents=True, exist_ok=True)
-    shape = (height, width, last - first + 1)
+    shape = (height, width, frames)
     from nansen.adapters import load_object
     adapters = Path(__file__).resolve().parent
     scale = None
@@ -1405,23 +1511,23 @@ def export_stack(entity, options, context):
     else:
         low, high = float(options.get("low", 0)), float(options.get("high", 0))
         if low == 0 and high == 0:
-            sample = np.asarray(stack.frames(first - 1, min(first - 1 + CHUNK, last)), dtype=np.float64).reshape(-1, 1)
+            sample = np.asarray(stack.frames(0, CHUNK), dtype=np.float64).reshape(-1, 1)
             low, high = float(_percentile(sample, 0.5)[0]), float(_percentile(sample, 99.5)[0])
         if high <= low:
             high = low + 1
         scale = (low, high)
         out = VideoWriter(path, shape)
     with out:
-        for start in range(first - 1, last, CHUNK):
+        for start in range(0, frames, CHUNK):
             context.check_cancelled()
-            stop = min(start + CHUNK, last)
+            stop = min(start + CHUNK, frames)
             chunk = stack.frames(start, stop)
             if scale is not None:
                 chunk = to_uint8(chunk, *scale)
-            out.write(start - first + 1, chunk)
-            context.progress((stop - first + 1) / (last - first + 1), f"frame {stop}/{last}")
+            out.write(start, chunk)
+            context.progress(stop / frames, f"frame {first + stop - 1}/{last}")
     context.log(f"{_name(entity)}: frames {first} to {last} written to {path}")
-    return {"frames": last - first + 1, "path": str(path), "format": form}
+    return {"frames": frames, "path": str(path), "format": form}
 
 
 def to_uint8(chunk, low, high):
@@ -1587,11 +1693,13 @@ def _fill(template, entity):
 def deinterleave(entity, options, context):
     """Frames of several channels and planes, interleaved in one height x width x frames stack, put in a
     height x width x channels (x planes) x frames stack: channel fastest, then plane (as ScanImage saves them).
-    Frames after the last whole volume are left out. Reads and writes a chunk at a time."""
-    stack = _open_stack(entity, options["stack"], context)
+    Frames after the last whole volume are left out. Reads and writes a chunk at a time. firstFrame..lastFrame count
+    the frames put together (volumes): frame k is the stack's frames (k - 1) x channels x planes + 1 to k x channels x
+    planes."""
     channels, planes = options["channels"], options["planes"]
-    height, width, total = stack.shape
     per = channels * planes
+    stack = _pick(_open_whole(entity, options["stack"], context, options, per), options["stack"], 1, 1)
+    height, width, total = stack.shape
     frames = total // per
     if frames == 0:
         raise NansenError("invalid-options", f"{options['stack']} has {total} frames, fewer than {channels} channels x {planes} planes")
@@ -1665,7 +1773,7 @@ def find_plane(entity, options, context):
 def crop(entity, options, context):
     """Rows firstRow..lastRow, columns firstColumn..lastColumn and frames firstFrame..lastFrame of the stack (from 1;
     0 for the last), saved as a new stack, as dev's StackCropper. Read and written a chunk at a time."""
-    stack = _open_stack(entity, options["stack"], context, options)
+    stack = _open_stack(entity, options["stack"], context, options)   # frames firstFrame..lastFrame
     height, width, frames = stack.shape
     def span(first, last, size, what):
         first, last = int(first), int(last) or size
@@ -1674,14 +1782,13 @@ def crop(entity, options, context):
         return first - 1, last
     top, bottom = span(options["firstRow"], options["lastRow"], height, "rows")
     left, right = span(options["firstColumn"], options["lastColumn"], width, "columns")
-    start, stop = span(options["firstFrame"], options["lastFrame"], frames, "frames")
-    shape = (bottom - top, right - left, stop - start)
+    shape = (bottom - top, right - left, frames)
     with context.project.stack_writer(entity, options["output"], shape, stack.dtype) as out:
-        for first in range(start, stop, CHUNK):
+        for start in range(0, frames, CHUNK):
             context.check_cancelled()
-            last = min(first + CHUNK, stop)
-            out.write(first - start, stack.frames(first, last)[top:bottom, left:right])
-            context.progress((last - start) / (stop - start), f"frame {last}/{stop}")
+            stop = min(start + CHUNK, frames)
+            out.write(start, stack.frames(start, stop)[top:bottom, left:right])
+            context.progress(stop / frames, f"frame {stop}/{frames}")
     context.log(f"{_name(entity)}: {shape[0]} x {shape[1]} x {shape[2]} kept")
     return {"height": shape[0], "width": shape[1], "frames": shape[2]}
 
@@ -1988,15 +2095,57 @@ def _open_stack(entity, name, context, options=None):
     """The variable as a height x width x frames stack read a chunk at a time (an image is one frame).
 
     A stack with channels (height x width x channels x frames) or planes too (x channels x planes x frames)
-    gives the options' channel and plane (1-based; the first when there is no such option).
+    gives the options' channel and plane (1-based; the first when there is no such option). Only the options'
+    frames firstFrame..lastFrame are given (_open_whole).
     """
+    options = options or {}
+    return _pick(_open_whole(entity, name, context, options), name, options.get("channel", 1), options.get("plane", 1))
+
+
+def _open_whole(entity, name, context, options=None, per=1):
+    """The variable as a stack of all its axes, height x width (x channels (x planes)) x frames (an image is one
+    frame), read a chunk at a time: of the options' frames firstFrame..lastFrame only (from 1; lastFrame 0 for the
+    last), per frames of the variable to each of them (deinterleave's channels x planes). A range that is empty or
+    not within the stack is invalid-options. In a preview, the range is cut to its first frames."""
     from nansen.stacks import from_array
+    options = options or {}
+    first, last = int(options.get("firstFrame", 1)), int(options.get("lastFrame", 0))
+    if first < 1 or last < 0 or 0 < last < first:
+        raise NansenError("invalid-options", f"frames {first} to {last} are no frames: firstFrame is from 1, and lastFrame 0 (the last) or from firstFrame")
     stack = context.project.open_stack(entity, name)
     if stack.ndim == 2:
         limit, stack.max_frames = stack.max_frames, None   # an image's columns are not frames
         stack = from_array(np.asarray(stack)[:, :, None])
         stack.max_frames = limit
-    return _pick(stack, name, (options or {}).get("channel", 1), (options or {}).get("plane", 1))
+        if first > 1 or last > 1:
+            raise NansenError("invalid-options", f"{name} is an image, one frame; frames {first} to {last} are not frames of it")
+        return stack
+    if first == 1 and last == 0:
+        return stack
+    try:
+        return context.project.open_stack(entity, name, ((first - 1) * per, last * per if last else None))
+    except NansenError as error:
+        if error.code != "invalid-params":
+            raise
+        raise NansenError("invalid-options", f"{name}: {error.message}") from None
+
+
+def _plane_stacks(entity, name, context, options):
+    """The stack of all its axes (_open_whole), the height x width x frames stacks of the options' channel in the planes
+    to take, and whether they are every plane: with plane 0, every plane of a stack with planes (height x width x
+    channels x planes x frames), one after the other; else the options' plane (a stack without planes is one plane)."""
+    whole = _open_whole(entity, name, context, options)
+    channel, plane = options.get("channel", 1), options.get("plane", 1)
+    if plane == 0 and whole.ndim == 5:
+        return whole, [_pick(whole, name, channel, p) for p in range(1, whole.shape[3] + 1)], True
+    return whole, [_pick(whole, name, channel, plane or 1)], False
+
+
+def _save_planes(entity, name, images, every, context):
+    """Images (height x width) of one plane, or with every plane, of each, saved as height x width x 1 x planes x 1: a
+    stack of one channel and one frame, its planes on their own axis, as data.frame's plane picks them."""
+    if name:
+        context.project.save(entity, name, np.stack(images, axis=2)[:, :, None, :, None] if every else images[0])
 
 
 def _pick(stack, name, channel, plane):

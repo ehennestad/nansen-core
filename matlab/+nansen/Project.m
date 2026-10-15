@@ -1814,12 +1814,15 @@ classdef Project < handle
             data = variable.inFile(data, paths(1));
         end
 
-        function stack = openStack(obj, entity, name)
+        function stack = openStack(obj, entity, name, frames)
             %openStack The variable as a nansen.Stack read a few frames at a time
             %
             %   An adapter with open reads only the frames asked for, and joins a
             %   recording kept in several files; for any other, the whole value is
-            %   read (load) and given as a stack.
+            %   read (load) and given as a stack. openStack(entity, name, [first,
+            %   last]) gives frames first..last only (1-based; last Inf for the
+            %   last), as Stack.cut: a preview then cuts that range, not the
+            %   recording, to its first frames.
             variable = obj.dataVariable(name);
             paths = obj.existingFiles(entity, name);
             if isempty(paths)
@@ -1835,6 +1838,9 @@ classdef Project < handle
                 stack = nansen.Stack.fromArray(obj.load(entity, name));
             end
             stack.MaxFrames = obj.StackFrameLimit;
+            if nargin >= 4 && ~isempty(frames)
+                stack = stack.cut(frames(1), frames(2));
+            end
         end
 
         function [stack, adapterId, candidates] = openFileStack(obj, path, adapterId)

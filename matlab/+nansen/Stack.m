@@ -82,6 +82,27 @@ classdef Stack
             out.Metadata = obj.Metadata;
         end
 
+        function out = cut(obj, first, last)
+            %cut Frames first..last (1-based; last Inf for the last) as a stack, still lazy: its frame 1 is frame first
+            %
+            %   A range that is empty or not within the stack is refused
+            %   (invalid-params). As Python's Stack.cut.
+            count = obj.numFrames();
+            first = double(first);
+            last = double(last);
+            if isinf(last)
+                last = count;
+            end
+            if first < 1 || last < first || last > count || first ~= round(first) || last ~= round(last)
+                nansen.internal.throwError("invalid-params", "frames %d to %d (from 1) are not frames of a stack of %d", first, last, count)
+            end
+            source = obj;
+            out = nansen.Stack([obj.Size(1:end - 1), last - first + 1], obj.ClassName, ...
+                @(a, b) source.frames(first - 1 + a, first - 1 + b));
+            out.MaxFrames = obj.MaxFrames;
+            out.Metadata = obj.Metadata;
+        end
+
         function varargout = size(obj, dim)
             dimensions = obj.Size;
             if nargin > 1

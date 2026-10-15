@@ -32,11 +32,14 @@ class PreviewProject:
     def __getattr__(self, name):
         return getattr(self._project, name)
 
-    def open_stack(self, entity, name: str) -> Stack:
+    def open_stack(self, entity, name: str, frames=None) -> Stack:
+        """The stack cut to its first frames; with frames (start, stop), those of that range (Project.open_stack)."""
         if name in self.saved:
             stack = as_stack(self.saved[name])
+            if frames is not None:
+                stack = stack.cut(*frames)
         else:
-            whole = self._project.open_stack(entity, name)
+            whole = self._project.open_stack(entity, name, frames)
             count = min(self.frames, whole.shape[-1])
             if whole.ndim < 3 or count == whole.shape[-1]:
                 stack = whole

@@ -549,3 +549,161 @@ def test_a_stack_is_exported_as_video(tmp_path):
         assert np.corrcoef(frame.ravel(), raw[:, :, 5].ravel())[0, 1] > 0.95   # JPEG is lossy: the same picture
     finally:
         api.close()
+
+
+def _ophys_api(tmp_path):
+    """The ophys conformance project with its TIFF recordings as TwoPhotonSeries_Original (session s2: 32 x 32 x 40)."""
+    from nansen.api import Api
+    folder = tmp_path / "project"
+    shutil.copytree(Path(__file__).resolve().parents[2] / "conformance" / "api" / "ophys" / "project", folder)
+    api = Api(start_queue=False)
+    for method, params in [("project.open", {"path": str(folder)}), ("project.scan", {}), ("project.sync", {}),
+                           ("tools.run", {"methodId": "ophys.setup_variables", "options": {"rawFilePattern": "tiff", "rawFileAdapter": "ophys.tiff_stack"}})]:
+        assert "result" in api.handle({"id": 1, "method": method, "params": params}), method
+    return api
+
+
+def _run(api, method, options, preview=None):
+    key = {"subject_id": "m1", "session_id": "s2"}
+    if preview:
+        params = {"methodId": method, "entityType": "session", "key": key, "options": options, "frames": preview}
+        response = api.handle({"id": 2, "method": "methods.preview", "params": params})
+    else:
+        params = {"methodId": method, "entityType": "session", "keys": [key], "options": options}
+        response = api.handle({"id": 2, "method": "methods.run", "params": params})
+    if "error" in response:
+        raise NansenError(response["error"]["code"], response["error"]["message"])
+    return response["result"] if preview else response["result"]["results"][0]
+
+
+def test_a_stack_is_cut_to_a_range_of_frames():
+    from nansen.stacks import from_array
+    data = np.arange(2 * 3 * 10).reshape(2, 3, 10)
+    stack = from_array(data)
+    cut = stack.cut(3, 7)
+    assert cut.shape == (2, 3, 4) and (np.asarray(cut) == data[:, :, 3:7]).all()
+    assert (cut.frames(1, 3) == data[:, :, 4:6]).all() and (cut.cut(1).frames(0, 10) == data[:, :, 4:7]).all()
+    for start, stop in ((7, 7), (-1, 3), (9, 11)):
+        with pytest.raises(NansenError) as error:
+            stack.cut(start, stop)
+        assert error.value.code == "invalid-params"
+
+
+def test_methods_work_on_a_range_of_frames(tmp_path):
+    api = _ophys_api(tmp_path)
+    round_to = ophys["round_to"]
+    try:
+        entity = api.project.entity("session", {"subject_id": "m1", "session_id": "s2"})
+        raw = np.asarray(api.project.load(entity, "TwoPhotonSeries_Original"), dtype=np.float64)
+        none = {"stack": "TwoPhotonSeries_Original", "averageOutput": "", "maximumOutput": "", "frameStatsOutput": ""}
+        stats = _run(api, "ophys.image_stats", dict(none, firstFrame=5, lastFrame=24))
+        part = raw[:, :, 4:24]
+        assert stats["n_frames"] == 20 and stats["mean_intensity"] == round_to(part.mean(), 4) and stats["max_intensity"] == part.max()
+        assert _run(api, "ophys.image_stats", dict(none, firstFrame=31))["n_frames"] == 10   # lastFrame 0: to the last
+        for wrong in ({"firstFrame": 41}, {"lastFrame": 41}, {"firstFrame": 6, "lastFrame": 5}, {"firstFrame": 0}):
+            with pytest.raises(NansenError) as error:
+                _run(api, "ophys.image_stats", dict(none, **wrong))
+            assert error.value.code == "invalid-options", wrong
+        # the outputs have the frames processed
+        options = {"stack": "TwoPhotonSeries_Original", "firstFrame": 11, "lastFrame": 30, "referenceFrames": 5}
+        assert _run(api, "ophys.motion_correction", options)["frames"] == 20
+        assert api.project.load(entity, "TwoPhotonSeries_Corrected", cached=False).shape == (32, 32, 20)
+        assert api.project.load(entity, "MotionCorrectionShifts", cached=False).shape == (20, 2)
+        api.project.save(entity, "RoiArray", {"imageSize": [32, 32], "rois": [{"id": 1, "pixels": [[10, 10], [10, 11], [11, 10]]}]})
+        signals = _run(api, "ophys.extract_signals", {"stack": "TwoPhotonSeries_Original", "firstFrame": 3, "lastFrame": 9})
+        assert signals["frames"] == 7 and api.project.load(entity, "RoiSignals_MeanF", cached=False).shape == (7, 1)
+        assert signals["meanSignal"] == [round_to(raw[[10, 10, 11], [10, 11, 10], 2:9].mean(), 4)]
+        smoothed = _run(api, "ophys.denoise", {"stack": "TwoPhotonSeries_Original", "firstFrame": 2, "lastFrame": 13})
+        assert smoothed["frames"] == 12 and api.project.load(entity, "TwoPhotonSeries_Denoised", cached=False).shape == (32, 32, 12)
+        assert _run(api, "ophys.downsample", {"stack": "TwoPhotonSeries_Original", "firstFrame": 9, "temporalFactor": 4})["frames"] == 8
+        # deinterleaving counts the frames put together: pairs 3..6 are frames 5..12
+        assert _run(api, "ophys.deinterleave", {"stack": "TwoPhotonSeries_Original", "channels": 2, "firstFrame": 3, "lastFrame": 6})["frames"] == 4
+        both = api.project.load(entity, "TwoPhotonSeries_Deinterleaved", cached=False)
+        assert both.shape == (32, 32, 2, 4) and (both[:, :, 1, 0] == raw[:, :, 5]).all()
+        # crop and export, which had a range of their own, keep it
+        assert _run(api, "ophys.crop", {"stack": "TwoPhotonSeries_Original", "firstFrame": 4, "lastFrame": 8})["frames"] == 5
+        assert (api.project.load(entity, "TwoPhotonSeries_Cropped", cached=False) == raw[:, :, 3:8]).all()
+        # a preview runs on the first frames of the range, and refuses a range outside the whole recording
+        preview = _run(api, "ophys.image_stats", dict(none, firstFrame=21, lastFrame=40), preview=5)["results"][0]
+        assert preview["n_frames"] == 5 and preview["mean_intensity"] == round_to(raw[:, :, 20:25].mean(), 4)
+        assert _run(api, "ophys.image_stats", dict(none, firstFrame=39), preview=5)["results"][0]["n_frames"] == 2
+        with pytest.raises(NansenError) as error:
+            _run(api, "ophys.image_stats", dict(none, lastFrame=41), preview=5)
+        assert error.value.code == "invalid-options"
+        # an image is one frame
+        _run(api, "ophys.image_stats", {"stack": "TwoPhotonSeries_Original"})
+        assert _run(api, "ophys.image_stats", dict(none, stack="FovAverageProjection", lastFrame=1))["n_frames"] == 1
+        with pytest.raises(NansenError):
+            _run(api, "ophys.image_stats", dict(none, stack="FovAverageProjection", firstFrame=2))
+    finally:
+        api.close()
+
+
+def test_every_plane_is_processed_in_one_run_as_each_would_be_alone(tmp_path):
+    api = _ophys_api(tmp_path)
+    try:
+        entity = api.project.entity("session", {"subject_id": "m1", "session_id": "s2"})
+        load = lambda name: api.project.load(entity, name, cached=False)
+        raw = np.asarray(api.project.load(entity, "TwoPhotonSeries_Original"))
+        planes = np.stack([raw, np.roll(raw[::-1], 3, axis=2)], axis=2)[:, :, None]   # 32 x 32 x 1 channel x 2 planes x 40
+        api.project.save(entity, "Planes", planes)
+        for name in ("Aligned", "Aligned1", "Aligned2"):   # the variables written a chunk at a time, as .npy
+            api.project.save(entity, name, np.zeros((2, 2)))
+        motion = {"stack": "Planes", "referenceFrames": 5, "patches": 2, "subpixel": True, "bidirectionalCorrection": "constant"}
+        alone = [_run(api, "ophys.motion_correction", dict(motion, plane=p, output=f"Aligned{p}", shiftsOutput=f"Shifts{p}")) for p in (1, 2)]
+        every = _run(api, "ophys.motion_correction", dict(motion, plane=0, output="Aligned", shiftsOutput="Shifts"))
+        assert every["planes"] == [dict(plane=p, **{k: v for k, v in alone[p - 1].items() if k != "frames"}) for p in (1, 2)]
+        assert every["maxShift"] == max(a["maxShift"] for a in alone)
+        aligned = load("Aligned")
+        assert aligned.shape == (32, 32, 1, 2, 40)   # as the recording: height x width x channels x planes x frames
+        for p in (1, 2):
+            assert np.array_equal(aligned[:, :, :, p - 1], load(f"Aligned{p}"))
+        shifts = load("Shifts")
+        assert shifts.shape == (40, 2, 8)   # the planes' shifts joined along their last axis: frames x 2 x (patches x planes)
+        assert np.array_equal(shifts[:, :, 4:], load("Shifts2"))
+        # image statistics: of them all and of each, the projections a frame per plane
+        pick = lambda s: {k: s[k] for k in ("mean_intensity", "max_intensity")}
+        each = [_run(api, "ophys.image_stats", {"stack": "Aligned", "plane": p, "averageOutput": f"Average{p}", "frameStatsOutput": f"Stats{p}",
+                                                "maximumOutput": ""}) for p in (1, 2)]
+        stats = _run(api, "ophys.image_stats", {"stack": "Aligned", "plane": 0, "averageOutput": "Average", "frameStatsOutput": "Stats",
+                                                "maximumOutput": ""})
+        assert [pick(s) for s in each] == [pick(s) for s in stats["planes"]]
+        average = load("Average")
+        assert average.shape == (32, 32, 1, 2, 1) and np.array_equal(average[:, :, 0, 1, 0], load("Average2"))
+        assert np.array_equal(load("Stats")[:, 4:], load("Stats2"))
+        frame = api.handle({"id": 3, "method": "data.frame", "params": {"entityType": "session", "key": entity.key, "variable": "Average", "plane": 1}})
+        assert (frame["result"]["frames"], frame["result"]["planes"]) == (1, 2)
+        # ROIs of every plane in one file, with their places; the signals of each from its own plane
+        options = {"stack": "Aligned", "threshold": 0.3, "border": 3, "minSize": 4}
+        found = []
+        for p in (1, 2):
+            _run(api, "ophys.detect_rois", dict(options, plane=p))
+            found.append(load("RoiArray")["rois"])
+        detected = _run(api, "ophys.detect_rois", dict(options, plane=0))
+        rois = load("RoiArray")["rois"]
+        assert detected["rois"] == len(found[0]) + len(found[1]) and len(found[0]) > 0 and len(found[1]) > 0
+        assert [r["id"] for r in rois] == list(range(1, len(rois) + 1))
+        assert [(r["plane"], r["channel"], r["pixels"]) for r in rois] == [(p, 1, r["pixels"]) for p in (1, 2) for r in found[p - 1]]
+        signals = _run(api, "ophys.extract_signals", {"stack": "Aligned", "plane": 0})
+        assert signals["planes"] == [{"plane": p, "rois": len(found[p - 1])} for p in (1, 2)]
+        together = load("RoiSignals_MeanF")
+        for p in (1, 2):
+            one = _run(api, "ophys.extract_signals", {"stack": "Aligned", "plane": p, "output": f"Signals{p}", "neuropilOutput": ""})
+            assert one["ids"] == [r["id"] for r in rois if r["plane"] == p]   # the ROIs of the plane, by their place
+            columns = [n for n, r in enumerate(rois) if r["plane"] == p]
+            assert np.array_equal(together[:, columns], load(f"Signals{p}"), equal_nan=True)
+        quick = _run(api, "ophys.quicky", {"stack": "Aligned", "plane": 0, "roiDiameter": 4, "output": "Quick"})
+        assert [p["plane"] for p in quick["planes"]] == [1, 2] and quick["rois"] == sum(p["rois"] for p in quick["planes"])
+        # ROIs without places are of every plane: not one plane's to extract
+        api.project.save(entity, "Unplaced", {"imageSize": [32, 32], "rois": [{"id": 1, "pixels": [[3, 3]]}]})
+        with pytest.raises(NansenError) as error:
+            _run(api, "ophys.extract_signals", {"stack": "Aligned", "plane": 0, "rois": "Unplaced"})
+        assert error.value.code == "invalid-data"
+        # of a stack without planes, plane 0 is its one plane
+        assert _run(api, "ophys.image_stats", {"stack": "TwoPhotonSeries_Original", "plane": 0, "averageOutput": ""}) == \
+            _run(api, "ophys.image_stats", {"stack": "TwoPhotonSeries_Original", "plane": 1, "averageOutput": ""})
+        with pytest.raises(NansenError) as error:   # a method that takes one plane at a time
+            _run(api, "ophys.denoise", {"stack": "Aligned", "plane": 0})
+        assert error.value.code == "invalid-options"
+    finally:
+        api.close()

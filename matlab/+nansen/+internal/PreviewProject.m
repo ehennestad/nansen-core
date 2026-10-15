@@ -45,12 +45,19 @@ classdef PreviewProject < handle
             value = obj.Inner.dataVariable(name);
         end
 
-        function stack = openStack(obj, entity, name)
+        function stack = openStack(obj, entity, name, frames)
+            %openStack The stack cut to its first Frames frames; with [first, last], those of that range (Project.openStack)
+            if nargin < 4
+                frames = [];
+            end
             at = find(obj.Names == string(name), 1);
             if ~isempty(at)
                 stack = nansen.Stack.fromArray(obj.Values{at});
+                if ~isempty(frames)
+                    stack = stack.cut(frames(1), frames(2));
+                end
             else
-                whole = obj.Inner.openStack(entity, name);
+                whole = obj.Inner.openStack(entity, name, frames);
                 count = min(obj.Frames, whole.Size(end));
                 if numel(whole.Size) < 3 || count == whole.Size(end)
                     stack = whole;

@@ -1120,12 +1120,18 @@ class Project:
             raise NansenError("data-not-found", f"{path} has no variable {name!r} (for {variable.name!r})")
         return value[name]
 
-    def open_stack(self, entity: Entity, name: str) -> Stack:
+    def open_stack(self, entity: Entity, name: str, frames: Optional[Tuple[int, Optional[int]]] = None) -> Stack:
         """The variable as a stack read a few frames at a time (nansen.stacks.Stack).
 
         An adapter with ``open`` reads only the frames asked for, and joins a recording kept in several
-        files; for any other, the whole value is read (``load``) and given as a stack.
+        files; for any other, the whole value is read (``load``) and given as a stack. ``frames`` (start, stop)
+        gives frames start..stop-1 only (0-based; stop None for the last), as ``Stack.cut``: a preview then
+        cuts that range, not the recording, to its first frames.
         """
+        stack = self._open_stack(entity, name)
+        return stack if frames is None else stack.cut(*frames)
+
+    def _open_stack(self, entity: Entity, name: str) -> Stack:
         variable = self.data_variable(name)
         existing = self.existing_files(entity, name)
         if not existing:

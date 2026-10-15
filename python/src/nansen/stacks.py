@@ -107,6 +107,18 @@ class Stack:
         shape = np.empty(self.shape[:-1] + (0,), dtype=self.dtype)[index].shape[:-1] + (self.frame_count,)
         return Stack(shape, self.dtype, lambda start, stop: self.frames(start, stop)[index], self.metadata)
 
+    def cut(self, start: int, stop: Optional[int] = None) -> "Stack":
+        """Frames start..stop-1 (0-based; stop None for the last) as a stack, still lazy: its frame 0 is frame start.
+        A range that is empty or not within the stack is refused (invalid-params)."""
+        count = self.frame_count
+        start, stop = int(start), count if stop is None else int(stop)
+        if not 0 <= start < stop <= count:
+            raise NansenError("invalid-params", f"frames {start + 1} to {stop} (from 1) are not frames of a stack of {count}")
+        out = Stack(self.shape[:-1] + (stop - start,), self.dtype,
+                    lambda a, b: self.frames(start + a, start + b), self.metadata)
+        out.max_frames = self.max_frames
+        return out
+
     def __array__(self, dtype=None, copy=None):
         data = self.frames(0, self.frame_count)   # with max_frames below the frame count, this is refused
         return data if dtype is None else data.astype(dtype)

@@ -160,8 +160,10 @@
     const roiPick = roiVariables.length > 1 ? h("select.input", { on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; select(null); show(); } } },
       roiVariables.map((v) => h("option", { value: v }, v))) : null;
     // channel and plane pickers, shown once the stack turns out to have more than one
-    const channelPick = h("select.input.viewer-channel", { style: { display: "none" }, on: { change: () => { state.channel = Number(channelPick.value); show(); } } });
-    const planePick = h("select.input.viewer-plane", { style: { display: "none" }, on: { change: () => { state.plane = Number(planePick.value); show(); } } });
+    // ROIs with places belong to a plane and channel: another place has its own, read again, and its own undo
+    const toPlace = (change) => { change(); state.rois = null; state.undo = []; state.redo = []; select(null); show(); };
+    const channelPick = h("select.input.viewer-channel", { style: { display: "none" }, on: { change: () => toPlace(() => { state.channel = Number(channelPick.value); }) } });
+    const planePick = h("select.input.viewer-plane", { style: { display: "none" }, on: { change: () => toPlace(() => { state.plane = Number(planePick.value); }) } });
     const fillPick = (select, count, label, value) => {
       if (select.options.length !== count) N.fill(select, Array.from({ length: count }, (_, i) => h("option", { value: i, selected: i === value }, `${label} ${i + 1}`)));
       select.style.display = count > 1 ? "" : "none";
@@ -576,7 +578,15 @@
             const probe = await app.client.request("data.traces", { entityType, key, variables: [signal.variable], columns: [] });
             signal.counts[signal.variable] = probe.traces[0].count;
           }
-          const map = N.roiColumns(state.rois, signal.counts[signal.variable]);
+          let map = N.roiColumns(state.rois, signal.counts[signal.variable]);
+          if (!map && state.roiVariable) {
+            // signals of every plane in one run (plane 0) have a column for each ROI of the file, whatever its plane,
+            // while the image shows the ROIs of one plane: the columns follow the file's order of them all
+            try {
+              const all = await app.client.request("data.traces", { entityType, key, variables: [signal.variable], columns: [], rois: state.roiVariable });
+              map = N.roiColumns(all.rois, signal.counts[signal.variable]);
+            } catch (error) { map = null; }   // no ROI file yet: the live signal
+          }
           column = map ? map.get(selected) : undefined;
           live = column === undefined;   // added since the signals were extracted
         }

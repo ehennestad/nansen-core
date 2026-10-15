@@ -3,11 +3,14 @@ function result = deinterleave(entity, options, context)
 %
 %   Channel fastest, then plane, as ScanImage saves them. Frames after the
 %   last whole volume are left out. Reads and writes a chunk at a time.
-    stack = ophys.internal.openStack(context, entity, options.stack);
+%   firstFrame..lastFrame count the frames put together (volumes): frame k
+%   is the stack's frames (k - 1) x channels x planes + 1 to k x channels x
+%   planes. As Python's ophys_methods.deinterleave.
     channels = double(options.channels);
     planes = double(options.planes);
-    [height, width, total] = size(stack);
     per = channels * planes;
+    stack = ophys.internal.pick(ophys.internal.openWhole(context, entity, options.stack, options, per), options.stack, 1, 1);
+    [height, width, total] = size(stack);
     frames = floor(total / per);
     if frames == 0
         nansen.internal.throwError("invalid-options", "%s has %d frames, fewer than %d channels x %d planes", options.stack, total, channels, planes)

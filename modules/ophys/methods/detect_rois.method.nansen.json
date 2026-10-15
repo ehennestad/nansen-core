@@ -52,6 +52,20 @@
         "title": "Border left out (px)",
         "description": "Pixels this close to the edge are not part of any ROI: after motion correction they are partly filled with 0, and correlate"
       },
+      "firstFrame": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "First frame",
+        "description": "The first frame to process, from 1 (dev's frame interval): the method works on frames firstFrame..lastFrame only, and its outputs have that many frames."
+      },
+      "lastFrame": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Last frame",
+        "description": "The last frame to process; 0 for the last frame of the stack."
+      },
       "channel": {
         "type": "integer",
         "default": 1,
@@ -62,9 +76,9 @@
       "plane": {
         "type": "integer",
         "default": 1,
-        "minimum": 1,
+        "minimum": 0,
         "title": "Plane",
-        "description": "Of a stack with planes (height x width x channels x planes x frames): the one to use, from 1"
+        "description": "Of a stack with planes (height x width x channels x planes x frames): the one to use, from 1, or 0 for every plane, one after the other, in one run"
       }
     }
   }

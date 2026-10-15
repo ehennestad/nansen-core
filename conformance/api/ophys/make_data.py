@@ -183,6 +183,112 @@ def frame_stats(stack):
     return np.stack([flat.mean(axis=0), flat.min(axis=0), flat.max(axis=0), flat.std(axis=0)], axis=1)
 
 
+def moved_back(frame, dy, dx):
+    """A frame displaced by (dy, dx) moved back: out[y, x] = frame[y + dy, x + dx], 0 outside."""
+    out = np.zeros((HEIGHT, WIDTH))
+    for y in range(HEIGHT):
+        for x in range(WIDTH):
+            if 0 <= y + dy < HEIGHT and 0 <= x + dx < WIDTH:
+                out[y, x] = frame[y + dy, x + dx]
+    return out
+
+
+def ranges_and_planes_expected(recording, aligned, shifts, disks, scanimage):
+    """What the steps of frame ranges (firstFrame..lastFrame) and of every plane in one run (plane 0) expect.
+
+    Session 1's recording deinterleaved as 2 planes is the recording of two planes: the even frames (from 0) are
+    plane 1, the odd ones plane 2. Each plane is aligned to its own first frame: plane 1 to frame 0 (no shift), so its
+    shifts are the true ones; plane 2 to frame 1, so its shifts are the true ones less frame 1's, and its cells are
+    the disks displaced by frame 1's shift."""
+    four = lambda v: math.floor(v * 10000 + 0.5) / 10000
+    motion = lambda found: {"maxShift": int(np.abs(found).max()), "meanShift": round_to(np.sqrt((found ** 2).sum(axis=1)).mean(), 4)}
+    pixels = lambda mask: [[int(y), int(x)] for y, x in zip(*np.nonzero(mask))]
+    union = np.any(disks, axis=0)
+    signals = np.stack([aligned[d].mean(axis=0) for d in disks], axis=1)
+    neuropil = np.stack([aligned[ring(d, union, 1, 3)].mean(axis=0) for d in disks], axis=1)
+    expected = {}
+    # frames 11..30 (from 1) of the raw recording
+    part = recording[:, :, 10:30].astype(float)
+    expected["rangeStats"] = {"n_frames": 20, "height": HEIGHT, "width": WIDTH, "mean_intensity": round_to(part.mean(), 4), "max_intensity": float(part.max())}
+    # motion correction of frames 1..25: the reference is frame 1, at no shift, so the shifts are the true ones
+    expected["rangeMotion"] = dict(frames=25, **motion(shifts[:25]))
+    expected["rangeFrame"] = {"frames": 25, "frame": 3, **frame_bytes(aligned[:, :, 3], (0, 1000))}
+    # of frames 11..30: the reference is frame 11, so each frame's shift is its own less frame 11's
+    expected["rangeMotionLater"] = dict(frames=20, **motion(shifts[10:30] - shifts[10]))
+    # ROIs and signals of frames 6..25 of the aligned frames 1..25: aligned frames 6..25
+    expected["rangeRois"] = {"rois": len(disks), "areas": [int(d.sum()) for d in disks]}
+    expected["rangeSignals"] = {"rois": len(disks), "frames": 20, "ids": [1, 2, 3],
+                                "meanSignal": [round_to(v, 4) for v in signals[5:25].mean(axis=0)],
+                                "meanNeuropil": [round_to(v, 4) for v in neuropil[5:25].mean(axis=0)]}
+    expected["rangeSignalTraces"] = {"frames": 20, "traces": [{"variable": "RoiSignals_Range", "count": 3}]}
+    # a preview of frames 11..30 on its first 5 frames: frames 11..15
+    first = recording[:, :, 10:15].astype(float)
+    expected["rangePreview"] = {"frames": 5, "results": [{"n_frames": 5, "mean_intensity": round_to(first.mean(), 4), "max_intensity": float(first.max())}],
+                                "outputs": [{"name": "FovAverageProjection", "size": [32, 32]}, {"name": "FovMaximumProjection", "size": [32, 32]},
+                                            {"name": "FrameStats", "size": [5, 4]}]}
+    # deinterleaved as 2 channels, pairs 3..6 (from 1): channel 2 (from 0: 1) of pair 3 is frame 6 (from 1)
+    expected["rangeDeinterleave"] = {"frames": 4, "channels": 2, "planes": 1}
+    expected["rangePairsFrame"] = {"height": HEIGHT, "width": WIDTH, "frames": 4, "channels": 2, "planes": 1, "frame": 0,
+                                   **frame_bytes(recording[:, :, 5].astype(float))}
+
+    even, odd = shifts[0::2], shifts[1::2]
+    relative = odd - shifts[1]
+    one = np.stack([moved_back(recording[:, :, 2 * k].astype(float), *even[k]) for k in range(FRAMES // 2)], axis=2)
+    two = np.stack([moved_back(recording[:, :, 2 * k + 1].astype(float), *relative[k]) for k in range(FRAMES // 2)], axis=2)
+    both = np.stack([one, two])
+    picked = list(range(0, 20, 4))
+    expected["planesDeinterleave"] = {"frames": 20, "channels": 1, "planes": 2}
+    expected["planesFrame"] = {"frames": 20, "channels": 1, "planes": 2, "frame": 2, **frame_bytes(recording[:, :, 5].astype(float))}
+    expected["planesMotion"] = dict(frames=20, **motion(np.concatenate([even, relative])),
+                                    planes=[dict(plane=1, **motion(even)), dict(plane=2, **motion(relative))])
+    expected["planesCorrectedFrame1"] = {"frames": 20, "channels": 1, "planes": 2, "frame": 1, **frame_bytes(one[:, :, 1], (0, 1000))}
+    expected["planesCorrectedFrame2"] = {"frames": 20, "channels": 1, "planes": 2, "frame": 2, **frame_bytes(two[:, :, 2], (0, 1000))}
+    # the shifts of the planes side by side: plane 1's rows and columns, then plane 2's
+    expected["planesShiftTraces"] = {"frames": 20, "start": 0, "step": 4, "points": 5, "traces": [{"variable": "PlaneShifts", "count": 4, "columns": [
+        {"column": 0, "values": [float(even[t, 0]) for t in picked]}, {"column": 3, "values": [float(relative[t, 1]) for t in picked]}]}]}
+    expected["planesStats"] = {"n_frames": 20, "height": HEIGHT, "width": WIDTH, "mean_intensity": round_to(both.mean(), 4), "max_intensity": float(both.max()),
+                               "planes": [{"plane": p + 1, "mean_intensity": round_to(s.mean(), 4), "max_intensity": float(s.max())} for p, s in enumerate(both)]}
+    # the average projections as a stack of one frame per plane; plane 2's
+    expected["planesAverage"] = {"frames": 1, "channels": 1, "planes": 2, "frame": 0, **frame_bytes(two.mean(axis=2), (0, 1000))}
+    expected["planesFrameStats"] = {"frames": 20, "traces": [{"variable": "PlaneFrameStats", "count": 8, "columns": [
+        {"column": 0, "values": [four(one[:, :, t].mean()) for t in picked]}, {"column": 4, "values": [four(two[:, :, t].mean()) for t in picked]}]}]}
+    # ROIs of both planes in one file, with their places: three in each (on 20 frames, plane 1's second cell is found
+    # a pixel too large, so only plane 2's are checked pixel by pixel; the pixels of plane 1's are then set to the disks)
+    dy, dx = shifts[1]
+    moved = [np.roll(d, (dy, dx), axis=(0, 1)) for d in disks]
+    expected["planesRois"] = {"rois": 6, "planes": [{"plane": 1, "rois": 3}, {"plane": 2, "rois": 3}]}
+    expected["planesRoisFirst"] = {"rois": [{"id": 1}, {"id": 2}, {"id": 3}]}
+    expected["planesRoisSecond"] = {"rois": [{"id": n + 4, "pixels": pixels(d)} for n, d in enumerate(moved)]}
+    expected["diskPixels"] = [{"id": n + 1, "pixels": pixels(d)} for n, d in enumerate(disks)]
+    expected["planesRoisCurated"] = {"added": [], "rois": expected["diskPixels"]}
+    # signals of each ROI from its own plane, the columns in the file's order; the neuropil around the ROIs of its plane
+    moved_union = np.any(moved, axis=0)
+    plane_signals = np.concatenate([np.stack([one[d].mean(axis=0) for d in disks], axis=1),
+                                    np.stack([two[d].mean(axis=0) for d in moved], axis=1)], axis=1)
+    plane_neuropil = np.concatenate([np.stack([one[ring(d, union, 1, 3)].mean(axis=0) for d in disks], axis=1),
+                                     np.stack([two[ring(d, moved_union, 1, 3)].mean(axis=0) for d in moved], axis=1)], axis=1)
+    expected["planesSignals"] = {"rois": 6, "frames": 20, "ids": [1, 2, 3, 4, 5, 6],
+                                 "meanSignal": [round_to(v, 4) for v in plane_signals.mean(axis=0)],
+                                 "meanNeuropil": [round_to(v, 4) for v in plane_neuropil.mean(axis=0)],
+                                 "planes": [{"plane": 1, "rois": 3}, {"plane": 2, "rois": 3}]}
+    expected["planesSignalTraces"] = {"frames": 20, "start": 0, "step": 4, "points": 5, "traces": [{"variable": "RoiSignals_Planes", "count": 6, "columns": [
+        {"column": c, "values": [four(plane_signals[t, c]) for t in picked]} for c in (0, 3)]}], "rois": [{"id": n} for n in range(1, 7)]}
+    f = plane_signals - 0.7 * plane_neuropil
+    f0 = np.array([percentile(f[:, i], 20) for i in range(6)])
+    dff = (f - f0) / f0
+    expected["planesDff"] = {"rois": 6, "frames": 20, "baseline": [round_to(v, 4) for v in f0], "maxDff": [round_to(v, 4) for v in dff.max(axis=0)]}
+    head = both[:, :, :, :4]
+    expected["planesPreview"] = {"frames": 4, "results": [{"n_frames": 4, "mean_intensity": round_to(head.mean(), 4), "max_intensity": float(head.max()),
+                                                           "planes": [{"plane": p + 1, "mean_intensity": round_to(head[p].mean(), 4)} for p in range(2)]}],
+                                 "outputs": [{"name": "FrameStats", "size": [4, 8]}]}
+    # ScanImage's channel 2 in both planes
+    second = scanimage[:, :, 1].astype(float)
+    expected["scanimagePlanes"] = {"n_frames": 3, "height": 16, "width": 64, "mean_intensity": round_to(second.mean(), 4), "max_intensity": float(second.max()),
+                                   "planes": [{"plane": p + 1, "mean_intensity": round_to(second[:, :, p].mean(), 4), "max_intensity": float(second[:, :, p].max())}
+                                              for p in range(2)]}
+    return expected
+
+
 def main():
     recording, aligned, shifts, disks, movie = scene(1)
     write_sciscan(HERE / "project/data/raw/sub-m1/ses-s1/rec.raw", recording)
@@ -363,6 +469,7 @@ def main():
     # the SciScan recording's metadata, and ophys.read_metadata writing it into session 1's columns
     expected["sciscanMetadata"] = {"frameRate": 30.9, "pixelSize": [round_to(5.12e-4 * 1e6 / WIDTH, 6), round_to(3.84e-4 * 1e6 / HEIGHT, 6)]}
     expected["readMetadata"] = {"frame_rate": 30.9, "pixel_size_um": expected["sciscanMetadata"]["pixelSize"][0]}
+    expected.update(ranges_and_planes_expected(recording, aligned, shifts, disks, scanimage))
     print(json.dumps(expected, indent=1))
 
 

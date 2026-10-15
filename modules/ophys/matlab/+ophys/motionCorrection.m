@@ -12,18 +12,13 @@ function result = motionCorrection(entity, options, context)
 %   written the same way, so a recording need not fit in memory. In a stack
 %   with channels, the shifts are found in the options' channel and every
 %   channel is aligned by them; in one with planes, the options' plane is
-%   aligned (height x width x channels x frames).
-    stack = ophys.internal.openStack(context, entity, options.stack, options);
-    whole = context.Project.openStack(entity, options.stack);
-    whole.MaxFrames = stack.MaxFrames;
-    if ndims(whole) == 5
-        target = whole.select(4, double(nansen.internal.getField(options, "plane", 1)));
-    elseif ndims(whole) == 4
-        target = whole;
-    else
-        target = [];   % the stack itself
-    end
-    [height, width, frames] = size(stack);
+%   aligned (height x width x channels x frames), or with plane 0 every
+%   plane, each by its own reference and shifts, one plane after the other
+%   in each chunk (height x width x channels x planes x frames; the planes'
+%   shifts joined along their last dimension). Only the frames
+%   firstFrame..lastFrame are aligned and written.
+    [whole, stacks, every] = ophys.internal.planeStacks(context, entity, options.stack, options);
+    [height, width, frames] = size(stacks{1});
     flyback = double(nansen.internal.getField(options, "numFlybackLines", 0));
     if flyback >= height - 1
         nansen.internal.throwError("invalid-options", "%d flyback lines leave too little of a frame of %d rows", flyback, height)
@@ -44,8 +39,13 @@ function result = motionCorrection(entity, options, context)
     elseif stretch ~= "none"
         nansen.internal.throwError("invalid-options", "stretchCorrection is none or sciscan, not '%s'", stretch)
     end
-    preparation = ophys.internal.ScanPreparation(stack, flyback, string(nansen.internal.getField(options, "bidirectionalCorrection", "none")), ...
-        double(nansen.internal.getField(options, "maxBidirectionalOffset", 10)), plan);
+    mode = string(nansen.internal.getField(options, "bidirectionalCorrection", "none"));
+    count = numel(stacks);
+    preparations = cell(1, count);
+    for p = 1:count
+        preparations{p} = ophys.internal.ScanPreparation(stacks{p}, flyback, mode, ...
+            double(nansen.internal.getField(options, "maxBidirectionalOffset", 10)), plan);
+    end
     height = height - flyback;
     subpixel = logical(nansen.internal.getField(options, "subpixel", false));
     patches = double(nansen.internal.getField(options, "patches", 1));
@@ -57,65 +57,108 @@ function result = motionCorrection(entity, options, context)
     columnEdges = ophys.internal.patchEdges(width, patches);
     weights = {ophys.internal.axisWeights(rowEdges, height), ophys.internal.axisWeights(columnEdges, width)};
     tapered = subpixel || patches > 1;   % whole-pixel rigid alignment works on the frames as they are
-    count = min(options.referenceFrames, frames);
-    reference = mean(double(preparation.prepare(stack.frames(1, count), 1)), 3);
+    referenceCount = min(options.referenceFrames, frames);
     outputType = string(nansen.internal.getField(options, "outputType", "same"));
     if ~ismember(outputType, ["same", "uint8", "uint16"])
         nansen.internal.throwError("invalid-options", "outputType is same, uint8 or uint16, not '%s'", outputType)
     end
-    low = 0;
-    high = 0;
-    if outputType ~= "same"
-        sample = double(preparation.prepare(stack.frames(1, min(ophys.internal.chunk(), frames)), 1));
-        saturation = double(nansen.internal.getField(options, "saturation", 0.5));
-        low = ophys.internal.percentileOf(sample(:), saturation);
-        high = ophys.internal.percentileOf(sample(:), 100 - saturation);
+    % each plane aligned: its stack, the frames written (with every channel; empty: the stack itself), preparation,
+    % reference and the limits its frames are recast between
+    planes = cell(1, count);
+    for p = 1:count
+        stack = stacks{p};
+        preparation = preparations{p};
+        target = [];
+        if ndims(whole) == 5
+            index = double(nansen.internal.getField(options, "plane", 1));
+            if every
+                index = p;
+            end
+            target = whole.select(4, index);
+        elseif ndims(whole) == 4
+            target = whole;
+        end
+        plane = struct();
+        plane.stack = stack;
+        plane.target = target;
+        plane.preparation = preparation;
+        plane.reference = mean(double(preparation.prepare(stack.frames(1, referenceCount), 1)), 3);
+        plane.low = 0;
+        plane.high = 0;
+        if outputType ~= "same"
+            sample = double(preparation.prepare(stack.frames(1, min(ophys.internal.chunk(), frames)), 1));
+            saturation = double(nansen.internal.getField(options, "saturation", 0.5));
+            plane.low = ophys.internal.percentileOf(sample(:), saturation);
+            plane.high = ophys.internal.percentileOf(sample(:), 100 - saturation);
+        end
+        planes{p} = plane;
     end
     iterations = options.iterations;
     for iteration = 1:iterations
         last = iteration == iterations;
-        shifts = zeros(frames, 2, patches, patches);
-        referenceFft = ophys.internal.referenceFft(reference, tapered);
-        patchFfts = cell(patches, patches);
-        for i = 1:patches
-            for j = 1:patches
-                patchFfts{i, j} = ophys.internal.referenceFft(reference(rowEdges(i) + 1:rowEdges(i + 1), columnEdges(j) + 1:columnEdges(j + 1)), true);
+        for p = 1:count
+            reference = planes{p}.reference;
+            planes{p}.shifts = zeros(frames, 2, patches, patches);
+            planes{p}.referenceFft = ophys.internal.referenceFft(reference, tapered);
+            patchFfts = cell(patches, patches);
+            for i = 1:patches
+                for j = 1:patches
+                    patchFfts{i, j} = ophys.internal.referenceFft(reference(rowEdges(i) + 1:rowEdges(i + 1), columnEdges(j) + 1:columnEdges(j + 1)), true);
+                end
             end
+            planes{p}.patchFfts = patchFfts;
+            planes{p}.total = zeros(height, width);
         end
-        total = zeros(height, width);
         if last
-            if isempty(target)
-                writer = context.Project.stackWriter(entity, options.output, [height, width, frames], outputClass(outputType, stack.ClassName));
+            first = planes{1};
+            if isempty(first.target)
+                writer = context.Project.stackWriter(entity, options.output, [height, width, frames], outputClass(outputType, first.stack.ClassName));
+            elseif every
+                writer = context.Project.stackWriter(entity, options.output, [height, width, first.target.Size(3:end - 1), count, frames], ...
+                    outputClass(outputType, first.target.ClassName));
             else
-                writer = context.Project.stackWriter(entity, options.output, [height, width, target.Size(3:end)], outputClass(outputType, target.ClassName));
+                writer = context.Project.stackWriter(entity, options.output, [height, width, first.target.Size(3:end)], outputClass(outputType, first.target.ClassName));
             end
         end
         for start = 1:ophys.internal.chunk():frames
             context.checkCancelled();
             stop = min(start + ophys.internal.chunk() - 1, frames);
-            chunk = preparation.prepare(stack.frames(start, stop), start);
-            if patches == 1
-                shifts(start:stop, :, 1, 1) = ophys.internal.estimateShifts(chunk, referenceFft, options.maxShift, subpixel, tapered);
-            else
-                rigid = ophys.internal.estimateShifts(chunk, referenceFft, options.maxShift, false, true);
-                shifts(start:stop, :, :, :) = ophys.internal.estimatePatchShifts(chunk, patchFfts, rowEdges, columnEdges, rigid, ...
-                    options.maxShift, deviation, subpixel);
-            end
-            here = shifts(start:stop, :, :, :);
-            if last
-                if isempty(target)
-                    writer.write(start, ophys.internal.recastFrames(ophys.internal.alignFrames(chunk, here, weights, subpixel), outputType, low, high));
+            aligned = cell(1, count);
+            for p = 1:count
+                plane = planes{p};
+                chunk = plane.preparation.prepare(plane.stack.frames(start, stop), start);
+                if patches == 1
+                    planes{p}.shifts(start:stop, :, 1, 1) = ophys.internal.estimateShifts(chunk, plane.referenceFft, options.maxShift, subpixel, tapered);
                 else
-                    channels = preparation.prepare(target.frames(start, stop), start);
-                    aligned = zeros(size(channels, 1:4), "like", channels);
+                    rigid = ophys.internal.estimateShifts(chunk, plane.referenceFft, options.maxShift, false, true);
+                    planes{p}.shifts(start:stop, :, :, :) = ophys.internal.estimatePatchShifts(chunk, plane.patchFfts, rowEdges, columnEdges, rigid, ...
+                        options.maxShift, deviation, subpixel);
+                end
+                here = planes{p}.shifts(start:stop, :, :, :);
+                if ~last
+                    planes{p}.total = planes{p}.total + sum(double(ophys.internal.alignFrames(chunk, here, weights, subpixel)), 3);
+                elseif isempty(plane.target)
+                    aligned{p} = ophys.internal.recastFrames(ophys.internal.alignFrames(chunk, here, weights, subpixel), outputType, plane.low, plane.high);
+                else
+                    channels = plane.preparation.prepare(plane.target.frames(start, stop), start);
+                    moved = zeros(size(channels, 1:4), "like", channels);
                     for c = 1:size(channels, 3)
-                        aligned(:, :, c, :) = reshape(ophys.internal.alignFrames(reshape(channels(:, :, c, :), height, width, []), ...
+                        moved(:, :, c, :) = reshape(ophys.internal.alignFrames(reshape(channels(:, :, c, :), height, width, []), ...
                             here, weights, subpixel), height, width, 1, []);
                     end
-                    writer.write(start, ophys.internal.recastFrames(aligned, outputType, low, high));
+                    aligned{p} = ophys.internal.recastFrames(moved, outputType, plane.low, plane.high);
                 end
-            else
-                total = total + sum(double(ophys.internal.alignFrames(chunk, here, weights, subpixel)), 3);
+            end
+            if last && every
+                n = stop - start + 1;
+                channelCount = size(aligned{1}, 3);
+                joined = zeros([height, width, channelCount, count, n], "like", aligned{1});
+                for p = 1:count
+                    joined(:, :, :, p, :) = reshape(aligned{p}, height, width, channelCount, 1, n);
+                end
+                writer.write(start, joined);
+            elseif last
+                writer.write(start, aligned{1});
             end
             context.progress(((iteration - 1) * frames + stop) / (iterations * frames), ...
                 sprintf("iteration %d: frame %d/%d", iteration, stop, frames));
@@ -123,37 +166,69 @@ function result = motionCorrection(entity, options, context)
         if last
             writer.close();
         end
-        reference = total / frames;
-    end
-    if patches == 1
-        saved = shifts(:, :, 1, 1);
-    else
-        saved = zeros(frames, 2, patches * patches);   % patch (i, j) at i * patches + j, from 0
-        for i = 1:patches
-            for j = 1:patches
-                saved(:, :, (i - 1) * patches + j) = shifts(:, :, i, j);
-            end
+        for p = 1:count
+            planes{p}.reference = planes{p}.total / frames;
         end
     end
-    if ~subpixel
-        saved = int32(saved);
+    saved = cell(1, count);
+    found = cell(1, count);
+    everyShift = zeros(frames, 2, patches, patches, count);
+    for p = 1:count
+        shifts = planes{p}.shifts;
+        everyShift(:, :, :, :, p) = shifts;
+        if patches == 1
+            kept = shifts(:, :, 1, 1);
+        else
+            kept = zeros(frames, 2, patches * patches);   % patch (i, j) at i * patches + j, from 0
+            for i = 1:patches
+                for j = 1:patches
+                    kept(:, :, (i - 1) * patches + j) = shifts(:, :, i, j);
+                end
+            end
+        end
+        if ~subpixel
+            kept = int32(kept);
+        end
+        saved{p} = kept;
+        found{p} = shiftSummary(shifts, subpixel);
+        if mode ~= "none"
+            found{p}.bidirectionalOffset = planes{p}.preparation.offset(1);
+        end
     end
-    ophys.internal.saveIf(context, entity, options.shiftsOutput, saved);
-    distance = sqrt(shifts(:, 1, :, :) .^ 2 + shifts(:, 2, :, :) .^ 2);
-    largest = max([0; abs(shifts(:))]);
-    if subpixel   % found to 1/20 of a pixel, and good to about a tenth
-        largest = ophys.internal.roundTo(largest, 1);
-        meanShift = ophys.internal.roundTo(mean(distance, "all"), 1);
+    if every
+        ophys.internal.saveIf(context, entity, options.shiftsOutput, cat(2 + (patches > 1), saved{:}));
+        summary = shiftSummary(everyShift, subpixel);
+        result = struct("frames", frames, "maxShift", summary.maxShift, "meanShift", summary.meanShift);
+        perPlane = cell(1, count);
+        for p = 1:count
+            perPlane{p} = struct("plane", p, "maxShift", found{p}.maxShift, "meanShift", found{p}.meanShift);
+            if isfield(found{p}, "bidirectionalOffset")
+                perPlane{p}.bidirectionalOffset = found{p}.bidirectionalOffset;
+            end
+        end
+        result.planes = perPlane;
     else
-        meanShift = ophys.internal.roundTo(mean(distance, "all"), 4);
+        ophys.internal.saveIf(context, entity, options.shiftsOutput, saved{1});
+        result = struct("frames", frames, "maxShift", found{1}.maxShift, "meanShift", found{1}.meanShift);
+        if isfield(found{1}, "bidirectionalOffset")
+            result.bidirectionalOffset = found{1}.bidirectionalOffset;
+        end
     end
-    context.log("%s: largest shift %g px", ophys.internal.entityName(entity), largest);
-    result = struct("frames", frames, "maxShift", largest, "meanShift", meanShift);
-    if preparation.Mode ~= "none"
-        result.bidirectionalOffset = preparation.offset(1);
-    end
+    context.log("%s: largest shift %g px", ophys.internal.entityName(entity), result.maxShift);
     if ~isempty(plan)
         result.stretchZoom = zoom;
+    end
+end
+
+function summary = shiftSummary(shifts, subpixel)
+    % The largest shift and the mean distance moved of shifts (frames x 2 x patches x patches (x planes)), rounded as
+    % the method returns them
+    distance = sqrt(shifts(:, 1, :, :, :) .^ 2 + shifts(:, 2, :, :, :) .^ 2);
+    largest = max([0; abs(shifts(:))]);
+    if subpixel   % found to 1/20 of a pixel, and good to about a tenth
+        summary = struct("maxShift", ophys.internal.roundTo(largest, 1), "meanShift", ophys.internal.roundTo(mean(distance, "all"), 1));
+    else
+        summary = struct("maxShift", largest, "meanShift", ophys.internal.roundTo(mean(distance, "all"), 4));
     end
 end
 

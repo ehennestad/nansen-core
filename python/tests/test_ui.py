@@ -1575,6 +1575,33 @@ def test_view_a_stack_with_channels_and_planes(empty_app, page):
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_signals_of_every_plane_follow_the_roi_on_its_plane(empty_app, page):
+    # every plane in one run (plane 0): one ROI file with places, and a signal column per ROI in the file's order
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    run = lambda method, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": s1, "options": options})
+    variable = lambda name: ("dataVariables.save", {"document": {"schemaType": "nansen.dataVariable", "schemaVersion": "0.1.0", "name": name,
+                                                                 "entityType": "session", "dataLocation": "processed", "subfolder": "ophys",
+                                                                 "fileName": name + ".npy", "fileAdapter": "npy", "dataType": "ImageStack"}})
+    ophys_project(empty_app, [variable("TwoPhotonSeries_Planes"), variable("TwoPhotonSeries_PlanesCorrected"),
+                              run("ophys.deinterleave", channels=1, planes=2, output="TwoPhotonSeries_Planes"),
+                              run("ophys.motion_correction", stack="TwoPhotonSeries_Planes", plane=0, referenceFrames=1, maxShift=8,
+                                  output="TwoPhotonSeries_PlanesCorrected", shiftsOutput=""),
+                              run("ophys.detect_rois", stack="TwoPhotonSeries_PlanesCorrected", plane=0, threshold=0.25, border=5, minSize=10),
+                              run("ophys.extract_signals", stack="TwoPhotonSeries_PlanesCorrected", plane=0), run("ophys.compute_dff")])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_PlanesCorrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_PlanesCorrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+    page.select_option(".viewer-plane", "1")   # the second plane: its own ROIs, 4 to 6
+    page.wait_for_selector(".viewer-roi-list li[data-roi='5']")
+    page.click(".viewer-roi-list li[data-roi='5']")
+    page.wait_for_selector(".viewer-signal-hint:has-text('ROI 5')")
+    assert "live" not in page.locator(".viewer-signal-hint").inner_text()   # its saved signal: column 5 of all six
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_the_roi_gallery_shows_the_classifier_images_and_statistics(empty_app, page):
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     run = lambda method, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": s1, "options": options})
