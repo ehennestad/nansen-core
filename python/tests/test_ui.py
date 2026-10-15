@@ -946,6 +946,8 @@ def test_a_column_drawn_as_a_badge_with_an_action(empty_app, page):
 
 
 def test_view_a_stack_with_its_rois(empty_app, page):
+    pytest.importorskip("numpy")
+    pytest.importorskip("tifffile")
     import shutil
     from pathlib import Path
 
