@@ -1,5 +1,5 @@
-function metadata = stackMetadata(frameRate, pixelSize, zStep)
-%stackMetadata A stack's metadata: frameRate, pixelSize ([x, y]) and zStep, those given as positive finite numbers
+function metadata = stackMetadata(frameRate, pixelSize, zStep, zoom)
+%stackMetadata A stack's metadata: frameRate, pixelSize ([x, y]), zStep and zoomFactor, those given as positive finite numbers
 %
 %   Each is rounded to 6 decimals, floor(v * 1e6 + 0.5) / 1e6; one left
 %   out, empty or NaN is not there. As Python's ophys_adapters.stack_metadata.
@@ -8,6 +8,9 @@ function metadata = stackMetadata(frameRate, pixelSize, zStep)
     end
     if nargin < 3
         zStep = [];
+    end
+    if nargin < 4
+        zoom = [];
     end
     usable = @(v) isnumeric(v) && ~isempty(v) && all(isfinite(v)) && all(v > 0);
     rounded = @(v) floor(double(v) * 1e6 + 0.5) / 1e6;
@@ -20,5 +23,8 @@ function metadata = stackMetadata(frameRate, pixelSize, zStep)
     end
     if isscalar(zStep) && usable(zStep)
         metadata.zStep = rounded(zStep);
+    end
+    if isscalar(zoom) && usable(zoom)
+        metadata.zoomFactor = rounded(zoom);   % the microscope's zoom
     end
 end

@@ -405,7 +405,7 @@ def scanimage(expected):
 
 def sciscan(expected):
     """A SciScan z-stack (experiment.type XYTZ): 2 frames of 4 x 3, big-endian uint16, and its .ini with the frame rate
-    (a decimal comma), the FOV in m (x.fov negative: its size is what counts) and the spacing of the planes."""
+    (a decimal comma), the FOV in m (x.fov negative: its size is what counts), the spacing of the planes and the zoom."""
     rng = np.random.default_rng(22)
     stack = rng.integers(0, 4000, (4, 3, 2)).astype(np.uint16)
     folder = HERE / "sciscan"
@@ -414,9 +414,9 @@ def sciscan(expected):
     (folder / "zstack.ini").write_text("\n".join(["[_]", "x.pixels = 3", "y.pixels = 4", "no.of.channels = 1",
                                                   "no.of.frames.acquired = 2", "file.format = 0", 'save.ch.1 = "TRUE"',
                                                   'experiment.type = "XYTZ"', "z.spacing = 2,5", 'frames.p.sec = "15,5"',
-                                                  "x.fov = -3.0E-4", "y.fov = 0.0002", ""]), encoding="latin-1")
+                                                  "x.fov = -3.0E-4", "y.fov = 0.0002", "ZOOM = 1,5", ""]), encoding="latin-1")
     expected["sciscan"] = {"size": [4, 3, 2], "sum": int(stack.astype(np.int64).sum()),
-                           "metadata": {"frameRate": 15.5, "pixelSize": [round6(3.0e-4 * 1e6 / 3), round6(0.0002 * 1e6 / 4)], "zStep": 2.5}}
+                           "metadata": {"frameRate": 15.5, "pixelSize": [round6(3.0e-4 * 1e6 / 3), round6(0.0002 * 1e6 / 4)], "zStep": 2.5, "zoomFactor": 1.5}}
 
 
 def mat73(expected):

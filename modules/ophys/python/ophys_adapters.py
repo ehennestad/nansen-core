@@ -32,9 +32,9 @@ def ini_number(values, name, path):
         raise NansenError("invalid-data", f"{path} has no number {name}") from None
 
 
-def stack_metadata(frame_rate=None, pixel_size=None, z_step=None):
-    """A stack's metadata: frameRate, pixelSize ([x, y]) and zStep, those given as positive finite numbers, rounded to
-    6 decimals (floor(v * 1e6 + 0.5) / 1e6, as MATLAB's ophys.internal.stackMetadata)."""
+def stack_metadata(frame_rate=None, pixel_size=None, z_step=None, zoom=None):
+    """A stack's metadata: frameRate, pixelSize ([x, y]), zStep and zoomFactor (the microscope's), those given as positive
+    finite numbers, rounded to 6 decimals (floor(v * 1e6 + 0.5) / 1e6, as MATLAB's ophys.internal.stackMetadata)."""
     usable = lambda v: v is not None and math.isfinite(v) and v > 0
     rounded = lambda v: math.floor(v * 1e6 + 0.5) / 1e6
     out = {}
@@ -44,6 +44,8 @@ def stack_metadata(frame_rate=None, pixel_size=None, z_step=None):
         out["pixelSize"] = [rounded(v) for v in pixel_size]
     if usable(z_step):
         out["zStep"] = rounded(z_step)
+    if usable(zoom):
+        out["zoomFactor"] = rounded(zoom)
     return out
 
 
@@ -57,12 +59,12 @@ def _number(text):
 
 def sciscan_metadata(values, width, height):
     """frames.p.sec; the pixel size from x.fov and y.fov (in m) over x.pixels and y.pixels; z.spacing for a z-stack
-    (experiment.type XYTZ), as dev's SciScan stack reads them."""
+    (experiment.type XYTZ); ZOOM, as dev's SciScan stack reads them."""
     number = lambda name: _number(values[name]) if name in values else None
     fov = [number("x.fov"), number("y.fov")]
     size = [abs(fov[0]) * 1e6 / width, abs(fov[1]) * 1e6 / height] if None not in fov else None
     spacing = number("z.spacing") if values.get("experiment.type") == "XYTZ" else None
-    return stack_metadata(number("frames.p.sec"), size, abs(spacing) if spacing is not None else None)
+    return stack_metadata(number("frames.p.sec"), size, abs(spacing) if spacing is not None else None, number("ZOOM"))
 
 
 DEV_CLASSES = {"uint8": "u1", "int8": "i1", "uint16": "<u2", "int16": "<i2", "uint32": "<u4", "int32": "<i4",

@@ -80,7 +80,17 @@ def motion_correction(entity, options, context):
     flyback = int(options.get("numFlybackLines", 0))
     if flyback >= height - 1:
         raise NansenError("invalid-options", f"{flyback} flyback lines leave too little of a frame of {height} rows")
-    prepare, offsets = scan_preparation(stack, flyback, options.get("bidirectionalCorrection", "none"), int(options.get("maxBidirectionalOffset", 10)))
+    plan, zoom = None, None
+    if options.get("stretchCorrection", "none") == "sciscan":
+        zoom = float(options.get("zoomFactor", 0)) or whole.metadata.get("zoomFactor")
+        if not zoom:
+            raise NansenError("invalid-options", "the recording does not give its zoom factor: set zoomFactor for the stretch correction")
+        displacement, zoom = stretch_profile(width, zoom)
+        plan = destretch_plan(displacement)
+        width = len(plan[0])
+    elif options.get("stretchCorrection", "none") != "none":
+        raise NansenError("invalid-options", f"stretchCorrection is none or sciscan, not {options['stretchCorrection']!r}")
+    prepare, offsets = scan_preparation(stack, flyback, options.get("bidirectionalCorrection", "none"), int(options.get("maxBidirectionalOffset", 10)), plan)
     height -= flyback
     subpixel = bool(options.get("subpixel", False))
     patches = int(options.get("patches", 1))
@@ -94,7 +104,7 @@ def motion_correction(entity, options, context):
     reference = prepare(stack.frames(0, count), 0).astype(np.float64).mean(axis=2)
     output_type = options.get("outputType", "same")
     recast = _recaster(prepare(stack.frames(0, min(CHUNK, frames)), 0), output_type, float(options.get("saturation", 0.5)))
-    shape = (height,) + tuple(target.shape[1:])
+    shape = (height, width) + tuple(target.shape[2:])
     dtype = target.dtype if output_type == "same" else np.dtype(output_type)
     iterations = options["iterations"]
     for iteration in range(iterations):
@@ -142,25 +152,75 @@ def motion_correction(entity, options, context):
     result = {"frames": frames, "maxShift": largest, "meanShift": mean}
     if options.get("bidirectionalCorrection", "none") != "none":
         result["bidirectionalOffset"] = offsets[0]
+    if plan is not None:
+        result["stretchZoom"] = zoom
     return result
 
 
-def scan_preparation(stack, flyback, mode, most):
+STRETCH = Path(__file__).resolve().parents[1] / "calibration" / "sciscan_stretch.json"
+
+
+def stretch_profile(width, zoom):
+    """dev's displacement of each column of a SciScan line of width pixels at the zoom factor (its resonant scanner's
+    stretch, measured on a microgrid): that zoom's profile, or else the nearest zoom's (of two, the smaller), and its zoom."""
+    with open(STRETCH, encoding="utf-8") as f:
+        profiles = json.load(f)["profiles"]
+    fits = [p for p in profiles if p["width"] == width]
+    if not fits:
+        widths = sorted({p["width"] for p in profiles})
+        raise NansenError("invalid-options", f"there is no stretch profile for lines of {width} pixels, only of {widths}")
+    best = min(fits, key=lambda p: (abs(p["zoom"] - zoom), p["zoom"]))
+    return np.array(best["displacement"], dtype=np.float64), float(best["zoom"])
+
+
+def destretch_plan(displacement):
+    """For each column of the corrected line, the raw column left of where it comes from (from 0) and the weight of the
+    one right of it. Raw column c lands at c - displacement[c]; the corrected line is the whole positions from the
+    first raw column's to the last's, each read from the raw line by linear interpolation at the inverse of that map."""
+    width = len(displacement)
+    position = np.arange(width, dtype=np.float64) - displacement
+    if not np.all(np.diff(position) > 0):
+        raise NansenError("invalid-data", "the stretch profile does not keep the columns in order")
+    targets = np.arange(math.ceil(position[0]), math.floor(position[-1]) + 1, dtype=np.float64)
+    c = np.clip(np.searchsorted(position, targets, side="right") - 1, 0, width - 2)   # position[c] <= target
+    source = c + (targets - position[c]) / (position[c + 1] - position[c])
+    left = np.clip(np.floor(source).astype(np.int64), 0, width - 2)
+    return left, source - left
+
+
+def destretch(chunk, plan):
+    """The frames' lines (axis 1) as the plan reads them: (1 - w) of the left column and w of the right one, integers
+    rounded half up, in the frames' type."""
+    left, weight = plan
+    shape = (1, len(weight)) + (1,) * (chunk.ndim - 2)
+    w = weight.reshape(shape)
+    out = chunk[:, left].astype(np.float64) * (1 - w) + chunk[:, left + 1].astype(np.float64) * w
+    if np.issubdtype(chunk.dtype, np.integer):
+        out = np.floor(out + 0.5)
+    return out.astype(chunk.dtype)
+
+
+def scan_preparation(stack, flyback, mode, most, plan=None):
     """What is done to each chunk of frames (starting at frame start) before it is aligned: the first flyback
-    rows are left out, and the lines scanned back (rows 1, 3, ...) are moved by the column offset between them
-    and the lines scanned forth, as resonant scanners need. With mode "constant" the offset is found once, in
-    the first chunk; with "continuous" in each chunk. Returns the function and the offsets found, by chunk."""
+    rows are left out, the lines are destretched by the plan (destretch_plan) when there is one, and the lines
+    scanned back (rows 1, 3, ...) are moved by the column offset between them and the lines scanned forth, as
+    resonant scanners need. With mode "constant" the offset is found once, in the first chunk; with "continuous"
+    in each chunk. Returns the function and the offsets found, by chunk."""
     offsets = {}
+
+    def cut(chunk):
+        chunk = chunk[flyback:]
+        return chunk if plan is None else destretch(chunk, plan)
 
     def offset_for(start):
         key = 0 if mode == "constant" else start
         if key not in offsets:
-            first = stack.frames(key, min(key + CHUNK, stack.shape[-1]))[flyback:]
+            first = cut(stack.frames(key, min(key + CHUNK, stack.shape[-1])))
             offsets[key] = bidirectional_offset(first.astype(np.float64).reshape(first.shape[0], first.shape[1], -1).mean(axis=2), most)
         return offsets[key]
 
     def prepare(chunk, start):
-        chunk = chunk[flyback:]
+        chunk = cut(chunk)
         if mode == "none":
             return chunk
         return shift_alternate_rows(chunk, offset_for(start))

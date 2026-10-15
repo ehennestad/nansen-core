@@ -28,8 +28,24 @@ function result = motionCorrection(entity, options, context)
     if flyback >= height - 1
         nansen.internal.throwError("invalid-options", "%d flyback lines leave too little of a frame of %d rows", flyback, height)
     end
+    plan = [];
+    stretch = string(nansen.internal.getField(options, "stretchCorrection", "none"));
+    if stretch == "sciscan"
+        zoom = double(nansen.internal.getField(options, "zoomFactor", 0));
+        if zoom == 0 && isfield(whole.Metadata, "zoomFactor")
+            zoom = whole.Metadata.zoomFactor;
+        end
+        if zoom == 0
+            nansen.internal.throwError("invalid-options", "the recording does not give its zoom factor: set zoomFactor for the stretch correction")
+        end
+        [displacement, zoom] = ophys.internal.stretchProfile(width, zoom);
+        plan = ophys.internal.destretchPlan(displacement);
+        width = numel(plan.left);
+    elseif stretch ~= "none"
+        nansen.internal.throwError("invalid-options", "stretchCorrection is none or sciscan, not '%s'", stretch)
+    end
     preparation = ophys.internal.ScanPreparation(stack, flyback, string(nansen.internal.getField(options, "bidirectionalCorrection", "none")), ...
-        double(nansen.internal.getField(options, "maxBidirectionalOffset", 10)));
+        double(nansen.internal.getField(options, "maxBidirectionalOffset", 10)), plan);
     height = height - flyback;
     subpixel = logical(nansen.internal.getField(options, "subpixel", false));
     patches = double(nansen.internal.getField(options, "patches", 1));
@@ -71,7 +87,7 @@ function result = motionCorrection(entity, options, context)
             if isempty(target)
                 writer = context.Project.stackWriter(entity, options.output, [height, width, frames], outputClass(outputType, stack.ClassName));
             else
-                writer = context.Project.stackWriter(entity, options.output, [height, target.Size(2:end)], outputClass(outputType, target.ClassName));
+                writer = context.Project.stackWriter(entity, options.output, [height, width, target.Size(3:end)], outputClass(outputType, target.ClassName));
             end
         end
         for start = 1:ophys.internal.chunk():frames
@@ -135,6 +151,9 @@ function result = motionCorrection(entity, options, context)
     result = struct("frames", frames, "maxShift", largest, "meanShift", meanShift);
     if preparation.Mode ~= "none"
         result.bidirectionalOffset = preparation.offset(1);
+    end
+    if ~isempty(plan)
+        result.stretchZoom = zoom;
     end
 end
 

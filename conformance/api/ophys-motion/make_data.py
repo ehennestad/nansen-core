@@ -16,6 +16,9 @@ computed here directly, not with either reader's ophys code:
 - s6: a resonant-scanner recording: two flyback rows of noise on top, and the lines scanned back (rows 1, 3,
   ... below them) 3 columns to the right of where they belong, in every frame, which moves by known whole
   pixels; motion correction leaves the flyback rows out, finds the offset and aligns the frames.
+- s7: a resonant scanner's stretch: each raw line shows a scene that rises evenly along the line at the places dev's
+  stretch profile (zoom 1.625, 512 pixels) puts its columns; motion correction with that profile (the nearest to the
+  zoom 1.6 given) gives the scene at the whole places, from the first column's to the last's, which data.frame shows.
 - s5: four ring-shaped somata (a dark nucleus in a bright ring) that are never active, on a background
   with fixed noise; Quicky finds them by their shape alone, each with its centre where it was drawn.
 """
@@ -35,6 +38,7 @@ S3 = {"subject_id": "m1", "session_id": "s3"}
 S4 = {"subject_id": "m1", "session_id": "s4"}
 S5 = {"subject_id": "m1", "session_id": "s5"}
 S6 = {"subject_id": "m1", "session_id": "s6"}
+S7 = {"subject_id": "m1", "session_id": "s7"}
 
 
 def round_to(value, digits):
@@ -125,6 +129,32 @@ def resonant():
     return {"frames": frames, "maxShift": int(np.abs(shifts).max()), "meanShift": round_to(lengths.mean(), 4), "bidirectionalOffset": BIDIRECTIONAL}
 
 
+STRETCH_ZOOM, PROFILE_ZOOM = 1.6, 1.625
+
+
+def stretched():
+    """s7: 6 x 512 x 3, float64, still: raw column c of row y shows the scene 1000 + 40 y + 2 x at x = c - displacement[c]
+    (dev's profile for zoom 1.625); corrected, column k is the scene at x = first + k, first the first whole place."""
+    profiles = json.loads((HERE.parents[2] / "modules" / "ophys" / "calibration" / "sciscan_stretch.json").read_text(encoding="utf-8"))["profiles"]
+    displacement = np.array(next(p for p in profiles if p["width"] == 512 and p["zoom"] == PROFILE_ZOOM)["displacement"])
+    place = np.arange(512) - displacement
+    scene = lambda y, x: 1000.0 + 40 * y + 2 * x
+    rows = np.arange(6)[:, None]
+    save("s7", np.repeat(scene(rows, place[None, :])[:, :, None], 3, axis=2))
+    first, last = math.ceil(place[0]), math.floor(place[-1])
+    corrected = scene(rows, np.arange(first, last + 1)[None, :])
+    for pad in (0.25, 0.375, 0.125, 0.4375, 0.3125, 0.1875):   # limits a little past the values (dyadic: exact; not as
+        low, high = scene(0, first) - pad, scene(5, last) + 2 * pad   # far at both ends, or the middle value scales to 128) ...
+        scaled = (corrected - low) / (high - low) * 255 + 0.5
+        if np.all(np.abs(scaled - np.round(scaled)) > 1e-6):   # ... where no value is near where rounding changes
+            break
+    else:
+        raise AssertionError("no limits keep the values from where rounding changes")
+    pixels = np.floor(scaled).astype(np.uint8)
+    import base64
+    return {"width": last - first + 1, "limits": [low, high], "pixels": base64.b64encode(pixels.tobytes()).decode("ascii")}
+
+
 ANGLE, MOVE = 3.0, (2, -1)
 
 
@@ -176,6 +206,7 @@ def main():
     rois, moved = rotated()
     shaped = somata()
     scanned = resonant()
+    stretch = stretched()
     # s3's ROIs, as the ophys methods write them (ophys/roi_array.json in the processed data)
     folder = HERE / "project" / "data" / "processed" / "sub-m1" / "ses-s3" / "ophys"
     folder.mkdir(parents=True)
@@ -185,8 +216,8 @@ def main():
         "methodId": method, "entityType": "session", "keys": keys, "options": options}}}
     steps = [
         {"request": {"method": "project.open", "id": 1, "params": {"path": "${project}"}}, "expect": {"result": {"name": "OphysMotion"}}},
-        {"request": {"method": "project.scan", "id": 2, "params": {}}, "expect": {"result": {"records": {"subject": 1, "session": 6}, "unmatched": 0}}},
-        {"request": {"method": "project.sync", "id": 3, "params": {}}, "expect": {"result": {"added": {"session": [S1, S2, S3, S4, S5, S6]}}}},
+        {"request": {"method": "project.scan", "id": 2, "params": {}}, "expect": {"result": {"records": {"subject": 1, "session": 7}, "unmatched": 0}}},
+        {"request": {"method": "project.sync", "id": 3, "params": {}}, "expect": {"result": {"added": {"session": [S1, S2, S3, S4, S5, S6, S7]}}}},
         {"request": {"method": "tools.run", "id": 4, "params": {"methodId": "ophys.setup_variables", "options": {
             "rawFilePattern": "recording", "rawFileAdapter": "npy", "addColumns": False}}},
          "expect": {"result": {"result": {"existing": []}}}},
@@ -215,6 +246,15 @@ def main():
         {**run(15, "ophys.motion_correction", [S6], {"numFlybackLines": FLYBACK, "bidirectionalCorrection": "continuous", "referenceFrames": 1,
                                                       "maxShift": 6, "iterations": 1}), "expect": {"result": {"results": [scanned]}}},
         {**run(16, "ophys.motion_correction", [S6], {"bidirectionalCorrection": "sometimes"}), "expect": {"error": "invalid-options"}},
+        # a resonant scanner's stretch undone by dev's profile of the nearest zoom: the scene at whole places
+        {**run(17, "ophys.motion_correction", [S7], {"stretchCorrection": "sciscan", "zoomFactor": STRETCH_ZOOM, "referenceFrames": 1, "iterations": 1}),
+         "expect": {"result": {"results": [{"frames": 3, "maxShift": 0, "meanShift": 0, "stretchZoom": PROFILE_ZOOM}]}}},
+        {"request": {"method": "data.frame", "id": 18, "params": {"entityType": "session", "key": S7, "variable": "TwoPhotonSeries_Corrected",
+                                                                  "frame": 2, "limits": stretch["limits"]}},
+         "expect": {"result": {"height": 6, "width": stretch["width"], "frames": 3, "pixels": stretch["pixels"]}}},
+        # no zoom given and none in the files (an .npy); no profile for lines of 32 pixels
+        {**run(19, "ophys.motion_correction", [S7], {"stretchCorrection": "sciscan"}), "expect": {"error": "invalid-options"}},
+        {**run(20, "ophys.motion_correction", [S1], {"stretchCorrection": "sciscan", "zoomFactor": 1}), "expect": {"error": "invalid-options"}},
     ]
     (HERE / "session.json").write_text(json.dumps({"steps": steps}, indent=2) + "\n", encoding="utf-8")
     expected = {"description": "Motion correction finer than whole pixels: subpixel shifts on a texture moved by half pixels, piecewise rigid "

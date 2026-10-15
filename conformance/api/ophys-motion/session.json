@@ -24,7 +24,7 @@
         "result": {
           "records": {
             "subject": 1,
-            "session": 6
+            "session": 7
           },
           "unmatched": 0
         }
@@ -63,6 +63,10 @@
               {
                 "subject_id": "m1",
                 "session_id": "s6"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "s7"
               }
             ]
           }
@@ -702,6 +706,112 @@
           ],
           "options": {
             "bidirectionalCorrection": "sometimes"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 17,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s7"
+            }
+          ],
+          "options": {
+            "stretchCorrection": "sciscan",
+            "zoomFactor": 1.6,
+            "referenceFrames": 1,
+            "iterations": 1
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 3,
+              "maxShift": 0,
+              "meanShift": 0,
+              "stretchZoom": 1.625
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 18,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s7"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "frame": 2,
+          "limits": [
+            1035.75,
+            2192.5
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 6,
+          "width": 479,
+          "frames": 3,
+          "pixels": "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u7u7vLy9vb6+v7+/wMDBwcLCwsPDxMTFxcbGxsfHyMjJycrKysvLzMzNzc7Ozs/P0NDR0dHS0tPT1NTV1dXW1tfX2NjZ2dna2tvb3Nzd3d3e3t/f4ODg4eHi4uPj5OTk5eXm5ufn6Ojo6enq6uvr6+zs7e0jJCQlJSYmJicnKCgpKSkqKisrLCwtLS0uLi8vMDAxMTEyMjMzNDQ1NTU2Njc3ODg4OTk6Ojs7PDw8PT0+Pj8/QEBAQUFCQkNDRERERUVGRkdHR0hISUlKSktLS0xMTU1OTk9PT1BQUVFSUlNTU1RUVVVWVlZXV1hYWVlaWlpbW1xcXV1eXl5fX2BgYWFhYmJjY2RkZWVlZmZnZ2hoaWlpampra2xsbW1tbm5vb3BwcHFxcnJzc3R0dHV1dnZ3d3h4eHl5enp7e3x8fH19fn5/f3+AgIGBgoKDg4OEhIWFhoaHh4eIiImJioqKi4uMjI2Njo6Oj4+QkJGRkpKSk5OUlJWVlpaWl5eYmJmZmZqam5ucnJ2dnZ6en5+goKGhoaKio6OkpKWlpaamp6eoqKipqaqqq6usrKytra6ur6+wsLCxsbKys7OztLS1tba2t7e3uLi5ubq6u7u7vLy9vb6+v7+/wMDBwcLCwsPDxMTFxcbGxsfHyMjJycrKysvLzMzNzc7Ozs/P0NDR0dHS0tPT1NTV1dXW1tfX2NjZ2dna2tvb3Nzd3d3e3t/f4ODg4eHi4uPj5OTk5eXm5ufn6Ojo6enq6uvr6+zs7e3u7u/v7/Dw8fHy8vPz8/T09fX29iwtLS0uLi8vMDAxMTEyMjMzNDQ1NTU2Njc3ODg4OTk6Ojs7PDw8PT0+Pj8/QEBAQUFCQkNDRERERUVGRkdHR0hISUlKSktLS0xMTU1OTk9PT1BQUVFSUlNTU1RUVVVWVlZXV1hYWVlaWlpbW1xcXV1eXl5fX2BgYWFhYmJjY2RkZWVlZmZnZ2hoaWlpampra2xsbW1tbm5vb3BwcHFxcnJzc3R0dHV1dnZ3d3h4eHl5enp7e3x8fH19fn5/f3+AgIGBgoKDg4OEhIWFhoaHh4eIiImJioqKi4uMjI2Njo6Oj4+QkJGRkpKSk5OUlJWVlpaWl5eYmJmZmZqam5ucnJ2dnZ6en5+goKGhoaKio6OkpKWlpaamp6eoqKipqaqqq6usrKytra6ur6+wsLCxsbKys7OztLS1tba2t7e3uLi5ubq6u7u7vLy9vb6+v7+/wMDBwcLCwsPDxMTFxcbGxsfHyMjJycrKysvLzMzNzc7Ozs/P0NDR0dHS0tPT1NTV1dXW1tfX2NjZ2dna2tvb3Nzd3d3e3t/f4ODg4eHi4uPj5OTk5eXm5ufn6Ojo6enq6uvr6+zs7e3u7u/v7/Dw8fHy8vPz8/T09fX29vf39/j4+fn6+vr7+/z8/f3+/v7/"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 19,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s7"
+            }
+          ],
+          "options": {
+            "stretchCorrection": "sciscan"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 20,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stretchCorrection": "sciscan",
+            "zoomFactor": 1
           }
         }
       },
