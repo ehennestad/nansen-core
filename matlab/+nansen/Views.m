@@ -47,7 +47,7 @@ classdef Views
                 end
             end
             document = obj.read();
-            names = cellfun(@(v) string(v.name), document.views);
+            names = string(cellfun(@(v) char(v.name), document.views, UniformOutput=false));   % a string array, also when empty
             at = find(names == string(view.name), 1);
             if isempty(at)
                 document.views{end + 1} = view;
