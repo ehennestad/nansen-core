@@ -6,7 +6,8 @@ Python's test_formats.py and MATLAB's FormatsTest.m read every file with the mod
 with expected.json, which is computed here from the values the files are made from, not with either
 language's reader. ROI files read as the module's ROI document: imageSize, and rois of id (in file order,
 from 1), area, center (0-based mean row and column, rounded to 2 decimals) and 0-based [row, column]
-pixels in row-major order, with classification where the file has one.
+pixels in row-major order, with classification where the file has one. A stack's metadata (frameRate,
+pixelSize, zStep) is computed from the header values the file is written with, each rounded to 6 decimals.
 """
 
 import json
@@ -20,6 +21,11 @@ import tifffile
 
 HERE = Path(__file__).parent
 HEIGHT, WIDTH = 20, 24
+
+
+def round6(value):
+    """A metadata value as the readers give it: rounded to 6 decimals, floor(v * 1e6 + 0.5) / 1e6."""
+    return math.floor(value * 1e6 + 0.5) / 1e6
 
 
 def roi(number, pixels, classification=None):
@@ -115,7 +121,7 @@ def dev_binary(expected):
     stack.astype("<u2").ravel(order="F").tofile(folder / "stack.raw")
     (folder / "stack.ini").write_text("Size = 9    7    5\nClass = uint16\n")
     expected["devBinary"] = {"size": [9, 7, 5], "pixel": {"at": [4, 6, 3], "value": int(stack[4, 6, 3])},
-                             "frame2row8": [int(v) for v in stack[8, :, 2]], "sum": int(stack.astype(np.int64).sum())}
+                             "frame2row8": [int(v) for v in stack[8, :, 2]], "sum": int(stack.astype(np.int64).sum()), "metadata": {}}
 
 
 def suite2p_binary(expected):
@@ -134,7 +140,8 @@ def suite2p_binary(expected):
 
 def video(expected):
     """Videos as uncompressed AVI (raw BGR, which every decoder reads to the same bytes), written with imageio's ffmpeg:
-    rgb.avi in colour, 12 x 16 x 4 frames, and gray.avi whose red, green and blue are equal, read as grayscale."""
+    rgb.avi in colour, 12 x 16 x 4 frames, and gray.avi whose red, green and blue are equal, read as grayscale; 10 frames
+    per second."""
     import imageio.v2 as iio
     rng = np.random.default_rng(18)
     folder = HERE / "video"
@@ -149,14 +156,15 @@ def video(expected):
         writer.close()
     expected["video"] = {
         "rgb": {"size": [12, 16, 3, 4], "pixel": {"at": [5, 7, 2, 2], "value": int(colour[2, 5, 7, 2])},
-                "sum": int(colour.astype(np.int64).sum())},
+                "sum": int(colour.astype(np.int64).sum()), "metadata": {"frameRate": 10.0}},
         "gray": {"size": [12, 16, 3], "pixel": {"at": [11, 15, 1], "value": int(gray[1, 11, 15, 0])},
-                 "sum": int(gray[..., 0].astype(np.int64).sum())}}
+                 "sum": int(gray[..., 0].astype(np.int64).sum()), "metadata": {"frameRate": 10.0}}}
 
 
 def thorlabs(expected):
     """A ThorImage recording: a TIFF file per frame and channel, ChanA_001_001_001_0001.tif and so on; 2 channels
-    of 3 frames, 6 x 5 uint16, written out of order so natural order matters (frame 10 after frame 2)."""
+    of 3 frames, 6 x 5 uint16, written out of order so natural order matters (frame 10 after frame 2), and the
+    Experiment.xml ThorImage writes beside them, whose LSM element has the frame rate and pixel size."""
     rng = np.random.default_rng(19)
     stack = rng.integers(0, 4000, (6, 5, 2, 3)).astype(np.uint16)   # height x width x channels x frames
     folder = HERE / "thorlabs"
@@ -166,8 +174,14 @@ def thorlabs(expected):
     for c, letter in enumerate("AB"):
         for t, number in enumerate((1, 2, 10)):
             tifffile.imwrite(folder / f"Chan{letter}_001_001_001_{number:04d}.tif", stack[:, :, c, t], photometric="minisblack")
+    (folder / "Experiment.xml").write_text("\n".join([
+        '<?xml version="1.0"?>', "<ThorImageExperiment>", '  <Name name="rec" />',
+        '  <LSM name="ResonanceGalvo" pixelX="5" pixelY="6" fieldSize="120" widthUM="4" heightUM="4.8" pixelSizeUM="0.8" '
+        'frameRate="29.98" averageMode="0" />',
+        '  <ZStage name="ThorZPiezo" steps="1" stepSizeUM="2" />', '  <Streaming enable="1" frames="3" zFastEnable="0" />',
+        "</ThorImageExperiment>", ""]), encoding="utf-8")
     expected["thorlabs"] = {"size": [6, 5, 2, 3], "pixel": {"at": [4, 3, 1, 2], "value": int(stack[4, 3, 1, 2])},
-                            "sum": int(stack.astype(np.int64).sum())}
+                            "sum": int(stack.astype(np.int64).sum()), "metadata": {"frameRate": 29.98, "pixelSize": [0.8, 0.8]}}
 
 
 def tsm(expected):
@@ -185,7 +199,8 @@ def tsm(expected):
     (HERE / "macroscope.tsm").write_bytes(header + frames.astype("<i2").tobytes() + dark.astype("<i2").tobytes())
     out = np.clip(frames.astype(np.int32) - dark, -32768, 32767)
     expected["tsm"] = {"size": [5, 7, 4], "pixel": {"at": [3, 6, 1], "value": int(out[1, 3, 6])},
-                       "saturated": {"at": [1, 3, 2], "value": int(out[2, 1, 3])}, "sum": int(out.sum())}
+                       "saturated": {"at": [1, 3, 2], "value": int(out[2, 1, 3])}, "sum": int(out.sum()),
+                       "metadata": {"frameRate": round6(1 / 0.01)}}
 
 
 def suite2p_rois(expected):
@@ -258,12 +273,17 @@ def extract_rois(expected):
 
 
 def prairie(expected):
-    """A Bruker (Prairie View) T-series: an XML file listing a TIFF file per frame and channel."""
+    """A Bruker (Prairie View) T-series: an XML file listing a TIFF file per frame and channel, with the frame period
+    and the microns per pixel in its PVStateShard."""
     folder = HERE / "tseries"
     folder.mkdir(exist_ok=True)
     rng = np.random.default_rng(5)
     frames = rng.integers(0, 4000, (HEIGHT, WIDTH, 2, 5)).astype(np.uint16)   # height x width x channels x frames
     lines = ['<?xml version="1.0" encoding="utf-8"?>', '<PVScan version="5.4.64.200" date="1/1/2026" notes="">',
+             '  <PVStateShard>', '    <PVStateValue key="framePeriod" value="0.033" />',
+             '    <PVStateValue key="micronsPerPixel">', '      <IndexedValue index="XAxis" value="1.25" />',
+             '      <IndexedValue index="YAxis" value="1.5" />', '      <IndexedValue index="ZAxis" value="1" />',
+             '    </PVStateValue>', '  </PVStateShard>',
              '  <Sequence type="TSeries Timed Element" cycle="1" time="10:00:00.000">']
     for t in range(5):
         lines.append(f'    <Frame relativeTime="{t * 0.033:.3f}" index="{t + 1}" parameterSet="CurrentSettings">')
@@ -276,7 +296,8 @@ def prairie(expected):
     (folder / "TSeries-001.xml").write_text("\n".join(lines), encoding="utf-8")
     expected["prairie"] = {"size": [HEIGHT, WIDTH, 2, 5], "sum": int(frames.astype(np.int64).sum()),
                            "pixel": {"at": [3, 7, 1, 4], "value": int(frames[3, 7, 1, 4])},
-                           "channel2frame3": frames[:, :, 1, 2].astype(int).tolist()}
+                           "channel2frame3": frames[:, :, 1, 2].astype(int).tolist(),
+                           "metadata": {"frameRate": round6(1 / 0.033), "pixelSize": [1.25, 1.5]}}
 
 
 def hdf5_stack(expected):
@@ -286,7 +307,48 @@ def hdf5_stack(expected):
     with h5py.File(HERE / "stack.h5", "w") as f:
         f["data"] = np.moveaxis(stack, 2, 0)
     expected["hdf5"] = {"size": [HEIGHT, WIDTH, 7], "pixel": {"at": [5, 9, 3], "value": float(stack[5, 9, 3])},
-                        "frame6row2": [float(v) for v in stack[2, :, 6]]}
+                        "frame6row2": [float(v) for v in stack[2, :, 6]], "metadata": {}}
+
+
+def scanimage(expected):
+    """Two ScanImage files: scanimage.tif, 3 frames of 8 x 10 with the frame rate (no volume rate, one plane) and the
+    FOV in µm, its corners; and scanimage_planes.tif, 2 volumes of 2 planes of 6 x 8 with the volume rate, the z step
+    and the FOV in degrees, times the objective's µm per degree. The metadata is in the Software tag."""
+    rng = np.random.default_rng(21)
+    frames = rng.integers(0, 4000, (3, 8, 10)).astype(np.uint16)   # pages
+    software = "\n".join(["SI.VERSION_MAJOR = 2022", "SI.hChannels.channelSave = 1", "SI.hStackManager.numSlices = 1",
+                          "SI.hStackManager.stackZStepSize = 1", "SI.hRoiManager.mroiEnable = false",
+                          "SI.hRoiManager.scanFrameRate = 30.0446", "SI.hRoiManager.pixelsPerLine = 10",
+                          "SI.hRoiManager.linesPerFrame = 8", "SI.hRoiManager.imagingFovDeg = [-1 -1;1 -1;1 1;-1 1]",
+                          "SI.hRoiManager.imagingFovUm = [-200 -150;200 -150;200 150;-200 150]", "SI.objectiveResolution = 15", ""])
+    tifffile.imwrite(HERE / "scanimage.tif", frames, photometric="minisblack", software=software, metadata=None)
+    volumes = rng.integers(0, 4000, (4, 6, 8)).astype(np.uint16)   # pages: plane after plane, volume after volume
+    software = "\n".join(["SI.VERSION_MAJOR = 2022", "SI.hChannels.channelSave = 1", "SI.hStackManager.numSlices = 2",
+                          "SI.hStackManager.stackZStepSize = 3", "SI.hRoiManager.scanFrameRate = 25",
+                          "SI.hRoiManager.scanVolumeRate = 12.5", "SI.hRoiManager.pixelsPerLine = 8",
+                          "SI.hRoiManager.linesPerFrame = 6", "SI.hRoiManager.imagingFovDeg = [-2 -1.5;2 -1.5;2 1.5;-2 1.5]",
+                          "SI.objectiveResolution = 20", ""])
+    tifffile.imwrite(HERE / "scanimage_planes.tif", volumes, photometric="minisblack", software=software, metadata=None)
+    expected["scanimage"] = {"size": [8, 10, 3], "sum": int(frames.astype(np.int64).sum()),
+                             "metadata": {"frameRate": 30.0446, "pixelSize": [round6(400 / 10), round6(300 / 8)]}}
+    expected["scanimagePlanes"] = {"size": [6, 8, 1, 2, 2], "sum": int(volumes.astype(np.int64).sum()),
+                                   "metadata": {"frameRate": 12.5, "pixelSize": [round6(4 * 20 / 8), round6(3 * 20 / 6)], "zStep": 3.0}}
+
+
+def sciscan(expected):
+    """A SciScan z-stack (experiment.type XYTZ): 2 frames of 4 x 3, big-endian uint16, and its .ini with the frame rate
+    (a decimal comma), the FOV in m (x.fov negative: its size is what counts) and the spacing of the planes."""
+    rng = np.random.default_rng(22)
+    stack = rng.integers(0, 4000, (4, 3, 2)).astype(np.uint16)
+    folder = HERE / "sciscan"
+    folder.mkdir(exist_ok=True)
+    stack.transpose(2, 0, 1).astype(">u2").tofile(folder / "zstack.raw")
+    (folder / "zstack.ini").write_text("\n".join(["[_]", "x.pixels = 3", "y.pixels = 4", "no.of.channels = 1",
+                                                  "no.of.frames.acquired = 2", "file.format = 0", 'save.ch.1 = "TRUE"',
+                                                  'experiment.type = "XYTZ"', "z.spacing = 2,5", 'frames.p.sec = "15,5"',
+                                                  "x.fov = -3.0E-4", "y.fov = 0.0002", ""]), encoding="latin-1")
+    expected["sciscan"] = {"size": [4, 3, 2], "sum": int(stack.astype(np.int64).sum()),
+                           "metadata": {"frameRate": 15.5, "pixelSize": [round6(3.0e-4 * 1e6 / 3), round6(0.0002 * 1e6 / 4)], "zStep": 2.5}}
 
 
 def mat73(expected):
@@ -326,6 +388,8 @@ def main():
     extract_rois(expected)
     prairie(expected)
     hdf5_stack(expected)
+    scanimage(expected)
+    sciscan(expected)
     mat73(expected)
     (HERE / "expected.json").write_text(json.dumps(expected, indent=1) + "\n", encoding="utf-8")
 

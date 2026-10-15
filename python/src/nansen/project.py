@@ -835,6 +835,18 @@ class Project:
             context.project = self
         return run_tool(method, self, values, context)
 
+    def update_values(self, entity: Entity, values: Dict[str, Any]) -> List[str]:
+        """Write values into the entity's table row, those of columns the table has: for a method that fills columns it
+        does not compute. Returns the names written; unknown-entity for an entity the table has no row of."""
+        table = self.table(entity.entity_type)
+        if not table.has(entity.key):
+            raise NansenError("unknown-entity", f"{entity.entity_type} {entity.key} has no row in the table")
+        names = [n for n in values if n in table.spec.column_names and n not in table.spec.key]
+        if names:
+            table.update(entity.key, **{n: values[n] for n in names})
+            table.write()
+        return names
+
     def update_fragment(self, entity_type: str, fragment_id: str, keys: Optional[List[Dict[str, Any]]] = None,
                         context: Optional[MethodContext] = None) -> Dict[str, Any]:
         """Recompute a computed fragment's columns for the entity type's table rows (or those with the given keys)."""

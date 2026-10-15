@@ -1754,6 +1754,21 @@ def fov_region(entity, options, context):
     return {"brain_region": atlas_region(atlas, float(ml), float(ap))}
 
 
+METADATA_COLUMNS = [("frameRate", "frame_rate"), ("pixelSize", "pixel_size_um"), ("zStep", "z_step_um")]
+
+
+def read_metadata(entity, options, context):
+    """The frame rate, pixel size (its width) and z step the recording's files give (the stack's metadata), written into
+    the entity's frame_rate, pixel_size_um and z_step_um columns, those its table has. Returns them by column."""
+    metadata = context.project.open_stack(entity, options["stack"]).metadata
+    values = {column: metadata[key][0] if key == "pixelSize" else metadata[key]
+              for key, column in METADATA_COLUMNS if key in metadata}
+    written = context.project.update_values(entity, values)
+    context.log(f"{_name(entity)}: " + (", ".join(f"{n} {values[n]:g}" for n in written) or "nothing to write") +
+                "".join(f"; no column {n}" for n in values if n not in written))
+    return values
+
+
 def atlas_region(atlas, ml, ap):
     """The label of the region at (ml, ap) mm, or None outside every region."""
     column = math.floor((ml - atlas["origin"][0]) * atlas["pixelsPerMm"])
@@ -1820,7 +1835,7 @@ def setup_variables(project, options, context):
             created.append(document["name"])
     columns = []
     if options["addColumns"]:
-        wanted = [(entity_type, f) for f in ("ophys.imaging", "ophys.image_stats", "ophys.fov_position", "ophys.fov_region")]
+        wanted = [(entity_type, f) for f in ("ophys.imaging", "ophys.scan", "ophys.image_stats", "ophys.fov_position", "ophys.fov_region")]
         if options["subjectType"] in project.entity_types:
             wanted.append((options["subjectType"], "ophys.cranial_window"))
         for owner, fragment_id in wanted:

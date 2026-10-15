@@ -10,7 +10,8 @@ classdef ScanImageTiff < nansen.FileAdapter
 %   one above the other on each page, with flyback lines between them, and
 %   their sizes in the Artist tag: the ROIs are put side by side, padded
 %   with 0 at the bottom to the tallest. Pages after the last whole volume
-%   are left out. Python's ophys_adapters.ScanImageTiff reads the same.
+%   are left out. Its Metadata is read from the same text (metadata).
+%   Python's ophys_adapters.ScanImageTiff reads the same.
 
     methods
         function data = read(obj, path)
@@ -51,6 +52,7 @@ classdef ScanImageTiff < nansen.FileAdapter
                 dimensions = [dimensions, channels];
             end
             stack = nansen.Stack([dimensions, volumes], class(first.Page), read);
+            stack.Metadata = ophys.ScanImageTiff.metadata(text, first.Artist, planes, mosaic);
         end
 
         function write(~, ~, ~)
@@ -68,6 +70,69 @@ classdef ScanImageTiff < nansen.FileAdapter
             end
             value = replace(string(tokens{1}), ["true", "false"], ["1", "0"]);
             numbers = str2double(regexp(value, "-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", "match"));
+        end
+
+        function metadata = metadata(text, artist, planes, mosaic)
+            %metadata A ScanImage recording's frameRate, pixelSize and zStep, as Python's ophys_adapters.scanimage_metadata
+            %
+            %   frameRate: SI.hRoiManager.scanVolumeRate, else scanFrameRate
+            %   when it has one plane. zStep, with more than one plane:
+            %   SI.hStackManager.actualStackZStepSize, else stackZStepSize.
+            %   pixelSize: the extent of the corners SI.hRoiManager.imagingFovUm
+            %   (or imagingFovDeg times SI.objectiveResolution, µm per degree)
+            %   over pixelsPerLine and linesPerFrame; for a multi-ROI recording,
+            %   the first ROI's scanfield sizeXY (degrees) times
+            %   SI.objectiveResolution over its pixelResolutionXY.
+            rate = ophys.ScanImageTiff.firstNumber(text, "hRoiManager.scanVolumeRate");
+            if isempty(rate) && planes == 1
+                rate = ophys.ScanImageTiff.firstNumber(text, "hRoiManager.scanFrameRate");
+            end
+            step = [];
+            if planes > 1
+                step = ophys.ScanImageTiff.firstNumber(text, "hStackManager.actualStackZStepSize");
+                if isempty(step)
+                    step = ophys.ScanImageTiff.firstNumber(text, "hStackManager.stackZStepSize");
+                end
+            end
+            resolution = ophys.ScanImageTiff.firstNumber(text, "objectiveResolution");
+            pixelSize = [];
+            if mosaic
+                rois = jsondecode(char(artist)).RoiGroups.imagingRoiGroup.rois;
+                if iscell(rois)
+                    roi = rois{1};
+                else
+                    roi = rois(1);
+                end
+                field = roi.scanfields;
+                if iscell(field)
+                    field = field{1};
+                end
+                field = field(1);
+                if ~isempty(resolution) && isfield(field, "sizeXY")
+                    pixelSize = reshape(double(field.sizeXY), 1, 2) * resolution ./ reshape(double(field.pixelResolutionXY), 1, 2);
+                end
+            else
+                corners = ophys.ScanImageTiff.siNumbers(text, "hRoiManager.imagingFovUm");
+                if isempty(corners) && ~isempty(resolution)
+                    corners = ophys.ScanImageTiff.siNumbers(text, "hRoiManager.imagingFovDeg") * resolution;
+                end
+                pixels = ophys.ScanImageTiff.firstNumber(text, "hRoiManager.pixelsPerLine");
+                lines = ophys.ScanImageTiff.firstNumber(text, "hRoiManager.linesPerFrame");
+                if numel(corners) >= 4 && mod(numel(corners), 2) == 0 && ~isempty(pixels) && ~isempty(lines) && pixels ~= 0 && lines ~= 0
+                    xs = corners(1:2:end);
+                    ys = corners(2:2:end);
+                    pixelSize = [(max(xs) - min(xs)) / pixels, (max(ys) - min(ys)) / lines];
+                end
+            end
+            metadata = ophys.internal.stackMetadata(rate, pixelSize, abs(step));
+        end
+
+        function value = firstNumber(text, name)
+            %firstNumber The first number of the SI.<name> line; [] if there is none
+            value = ophys.ScanImageTiff.siNumbers(text, name);
+            if ~isempty(value)
+                value = value(1);
+            end
         end
 
         function out = mosaic(data, artist, path)

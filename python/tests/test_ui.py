@@ -1367,6 +1367,32 @@ def test_view_a_stack_with_channels_and_planes(empty_app, page):
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_the_viewer_shows_a_scalebar_and_the_time_the_files_give(empty_app, page):
+    ophys_project(empty_app)   # session 1's SciScan recording: 30.9 frames per second, 16 µm pixels
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Original'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Original'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    assert page.locator(".viewer-frame").inner_text() == "1 / 40" and page.locator(".viewer-time").inner_text() == "0.00 s"
+    page.locator(".viewer-slider").fill("9")
+    page.wait_for_selector(".viewer-time:text-is('0.29 s')")   # frame 9 at 30.9 per second
+    assert not page.locator(".viewer-scalebar").is_visible()
+    page.click(".viewer-scalebar-toggle")
+    page.wait_for_selector(".viewer-scalebar", state="visible")
+    assert page.locator(".viewer-scalebar-label").inner_text() == "100 µm"   # a fifth of 512 µm, rounded down
+    line = page.evaluate("document.querySelector('.viewer-scalebar-line').getBoundingClientRect().width")
+    image = page.evaluate("document.querySelector('.viewer-canvas').getBoundingClientRect().width")
+    assert abs(line - image * 100 / 16 / 32) < 1
+    page.click(".viewer-scalebar-toggle")
+    page.wait_for_selector(".viewer-scalebar", state="hidden")
+    page.select_option(".viewer-mode", "mean")
+    page.wait_for_selector(".viewer-frame:text-is('40 frames')")
+    assert page.locator(".viewer-time").inner_text() == ""
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     api = ophys_project(empty_app)
     page.goto(empty_app["server"].url + "#/overview")

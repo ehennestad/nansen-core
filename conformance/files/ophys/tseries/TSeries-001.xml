@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PVScan version="5.4.64.200" date="1/1/2026" notes="">
+  <PVStateShard>
+    <PVStateValue key="framePeriod" value="0.033" />
+    <PVStateValue key="micronsPerPixel">
+      <IndexedValue index="XAxis" value="1.25" />
+      <IndexedValue index="YAxis" value="1.5" />
+      <IndexedValue index="ZAxis" value="1" />
+    </PVStateValue>
+  </PVStateShard>
   <Sequence type="TSeries Timed Element" cycle="1" time="10:00:00.000">
     <Frame relativeTime="0.000" index="1" parameterSet="CurrentSettings">
       <File channel="1" channelName="Ch1" page="1" filename="TSeries-001_Cycle00001_Ch1_000001.ome.tif" />

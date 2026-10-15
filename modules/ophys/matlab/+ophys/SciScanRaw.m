@@ -7,8 +7,9 @@ classdef SciScanRaw < nansen.FileAdapter
 %   height x width x frames, or height x width x channels x frames when
 %   no.of.channels is more than 1. Frames are counted from the file size
 %   when the .ini file does not give no.of.frames.acquired, and an
-%   incomplete last frame is left out. Python's ophys_adapters.SciScanRaw
-%   reads and writes the same files.
+%   incomplete last frame is left out. Its Metadata: frames.p.sec, the
+%   pixel size from x.fov and y.fov, and z.spacing of a z-stack. Python's
+%   ophys_adapters.SciScanRaw reads and writes the same files.
 
     methods
         function data = read(obj, path)
@@ -106,6 +107,25 @@ classdef SciScanRaw < nansen.FileAdapter
             end
             stack = nansen.Stack(dimensions, precision, @(first, last) ophys.SciScanRaw.readFrames( ...
                 path, precision, width, height, channels, first, last));
+            stack.Metadata = ophys.SciScanRaw.metadata(values, width, height);
+        end
+
+        function metadata = metadata(values, width, height)
+            %metadata frames.p.sec; the pixel size from x.fov and y.fov (in m) over x.pixels and y.pixels; z.spacing for a z-stack (experiment.type XYTZ)
+            fov = [ophys.SciScanRaw.optional(values, "x.fov"), ophys.SciScanRaw.optional(values, "y.fov")];
+            spacing = [];
+            if isKey(values, "experiment.type") && string(values("experiment.type")) == "XYTZ"
+                spacing = abs(ophys.SciScanRaw.optional(values, "z.spacing"));
+            end
+            metadata = ophys.internal.stackMetadata(ophys.SciScanRaw.optional(values, "frames.p.sec"), ...
+                abs(fov) * 1e6 ./ [width, height], spacing);
+        end
+
+        function value = optional(values, name)
+            value = NaN;
+            if isKey(values, name)
+                value = ophys.internal.textNumber(values(name));
+            end
         end
 
         function data = readFrames(path, precision, width, height, channels, first, last)

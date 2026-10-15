@@ -58,8 +58,8 @@ function result = setupVariables(project, options, context)
     end
     columns = {};
     if options.addColumns
-        owners = repmat(entityType, 1, 4);
-        wanted = ["ophys.imaging", "ophys.image_stats", "ophys.fov_position", "ophys.fov_region"];
+        owners = repmat(entityType, 1, 5);
+        wanted = ["ophys.imaging", "ophys.scan", "ophys.image_stats", "ophys.fov_position", "ophys.fov_region"];
         if any(project.EntityTypes == string(options.subjectType))
             owners(end + 1) = string(options.subjectType);
             wanted(end + 1) = "ophys.cranial_window";

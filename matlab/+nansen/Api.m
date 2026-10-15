@@ -1077,17 +1077,20 @@ classdef Api < handle
         end
 
         function result = apiDataFrame(obj, params)
-            % A frame (or a projection) of an image variable, scaled to 8 bits, with the ROIs of another variable
+            % A frame (or a projection) of an image variable, scaled to 8 bits, with the ROIs of another variable and
+            % the stack's metadata (frameRate, pixelSize, zStep, as its files give them)
             project = obj.requireProject();
             entity = obj.entity(params);
             limits = nansen.internal.getField(params, "limits", []);
             if ~isempty(limits) && (~isnumeric(limits) || numel(limits) ~= 2)
                 nansen.internal.throwError("invalid-params", "limits is [low, high]")
             end
-            result = nansen.internal.imageFrame(project.openStack(entity, string(nansen.Api.param(params, "variable"))), ...
+            stack = project.openStack(entity, string(nansen.Api.param(params, "variable")));
+            result = nansen.internal.imageFrame(stack, ...
                 double(nansen.internal.getField(params, "frame", 0)), double(nansen.internal.getField(params, "channel", 0)), ...
                 string(nansen.internal.getField(params, "projection", "")), double(limits), ...
                 double(nansen.internal.getField(params, "plane", 0)));
+            result.metadata = stack.Metadata;
             rois = string(nansen.internal.getField(params, "rois", ""));
             if rois ~= ""
                 result.rois = nansen.internal.roiOutlines(project.load(entity, rois));

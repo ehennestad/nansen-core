@@ -56,6 +56,7 @@ classdef PreviewProject < handle
                     stack = whole;
                 else
                     stack = nansen.Stack([whole.Size(1:end - 1), count], whole.ClassName, @(first, last) whole.frames(first, min(last, count)));
+                    stack.Metadata = whole.Metadata;
                 end
             end
             stack.MaxFrames = obj.Inner.StackFrameLimit;
@@ -87,6 +88,11 @@ classdef PreviewProject < handle
             else
                 writer = nansen.StackWriter(dimensions, className, Finish=@(data) obj.keep(name, data));
             end
+        end
+
+        function names = updateValues(obj, entity, values)
+            %updateValues The columns the values would be written to; nothing is written
+            names = nansen.Project.writableNames(obj.Inner.table(entity.EntityType), values);
         end
 
         function path = writePath(obj, entity, name)

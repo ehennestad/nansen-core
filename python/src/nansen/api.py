@@ -907,14 +907,17 @@ class Api:
         return project.data_status(self._entity(params))
 
     def data__frame(self, params: dict) -> dict:
-        """A frame (or a projection) of an image variable, scaled to 8 bits, with the ROIs of another variable."""
+        """A frame (or a projection) of an image variable, scaled to 8 bits, with the ROIs of another variable and the
+        stack's metadata (frameRate, pixelSize, zStep, as its files give them)."""
         project = self._require_project()
         entity = self._entity(params)
         limits = params.get("limits")
         if limits is not None and (not isinstance(limits, list) or len(limits) != 2):
             raise NansenError("invalid-params", "limits is [low, high]")
-        result = image_frame(project.open_stack(entity, params["variable"]), int(params.get("frame", 0)),
-                             int(params.get("channel", 0)), params.get("projection"), limits, int(params.get("plane", 0)))
+        stack = project.open_stack(entity, params["variable"])
+        result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
+                             int(params.get("plane", 0)))
+        result["metadata"] = dict(stack.metadata)
         if params.get("rois"):
             result["rois"] = roi_outlines(project.load(entity, params["rois"]))
         return result

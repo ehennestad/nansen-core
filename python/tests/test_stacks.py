@@ -41,6 +41,10 @@ def test_stacks_are_joined_along_the_frames():
     assert joined[:, :, 2:5][0, 0].tolist() == [0, 1, 1]
     with pytest.raises(NansenError):
         stacks.join([a, np.ones((2, 3, 1))])
+    assert joined.metadata == {}
+    first, second = stacks.from_array(a), stacks.from_array(b)
+    first.metadata, second.metadata = {"frameRate": 30.0, "pixelSize": [1.5, 2.0]}, {"frameRate": 15.0}
+    assert stacks.join([first, second]).metadata == {"frameRate": 30.0, "pixelSize": [1.5, 2.0]}   # the first part's
     assert stacks.natural_order(["f_10.tif", "f_2.tif", "f_1.tif"]) == ["f_1.tif", "f_2.tif", "f_10.tif"]
 
 

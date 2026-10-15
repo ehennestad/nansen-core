@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<ThorImageExperiment>
+  <Name name="rec" />
+  <LSM name="ResonanceGalvo" pixelX="5" pixelY="6" fieldSize="120" widthUM="4" heightUM="4.8" pixelSizeUM="0.8" frameRate="29.98" averageMode="0" />
+  <ZStage name="ThorZPiezo" steps="1" stepSizeUM="2" />
+  <Streaming enable="1" frames="3" zFastEnable="0" />
+</ThorImageExperiment>

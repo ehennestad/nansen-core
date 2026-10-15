@@ -8,8 +8,11 @@ classdef Stack
 %   natural order, and Project.openStack gives one for any variable.
 %   MaxFrames, when finite, is the most frames one read may ask for, all()
 %   included: a test sets it (Project.StackFrameLimit) to show that a
-%   method reads a recording in chunks and never whole. Python's
-%   nansen.stacks.Stack is the same.
+%   method reads a recording in chunks and never whole. Metadata is what
+%   the files tell about the recording, each field only when they give it:
+%   frameRate (frames per second; volumes per second for a stack with
+%   planes), pixelSize ([x, y] µm per pixel) and zStep (µm between
+%   planes). Python's nansen.stacks.Stack is the same.
 
     properties (SetAccess = private)
         Size (1, :) double
@@ -18,6 +21,7 @@ classdef Stack
 
     properties
         MaxFrames (1, 1) double = Inf
+        Metadata (1, 1) struct = struct()
     end
 
     properties (Access = private)
@@ -75,6 +79,7 @@ classdef Stack
             source = obj;
             out = nansen.Stack(dimensions, obj.ClassName, @(first, last) nansen.Stack.pick(source.frames(first, last), dim, index));
             out.MaxFrames = obj.MaxFrames;
+            out.Metadata = obj.Metadata;
         end
 
         function varargout = size(obj, dim)
@@ -118,6 +123,8 @@ classdef Stack
 
         function stack = join(stacks)
             %join Stacks (a cell array) one after the other along the frames; they must agree in everything else
+            %
+            %   The first one's Metadata is kept.
             if isempty(stacks)
                 nansen.internal.throwError("invalid-data", "no stacks to join")
             end
@@ -146,6 +153,7 @@ classdef Stack
             offsets = [0, cumsum(counts)];
             stack = nansen.Stack([first.Size(1:end - 1), offsets(end)], first.ClassName, ...
                 @(a, b) nansen.Stack.readJoined(stacks, offsets, a, b));
+            stack.Metadata = first.Metadata;
         end
     end
 

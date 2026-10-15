@@ -101,6 +101,12 @@
     return pixels;
   };
 
+  /** The largest of 1, 2 or 5 times a power of ten that is at most value (a positive number): a scalebar's length. */
+  N.roundLength = function (value) {
+    const power = 10 ** Math.floor(Math.log10(value));
+    return Number(([5, 2, 1].map((m) => m * power).find((v) => v <= value) || power).toPrecision(1));
+  };
+
   /** The pixels of an ROI on its edge: those with a side not in the ROI. */
   function edge(roi) {
     const inside = new Set(roi.pixels.map(([y, x]) => `${y},${x}`));
@@ -116,7 +122,7 @@
     let initial = options.select ?? null;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
-      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [] };
+      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false };
     const canvas = h("canvas.viewer-canvas");
     const overlay = h("canvas.viewer-overlay");
     const holder = h("div.viewer-holder", canvas, overlay);
@@ -145,6 +151,14 @@
     // the ruler: drag across the image to measure a distance, as dev's imviewer measurement tool
     const measureButton = h("button.btn.ghost.icon.small.viewer-measure", { title: "Measure a distance: drag across the image", on: { click: () => setTool(state.tool === "measure" ? null : "measure") } }, N.icon("ruler", 14));
     const measurement = h("span.viewer-measurement.mono", "");
+    // the scalebar, as imviewer's Show Scalebar: a round length of µm at the bottom left, when the files give the pixel size
+    const scaleButton = h("button.btn.ghost.icon.small.viewer-scalebar-toggle", { title: "Show scalebar", style: { display: "none" },
+      on: { click: () => { state.scalebar = !state.scalebar; drawScalebar(); } } }, N.icon("scalebar", 14));
+    const scaleLine = h("div.viewer-scalebar-line");
+    const scaleLabel = h("span.viewer-scalebar-label", "");
+    const scalebar = h("div.viewer-scalebar", { style: { display: "none" } }, scaleLine, scaleLabel);
+    holder.appendChild(scalebar);
+    const timeLabel = h("span.viewer-time.mono", "");
     const exportButton = h("button.btn.ghost.icon.small.viewer-export", { title: "Export", on: { click: () => exportMenu() } }, N.icon("download", 14));
     const zoomLabel = h("button.btn.ghost.small.viewer-zoom.mono", { title: "Fit the image (double-click it)", style: { display: "none" }, on: { click: () => zoomTo(1) } }, "");
     const status = h("div.viewer-status.muted", "Loading…");
@@ -173,6 +187,23 @@
       zoomLabel.style.display = state.zoom > 1 ? "" : "none";
       stage.classList.toggle("zoomed", state.zoom > 1);
       drawOverlay();
+      drawScalebar();
+    }
+    /** The scalebar: about a fifth of the image's width, rounded down to 1, 2 or 5 times a power of ten µm. */
+    function drawScalebar() {
+      const size = last && last.metadata && last.metadata.pixelSize;
+      scaleButton.style.display = size ? "" : "none";
+      scaleButton.classList.toggle("active", state.scalebar);
+      scalebar.style.display = size && state.scalebar ? "" : "none";
+      if (!size || !state.scalebar) return;
+      const um = N.roundLength(size[0] * last.width / 5);
+      scaleLine.style.width = `${um / size[0] * holder.clientWidth / last.width}px`;
+      scaleLabel.textContent = `${um} µm`;
+    }
+    /** The time of the frame shown, when the files give the frame rate. */
+    function showTime() {
+      const rate = last && last.metadata && last.metadata.frameRate;
+      timeLabel.textContent = rate && state.mode === "frame" ? `${(state.frame / rate).toFixed(2)} s` : "";
     }
     /** Zoom to a factor (1 fits the image), keeping the image point under (clientX, clientY) where it is. */
     function zoomTo(zoom, clientX, clientY) {
@@ -321,7 +352,8 @@
     function showMeasurement(line) {
       const dx = line.to[0] - line.from[0], dy = line.to[1] - line.from[1];
       const angle = Math.round(Math.atan2(-dy, dx) * 180 / Math.PI);
-      measurement.textContent = `${Math.hypot(dx, dy).toFixed(1)} px · ${angle}°`;
+      const size = last && last.metadata && last.metadata.pixelSize;
+      measurement.textContent = `${Math.hypot(dx, dy).toFixed(1)} px` + (size ? ` · ${Math.hypot(dx * size[0], dy * size[1]).toFixed(1)} µm` : "") + ` · ${angle}°`;
       measurement.dataset.length = String(Math.hypot(dx, dy));
     }
     canvas.addEventListener("click", (event) => {
@@ -776,8 +808,9 @@
         playButton.disabled = slider.disabled;
         if (state.auto) { state.low = frame.low; state.high = frame.high; low.value = String(frame.low); high.value = String(frame.high); }
         frameLabel.textContent = state.mode === "frame" ? `${state.frame + 1} / ${frame.frames}` : `${frame.frames} frames`;
+        showTime();
         paint(canvas, frame, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap);
-        if (resized) layout(); else drawOverlay();
+        if (resized) layout(); else { drawOverlay(); drawScalebar(); }
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
         status.textContent = `${frame.height} × ${frame.width}` + (state.rois && state.showRois ? ` · ${state.rois.length} ROIs` : "");
@@ -807,9 +840,10 @@
 
     const content = h("div.viewer" + (signalPanel ? ".with-signal" : ""),
       h("div.viewer-bar",
-        playButton, slider, frameLabel, mode, channelPick, planePick,
+        playButton, slider, frameLabel, timeLabel, mode, channelPick, planePick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, exportButton),
+        colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, scaleButton,
+        exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel));

@@ -43,6 +43,7 @@ def test_a_prairie_view_t_series_is_read_a_frame_at_a_time():
     assert stack[y, x, c, t] == expected["pixel"]["value"]
     assert stack[:, :, 1, 2].tolist() == expected["channel2frame3"]
     assert int(np.asarray(stack).astype(np.int64).sum()) == expected["sum"]
+    assert stack.metadata == expected["metadata"]   # 1 / framePeriod and micronsPerPixel
 
 
 def test_an_hdf5_stack_reads_and_writes(tmp_path):
@@ -53,6 +54,7 @@ def test_an_hdf5_stack_reads_and_writes(tmp_path):
     y, x, t = expected["pixel"]["at"]
     assert float(stack[y, x, t]) == expected["pixel"]["value"]
     assert [float(v) for v in stack[2, :, 6]] == expected["frame6row2"]
+    assert stack.metadata == expected["metadata"]
     data = np.arange(3 * 4 * 5, dtype=np.uint16).reshape(3, 4, 5)
     adapter("Hdf5Stack").write(tmp_path / "out.h5", data)
     assert (adapter("Hdf5Stack").read(tmp_path / "out.h5") == data).all()
@@ -121,6 +123,7 @@ def test_videos_read_in_colour_or_gray():
         assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"], name
         assert int(data.astype(np.int64).sum()) == expected["sum"], name
         assert (stack.frames(1, 3) == data[..., 1:3]).all(), name   # a chunk reads the same
+        assert stack.metadata == expected["metadata"], name
 
 
 def test_thorimage_frames_read_as_channels():
@@ -132,8 +135,10 @@ def test_thorimage_frames_read_as_channels():
     assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]
     assert int(data.astype(np.int64).sum()) == expected["sum"]
     assert (stack.frames(1, 3) == data[..., 1:3]).all()
+    assert stack.metadata == expected["metadata"]   # from the Experiment.xml beside the files
     one = adapter("ThorLabsTiffs").open([p for p in paths if p.name.startswith("ChanA")])
     assert list(one.shape) == [6, 5, 3] and (np.asarray(one) == data[:, :, 0, :]).all()
+    assert one.metadata == expected["metadata"]
     with pytest.raises(NansenError):
         adapter("ThorLabsTiffs").open([FILES / "binary" / "stack.raw"])
 
@@ -147,6 +152,7 @@ def test_tsm_files_read_less_their_dark_frame(tmp_path):
         assert int(data[tuple(expected[name]["at"])]) == expected[name]["value"], name
     assert int(data.astype(np.int64).sum()) == expected["sum"]
     assert (stack.frames(1, 3) == data[..., 1:3]).all()
+    assert stack.metadata == expected["metadata"]   # 1 / EXPOSURE
     (tmp_path / "cut.tsm").write_bytes((FILES / "macroscope.tsm").read_bytes()[:3000])
     with pytest.raises(NansenError):
         adapter("TsmStack").open([tmp_path / "cut.tsm"])
@@ -159,6 +165,7 @@ def test_a_dev_binary_stack_reads_and_writes(tmp_path):
     data = np.asarray(stack)
     assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]
     assert stack.frames(2, 3)[8, :, 0].tolist() == expected["frame2row8"] and int(data.astype(np.int64).sum()) == expected["sum"]
+    assert stack.metadata == expected["metadata"]
     adapter("BinaryStack").write(tmp_path / "out.raw", data)
     assert (tmp_path / "out.ini").read_text().splitlines() == ["Size = 9  7  5", "Class = uint16"]
     assert (tmp_path / "out.raw").read_bytes() == (FILES / "binary" / "stack.raw").read_bytes()   # as dev wrote it
@@ -166,3 +173,22 @@ def test_a_dev_binary_stack_reads_and_writes(tmp_path):
         writer.write(0, data[:, :, :2])
         writer.write(2, data[:, :, 2:])
     assert (tmp_path / "made.raw").read_bytes() == (FILES / "binary" / "stack.raw").read_bytes()
+
+
+def test_scanimage_files_give_their_frame_rate_pixel_size_and_z_step():
+    for file, key in (("scanimage.tif", "scanimage"), ("scanimage_planes.tif", "scanimagePlanes")):
+        expected = EXPECTED[key]
+        stack = adapter("ScanImageTiff").open([FILES / file])
+        assert list(stack.shape) == expected["size"], key
+        assert int(np.asarray(stack).astype(np.int64).sum()) == expected["sum"], key
+        assert stack.metadata == expected["metadata"], key
+    assert stack.select(slice(None), slice(None), 0).metadata == expected["metadata"]   # a channel of it keeps it
+
+
+def test_a_sciscan_z_stack_gives_its_frame_rate_pixel_size_and_z_step():
+    expected = EXPECTED["sciscan"]
+    for name in ("SciScanRaw", "BinaryStack"):   # dev's binary stack adapter reads SciScan's files as SciScan's
+        stack = adapter(name).open([FILES / "sciscan" / "zstack.raw"])
+        assert list(stack.shape) == expected["size"], name
+        assert int(np.asarray(stack).astype(np.int64).sum()) == expected["sum"], name
+        assert stack.metadata == expected["metadata"], name

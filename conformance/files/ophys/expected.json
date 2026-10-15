@@ -348,7 +348,8 @@
    2895,
    3659
   ],
-  "sum": 618448
+  "sum": 618448,
+  "metadata": {}
  },
  "suite2pBinary": {
   "size": [
@@ -392,7 +393,10 @@
     ],
     "value": 231
    },
-   "sum": 295487
+   "sum": 295487,
+   "metadata": {
+    "frameRate": 10.0
+   }
   },
   "gray": {
    "size": [
@@ -408,7 +412,10 @@
     ],
     "value": 12
    },
-   "sum": 75794
+   "sum": 75794,
+   "metadata": {
+    "frameRate": 10.0
+   }
   }
  },
  "thorlabs": {
@@ -427,7 +434,14 @@
    ],
    "value": 872
   },
-  "sum": 374902
+  "sum": 374902,
+  "metadata": {
+   "frameRate": 29.98,
+   "pixelSize": [
+    0.8,
+    0.8
+   ]
+  }
  },
  "tsm": {
   "size": [
@@ -451,7 +465,10 @@
    ],
    "value": -32768
   },
-  "sum": 378123
+  "sum": 378123,
+  "metadata": {
+   "frameRate": 100.0
+  }
  },
  "suite2p": {
   "imageSize": [
@@ -1534,7 +1551,14 @@
     2045,
     3462
    ]
-  ]
+  ],
+  "metadata": {
+   "frameRate": 30.30303,
+   "pixelSize": [
+    1.25,
+    1.5
+   ]
+  }
  },
  "hdf5": {
   "size": [
@@ -1575,7 +1599,57 @@
    102.29886627197266,
    102.74886322021484,
    107.3848876953125
-  ]
+  ],
+  "metadata": {}
+ },
+ "scanimage": {
+  "size": [
+   8,
+   10,
+   3
+  ],
+  "sum": 484047,
+  "metadata": {
+   "frameRate": 30.0446,
+   "pixelSize": [
+    40.0,
+    37.5
+   ]
+  }
+ },
+ "scanimagePlanes": {
+  "size": [
+   6,
+   8,
+   1,
+   2,
+   2
+  ],
+  "sum": 374322,
+  "metadata": {
+   "frameRate": 12.5,
+   "pixelSize": [
+    10.0,
+    10.0
+   ],
+   "zStep": 3.0
+  }
+ },
+ "sciscan": {
+  "size": [
+   4,
+   3,
+   2
+  ],
+  "sum": 40647,
+  "metadata": {
+   "frameRate": 15.5,
+   "pixelSize": [
+    100.0,
+    50.0
+   ],
+   "zStep": 2.5
+  }
  },
  "mat73": {
   "matrix": [
