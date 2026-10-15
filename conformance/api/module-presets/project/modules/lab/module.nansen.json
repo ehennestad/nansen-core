@@ -1,0 +1,10 @@
+{
+  "schemaType": "nansen.module",
+  "schemaVersion": "0.1.0",
+  "id": "lab",
+  "version": "1.0.0",
+  "title": "Lab presets",
+  "presets": [
+    "presets/wait-slow.options.nansen.json"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schemaType": "nansen.options",
+  "schemaVersion": "0.1.0",
+  "method": { "id": "core.wait", "version": "1.0.0" },
+  "name": "slow",
+  "description": "Three steps",
+  "values": { "seconds": 0, "steps": 3, "message": "slow" }
+}

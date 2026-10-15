@@ -48,6 +48,10 @@ classdef Module
             documents = obj.documents("pipelines", "nansen.pipeline");
         end
 
+        function documents = presetDocuments(obj)
+            documents = obj.documents("presets", "nansen.options");
+        end
+
         function found = entityMethods(obj)
             %entityMethods The module's methods: a row of nansen.Method
             found = nansen.Method.empty(1, 0);

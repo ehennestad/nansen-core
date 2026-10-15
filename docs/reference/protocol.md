@@ -98,7 +98,7 @@ Events flow from the core to the frontend:
 | `data.status` | `entityType`, `key` | `[{name, dataLocation, fileAdapter, files}]` |
 | `methods.list` | `entityType?` | Method summaries, including the options schema |
 | `methods.run` | `methodId`, `entityType`, `keys?`, `options?`, `preset?` | `{results}`, run in the foreground |
-| `presets.list` / `presets.save` / `presets.delete` | `methodId`, `name`, `values`, `description?` | The method's presets |
+| `presets.list` / `presets.save` / `presets.delete` | `methodId`, `name`, `values`, `description?` | The method's presets, each with its `source`: `default` (the schema's defaults, always first), `project` (saved in the project; only these can be deleted), or `module` (shipped by the module named in `module`, unless the project has one of the same name) |
 | `pipelines.list` | `entityType?` | Pipeline documents, each step with its method's title, and `source`: `project` or `module` |
 | `pipelines.save` | `document` (a `nansen.pipeline`) | The pipeline, written into the project; one with a module pipeline's id is used instead of it |
 | `pipelines.delete` | `pipelineId` | `{removed}`; only the project's own pipelines (`unknown-pipeline` otherwise) |

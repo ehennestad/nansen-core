@@ -11,6 +11,7 @@ A **module** is a folder that adds fragments, methods, file adapters and pipelin
   methods/<name>.method.nansen.json
   adapters/<name>.fileAdapter.nansen.json
   pipelines/<name>.pipeline.nansen.json
+  presets/<name>.options.nansen.json    option presets of its methods (or of other modules' methods)
   python/                            Python code, imported from here without changing sys.path
   matlab/                            MATLAB code, put on the path when one of the module's methods or adapters is first used
 ```
@@ -80,7 +81,7 @@ The context gives the project, `log`, `progress(fraction, message)` and cancella
 
 Run a method now with `project.run(methodId, entities, Options=…, Preset=…)` / `project.run(method_id, entities, options=…, preset=…)`, or queue it as a task (below).
 
-**Presets** are named option sets saved in `options/<methodId>/<name>.options.nansen.json` (`nansen.options`). Use `savePreset` / `save_preset`, `presets` and `deletePreset` / `delete_preset`, or the run dialog.
+**Presets** are named option sets saved in `options/<methodId>/<name>.options.nansen.json` (`nansen.options`). Use `savePreset` / `save_preset`, `presets` and `deletePreset` / `delete_preset`, or the run dialog. A module can ship presets too, listed under `presets` in `module.nansen.json`; they come after the project's own, and a project preset of the same name is used instead. Only the project's presets can be deleted. The `default` preset is always the method's schema defaults.
 
 ## Columns with choices
 

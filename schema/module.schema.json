@@ -17,7 +17,8 @@
     "fragments": { "$ref": "#/definitions/paths" },
     "methods": { "$ref": "#/definitions/paths" },
     "fileAdapters": { "$ref": "#/definitions/paths" },
-    "pipelines": { "$ref": "#/definitions/paths" }
+    "pipelines": { "$ref": "#/definitions/paths" },
+    "presets": { "$ref": "#/definitions/paths", "description": "Option presets (nansen.options documents) of the module's or other modules' methods. A project's own preset of the same name is used instead." }
   },
   "definitions": {
     "paths": {

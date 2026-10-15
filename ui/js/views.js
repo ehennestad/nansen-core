@@ -778,7 +778,8 @@
       const preset = presets.find((p) => p.name === (presetName || "default")) || presets[0];
       form = N.schemaForm(method.options || {}, preset ? preset.values : {});
       const presetSelect = h("select.input", { style: { width: "200px" }, on: { change: (e) => select(method, e.target.value) } },
-        presets.map((p) => h("option", { value: p.name, selected: preset && p.name === preset.name }, p.name)));
+        presets.map((p) => h("option", { value: p.name, selected: preset && p.name === preset.name },
+          p.source === "module" ? `${p.name} (from ${p.module})` : p.name)));
       const save = h("button.btn", { on: { click: async () => {
         const name = await N.prompt("Save preset", "Preset name", "");
         if (!name) return;
@@ -788,7 +789,7 @@
           select(method, name);
         } catch (error) { N.showError(error, "Could not save the preset"); }
       } } }, "Save as…");
-      const remove = preset && preset.name !== "default" ? h("button.btn.ghost", { title: "Delete this preset", on: { click: async () => {
+      const remove = preset && preset.source === "project" ? h("button.btn.ghost", { title: "Delete this preset", on: { click: async () => {
         if (!(await N.confirm("Delete preset?", `The preset '${preset.name}' of ${method.title} is deleted.`, "Delete", "danger"))) return;
         try {
           await app.client.request("presets.delete", { methodId: method.id, name: preset.name });

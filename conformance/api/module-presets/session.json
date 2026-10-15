@@ -1,0 +1,153 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "presets.list",
+        "id": 2,
+        "params": {
+          "methodId": "core.wait"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "default",
+            "source": "default"
+          },
+          {
+            "name": "slow",
+            "source": "module",
+            "module": "lab",
+            "description": "Three steps",
+            "values": {
+              "steps": 3,
+              "message": "slow"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "id": 3,
+        "params": {
+          "methodId": "core.wait",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "preset": "slow"
+        }
+      },
+      "expect": {
+        "result": {
+          "status": "queued",
+          "options": {
+            "preset": "slow",
+            "values": {
+              "steps": 3,
+              "message": "slow"
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "presets.save",
+        "id": 4,
+        "params": {
+          "methodId": "core.wait",
+          "name": "slow",
+          "values": {
+            "seconds": 0,
+            "steps": 5
+          }
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "default"
+          },
+          {
+            "name": "slow",
+            "source": "project",
+            "values": {
+              "steps": 5
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "presets.delete",
+        "id": 5,
+        "params": {
+          "methodId": "core.wait",
+          "name": "slow"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "default"
+          },
+          {
+            "name": "slow",
+            "source": "module",
+            "values": {
+              "steps": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "presets.delete",
+        "id": 6,
+        "params": {
+          "methodId": "core.wait",
+          "name": "slow"
+        }
+      },
+      "expect": {
+        "error": "unknown-preset"
+      }
+    },
+    {
+      "request": {
+        "method": "presets.save",
+        "id": 7,
+        "params": {
+          "methodId": "core.wait",
+          "name": "default",
+          "values": {}
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    }
+  ]
+}

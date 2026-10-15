@@ -1,0 +1,4 @@
+{
+  "description": "Presets shipped by a module: listed after the default with their source and module, usable when queueing, shadowed by a project preset of the same name (deleting that brings the module's back), and never deleted themselves.",
+  "steps": 7
+}

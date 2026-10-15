@@ -813,16 +813,34 @@ classdef Project < handle
         end
 
         function presets = presets(obj, methodId)
-            %presets Saved option sets of a method after the implicit default: a cell row of structs (name, description, values)
+            %presets Option sets of a method: a cell row of structs (name, description, values, source)
+            %
+            %   The implicit default (the schema's defaults), the project's saved
+            %   ones, then those its modules ship that the project has none of the
+            %   same name of. source is default, project or module (then with module).
             method = obj.method(methodId);
-            presets = {struct("name", 'default', "description", 'The method''s defaults', "values", method.defaultOptions())};
+            presets = {struct("name", 'default', "description", 'The method''s defaults', "values", method.defaultOptions(), ...
+                "source", 'default')};
+            names = "default";
             folder = fullfile(obj.Folder, "options", methodId);
             if isfolder(folder)
                 listing = dir(fullfile(folder, "*.options.nansen.json"));
                 for name = sort(string({listing.name}))
                     doc = nansen.readDocument(fullfile(folder, name), ExpectedType="nansen.options");
                     presets{end + 1} = struct("name", doc.name, ...
-                        "description", char(nansen.internal.getField(doc, "description", "")), "values", doc.values); %#ok<AGROW>
+                        "description", char(nansen.internal.getField(doc, "description", "")), "values", doc.values, ...
+                        "source", 'project'); %#ok<AGROW>
+                    names(end + 1) = string(doc.name); %#ok<AGROW>
+                end
+            end
+            for module = obj.modules()
+                for doc = module.presetDocuments()
+                    if string(doc{1}.method.id) == string(methodId) && ~ismember(string(doc{1}.name), names)
+                        presets{end + 1} = struct("name", doc{1}.name, ...
+                            "description", char(nansen.internal.getField(doc{1}, "description", "")), "values", doc{1}.values, ...
+                            "source", 'module', "module", char(module.Id)); %#ok<AGROW>
+                        names(end + 1) = string(doc{1}.name); %#ok<AGROW>
+                    end
                 end
             end
         end

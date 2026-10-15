@@ -557,13 +557,23 @@ class Project:
         return self.folder / "options" / method_id / f"{name}.options.nansen.json"
 
     def presets(self, method_id: str) -> List[Dict[str, Any]]:
-        """Saved option sets of a method, after the implicit 'default' (the schema's defaults)."""
+        """Option sets of a method: the implicit 'default' (the schema's defaults), the project's saved
+        ones, then those its modules ship that the project has none of the same name of.
+
+        Each has a source: default, project, or module (with the module's id)."""
         method = self.method(method_id)
-        presets = [{"name": "default", "description": "The method's defaults", "values": method.default_options()}]
+        presets = [{"name": "default", "description": "The method's defaults", "values": method.default_options(),
+                    "source": "default"}]
         folder = self.folder / "options" / method_id
         for path in sorted(folder.glob("*.options.nansen.json")) if folder.is_dir() else []:
             doc = read_document(path, "nansen.options")
-            presets.append({"name": doc["name"], "description": doc.get("description", ""), "values": doc["values"]})
+            presets.append({"name": doc["name"], "description": doc.get("description", ""), "values": doc["values"],
+                            "source": "project"})
+        for module in self.modules:
+            for doc in module.preset_documents():
+                if doc["method"]["id"] == method_id and all(p["name"] != doc["name"] for p in presets):
+                    presets.append({"name": doc["name"], "description": doc.get("description", ""),
+                                    "values": doc["values"], "source": "module", "module": module.id})
         return presets
 
     def preset(self, method_id: str, name: str) -> Dict[str, Any]:

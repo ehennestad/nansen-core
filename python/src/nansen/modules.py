@@ -65,6 +65,9 @@ class Module:
     def pipeline_documents(self) -> List[dict]:
         return self._documents("pipelines", "nansen.pipeline")
 
+    def preset_documents(self) -> List[dict]:
+        return self._documents("presets", "nansen.options")
+
     def summary(self) -> dict:
         return {"id": self.id, "version": self.version, "title": self.document.get("title", self.id),
                 "description": self.document.get("description", ""), "folder": str(self.folder)}
