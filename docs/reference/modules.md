@@ -48,12 +48,12 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 | `ophys.deep_interpolation` | Python: DeepInterpolation with a trained model, as dev's Denoiser, when deepinterpolation and h5py are installed |
 | `ophys.align_sessions` | Batch: aligns the selected entities' FOV images to the first one's and copies its ROIs, moved, to the others (dev's migrateRoisToFovs) |
 | `ophys.fov_region` | Computes the `brain_region` column: the atlas region at the FOV's position |
-| `ophys.caiman_deconvolution` | CaImAn's constrained foopsi (Python) or deconvolveCa (MATLAB), when installed |
+| `ophys.caiman_deconvolution` | CaImAn's constrained foopsi (Python) or OASIS through deconvolveCa (MATLAB), when installed |
 | `ophys.extract` | MATLAB: cells and traces by EXTRACT, when it is on the path |
 | `ophys.flowreg` | MATLAB: non-rigid motion correction by Flow-Registration, when it is on the path |
 | `ophys.suite2p` | Python: runs suite2p, when it is installed, and saves its cells and signals in the same variables |
 | `ophys.normcorre` | MATLAB: rigid or piecewise rigid motion correction with NoRMCorre, when it is on the path |
-| `ophys.open_in_imviewer` | MATLAB, run by hand: opens a stack in dev's imviewer, when it is on the path |
+| `ophys.open_in_imviewer` | MATLAB R2024b or older (imviewer uses Java figures), run by hand: opens a stack in dev's imviewer, when it and the Widgets Toolbox are on the path |
 
 A method that needs a package that is not installed fails with `dependency-missing`. The file adapters are `ophys.sciscan_raw` (a SciScan `.raw` file and its `.ini` file, as written by the microscope: big-endian, one channel after the other in each frame), `ophys.tiff_stack` (multi-page TIFF) and `ophys.scanimage_tiff` (ScanImage TIFF files, read only: channels and planes from the metadata, and multi-ROI recordings with their ROIs side by side, without flyback lines; height x width x channels x planes x frames when there is more than one plane). The fragments are `ophys.imaging` (field of view, depth, indicator and frame rate, typed in) and `ophys.image_stats` (computed). The pipeline `ophys.preprocess` runs motion correction, image statistics, ROI detection, signal extraction, ΔF/F and deconvolution.
 
