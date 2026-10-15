@@ -590,6 +590,9 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .viewer-stage .viewer-canvas.drawing { cursor: crosshair; }
 .viewer-zoom { font-size: 12px; padding: 2px 8px; }
 .viewer-time { font-size: 12px; color: var(--muted); }
+.viewer-channel-strip { display: inline-flex; align-items: center; gap: 8px; }
+.viewer-bar .viewer-channel-toggle { gap: 2px; font-size: 12px; color: var(--muted); }
+.viewer-channel-color { width: 22px; height: 20px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: none; cursor: pointer; }
 .viewer-bar .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
 .viewer-scalebar { position: absolute; left: 10px; bottom: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; pointer-events: none; }
 .viewer-scalebar-line { height: 3px; background: white; box-shadow: 0 0 2px rgba(0, 0, 0, .8); }
