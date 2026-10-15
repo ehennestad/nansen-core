@@ -413,6 +413,87 @@
       "expect": {
         "error": "schema-validation"
       }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 19,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "Curated",
+            "default": true
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "Curated",
+          "default": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 20,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "Range",
+            "default": true
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "Range",
+          "default": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.list",
+        "id": 21,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "Curated",
+            "default": false
+          },
+          {
+            "name": "One value"
+          },
+          {
+            "name": "Range",
+            "default": true
+          },
+          {
+            "name": "layout"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 22,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "x",
+            "default": "yes"
+          }
+        }
+      },
+      "expect": {
+        "error": "schema-validation"
+      }
     }
   ]
 }

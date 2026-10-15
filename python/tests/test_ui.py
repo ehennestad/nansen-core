@@ -501,6 +501,14 @@ def test_filters_and_saved_views(empty_app, page):
     page.reload()  # the view shown last is shown again
     page.wait_for_selector(".grid-table tbody td.key")
     page.wait_for_function("() => document.querySelectorAll('.grid-table tbody tr[data-id]').length === 2")
+    # dev's default metatable: the view a table opens with, here or on another computer (nothing remembered yet)
+    page.click(".toolbar button:has(.view-name)")
+    page.click(".menu .item:has-text('Open the table with Pair')")
+    wait_until(lambda: [v["name"] for v in views() if v.get("default")] == ["Pair"])
+    page.evaluate("() => localStorage.clear()")
+    page.reload()
+    page.wait_for_function("() => document.querySelectorAll('.grid-table tbody tr[data-id]').length === 2")
+    assert page.locator(".toolbar .view-name").inner_text() == "Pair"
 
 
 def test_add_edit_and_delete_a_data_variable(empty_app, page):
@@ -801,6 +809,16 @@ def test_lock_editing_and_keyboard_shortcuts(empty_app, page):
     page.keyboard.press("Escape")  # out of the search box, which has the focus
     page.keyboard.press("?")
     page.wait_for_selector(".dialog .shortcuts")
+    page.keyboard.press("Escape")
+    opened = []
+    empty_app["api"].open_url = opened.append   # the Help menu's pages open in the system's browser
+    page.click(".help-button")
+    page.click(".menu .item:has-text('Report a problem')")
+    wait_until(lambda: opened == ["https://github.com/ehennestad/nansen-core/issues/new"])
+    page.click(".help-button")
+    page.click(".menu .item:has-text('Keyboard shortcuts')")
+    page.wait_for_selector(".dialog .shortcuts")
+    assert empty_app["api"].handle({"id": 1, "method": "app.openUrl", "params": {"url": "file:///etc/passwd"}})["error"]["code"] == "invalid-params"
 
 
 def test_run_a_project_tool_from_the_overview(empty_app, page):

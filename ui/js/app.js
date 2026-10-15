@@ -3,6 +3,7 @@
   "use strict";
   const N = window.N;
   const { h } = N;
+  const REPOSITORY = "https://github.com/ehennestad/nansen-core";   // the help pages and the issue tracker
 
   const app = {
     client: null,
@@ -165,7 +166,14 @@
         N.toast("Theme", next === "auto" ? "Follow the system" : next);
       } } }, N.icon("moon"));
       this.topActions = h("div", { style: { display: "flex", gap: "8px" } });
-      const helpButton = h("button.btn.ghost.icon.shortcuts-button", { title: "Keyboard shortcuts (?)", on: { click: () => N.showShortcuts() } }, N.icon("keyboard"));
+      // the Help menu, as dev's: the shortcuts, the guides, and where to report a problem (pages open in the system's browser)
+      const page = (url) => () => this.client.request("app.openUrl", { url }).catch((error) => N.showError(error, "Could not open the page"));
+      const helpButton = h("button.btn.ghost.icon.shortcuts-button.help-button", { title: "Help", on: { click: () => N.menu(helpButton, [
+        { label: "Keyboard shortcuts (?)", icon: "keyboard", onClick: () => N.showShortcuts() },
+        { label: "Getting started", icon: "compass", onClick: page(`${REPOSITORY}/blob/main/docs/getting-started.md`) },
+        { label: "Documentation", icon: "note", onClick: page(`${REPOSITORY}/tree/main/docs`) },
+        { label: "Report a problem…", icon: "alert", onClick: page(`${REPOSITORY}/issues/new`) },
+      ]) } }, N.icon("keyboard"));
       // below 860 px the sidebar slides in over the page, from this button
       const menuButton = h("button.btn.ghost.icon.menu-button", { title: "Menu", on: { click: () => this.shellEl.classList.toggle("nav-open") } }, N.icon("menu"));
       root.appendChild(this.shellEl = h("div.shell",

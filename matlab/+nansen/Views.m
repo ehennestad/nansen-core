@@ -47,6 +47,13 @@ classdef Views
                 end
             end
             document = obj.read();
+            if isfield(view, "default") && isequal(view.default, true)   % one default view: the others are not
+                for i = 1:numel(document.views)
+                    if isfield(document.views{i}, "default") && isequal(document.views{i}.default, true)
+                        document.views{i}.default = false;
+                    end
+                end
+            end
             names = string(cellfun(@(v) char(v.name), document.views, UniformOutput=false));   % a string array, also when empty
             at = find(names == string(view.name), 1);
             if isempty(at)

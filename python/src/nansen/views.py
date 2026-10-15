@@ -43,6 +43,8 @@ class Views:
                 raise NansenError("invalid-params", f"a key of {self.entity_type} has the columns {', '.join(self.key_names)}")
         document = self._read()
         views = [v for v in document["views"] if v["name"] != view["name"]]
+        if view.get("default"):   # one default view: the others are not
+            views = [dict(v, default=False) if v.get("default") else v for v in views]
         position = next((i for i, v in enumerate(document["views"]) if v["name"] == view["name"]), len(views))
         views.insert(position, view)
         document["views"] = views

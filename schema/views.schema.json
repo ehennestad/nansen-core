@@ -33,7 +33,8 @@
           "hiddenColumns": { "type": "array", "items": { "type": "string" } },
           "columnOrder": { "type": "array", "items": { "type": "string" }, "description": "Columns in the order shown; others after them." },
           "columnWidths": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 }, "description": "Column name to width in pixels, for columns sized by hand." },
-          "search": { "type": "string" }
+          "search": { "type": "string" },
+          "default": { "type": "boolean", "description": "The view the table opens with (dev's default metatable); at most one view of an entity type is." }
         }
       }
     }

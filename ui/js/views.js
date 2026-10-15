@@ -264,7 +264,7 @@
     function viewsMenu(anchor) {
       const items = [{ heading: "Views" },
         { label: "All rows", icon: activeView ? "dot" : "check", onClick: () => showView(null) }];
-      for (const v of views) items.push({ label: v.name + (v.keys ? ` (${v.keys.length})` : ""), icon: activeView && activeView.name === v.name ? "check" : (v.keys ? "list" : "filter"), onClick: () => showView(v) });
+      for (const v of views) items.push({ label: v.name + (v.keys ? ` (${v.keys.length})` : "") + (v.default ? " · default" : ""), icon: activeView && activeView.name === v.name ? "check" : (v.keys ? "list" : "filter"), onClick: () => showView(v) });
       items.push({ heading: "Save" }, { label: "Save as a new view…", icon: "plus", onClick: async () => {
         const name = await N.prompt("Save as a view", "Name of the view", "");
         if (!name) return;
@@ -274,6 +274,8 @@
       if (activeView) {
         items.push({ label: `Update ${activeView.name}`, icon: "refresh", onClick: () => saveView(Object.assign({ name: activeView.name },
           activeView.description ? { description: activeView.description } : {}, currentState())) },
+        { label: activeView.default ? `${activeView.name} opens the table: no more` : `Open the table with ${activeView.name}`, icon: "compass",
+          onClick: () => saveView(Object.assign({}, activeView, { default: !activeView.default })) },
         { label: `Delete ${activeView.name}…`, icon: "trash", onClick: async () => {
           if (!(await N.confirm("Delete the view?", `The view ${activeView.name} is deleted. The rows in it stay in the table.`, "Delete", "danger"))) return;
           try {
@@ -601,9 +603,9 @@
     grid.refresh = () => { origRefresh(); renderFooter(); };
     app.onViewsEvent = (data) => { if (data.entityType === entityType) loadViews(); };
     await Promise.all([app.reloadEntities(), loadViews()]);
-    let remembered = "";
-    try { remembered = localStorage.getItem(viewStoreKey) || ""; } catch (e) { /* fine */ }
-    const view = views.find((v) => v.name === remembered);
+    let remembered = null;   // the view last shown here ("" for all rows); none yet: the project's default view
+    try { remembered = localStorage.getItem(viewStoreKey); } catch (e) { /* fine */ }
+    const view = remembered === null ? views.find((v) => v.default) : views.find((v) => v.name === remembered);
     if (view) showView(view);
     search.focus();
   };

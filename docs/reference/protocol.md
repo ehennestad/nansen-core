@@ -57,6 +57,7 @@ Events flow from the core to the frontend:
 | Method | Params | Result |
 |---|---|---|
 | `app.info` | | `{name, language, version, protocolVersion, methods, workspace}`; `workspace` says whether `workspace.send` has somewhere to put entities |
+| `app.openUrl` | `url` (http or https) | `{url}`, after opening the page in the system's browser (the Help menu's pages); `invalid-params` for any other address |
 | `app.plugins` | | `[{module, path, code}]`: the dashboard scripts of the project's modules (`dashboard` in `module.nansen.json`); `[]` with no project open. The dashboard runs each with `N` and the module id; a script adds pages with `N.registerPage({id, title, icon, render(app, el)})`, listed under Modules in the sidebar |
 | `workspace.send` | `entityType`, `keys?`, `name?` (default `entities`) | `{name, count}`: the entities are put in the workspace the app was opened from, as a variable of that name: MATLAB's base workspace (a cell row of `nansen.Entity`), or in Python the namespace given to `nansen.server.open_app` (a list of `Entity`). `no-workspace` when there is none |
 | `catalog.list` | | Projects in the catalog, most recently opened first |
@@ -101,7 +102,7 @@ Events flow from the core to the frontend:
 | `files.open` | `path`, `dataLocation?`, `rootStoragePath?` | As `files.resolve`; the file is opened in its default app (`file-not-found` if it is not there, `invalid-params` for a folder) |
 | `files.reveal` | as `files.resolve` | The same, after showing the folder (a file's folder) in the system's file browser; `file-not-found` if it does not exist |
 | `views.list` | `entityType` | The entity type's saved views: `[{name, description?, keys?, filters?, hiddenColumns?, search?}]` |
-| `views.save` | `entityType`, `view` | The view, added or put in place of the one of the same name. A filter is `{column, op}` with `op` `in` (`values`), `range` (`min`, `max`), `is` (`value`), `contains` (`text`), `empty` or `notEmpty` |
+| `views.save` | `entityType`, `view` | The view, added or put in place of the one of the same name. A filter is `{column, op}` with `op` `in` (`values`), `range` (`min`, `max`), `is` (`value`), `contains` (`text`), `empty` or `notEmpty`. A view with `default: true` is the one the table opens with; the entity type's other views get `default: false` |
 | `views.delete` | `entityType`, `name` | `{removed}` (`unknown-view` if there is no such view) |
 | `notes.list` | `entityType?`, `key?` (needs `entityType`) | Notes, newest first, each with its `entityType`: `[{id, entityType, key, createdAt, author, type, title, text, tags}]` |
 | `notes.add` | `entityType`, `key`, `text`, `title?`, `type?` (`informal`, `important`, `todo` or `question`; default `informal`), `author?` (default: the user name) | The note; its `tags` are the `#words` in the title and text |

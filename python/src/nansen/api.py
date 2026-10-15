@@ -90,6 +90,11 @@ def _frame_rate(params: dict, entity: Any) -> Optional[float]:
     return float(rate)
 
 
+def _open_url(url: str) -> None:
+    import webbrowser
+    webbrowser.open(url)
+
+
 class Api:
     def __init__(self, catalog: Optional[Catalog] = None, project: Optional[Project] = None,
                  executor: Optional[str] = None, start_queue: bool = True):
@@ -103,6 +108,7 @@ class Api:
         # Opens a folder in the system's file browser; tests put their own here
         self.open_folder: Callable[[Path], None] = open_in_file_browser
         self.open_file: Callable[[Path], None] = open_in_file_browser  # the file's default app
+        self.open_url: Callable[[str], Any] = _open_url   # a web page in the system's browser
         self.edit_file: Callable[[Path], None] = edit_in_editor
         # Where workspace.send puts entities: a namespace such as a notebook's globals(), or None for none
         self.workspace: Optional[Dict[str, Any]] = None
@@ -261,6 +267,14 @@ class Api:
         if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]*$", str(params["name"])):
             raise NansenError("invalid-params", f"{params['name']!r} is not a name for module data")
         return project.folder / "module-data" / params["module"] / f"{params['name']}.json"
+
+    def app__openUrl(self, params: dict) -> dict:
+        """Open a web page (http or https) in the system's browser: the help pages, an issue report."""
+        url = str(params.get("url", ""))
+        if not re.match(r"^https?://\S+$", url):
+            raise NansenError("invalid-params", f"{url!r} is not an http or https address")
+        self.open_url(url)
+        return {"url": url}
 
     def app__info(self, params: dict) -> dict:
         return {"name": "nansen", "language": "python", "version": __version__, "protocolVersion": PROTOCOL_VERSION,
