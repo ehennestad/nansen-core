@@ -741,7 +741,7 @@ class Api:
         """Start a project method from the templates: its document, and a file to fill in per language."""
         method = self._require_project().create_method(
             params["id"], params.get("title", ""), params.get("entityType", "*"), params.get("description", ""),
-            params.get("batchMode", "serial"), params.get("languages", ["python", "matlab"]))
+            params.get("batchMode", "serial"), params.get("languages", ["python", "matlab"]), params.get("queueable", True))
         self.emit("project", {"name": self.project.name})
         files = [f"methods/{method.id}.method.nansen.json"] + [
             f"{language}/{method.id}.{'py' if language == 'python' else 'm'}" for language in method.languages]
@@ -808,19 +808,46 @@ class Api:
                      if t.get("pipeline") and t["status"] in ("queued", "running")}
         by_pipeline: Dict[str, list] = {}
         skip: Dict[Any, set] = {}
-        skipped = []
+        skipped, manual = [], []
         for entity in self._entities(params):
             state = progress.get(runs.key_id(entity.key))
             if state is None or state["done"] == state["total"] or (state["pipeline"], runs.key_id(entity.key)) in in_flight:
                 skipped.append(entity.key)  # no pipeline, all done, or its steps are queued already
                 continue
-            first = next(i for i, s in enumerate(state["steps"]) if not s["done"])
-            skip[runs.key_id(entity.key)] = set(range(first))
+            steps = state["steps"]
+            first = next(i for i, s in enumerate(steps) if not s["done"])
+            if not steps[first]["queueable"]:  # a step to run by hand comes next
+                manual.append({"key": entity.key, "step": first, "method": steps[first]["method"], "title": steps[first]["title"]})
+                continue
+            stop = next((i for i in range(first, len(steps)) if not steps[i]["queueable"]), len(steps))
+            skip[runs.key_id(entity.key)] = set(range(first)) | set(range(stop, len(steps)))  # up to a manual step
             by_pipeline.setdefault(state["pipeline"], []).append(entity)
         tasks = []
         for pipeline_id, entities in by_pipeline.items():
             tasks += self._queue().submit_pipeline(pipeline_id, entities, params.get("language"), skip=skip)
-        return {"tasks": tasks, "skipped": skipped}
+        return {"tasks": tasks, "skipped": skipped, "manual": manual}
+
+    def pipelines__runNext(self, params: dict) -> dict:
+        """For each entity with a pipeline, run its next step not done now, in the foreground (manual steps too)."""
+        project = self._require_project()
+        entity_type = params["entityType"]
+        progress = project.pipeline_progress(entity_type)
+        pipelines = {p["id"]: p for p in project.pipelines(entity_type)}
+        in_flight = {runs.key_id(t["entities"][0]["key"]) for t in self._queue().list()
+                     if t.get("pipeline") and t["status"] in ("queued", "running")}
+        ran, skipped = [], []
+        for entity in self._entities(params):
+            state = progress.get(runs.key_id(entity.key))
+            if state is None or state["done"] == state["total"] or runs.key_id(entity.key) in in_flight:
+                skipped.append(entity.key)
+                continue
+            first = next(i for i, s in enumerate(state["steps"]) if not s["done"])
+            step = pipelines[state["pipeline"]]["steps"][first]
+            result = project.run(step["method"], [entity], step.get("options"), step.get("preset"))
+            ran.append({"key": entity.key, "step": first, "method": step["method"], "result": result[0] if result else None})
+        if ran:
+            self.emit("entities", {"entityTypes": [entity_type]})
+        return {"ran": ran, "skipped": skipped}
 
     def pipelines__submit(self, params: dict) -> list:
         return self._queue().submit_pipeline(params["pipelineId"], self._entities(params), params.get("language"))

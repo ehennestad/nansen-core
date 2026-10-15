@@ -501,7 +501,8 @@ class Project:
         return [m for m in found.values() if entity_type is None or m.applies_to(entity_type)]
 
     def create_method(self, method_id: str, title: str, entity_type: str = "*", description: str = "",
-                      batch_mode: str = "serial", languages: Sequence[str] = ("python", "matlab")) -> Method:
+                      batch_mode: str = "serial", languages: Sequence[str] = ("python", "matlab"),
+                      queueable: bool = True) -> Method:
         """Start a method of the project: its document in methods/ and, for each language, a file to fill in
         (python/<id>.py with run(), matlab/<id>.m), from the templates that ship with NANSEN."""
         from .modules import template_text
@@ -530,6 +531,8 @@ class Project:
                     "implementations": {}, "options": {"type": "object", "properties": {}}}
         if description:
             document["description"] = description
+        if not queueable:
+            document["queueable"] = False  # run by hand only, for example an interactive one
         if "python" in languages:
             document["implementations"]["python"] = f"{method_id}:run"
         if "matlab" in languages:
@@ -637,6 +640,11 @@ class Project:
         table = self.table(entity_type)
         completed = runs.completed(self.folder, entity_type)
         known = {p["id"]: p for p in self.pipelines(entity_type)}
+        step_methods: Dict[str, Method] = {}  # looked up once, not per row
+        for pipeline in known.values():
+            for s in pipeline["steps"]:
+                if s["method"] not in step_methods:
+                    step_methods[s["method"]] = self.method(s["method"])
         progress: Dict[runs.KeyId, dict] = {}
         for row in table.rows:
             pipeline = known.get(row.get("pipeline"))
@@ -644,8 +652,11 @@ class Project:
                 continue
             key = {name: row[name] for name in table.spec.key}
             done = completed.get(runs.key_id(key), {})
-            steps = [{"title": s.get("title") or self.method(s["method"]).title, "method": s["method"],
-                      "done": s["method"] in done, "finishedAt": done.get(s["method"])} for s in pipeline["steps"]]
+            steps = []
+            for s in pipeline["steps"]:
+                method = step_methods[s["method"]]
+                steps.append({"title": s.get("title") or method.title, "method": s["method"], "queueable": method.queueable,
+                              "done": s["method"] in done, "finishedAt": done.get(s["method"])})
             progress[runs.key_id(key)] = {"pipeline": pipeline["id"], "title": pipeline.get("title", pipeline["id"]),
                                           "steps": steps, "done": sum(s["done"] for s in steps), "total": len(steps)}
         return progress

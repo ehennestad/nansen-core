@@ -443,7 +443,8 @@
         for (const p of pipelines) items.push({ label: p.title || p.id, icon: "layers", onClick: () => assign(p) });
         items.push({ label: "No pipeline", icon: "x", onClick: () => assign(null) });
       }
-      items.push({ heading: "Run" }, { label: "Queue the next steps", icon: "play", onClick: () => N.views.queueNext(app, entityType, rows.map((r) => r.key)) });
+      items.push({ heading: "Run" }, { label: "Queue the next steps", icon: "play", onClick: () => N.views.queueNext(app, entityType, rows.map((r) => r.key)) },
+        { label: "Run the next step now", icon: "zap", onClick: () => N.views.runNextStep(app, entityType, rows.map((r) => r.key)) });
       N.menu(anchor, items);
     }
     async function removeRows(rows) {
@@ -595,10 +596,17 @@
         h("div.card-head", N.icon("layers", 15), h("h3", detail.pipeline.title), h("div.spacer"),
           h("span.pill" + (detail.pipeline.done === detail.pipeline.total ? ".good" : ".plain"), `${detail.pipeline.done}/${detail.pipeline.total}`)),
         h("ol.steps", detail.pipeline.steps.map((s) => h("li" + (s.done ? ".done" : ""),
-          h("span.step-mark", s.done ? N.icon("check", 12) : null), h("div.grow", h("div.title", s.title), h("div.sub", s.method)),
+          h("span.step-mark", s.done ? N.icon("check", 12) : null), h("div.grow", h("div.title", s.title), h("div.sub", s.method + (s.queueable === false ? " · run by hand" : ""))),
           s.done ? h("span.muted", N.fmt.ago(s.finishedAt)) : null))),
-        detail.pipeline.done < detail.pipeline.total ? h("div.card-foot",
-          h("button.btn.small.primary", { on: { click: () => N.views.queueNext(app, entityType, [detail.key]) } }, N.icon("play", 14), "Queue the next steps")) : null)] : null;
+        detail.pipeline.done < detail.pipeline.total ? (() => {
+          const next = detail.pipeline.steps.find((s) => !s.done);
+          const runNow = h("button.btn.small" + (next.queueable === false ? ".primary" : "") + ".run-step", { on: { click: async () => {
+            await N.views.runNextStep(app, entityType, [detail.key]);
+            N.views.entityDrawer(app, entityType, detail.key);
+          } } }, N.icon("zap", 14), `Run ${next.title} now`);
+          return h("div.card-foot", next.queueable === false ? null :
+            h("button.btn.small.primary", { on: { click: () => N.views.queueNext(app, entityType, [detail.key]) } }, N.icon("play", 14), "Queue the next steps"), runNow);
+        })() : null)] : null;
     N.drawer.open(N.fmt.key(detail.key), (app.typeTitle(entityType)).replace(/s$/, ""),
       h("div",
         h("div", { style: { margin: "12px 0" } }, statusPill),
@@ -616,13 +624,30 @@
   N.views.queueNext = async function (app, entityType, keys) {
     try {
       const result = await app.client.request("pipelines.queueNext", { entityType, keys });
+      const manual = result.manual || [];
+      const manualNote = manual.length ? `${manual.length} wait for a step to run by hand (${[...new Set(manual.map((m) => m.title))].join(", ")}): use Run the next step now` : "";
       if (!result.tasks.length) {
-        N.toast("Nothing to queue", `${result.skipped.length} entit${result.skipped.length === 1 ? "y has" : "ies have"} no pipeline, are done, or have steps queued already`);
+        N.toast(manual.length ? "A step to run by hand comes next" : "Nothing to queue", manualNote ||
+          `${result.skipped.length} entit${result.skipped.length === 1 ? "y has" : "ies have"} no pipeline, are done, or have steps queued already`, "info", 7000);
         return;
       }
-      N.toast("Steps queued", `${result.tasks.length} task(s)` + (result.skipped.length ? `; ${result.skipped.length} skipped` : ""), "success");
+      N.toast("Steps queued", `${result.tasks.length} task(s)` + (result.skipped.length ? `; ${result.skipped.length} skipped` : "") + (manualNote ? `; ${manualNote}` : ""), "success", manual.length ? 7000 : 4500);
       app.go("#/tasks");
     } catch (error) { N.showError(error, "Could not queue the steps"); }
+  };
+
+  /* Run each entity's next pipeline step now, in the foreground: for steps to run by hand, or to not wait for the queue. */
+  N.views.runNextStep = async function (app, entityType, keys) {
+    try {
+      N.toast("Running", "the next step…");
+      const result = await app.client.request("pipelines.runNext", { entityType, keys });
+      if (!result.ran.length) {
+        N.toast("Nothing to run", "No pipeline, all steps done, or steps waiting in the queue");
+        return;
+      }
+      N.toast("Step done", `${[...new Set(result.ran.map((r) => r.method))].join(", ")} on ${result.ran.length} entit${result.ran.length === 1 ? "y" : "ies"}`, "success");
+      if (app.reloadEntities) app.reloadEntities();
+    } catch (error) { N.showError(error, "The step failed"); }
   };
 
   N.views.pipelines = async function (app, content) {

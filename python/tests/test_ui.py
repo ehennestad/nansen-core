@@ -771,3 +771,22 @@ def test_settings_page(empty_app, page):
     page.reload()
     page.wait_for_selector(".auto-start")
     assert not page.locator(".auto-start input").is_checked()
+
+
+def test_a_pipeline_step_run_by_hand(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    call = lambda method, **params: api.handle({"id": 2, "method": method, "params": params})
+    call("methods.create", id="curate", title="Curate", entityType="session", queueable=False)
+    call("pipelines.save", document={"schemaType": "nansen.pipeline", "schemaVersion": "0.1.0", "id": "review", "version": "1.0.0",
+                                     "title": "Review", "entityType": "session", "steps": [{"method": "curate", "title": "Curate by hand"}]})
+    rows = call("entities.list", entityType="session")["result"]["rows"]
+    call("pipelines.assign", entityType="session", keys=[rows[0]["key"]], pipelineId="review")
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table .progress-text:has-text('0/1')")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open .pipeline-card .run-step:has-text('Run Curate by hand now')")
+    assert page.locator(".drawer .pipeline-card button:has-text('Queue the next steps')").count() == 0
+    page.click(".drawer .pipeline-card .run-step")
+    page.wait_for_selector(".drawer.open .pipeline-card .steps li.done")
+    assert call("entities.get", entityType="session", key=rows[0]["key"])["result"]["pipeline"]["done"] == 1

@@ -44,7 +44,7 @@ classdef Api < handle
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "data.send", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
-                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
+                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
             for name = names
                 % "entities.list" -> apiEntitiesList
@@ -867,7 +867,8 @@ classdef Api < handle
                 Title=string(nansen.internal.getField(params, "title", "")), ...
                 EntityType=string(nansen.internal.getField(params, "entityType", "*")), ...
                 Description=string(nansen.internal.getField(params, "description", "")), ...
-                BatchMode=string(nansen.internal.getField(params, "batchMode", "serial")), Languages=languages);
+                BatchMode=string(nansen.internal.getField(params, "batchMode", "serial")), Languages=languages, ...
+                Queueable=logical(nansen.internal.getField(params, "queueable", true)));
             obj.emit("project", struct("name", char(project.Name)));
             result = method.summary();
             files = {char("methods/" + method.Id + ".method.nansen.json")};
@@ -964,6 +965,7 @@ classdef Api < handle
             byPipeline = containers.Map("KeyType", "char", "ValueType", "any");
             order = strings(1, 0);
             skipped = {};
+            manual = {};
             for entity = obj.entities(params)
                 id = nansen.internal.runKeyId(entity{1}.Key);
                 if ~isKey(progress, id)
@@ -975,8 +977,18 @@ classdef Api < handle
                     skipped{end + 1} = entity{1}.Key; %#ok<AGROW>   % all done, or its steps are queued already
                     continue
                 end
-                first = find(~cellfun(@(s) s.done, state.steps), 1);
-                skip(id) = 0:first - 2;
+                steps = state.steps;
+                first = find(~cellfun(@(s) s.done, steps), 1);
+                if ~steps{first}.queueable   % a step to run by hand comes next
+                    manual{end + 1} = struct("key", entity{1}.Key, "step", first - 1, "method", steps{first}.method, ...
+                        "title", steps{first}.title); %#ok<AGROW>
+                    continue
+                end
+                stop = find(~cellfun(@(s) s.queueable, steps(first:end)), 1) + first - 1;
+                if isempty(stop)
+                    stop = numel(steps) + 1;
+                end
+                skip(id) = [0:first - 2, stop - 1:numel(steps) - 1];   % 0-based: before the first not done, and from a manual step on
                 if ~isKey(byPipeline, state.pipeline)
                     byPipeline(state.pipeline) = {};
                     order(end + 1) = string(state.pipeline); %#ok<AGROW>
@@ -988,7 +1000,59 @@ classdef Api < handle
                 tasks = [tasks, obj.queue().submitPipeline(pipelineId, byPipeline(char(pipelineId)), ...
                     Language=string(nansen.internal.getField(params, "language", "")), Skip=skip)]; %#ok<AGROW>
             end
-            result = struct("tasks", {tasks}, "skipped", {skipped});
+            result = struct("tasks", {tasks}, "skipped", {skipped}, "manual", {manual});
+        end
+
+        function result = apiPipelinesRunNext(obj, params)
+            %apiPipelinesRunNext For each entity with a pipeline, run its next step not done now, in the foreground
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            progress = project.pipelineProgress(entityType);
+            pipelines = containers.Map("KeyType", "char", "ValueType", "any");
+            for pipeline = project.pipelines(entityType)
+                pipelines(char(string(pipeline{1}.id))) = pipeline{1};
+            end
+            inFlight = strings(1, 0);
+            for task = obj.queue().list()
+                t = task{1};
+                if isfield(t, "pipeline") && ismember(string(t.status), ["queued", "running"])
+                    references = nansen.internal.asCellOfStructs(t.entities);
+                    inFlight(end + 1) = nansen.internal.runKeyId(references{1}.key); %#ok<AGROW>
+                end
+            end
+            ran = {};
+            skipped = {};
+            for entity = obj.entities(params)
+                id = nansen.internal.runKeyId(entity{1}.Key);
+                if ~isKey(progress, id) || ismember(id, inFlight)
+                    skipped{end + 1} = entity{1}.Key; %#ok<AGROW>
+                    continue
+                end
+                state = progress(id);
+                if state.done == state.total
+                    skipped{end + 1} = entity{1}.Key; %#ok<AGROW>
+                    continue
+                end
+                first = find(~cellfun(@(s) s.done, state.steps), 1);
+                pipeline = pipelines(char(state.pipeline));
+                stepList = nansen.internal.asCellOfStructs(pipeline.steps);
+                step = stepList{first};
+                options = nansen.internal.getField(step, "options", struct());
+                if isempty(options)
+                    options = struct();
+                end
+                results = project.run(string(step.method), entity, Options=options, ...
+                    Preset=string(nansen.internal.getField(step, "preset", "")));
+                value = NaN;
+                if ~isempty(results) && ~isempty(results{1})
+                    value = results{1};
+                end
+                ran{end + 1} = struct("key", entity{1}.Key, "step", first - 1, "method", char(string(step.method)), "result", {value}); %#ok<AGROW>
+            end
+            if ~isempty(ran)
+                obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
+            end
+            result = struct("ran", {ran}, "skipped", {skipped});
         end
 
         function result = apiPipelinesSubmit(obj, params)

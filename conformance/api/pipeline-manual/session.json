@@ -1,0 +1,373 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 2,
+        "params": {
+          "id": "curate",
+          "title": "Curate",
+          "entityType": "session",
+          "queueable": false
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "curate",
+          "queueable": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.save",
+        "id": 3,
+        "params": {
+          "document": {
+            "schemaType": "nansen.pipeline",
+            "schemaVersion": "0.1.0",
+            "id": "review",
+            "version": "1.0.0",
+            "title": "Review",
+            "entityType": "session",
+            "steps": [
+              {
+                "method": "core.file_stats",
+                "title": "Count files"
+              },
+              {
+                "method": "curate",
+                "title": "Curate by hand"
+              },
+              {
+                "method": "core.wait",
+                "title": "Pause",
+                "options": {
+                  "seconds": 0,
+                  "steps": 1
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "review"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.assign",
+        "id": 4,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "pipelineId": "review"
+        }
+      },
+      "expect": {
+        "result": {
+          "assigned": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 5,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "pipeline": {
+            "done": 0,
+            "total": 3,
+            "steps": [
+              {
+                "method": "core.file_stats",
+                "queueable": true,
+                "done": false
+              },
+              {
+                "method": "curate",
+                "queueable": false,
+                "done": false
+              },
+              {
+                "method": "core.wait",
+                "queueable": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.queueNext",
+        "id": 6,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "tasks": [
+            {
+              "method": {
+                "id": "core.file_stats"
+              },
+              "pipeline": {
+                "id": "review",
+                "step": 0
+              }
+            }
+          ],
+          "manual": [],
+          "skipped": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 7,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "status": "completed"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.queueNext",
+        "id": 8,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "tasks": [],
+          "skipped": [],
+          "manual": [
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              },
+              "step": 1,
+              "method": "curate",
+              "title": "Curate by hand"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.runNext",
+        "id": 9,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "ran": [
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              },
+              "step": 1,
+              "method": "curate"
+            }
+          ],
+          "skipped": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 10,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "pipeline": {
+            "done": 2,
+            "total": 3
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.queueNext",
+        "id": 11,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "tasks": [
+            {
+              "method": {
+                "id": "core.wait"
+              },
+              "pipeline": {
+                "step": 2
+              }
+            }
+          ],
+          "manual": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.runNext",
+        "id": 12,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "ran": [],
+          "skipped": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.runNext",
+        "id": 13,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "status": "completed"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.runNext",
+        "id": 14,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "ran": [],
+          "skipped": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.submit",
+        "id": 15,
+        "params": {
+          "methodId": "curate",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "not-queueable"
+      }
+    }
+  ]
+}

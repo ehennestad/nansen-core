@@ -1,0 +1,25 @@
+{
+  "schemaType": "nansen.project",
+  "schemaVersion": "0.1.0",
+  "name": "TwoPhoton",
+  "dataset": "dataset.dsm.json",
+  "entityTypes": [
+    {
+      "name": "subject",
+      "fragments": [
+        "notes"
+      ]
+    },
+    {
+      "name": "session",
+      "fragments": [
+        "notes"
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "id": "core"
+    }
+  ]
+}

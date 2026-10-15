@@ -742,6 +742,7 @@ classdef Project < handle
                 options.Description (1,1) string = ""
                 options.BatchMode (1,1) string = "serial"
                 options.Languages (1,:) string = ["python", "matlab"]
+                options.Queueable (1,1) logical = true
             end
             if isempty(regexp(methodId, "^[a-z][a-z0-9_]*$", "once"))
                 nansen.internal.throwError("invalid-params", "a project method's id is a lower-case letter, then letters, digits or _")
@@ -795,6 +796,9 @@ classdef Project < handle
                 "options", struct("type", 'object', "properties", struct()));
             if description ~= ""
                 document.description = char(description);
+            end
+            if ~options.Queueable
+                document.queueable = false;   % run by hand only, for example an interactive one
             end
             nansen.checkDocument(document, ExpectedType="nansen.method");
             batch = options.BatchMode == "batch";
@@ -972,8 +976,15 @@ classdef Project < handle
             table = obj.table(entityType);
             completed = nansen.internal.completedRuns(obj.Folder, entityType);
             known = containers.Map("KeyType", "char", "ValueType", "any");
+            stepMethods = containers.Map("KeyType", "char", "ValueType", "any");   % looked up once, not per row
             for candidate = obj.pipelines(entityType)
                 known(char(string(candidate{1}.id))) = candidate{1};
+                for step = nansen.internal.asCellOfStructs(candidate{1}.steps)
+                    methodId = char(string(step{1}.method));
+                    if ~isKey(stepMethods, methodId)
+                        stepMethods(methodId) = obj.method(string(methodId));
+                    end
+                end
             end
             assigned = string(table.Data.pipeline);
             for r = 1:table.numRows()
@@ -999,16 +1010,18 @@ classdef Project < handle
                 count = 0;
                 for s = 1:numel(stepList)
                     methodId = char(string(stepList{s}.method));
+                    method = stepMethods(methodId);
                     title = nansen.internal.getField(stepList{s}, "title", '');
                     if isempty(title)
-                        title = char(obj.method(string(methodId)).Title);
+                        title = char(method.Title);
                     end
                     finished = [];
                     if isKey(done, methodId)
                         finished = done(methodId);
                         count = count + 1;
                     end
-                    steps{s} = struct("title", char(title), "method", methodId, "done", isKey(done, methodId), "finishedAt", finished);
+                    steps{s} = struct("title", char(title), "method", methodId, "queueable", method.Queueable, ...
+                        "done", isKey(done, methodId), "finishedAt", finished);
                 end
                 progress(id) = struct("pipeline", char(string(pipeline.id)), ...
                     "title", char(nansen.internal.getField(pipeline, "title", pipeline.id)), "steps", {steps}, ...

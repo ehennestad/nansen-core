@@ -1,0 +1,4 @@
+{
+  "description": "A pipeline with a step to run by hand (a method that cannot be queued): progress says which steps can be queued, queueNext queues up to that step and then reports it as manual, runNext runs the next step now (manual or not) and records it, and an entity whose steps are queued is left alone.",
+  "steps": 15
+}
