@@ -390,7 +390,7 @@ classdef OphysTest < matlab.unittest.TestCase
             if exist("normcorre", "file") ~= 2
                 testCase.verifyError(@() ophys.normcorre(struct(), struct(), []), "nansen:DependencyMissing");
             end
-            for name = ["extract", "flowreg", "caimanDeconvolution", "flufinder", "cnmf"]
+            for name = ["extract", "flowreg", "caimanDeconvolution", "flufinder", "cnmf", "suite2p", "deepInterpolation"]
                 testCase.verifyError(@() feval("ophys." + name, struct(), struct(), []), "nansen:DependencyMissing", name);
             end
             if ~exist("imviewer", "file")
@@ -399,6 +399,85 @@ classdef OphysTest < matlab.unittest.TestCase
             if exist("NwbFile", "class") ~= 8
                 testCase.verifyError(@() ophys.exportNwb(struct(), struct(), []), "nansen:DependencyMissing");
             end
+        end
+
+        function suite2pGetsItsOptionsUnderSuite2pNames(testCase)
+            % the MATLAB Suite2P stubbed (matlab/tests/stubs/suite2p): the options in the ops Suite2P keeps in its results
+            % file, its ROIs and signals saved as Python's suite2p wrapper saves them (CI's external tools job runs Suite2P)
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture( ...
+                fullfile(nansen.internal.repoRoot(), "matlab", "tests", "stubs", "suite2p")));
+            project = testCase.ophysProject();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+            raw = project.load(entity, "TwoPhotonSeries_Original");
+            frames = size(raw, 3);
+            scale = 1 + double(max(raw, [], "all") > 2^15);   % Suite2P's binary halves values above 2^15
+            result = project.run("ophys.suite2p", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", ...
+                "registration", false, "nonrigid", false, "framesPerSecond", 15, "cellDiameter", 6, "tau", 0.7, ...
+                "thresholdScaling", 2.5, "maxIterations", 7, "innerNeuropilRadius", 3, "minNeuropilPixels", 200, ...
+                "neuropilCoefficient", 0.5));
+            testCase.verifyEqual([result{1}.rois, result{1}.frames], [1, frames]);
+            folder = fullfile(fileparts(project.writePath(entity, "RoiArray")), "suite2p");
+            testCase.verifyTrue(isfile(fullfile(folder, "input.tif")));
+            saved = load(fullfile(folder, "F_nansen_suite2p_plane1.mat"));
+            ops = saved.ops;
+            testCase.verifyEqual([ops.imageRate, ops.diameter, ops.clustrules.diameter, ops.sensorTau, ops.ThScaling, ...
+                ops.maxIterRoiDetection, ops.innerNeuropil, ops.minNeuropilPixels, ops.nonrigid, ops.doRegistration, ...
+                ops.fig, ops.NimgFirstRegistration], [15, 6, 6, 0.7, 2.5, 7, 3, 200, 0, 0, 0, frames - 1]);
+            testCase.verifyEqual(string(ops.ResultsSavePath), string(folder));
+            testCase.verifyFalse(isfile(ops.RegFile));   % Suite2P's binary is deleted, as with DeleteBin
+            testCase.verifyFalse(isfield(ops, "registered"));
+            rois = ophys.internal.roiList(project.load(entity, "RoiArray", Cached=false));
+            testCase.verifyEqual(numel(rois), 1);   % onlyCells: what classifyROI calls a cell
+            testCase.verifyEqual(rois{1}.pixels, [0, 1; 0, 2; 1, 1]);
+            signals = project.load(entity, "RoiSignals_MeanF", Cached=false);
+            neuropil = project.load(entity, "RoiSignals_NeuropilF", Cached=false);
+            testCase.verifyEqual(signals, scale * (10 + (1:frames)'), AbsTol=1e-9);
+            testCase.verifyEqual(neuropil, scale * ones(frames, 1), AbsTol=1e-9);
+            testCase.verifyEqual(project.load(entity, "RoiSignals_Deconvolved", Cached=false), ...
+                (signals - 0.5 * neuropil) * 0.7 + 15, AbsTol=1e-3);   % the stub's: traces x sensorTau + fs
+            % registered by reg2P, whose range moves the pixels; every ROI kept
+            project.run("ophys.suite2p", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "onlyCells", false));
+            saved = load(fullfile(folder, "F_nansen_suite2p_plane1.mat"));
+            testCase.verifyTrue(saved.ops.registered);
+            testCase.verifyEqual([saved.ops.diameter, saved.ops.sensorTau, saved.ops.nonrigid, saved.ops.doRegistration, ...
+                saved.ops.maxIterRoiDetection, saved.ops.innerNeuropil, saved.ops.minNeuropilPixels], [12, 1, 1, 1, 20, 2, 350]);
+            rois = ophys.internal.roiList(project.load(entity, "RoiArray", Cached=false));
+            testCase.verifyEqual(numel(rois), 2);
+            testCase.verifyEqual(rois{1}.pixels, [1, 3; 1, 4; 2, 3]);
+            testCase.verifyEqual(rois{2}.pixels, [4, 5]);
+            testCase.verifySize(project.load(entity, "RoiSignals_MeanF", Cached=false), [frames, 2]);
+        end
+
+        function deepInterpolationPredictsTheFramesItCan(testCase)
+            % DeepInterpolation-MATLAB stubbed (matlab/tests/stubs/deepinterpolation): a network of 40 x 36 frames
+            % that predicts the mean of the frames around, at deepinterp.Net's offsets
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture( ...
+                fullfile(nansen.internal.repoRoot(), "matlab", "tests", "stubs", "deepinterpolation")));
+            project = testCase.ophysProject();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+            raw = double(project.load(entity, "TwoPhotonSeries_Original"));   % 32 x 32 x 40
+            frames = size(raw, 3);
+            model = fullfile(testCase.Folder, "model.h5");
+            nansen.internal.writeText(model, "not read by the stub");
+            options = struct("stack", "TwoPhotonSeries_Original", "modelPath", model, "preFrames", 3, "postFrames", 2, ...
+                "omittedFrames", 1);
+            result = project.run("ophys.deep_interpolation", {entity}, Options=options);
+            result = result{1};
+            testCase.verifyEqual([result.frames, result.height, result.width, result.predicted], [frames, 32, 32, frames - 7]);
+            out = project.load(entity, "TwoPhotonSeries_Denoised", Cached=false);
+            testCase.verifyClass(out, "single");
+            testCase.verifySize(out, [32, 32, frames]);
+            testCase.verifyEqual(double(out(:, :, [1:4, frames - 2:frames])), raw(:, :, [1:4, frames - 2:frames]));   % kept
+            offsets = [-4, -3, -2, 2, 3];   % 3 before and 2 after, one left out on either side
+            for t = [5, 20, frames - 3]
+                testCase.verifyEqual(double(out(:, :, t)), mean(raw(:, :, t + offsets), 3), "AbsTol", 1e-2, sprintf("frame %d", t));
+            end
+            options.modelPath = fullfile(testCase.Folder, "none.h5");
+            testCase.verifyError(@() project.run("ophys.deep_interpolation", {entity}, Options=options), "nansen:InvalidOptions");
+            options.modelPath = model;
+            options.preFrames = 30;
+            options.postFrames = 10;   % 41 frames around each one of 40
+            testCase.verifyError(@() project.run("ophys.deep_interpolation", {entity}, Options=options), "nansen:InvalidData");
         end
 
         function cutsAStackToARangeOfFrames(testCase)

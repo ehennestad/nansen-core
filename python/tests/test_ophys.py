@@ -203,6 +203,22 @@ def test_suite2p_says_what_is_missing():
     assert error.value.code == "dependency-missing"
 
 
+def test_suite2p_and_deep_interpolation_have_matlab_wrappers_with_their_addons():
+    """dev ran suite2p and DeepInterpolation from MATLAB: both methods have a MATLAB implementation, whose toolbox
+    the module declares as a GitHub add-on (matlab/tests/OphysTest runs the wrappers with stubbed toolboxes)."""
+    module = Module.read(PYTHON.parent)
+    methods = {m.id: m for m in module.methods()}
+    for method_id, function in [("ophys.suite2p", "suite2p"), ("ophys.deep_interpolation", "deepInterpolation")]:
+        implementations = methods[method_id].document["implementations"]
+        assert set(implementations) == {"python", "matlab"} and implementations["matlab"] == f"ophys.{function}"
+        assert (module.matlab_root / "+ophys" / f"{function}.m").is_file()
+    addons = {addon["id"]: addon for addon in module.document["addons"]}
+    assert (addons["suite2p-matlab"]["language"], addons["suite2p-matlab"]["source"]) == ("matlab", {"github": "cortex-lab/Suite2P"})
+    assert addons["suite2p-matlab"]["pathOrder"] == "end"
+    assert addons["deepinterpolation-matlab"]["source"] == {"github": "MATLAB-Community-Toolboxes-at-INCF/DeepInterpolation-MATLAB"}
+    assert addons["deepinterpolation-matlab"]["check"] == "deepinterp.Net"
+
+
 def test_the_ophys_presets_are_options_of_their_methods():
     """dev's shipped presets (Quicky's Soma, Soma (Virus) and Axons, NoRMCorre's Nonrigid (4x4) and Rigid), and the
     module's own: each names options its method has, with values its schema takes."""

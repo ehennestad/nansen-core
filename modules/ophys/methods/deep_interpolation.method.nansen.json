@@ -6,9 +6,10 @@
   "title": "Denoise stack (DeepInterpolation)",
   "category": "Two-photon/Image processing",
   "entityType": "*",
-  "description": "Removes independent noise with DeepInterpolation (Lecoq et al. 2021), as dev's Denoiser does, when the deepinterpolation package and h5py are installed: each frame is predicted from the frames around it by a trained network, given as modelPath (an .h5 model, such as the Allen Institute's pretrained two-photon models). Frames too close to the start or end to be predicted are kept as they were.",
+  "description": "Removes independent noise with DeepInterpolation (Lecoq et al. 2021), as dev's Denoiser does: in Python with the deepinterpolation package and h5py, in MATLAB with DeepInterpolation-MATLAB and the Deep Learning Toolbox, when installed. Each frame is predicted from the frames around it by a trained network, given as modelPath (an .h5 model, such as the Allen Institute's pretrained two-photon models; in MATLAB also a .mat file with a network as net). Frames too close to the start or end to be predicted are kept as they were.",
   "implementations": {
-    "python": "ophys_methods:deep_interpolation"
+    "python": "ophys_methods:deep_interpolation",
+    "matlab": "ophys.deepInterpolation"
   },
   "options": {
     "type": "object",
@@ -29,7 +30,7 @@
         "type": "string",
         "default": "",
         "title": "Model file",
-        "description": "Path of the trained model (.h5)"
+        "description": "Path of the trained model (.h5; in MATLAB also .mat, the network saved as net)"
       },
       "preFrames": {
         "type": "integer",

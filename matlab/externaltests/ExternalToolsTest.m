@@ -2,9 +2,10 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
 %ExternalToolsTest The ophys module's MATLAB wrappers run against the real tools
 %
 %   runExternalToolTests puts NoRMCorre, CaImAn-MATLAB, EXTRACT,
-%   Flow-Registration and dev's imviewer on the path (CI's External tools
-%   job clones them) and runs these tests; a tool that is missing fails its
-%   test there. Each runs a wrapper on a synthetic recording with cells at
+%   Flow-Registration, Suite2P, DeepInterpolation-MATLAB and dev's imviewer
+%   on the path (CI's External tools job clones them) and runs these tests;
+%   a tool that is missing fails its test there (DeepInterpolation's test
+%   is skipped, with its reason, without the Deep Learning Toolbox). Each runs a wrapper on a synthetic recording with cells at
 %   known places and known rigid motion.
 
     properties
@@ -159,6 +160,52 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             testCase.verifyEqual(matched, 12, sprintf("EXTRACT's centres (row, column):%s\ntrue centres:%s", ...
                 sprintf(" (%.1f, %.1f)", centersFound.'), sprintf(" (%d, %d)", testCase.Centers.')));
             testCase.verifySize(testCase.Project.load(testCase.Session, "RoiSignals_MeanF", Cached=false), [size(stack, 3), numel(rois)]);
+        end
+
+        function suite2pFindsTheCells(testCase)
+            % the MATLAB Suite2P on the moving recording: reg2P registers it, sourcery finds the cells, and
+            % wrapperDECONV deconvolves with CaImAn-MATLAB's oasisAR1 (as Python's test_external_tools runs suite2p)
+            result = testCase.Project.run("ophys.suite2p", {testCase.Session}, Options=struct( ...
+                "stack", "TwoPhotonSeries_Original", "framesPerSecond", 30, "cellDiameter", 8, "onlyCells", false));
+            testCase.verifyEqual(result{1}.frames, 300);
+            testCase.verifyGreaterThanOrEqual(result{1}.rois, 10);
+            rois = ophys.internal.roiList(testCase.Project.load(testCase.Session, "RoiArray", Cached=false));
+            testCase.verifyNumElements(rois, result{1}.rois);
+            centersFound = cell2mat(cellfun(@(r) reshape(double(r.center), 1, 2) + 1, rois(:), UniformOutput=false));
+            matched = 0;
+            for i = 1:size(testCase.Centers, 1)
+                matched = matched + any(vecnorm(centersFound - testCase.Centers(i, :), 2, 2) <= 4);
+            end
+            testCase.verifyGreaterThanOrEqual(matched, 10);
+            for name = ["RoiSignals_MeanF", "RoiSignals_NeuropilF", "RoiSignals_Deconvolved"]
+                testCase.verifySize(testCase.Project.load(testCase.Session, name, Cached=false), [300, numel(rois)], name);
+            end
+        end
+
+        function deepInterpolationPredictsFrames(testCase)
+            % DeepInterpolation-MATLAB's deepinterp.Net with an untrained network of the Deep Learning Toolbox, saved
+            % as a .mat file (Python's test_external_tools saves an untrained Keras model)
+            testCase.assumeTrue(exist("assembleNetwork", "file") > 0 && exist("regressionLayer", "file") > 0, ...
+                "the Deep Learning Toolbox (assembleNetwork, regressionLayer) is not installed, which DeepInterpolation's networks need");
+            before = 3;
+            after = 3;
+            layers = [imageInputLayer([128, 128, before + after], Normalization="none"), ...
+                convolution2dLayer(3, 1, Padding="same", Weights=ones(3, 3, before + after, 1) / (9 * (before + after)), Bias=0), ...
+                regressionLayer];
+            net = assembleNetwork(layers); %#ok<NASGU>
+            model = fullfile(testCase.Project.Folder, "model.mat");
+            save(model, "net");
+            result = testCase.Project.run("ophys.deep_interpolation", {testCase.Session}, Options=struct( ...
+                "stack", "TwoPhotonSeries_Original", "modelPath", model, "preFrames", before, "postFrames", after));
+            result = result{1};
+            testCase.verifyEqual(result.frames, 300);
+            testCase.verifyEqual(result.predicted, 300 - before - after);
+            out = testCase.Project.load(testCase.Session, "TwoPhotonSeries_Denoised", Cached=false);
+            original = testCase.Project.load(testCase.Session, "TwoPhotonSeries_Original");
+            testCase.verifyClass(out, "single");
+            testCase.verifySize(out, [128, 128, 300]);
+            testCase.verifyEqual(out(:, :, 1:before), single(original(:, :, 1:before)));   % too close to the start: kept
+            testCase.verifyGreaterThan(max(abs(out(:, :, before + 1) - single(original(:, :, before + 1))), [], "all"), 1);
         end
 
         function caimanDeconvolvesTraces(testCase)

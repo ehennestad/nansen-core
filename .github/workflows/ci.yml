@@ -162,10 +162,10 @@ jobs:
           ref: claude/nansen-core-rebuild-jl86j3
           path: dsm
 
-      - name: Clone NoRMCorre, CaImAn-MATLAB, EXTRACT, Flow-Registration, matnwb and NANSEN dev (for imviewer)
+      - name: Clone NoRMCorre, CaImAn-MATLAB, EXTRACT, Flow-Registration, matnwb, Suite2P, DeepInterpolation-MATLAB and NANSEN dev (for imviewer)
         run: |
           mkdir external-tools
-          for repo in flatironinstitute/NoRMCorre flatironinstitute/CaImAn-MATLAB schnitzer-lab/EXTRACT-public FlowRegSuite/flow_registration VervaekeLab/NANSEN NeurodataWithoutBorders/matnwb; do
+          for repo in flatironinstitute/NoRMCorre flatironinstitute/CaImAn-MATLAB schnitzer-lab/EXTRACT-public FlowRegSuite/flow_registration VervaekeLab/NANSEN NeurodataWithoutBorders/matnwb cortex-lab/Suite2P MATLAB-Community-Toolboxes-at-INCF/DeepInterpolation-MATLAB; do
             git clone -q --depth 1 "https://github.com/$repo" "external-tools/$(basename "$repo")"
           done
           # imviewer's community dependency: the Widgets Toolbox version dev's nansen.setup installs
@@ -184,6 +184,7 @@ jobs:
             Bioinformatics_Toolbox
             Econometrics_Toolbox
             Wavelet_Toolbox
+            Deep_Learning_Toolbox
 
       - name: Start a virtual display, for imviewer
         run: |

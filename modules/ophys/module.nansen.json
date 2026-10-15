@@ -132,6 +132,29 @@
       "pathOrder": "end"
     },
     {
+      "id": "suite2p-matlab",
+      "title": "Suite2P (MATLAB)",
+      "language": "matlab",
+      "source": {
+        "github": "cortex-lab/Suite2P"
+      },
+      "check": "build_ops3",
+      "description": "Registration, cell detection and signals (ophys.suite2p), as dev ran it; needs the Image Processing, Signal Processing and Statistics toolboxes, and CaImAn-MATLAB (its OASIS) for spikes. Put on the path after this NANSEN, as its run_pipeline is also CaImAn-MATLAB's",
+      "url": "https://github.com/cortex-lab/Suite2P",
+      "pathOrder": "end"
+    },
+    {
+      "id": "deepinterpolation-matlab",
+      "title": "DeepInterpolation (MATLAB)",
+      "language": "matlab",
+      "source": {
+        "github": "MATLAB-Community-Toolboxes-at-INCF/DeepInterpolation-MATLAB"
+      },
+      "check": "deepinterp.Net",
+      "description": "Denoising with a trained network (ophys.deep_interpolation), as dev's Denoiser; needs the Deep Learning Toolbox, and its Converter for TensorFlow Models for .h5 models",
+      "url": "https://github.com/MATLAB-Community-Toolboxes-at-INCF/DeepInterpolation-MATLAB"
+    },
+    {
       "id": "suite2p",
       "title": "suite2p",
       "language": "python",
