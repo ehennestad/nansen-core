@@ -1,0 +1,15 @@
+{
+  "schemaType": "nansen.options",
+  "schemaVersion": "0.1.0",
+  "method": {
+    "id": "ophys.motion_correction",
+    "version": "1.0.0"
+  },
+  "name": "thorough",
+  "description": "More iterations and a reference from more frames, for recordings with large or slow drift",
+  "values": {
+    "maxShift": 40,
+    "referenceFrames": 200,
+    "iterations": 4
+  }
+}

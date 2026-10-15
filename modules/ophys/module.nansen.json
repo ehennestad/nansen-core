@@ -1,0 +1,34 @@
+{
+  "schemaType": "nansen.module",
+  "schemaVersion": "0.1.0",
+  "id": "ophys",
+  "version": "0.1.0",
+  "title": "Two-photon imaging",
+  "description": "Motion correction, ROI detection, signal extraction and ΔF/F for two-photon recordings, native in both languages; SciScan and TIFF readers; and suite2p, NoRMCorre and imviewer where they are installed.",
+  "fragments": [
+    "fragments/image_stats.fragment.nansen.json",
+    "fragments/imaging.fragment.nansen.json"
+  ],
+  "methods": [
+    "methods/compute_dff.method.nansen.json",
+    "methods/detect_rois.method.nansen.json",
+    "methods/downsample.method.nansen.json",
+    "methods/extract_signals.method.nansen.json",
+    "methods/image_stats.method.nansen.json",
+    "methods/motion_correction.method.nansen.json",
+    "methods/normcorre.method.nansen.json",
+    "methods/open_in_imviewer.method.nansen.json",
+    "methods/setup_variables.method.nansen.json",
+    "methods/suite2p.method.nansen.json"
+  ],
+  "fileAdapters": [
+    "adapters/sciscan_raw.fileAdapter.nansen.json",
+    "adapters/tiff_stack.fileAdapter.nansen.json"
+  ],
+  "pipelines": [
+    "pipelines/preprocess.pipeline.nansen.json"
+  ],
+  "presets": [
+    "presets/motion_correction.thorough.options.nansen.json"
+  ]
+}

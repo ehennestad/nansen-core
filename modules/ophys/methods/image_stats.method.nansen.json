@@ -1,0 +1,37 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.image_stats",
+  "version": "1.0.0",
+  "title": "Image statistics",
+  "category": "Two-photon/Inspect",
+  "entityType": "*",
+  "description": "Size and intensity of the entity's image stack, with its average and maximum projections saved as images. Fills the ophys.image_stats columns.",
+  "implementations": {
+    "python": "ophys_methods:image_stats",
+    "matlab": "ophys.imageStats"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "averageOutput": {
+        "type": "string",
+        "default": "FovAverageProjection",
+        "title": "Average projection",
+        "description": "Variable the average over frames is saved to. Leave empty to not save it."
+      },
+      "maximumOutput": {
+        "type": "string",
+        "default": "FovMaximumProjection",
+        "title": "Maximum projection",
+        "description": "Variable the maximum over frames is saved to. Leave empty to not save it."
+      }
+    }
+  }
+}

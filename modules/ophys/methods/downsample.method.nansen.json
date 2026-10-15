@@ -1,0 +1,52 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.downsample",
+  "version": "1.0.0",
+  "title": "Downsample stack",
+  "category": "Two-photon/Image processing",
+  "entityType": "*",
+  "description": "Bins the stack in time and, optionally, in space: each output frame is the mean (or maximum) of temporalFactor frames, and each pixel of spatialFactor x spatialFactor pixels. Frames and pixels left over at the end are dropped. Means are saved as single precision.",
+  "implementations": {
+    "python": "ophys_methods:downsample",
+    "matlab": "ophys.downsample"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Downsampled",
+        "title": "Downsampled stack",
+        "description": "Variable the result is saved to."
+      },
+      "temporalFactor": {
+        "type": "integer",
+        "default": 4,
+        "minimum": 1,
+        "title": "Frames per bin"
+      },
+      "spatialFactor": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Pixels per bin (each side)"
+      },
+      "binMethod": {
+        "type": "string",
+        "enum": [
+          "mean",
+          "max"
+        ],
+        "default": "mean",
+        "title": "Bin by"
+      }
+    }
+  }
+}

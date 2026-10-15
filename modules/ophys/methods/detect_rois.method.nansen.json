@@ -1,0 +1,57 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.detect_rois",
+  "version": "1.0.0",
+  "title": "Detect ROIs",
+  "category": "Two-photon/Segmentation",
+  "entityType": "*",
+  "description": "Finds cells as connected areas of pixels that correlate with their neighbours over time: each pixel's average correlation with its 8 neighbours is thresholded, and 4-connected areas whose size is in range, away from the border, become ROIs. The ROIs are saved as JSON: imageSize and rois[{id, area, center, pixels}], with 0-based [row, column] pixels.",
+  "implementations": {
+    "python": "ophys_methods:detect_rois",
+    "matlab": "ophys.detectRois"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "ROIs",
+        "description": "Variable the result is saved to."
+      },
+      "threshold": {
+        "type": "number",
+        "default": 0.5,
+        "minimum": -1,
+        "maximum": 1,
+        "title": "Correlation threshold"
+      },
+      "minSize": {
+        "type": "integer",
+        "default": 4,
+        "minimum": 1,
+        "title": "Smallest ROI (px)"
+      },
+      "maxSize": {
+        "type": "integer",
+        "default": 400,
+        "minimum": 1,
+        "title": "Largest ROI (px)"
+      },
+      "border": {
+        "type": "integer",
+        "default": 10,
+        "minimum": 0,
+        "title": "Border left out (px)",
+        "description": "Pixels this close to the edge are not part of any ROI: after motion correction they are partly filled with 0, and correlate"
+      }
+    }
+  }
+}

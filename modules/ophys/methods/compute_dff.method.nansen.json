@@ -1,0 +1,58 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.compute_dff",
+  "version": "1.0.0",
+  "title": "Compute ΔF/F",
+  "category": "Two-photon/Signal extraction",
+  "entityType": "*",
+  "description": "ΔF/F of each ROI: F is the signal less neuropilFactor times its neuropil signal, F0 a percentile of F over the whole trace or over a window of frames centred on each frame, and ΔF/F = (F - F0) / F0. Percentiles interpolate linearly between the sorted values, as NumPy's do.",
+  "implementations": {
+    "python": "ophys_methods:compute_dff",
+    "matlab": "ophys.computeDff"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "signals": {
+        "type": "string",
+        "default": "RoiSignals_MeanF",
+        "title": "Signals",
+        "description": "Variable that holds the signals (frames x ROIs)."
+      },
+      "neuropil": {
+        "type": "string",
+        "default": "RoiSignals_NeuropilF",
+        "title": "Neuropil signals",
+        "description": "Variable that holds the neuropil signals. Leave empty for none."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiSignals_Dff",
+        "title": "ΔF/F",
+        "description": "Variable the result is saved to."
+      },
+      "neuropilFactor": {
+        "type": "number",
+        "default": 0.7,
+        "minimum": 0,
+        "maximum": 1,
+        "title": "Neuropil factor"
+      },
+      "baselinePercentile": {
+        "type": "number",
+        "default": 20,
+        "minimum": 0,
+        "maximum": 100,
+        "title": "Baseline percentile"
+      },
+      "baselineWindow": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Baseline window (frames)",
+        "description": "0 for one baseline over the whole trace"
+      }
+    }
+  }
+}

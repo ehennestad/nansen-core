@@ -267,6 +267,10 @@
           {
             "id": "core",
             "listed": true
+          },
+          {
+            "id": "ophys",
+            "listed": false
           }
         ]
       }
@@ -398,6 +402,10 @@
           {
             "id": "core",
             "listed": true
+          },
+          {
+            "id": "ophys",
+            "listed": false
           }
         ]
       }

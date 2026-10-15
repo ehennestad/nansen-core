@@ -1,0 +1,55 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.normcorre",
+  "version": "1.0.0",
+  "title": "Correct motion (NoRMCorre)",
+  "category": "Two-photon/Motion correction",
+  "entityType": "*",
+  "description": "Runs NoRMCorre on the stack, when it is on the MATLAB path: rigid with gridSize 0, piecewise rigid otherwise. Saves the aligned stack and the shifts of each frame (frames x 2, subpixel).",
+  "implementations": {
+    "matlab": "ophys.normcorre"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Original",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Aligned stack",
+        "description": "Variable the result is saved to."
+      },
+      "shiftsOutput": {
+        "type": "string",
+        "default": "MotionCorrectionShifts",
+        "title": "Shifts",
+        "description": "Variable the shifts are saved to. Leave empty to not save it."
+      },
+      "maxShift": {
+        "type": "integer",
+        "default": 20,
+        "minimum": 1,
+        "title": "Largest shift (px)"
+      },
+      "gridSize": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Patch size (px)",
+        "description": "0 for rigid correction"
+      },
+      "upsampling": {
+        "type": "integer",
+        "default": 50,
+        "minimum": 1,
+        "title": "Upsampling factor"
+      }
+    }
+  }
+}

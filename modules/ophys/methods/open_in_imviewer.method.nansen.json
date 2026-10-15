@@ -1,0 +1,25 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.open_in_imviewer",
+  "version": "1.0.0",
+  "title": "Open in imviewer",
+  "category": "Two-photon/View",
+  "entityType": "*",
+  "description": "Opens the stack in NANSEN's imviewer, when it is on the MATLAB path.",
+  "queueable": false,
+  "implementations": {
+    "matlab": "ophys.openInImviewer"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      }
+    }
+  }
+}

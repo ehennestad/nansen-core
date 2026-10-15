@@ -18,6 +18,7 @@ dependencies = [
 test = ["pytest>=7.0"]
 mat = ["scipy>=1.7"]
 npy = ["numpy>=1.20"]
+ophys = ["numpy>=1.20", "tifffile>=2021.1"]
 
 [project.scripts]
 nansen = "nansen.cli:main"

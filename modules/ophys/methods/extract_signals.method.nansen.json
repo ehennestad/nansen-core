@@ -1,0 +1,55 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.extract_signals",
+  "version": "1.0.0",
+  "title": "Extract signals",
+  "category": "Two-photon/Signal extraction",
+  "entityType": "*",
+  "description": "The average of each ROI's pixels in every frame (frames x ROIs), and of a ring of surrounding pixels outside every ROI, for neuropil correction. The ring starts neuropilGap pixels from the ROI and is neuropilWidth pixels wide (square distance).",
+  "implementations": {
+    "python": "ophys_methods:extract_signals",
+    "matlab": "ophys.extractSignals"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "rois": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "ROIs",
+        "description": "Variable that holds the ROIs, as ophys.detect_rois saves them."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiSignals_MeanF",
+        "title": "Signals",
+        "description": "Variable the result is saved to."
+      },
+      "neuropilOutput": {
+        "type": "string",
+        "default": "RoiSignals_NeuropilF",
+        "title": "Neuropil signals",
+        "description": "Variable the neuropil signals are saved to. Leave empty to not save it."
+      },
+      "neuropilGap": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 0,
+        "title": "Gap to neuropil ring (px)"
+      },
+      "neuropilWidth": {
+        "type": "integer",
+        "default": 3,
+        "minimum": 1,
+        "title": "Neuropil ring width (px)"
+      }
+    }
+  }
+}

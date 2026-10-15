@@ -62,7 +62,7 @@ Each step was usable without a GUI before the next one started.
 Not carried over, by choice or not yet:
 
 - **Add-on and toolbox management.** Out of scope for the core.
-- **The domain modules and viewer apps.** dev's `ophys.twophoton` methods (motion correction, suite2p, EXTRACT, CaImAn, signal extraction, dF/F, ROI curation), its ScanImage, SciScan and ROI file adapters, and the imviewer, fovmanager and roimanager apps are not part of the core. They belong in modules: a module declares methods, adapters and presets that wrap dev's code (the viewers as project tools or methods run by hand), with no change to the core.
+- **Parts of the domain modules, and the viewer apps.** The `ophys` module brings over dev's core two-photon workflow, natively in both languages (see [modules](reference/modules.md#the-ophys-module)), but not dev's EXTRACT, Quicky and flowreg wrappers, CaImAn deconvolution, stack denoising, the ScanImage multi-ROI adapter or ROI curation. The imviewer, fovmanager and roimanager apps are not rebuilt; `ophys.open_in_imviewer` opens a stack in dev's imviewer when it is on the MATLAB path.
 
 ## Decisions recorded so far
 

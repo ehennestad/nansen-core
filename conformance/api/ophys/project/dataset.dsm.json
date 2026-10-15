@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "0.1.0",
+  "entityTypes": [
+    { "name": "subject", "identifierRef": "subject_id", "isPrimary": true },
+    { "name": "session", "identifierRef": "session_id" }
+  ],
+  "entityRelationships": [
+    { "sourceEntity": "subject", "targetEntity": "session", "relationType": "oneToMany", "relationName": "hasSessions" }
+  ],
+  "metadataDefinitions": {
+    "subject_id": { "name": "subject_id", "title": "Subject", "dataType": "string", "ofEntity": "subject" },
+    "session_id": { "name": "session_id", "title": "Session", "dataType": "string", "ofEntity": "session" }
+  },
+  "dataLocations": [
+    {
+      "identifier": "raw",
+      "displayName": "Raw recordings",
+      "dataCategory": "raw",
+      "access": "read",
+      "sourceType": "filesystem",
+      "filesystemSource": {
+        "rootStoragePaths": [ { "identifier": "local", "path": "data/raw" } ],
+        "entityLayout": [
+          { "name": "subjects", "entityType": "subject", "matchPattern": "^sub-.+$" },
+          {
+            "name": "sessions",
+            "entityType": "session",
+            "matchPattern": "^ses-.+$",
+            "filePatterns": [
+              { "name": "recording", "pattern": "\\.raw$", "cardinality": "one" },
+              { "name": "recording_ini", "pattern": "\\.ini$", "cardinality": "one" },
+              { "name": "tiff", "pattern": "\\.tif$", "cardinality": "one" }
+            ]
+          }
+        ],
+        "metadataMapping": [
+          { "metadataRef": "subject_id", "extraction": { "method": "regex", "pattern": "^sub-(.+)$", "entityLayoutLevel": "subjects" } },
+          { "metadataRef": "session_id", "extraction": { "method": "regex", "pattern": "^ses-(.+)$", "entityLayoutLevel": "sessions" } }
+        ]
+      }
+    },
+    {
+      "identifier": "processed",
+      "displayName": "Processed data",
+      "dataCategory": "processed",
+      "access": "readwrite",
+      "sourceType": "filesystem",
+      "derivedFrom": ["raw"],
+      "filesystemSource": {
+        "rootStoragePaths": [ { "identifier": "local", "path": "data/processed" } ],
+        "entityLayout": [
+          { "name": "subjects", "entityType": "subject", "pathComponentTemplate": "sub-{subject_id}", "matchPattern": "^sub-.+$" },
+          { "name": "sessions", "entityType": "session", "pathComponentTemplate": "ses-{session_id}", "matchPattern": "^ses-.+$" }
+        ],
+        "metadataMapping": [
+          { "metadataRef": "subject_id", "extraction": { "method": "regex", "pattern": "^sub-(.+)$", "entityLayoutLevel": "subjects" } },
+          { "metadataRef": "session_id", "extraction": { "method": "regex", "pattern": "^ses-(.+)$", "entityLayoutLevel": "sessions" } }
+        ],
+        "pathTemplate": "{rootPath}/sub-{subject_id}/ses-{session_id}"
+      }
+    }
+  ],
+  "preferences": { "defaultDataLocationIdentifier": "processed" }
+}

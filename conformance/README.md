@@ -57,4 +57,4 @@ Like `entities`, plus `requests.json`: a list of `{entityType, key, variable}`.
 
 ## Adding a case
 
-Write the expected output by hand. Don't generate it with one of the readers, or the case will just record that reader's behaviour. A new rule for the format goes in with a case here and a change to [`docs/reference`](../docs/reference).
+Write the expected output by hand. Don't generate it with one of the readers, or the case will just record that reader's behaviour. Where the expected values are numbers no one would work out by hand, compute them from the ground truth the data was made from, as `api/ophys/make_data.py` does for the synthetic recording, never with the code under test. A new rule for the format goes in with a case here and a change to [`docs/reference`](../docs/reference).

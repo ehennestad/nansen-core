@@ -1014,6 +1014,12 @@ class Project:
         """
         variable = self.data_variable(name)
         existing = [p for p in self.data_paths(entity, name) if p.is_file()]
+        if not existing and variable.file_pattern is None:
+            # written to a folder made since the last scan: found where save put it
+            try:
+                existing = [p for p in [self.write_path(entity, name)] if p.is_file()]
+            except NansenError:
+                pass
         if not existing:
             raise NansenError("data-not-found", f"{entity.entity_type} {entity.key} has no {name!r}")
         adapter = self.adapters.get(variable.file_adapter)

@@ -1637,6 +1637,16 @@ classdef Project < handle
             variable = obj.dataVariable(name);
             paths = obj.dataPaths(entity, name);
             paths = paths(arrayfun(@isfile, paths));
+            if isempty(paths) && variable.FilePattern == ""
+                % written to a folder made since the last scan: found where save put it
+                try
+                    written = obj.writePath(entity, name);
+                    if isfile(written)
+                        paths = written;
+                    end
+                catch
+                end
+            end
             if isempty(paths)
                 nansen.internal.throwError("data-not-found", "%s has no '%s'", entity.EntityType, name)
             end

@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.sciscan_raw",
+  "version": "1.0.0",
+  "title": "SciScan raw recording",
+  "description": "A SciScan .raw file and the .ini file of the same name beside it: big-endian 16-bit integers or 32-bit floats, frame after frame, channels interleaved. Reads height x width x frames (height x width x channels x frames with more than one channel). Writing makes both files.",
+  "extensions": [
+    ".raw"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:SciScanRaw",
+    "matlab": "ophys.SciScanRaw"
+  }
+}

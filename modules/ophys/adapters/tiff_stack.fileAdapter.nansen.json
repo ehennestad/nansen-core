@@ -1,0 +1,17 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.tiff_stack",
+  "version": "1.0.0",
+  "title": "TIFF stack",
+  "description": "A multi-page TIFF file of grayscale frames, read as height x width x frames. Python needs tifffile (pip install \"nansen-core[ophys]\").",
+  "extensions": [
+    ".tif",
+    ".tiff"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:TiffStack",
+    "matlab": "ophys.TiffStack"
+  }
+}

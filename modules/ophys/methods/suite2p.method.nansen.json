@@ -1,0 +1,59 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.suite2p",
+  "version": "1.0.0",
+  "title": "Run suite2p",
+  "category": "Two-photon/Segmentation",
+  "entityType": "*",
+  "description": "Runs suite2p (registration, cell detection and signal extraction) on the stack, when the suite2p package is installed, and saves its cells as ROIs and their signals in the same variables as the native methods. suite2p's own output is kept in a suite2p folder next to the ROI file.",
+  "implementations": {
+    "python": "ophys_methods:suite2p"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Original",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "rois": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "ROIs",
+        "description": "Variable the cells are saved to as ROIs."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiSignals_MeanF",
+        "title": "Signals",
+        "description": "Variable the result is saved to."
+      },
+      "neuropilOutput": {
+        "type": "string",
+        "default": "RoiSignals_NeuropilF",
+        "title": "Neuropil signals",
+        "description": "Variable the neuropil signals are saved to. Leave empty to not save it."
+      },
+      "framesPerSecond": {
+        "type": "number",
+        "default": 30,
+        "exclusiveMinimum": 0,
+        "title": "Frame rate (Hz)"
+      },
+      "cellDiameter": {
+        "type": "integer",
+        "default": 12,
+        "minimum": 1,
+        "title": "Cell diameter (px)"
+      },
+      "onlyCells": {
+        "type": "boolean",
+        "default": true,
+        "title": "Keep only what suite2p classifies as cells"
+      }
+    }
+  }
+}

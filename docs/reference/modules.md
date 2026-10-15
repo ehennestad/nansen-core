@@ -29,6 +29,25 @@ The built-in **`core`** module provides:
 - the methods `core.export_keys` (batch), `core.backup` (copies an entity's folders to `<destination>/<data location>/<the same path>`, leaving copies that are up to date alone) and `core.wait` (for trying the queue);
 - the pipeline `core.inspect`.
 
+## The ophys module
+
+The built-in **`ophys`** module brings over the core of dev's two-photon workflow (`+nansen/+module/+ophys/+twophoton`). Its methods are native in both languages and give the same results, which the `ophys` conformance case checks on a synthetic recording with known shifts and cells. Stacks are height x width x frames in both languages (`stack[y, x, t]` in Python is `stack(y+1, x+1, t+1)` in MATLAB, and `.npy` files keep that indexing). Python needs NumPy and, for TIFF, tifffile: `pip install "nansen-core[ophys]"`.
+
+| Method | What it does |
+|---|---|
+| `ophys.setup_variables` | A project tool: adds the data variables the methods read and write (in a subfolder of each entity's folder in a data location: `.npy` arrays and a `.json` ROI file), `TwoPhotonSeries_Original` through a DSM file pattern of the raw recording, and the `ophys.imaging` and `ophys.image_stats` columns. Variables that exist are left alone |
+| `ophys.motion_correction` | Rigid motion correction: each frame is aligned to a reference by the whole-pixel shift of largest phase correlation (smoothed as suite2p does), within `maxShift`. The reference is the average of the first `referenceFrames` frames, then of the aligned frames. Saves the aligned stack and the shifts (frames x 2). Preset `thorough` for large or slow drift |
+| `ophys.image_stats` | Frames, size, mean and maximum intensity (the computed `ophys.image_stats` columns), and the average and maximum projections |
+| `ophys.detect_rois` | ROIs as 4-connected areas of pixels whose average correlation with their 8 neighbours reaches `threshold`, of `minSize` to `maxSize` pixels, away from a `border`. ROI files are JSON: `imageSize` and `rois[{id, area, center, pixels}]`, with 0-based `[row, column]` pixels |
+| `ophys.extract_signals` | The mean of each ROI's pixels per frame (frames x ROIs), and of a ring of neuropil around it, outside every ROI |
+| `ophys.compute_dff` | ΔF/F = (F - F0) / F0, with F the signal less `neuropilFactor` times the neuropil, and F0 a percentile of F over the whole trace or a window of frames |
+| `ophys.downsample` | Mean or maximum over bins of frames and of pixels |
+| `ophys.suite2p` | Python: runs suite2p, when it is installed, and saves its cells and signals in the same variables |
+| `ophys.normcorre` | MATLAB: rigid or piecewise rigid motion correction with NoRMCorre, when it is on the path |
+| `ophys.open_in_imviewer` | MATLAB, run by hand: opens a stack in dev's imviewer, when it is on the path |
+
+A method that needs a package that is not installed fails with `dependency-missing`. The file adapters are `ophys.sciscan_raw` (a SciScan `.raw` file and its `.ini` file, as written by the microscope: big-endian, one channel after the other in each frame) and `ophys.tiff_stack` (multi-page TIFF). The fragments are `ophys.imaging` (field of view, depth, indicator and frame rate, typed in) and `ophys.image_stats` (computed). The pipeline `ophys.preprocess` runs motion correction, image statistics, ROI detection, signal extraction and ΔF/F.
+
 ## Methods
 
 A method is declared by a `nansen.method` document and implemented in either or both languages:
@@ -75,7 +94,7 @@ function result = ophysCorrectMotion(entity, options, context)
 end
 ```
 
-`load` keeps what it read in the project's data cache (`project.data_cache`, `project.DataCache`), so methods run one after another on an entity read its files once. An entry is read again when its file changes on disk, `save` drops the entry of the file it writes, and the least recently used entries leave first once the cache holds 2 GiB. In Python, an array from the cache is read-only, so a method that changes it works on a copy (`movie.copy()`); dicts and lists are copied for each caller. MATLAB values are copied when changed anyway. `load(entity, name, cached=False)` (`Cached=false`) reads the file and keeps nothing.
+`load` finds a file `save` wrote to a folder made since the last scan, and keeps what it read in the project's data cache (`project.data_cache`, `project.DataCache`), so methods run one after another on an entity read its files once. An entry is read again when its file changes on disk, `save` drops the entry of the file it writes, and the least recently used entries leave first once the cache holds 2 GiB. In Python, an array from the cache is read-only, so a method that changes it works on a copy (`movie.copy()`); dicts and lists are copied for each caller. MATLAB values are copied when changed anyway. `load(entity, name, cached=False)` (`Cached=false`) reads the file and keeps nothing.
 
 The context gives the project, `log`, `progress(fraction, message)` and cancellation. Nothing else is shared: a method gets everything through its arguments.
 

@@ -1,0 +1,45 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.imaging",
+  "version": "1.0.0",
+  "title": "Imaging",
+  "description": "How a two-photon recording was made, as dev's session table has it.",
+  "columns": [
+    {
+      "name": "fov",
+      "dataType": "string",
+      "title": "FOV",
+      "description": "Name of the field of view"
+    },
+    {
+      "name": "depth_um",
+      "dataType": "number",
+      "title": "Depth",
+      "unit": "µm"
+    },
+    {
+      "name": "indicator",
+      "dataType": "string",
+      "title": "Indicator",
+      "choices": [
+        "GCaMP6s",
+        "GCaMP6f",
+        "GCaMP6m",
+        "jGCaMP7s",
+        "jGCaMP7f",
+        "jGCaMP8s",
+        "jGCaMP8m",
+        "jGCaMP8f",
+        "jRGECO1a",
+        "OGB-1"
+      ]
+    },
+    {
+      "name": "frame_rate",
+      "dataType": "number",
+      "title": "Frame rate",
+      "unit": "Hz"
+    }
+  ]
+}

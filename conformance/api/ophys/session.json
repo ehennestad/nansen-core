@@ -1,0 +1,616 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "Ophys",
+          "modules": [
+            {
+              "id": "ophys"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 2,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 1,
+            "session": 2
+          },
+          "unmatched": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.sync",
+        "id": 3,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "added": {
+            "subject": [
+              {
+                "subject_id": "m1"
+              }
+            ],
+            "session": [
+              {
+                "subject_id": "m1",
+                "session_id": "s1"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "s2"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tools.list",
+        "id": 4,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "ophys.setup_variables",
+            "tool": true
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tools.run",
+        "id": 5,
+        "params": {
+          "methodId": "ophys.setup_variables",
+          "options": {
+            "rawFilePattern": "recording"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "result": {
+            "created": [
+              "TwoPhotonSeries_Original",
+              "TwoPhotonSeries_Corrected",
+              "TwoPhotonSeries_Downsampled",
+              "MotionCorrectionShifts",
+              "FovAverageProjection",
+              "FovMaximumProjection",
+              "RoiArray",
+              "RoiSignals_MeanF",
+              "RoiSignals_NeuropilF",
+              "RoiSignals_Dff"
+            ],
+            "existing": [],
+            "fragments": [
+              "ophys.imaging",
+              "ophys.image_stats"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 6,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "TwoPhotonSeries_Tiff",
+            "entityType": "session",
+            "dataLocation": "raw",
+            "filePattern": "tiff",
+            "fileAdapter": "ophys.tiff_stack"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhotonSeries_Tiff"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 7,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Original",
+            "averageOutput": "",
+            "maximumOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "n_frames": 40,
+              "height": 32,
+              "width": 32,
+              "mean_intensity": 202.9881,
+              "max_intensity": 820.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 8,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s2"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Tiff",
+            "averageOutput": "",
+            "maximumOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "n_frames": 40,
+              "height": 32,
+              "width": 32,
+              "mean_intensity": 201.0274,
+              "max_intensity": 849.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s2"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "data-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 10,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "maxShift": -1
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 11,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "maxShift": 8,
+            "referenceFrames": 1
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 40,
+              "maxShift": 3,
+              "meanShift": 2.8192
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.update",
+        "id": 12,
+        "params": {
+          "entityType": "session",
+          "fragmentId": "ophys.image_stats",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "updated": 1,
+          "failed": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "id": 13,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "rows": [
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s1"
+              },
+              "values": {
+                "n_frames": 40,
+                "height": 32,
+                "width": 32,
+                "mean_intensity": 181.3396,
+                "max_intensity": 820.0
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s2"
+              },
+              "values": {
+                "n_frames": null
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 14,
+        "params": {
+          "methodId": "ophys.detect_rois",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "threshold": 0.25,
+            "border": 4
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "areas": [
+                13,
+                13,
+                13
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 15,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "meanSignal": [
+                354.3,
+                343.3,
+                352.0442
+              ],
+              "meanNeuropil": [
+                179.97,
+                185.5483,
+                207.3577
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 16,
+        "params": {
+          "methodId": "ophys.compute_dff",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "baseline": [
+                59.022,
+                79.1753,
+                71.5472
+              ],
+              "maxDff": [
+                9.1859,
+                7.0495,
+                7.3852
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 17,
+        "params": {
+          "methodId": "ophys.downsample",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "spatialFactor": 2
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 10,
+              "height": 16,
+              "width": 16,
+              "meanIntensity": 181.3396
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 18,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 1,
+            "session": 2
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.status",
+        "id": 19,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          }
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "FovAverageProjection",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/fov_average_projection.npy"
+            ]
+          },
+          {
+            "name": "FovMaximumProjection",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/fov_maximum_projection.npy"
+            ]
+          },
+          {
+            "name": "MotionCorrectionShifts",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/motion_correction_shifts.npy"
+            ]
+          },
+          {
+            "name": "RoiArray",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/roi_array.json"
+            ]
+          },
+          {
+            "name": "RoiSignals_Dff",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/roi_signals_dff.npy"
+            ]
+          },
+          {
+            "name": "RoiSignals_MeanF",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/roi_signals_mean_f.npy"
+            ]
+          },
+          {
+            "name": "RoiSignals_NeuropilF",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/roi_signals_neuropil_f.npy"
+            ]
+          },
+          {
+            "name": "TwoPhotonSeries_Corrected",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/two_photon_series_corrected.npy"
+            ]
+          },
+          {
+            "name": "TwoPhotonSeries_Downsampled",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/two_photon_series_downsampled.npy"
+            ]
+          },
+          {
+            "name": "TwoPhotonSeries_Original",
+            "dataLocation": "raw",
+            "fileAdapter": "ophys.sciscan_raw",
+            "files": [
+              "${scratch}/project/data/raw/sub-m1/ses-s1/rec.raw"
+            ]
+          },
+          {
+            "name": "TwoPhotonSeries_Tiff",
+            "dataLocation": "raw",
+            "fileAdapter": "ophys.tiff_stack",
+            "files": []
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tools.run",
+        "id": 20,
+        "params": {
+          "methodId": "ophys.setup_variables",
+          "options": {
+            "rawFilePattern": "recording"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "result": {
+            "created": [],
+            "existing": [
+              "TwoPhotonSeries_Original",
+              "TwoPhotonSeries_Corrected",
+              "TwoPhotonSeries_Downsampled",
+              "MotionCorrectionShifts",
+              "FovAverageProjection",
+              "FovMaximumProjection",
+              "RoiArray",
+              "RoiSignals_MeanF",
+              "RoiSignals_NeuropilF",
+              "RoiSignals_Dff"
+            ],
+            "fragments": []
+          }
+        }
+      }
+    }
+  ]
+}

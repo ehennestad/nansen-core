@@ -1,0 +1,31 @@
+{
+  "schemaType": "nansen.pipeline",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.preprocess",
+  "version": "1.0.0",
+  "title": "Two-photon preprocessing",
+  "description": "Correct motion, compute image statistics, detect ROIs, extract their signals and compute ΔF/F.",
+  "entityType": "*",
+  "steps": [
+    {
+      "method": "ophys.motion_correction",
+      "title": "Correct motion"
+    },
+    {
+      "method": "ophys.image_stats",
+      "title": "Image statistics"
+    },
+    {
+      "method": "ophys.detect_rois",
+      "title": "Detect ROIs"
+    },
+    {
+      "method": "ophys.extract_signals",
+      "title": "Extract signals"
+    },
+    {
+      "method": "ophys.compute_dff",
+      "title": "Compute ΔF/F"
+    }
+  ]
+}

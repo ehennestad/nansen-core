@@ -1,0 +1,40 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.image_stats",
+  "version": "1.0.0",
+  "title": "Image statistics",
+  "description": "Size and intensity of the image stack. Computed by ophys.image_stats.",
+  "columns": [
+    {
+      "name": "n_frames",
+      "dataType": "integer",
+      "title": "Frames"
+    },
+    {
+      "name": "height",
+      "dataType": "integer",
+      "title": "Height",
+      "unit": "px"
+    },
+    {
+      "name": "width",
+      "dataType": "integer",
+      "title": "Width",
+      "unit": "px"
+    },
+    {
+      "name": "mean_intensity",
+      "dataType": "number",
+      "title": "Mean intensity"
+    },
+    {
+      "name": "max_intensity",
+      "dataType": "number",
+      "title": "Max intensity"
+    }
+  ],
+  "compute": {
+    "method": "ophys.image_stats"
+  }
+}

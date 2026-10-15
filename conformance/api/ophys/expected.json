@@ -1,0 +1,4 @@
+{
+  "description": "The ophys module on a synthetic recording of three cells, with known whole-pixel shifts: a SciScan raw file and a TIFF stack are read, the data variables are set up by the module's tool, and motion correction, image statistics (a computed fragment), ROI detection, signal extraction, ΔF/F and downsampling give the values of the ground truth, which make_data.py computes from the scene directly.",
+  "steps": 20
+}
