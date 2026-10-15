@@ -170,6 +170,24 @@ def thorlabs(expected):
                             "sum": int(stack.astype(np.int64).sum())}
 
 
+def tsm(expected):
+    """A TSM file: a FITS-like header (80-character cards, padded to 2880 bytes), 4 int16 frames of 5 rows x 7
+    columns, little-endian, columns fastest, then a dark frame; read with the dark frame subtracted, saturating
+    (one pixel goes below int16's range)."""
+    rng = np.random.default_rng(20)
+    frames = rng.integers(-2000, 9000, (4, 5, 7)).astype(np.int16)   # frames x rows x columns
+    frames[2, 1, 3] = -32700
+    dark = rng.integers(100, 300, (5, 7)).astype(np.int16)
+    cards = ["SIMPLE  =                    T", "BITPIX  =                   16", "NAXIS   =                    3",
+             "NAXIS1  =                    7", "NAXIS2  =                    5", "NAXIS3  =                    4",
+             "EXPOSURE=                 0.01 / seconds per frame", "END"]
+    header = "".join(card.ljust(80) for card in cards).ljust(2880).encode("ascii")
+    (HERE / "macroscope.tsm").write_bytes(header + frames.astype("<i2").tobytes() + dark.astype("<i2").tobytes())
+    out = np.clip(frames.astype(np.int32) - dark, -32768, 32767)
+    expected["tsm"] = {"size": [5, 7, 4], "pixel": {"at": [3, 6, 1], "value": int(out[1, 3, 6])},
+                       "saturated": {"at": [1, 3, 2], "value": int(out[2, 1, 3])}, "sum": int(out.sum())}
+
+
 def suite2p_rois(expected):
     """suite2p's Fall.mat: stat (a cell array of structs with 0-based ypix, xpix), iscell and ops (Ly, Lx)."""
     cells = [([2, 2, 3, 3], [7, 8, 7, 8], 1), ([10, 11, 11, 12, 12, 12], [3, 3, 4, 3, 4, 5], 0), ([17, 18], [20, 21], 1)]
@@ -302,6 +320,7 @@ def main():
     suite2p_binary(expected)
     video(expected)
     thorlabs(expected)
+    tsm(expected)
     suite2p_rois(expected)
     caiman_rois(expected)
     extract_rois(expected)

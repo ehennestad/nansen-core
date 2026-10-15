@@ -1282,25 +1282,101 @@ def export_tiff(entity, options, context):
     """Frames firstFrame..lastFrame (from 1; lastFrame 0 for the last) of the stack written to a TIFF file, a chunk at
     a time, as dev's imviewer exports a stack. A relative path is in the project's folder; {field} tokens are the
     entity's values."""
+    return export_stack(entity, dict(options, format="tiff"), context)
+
+
+EXPORT_FORMATS = ("tiff", "binary", "npy", "video")
+
+
+def export_stack(entity, options, context):
+    """Frames firstFrame..lastFrame of the stack written to a file a chunk at a time, as dev's imviewer exports one:
+    tiff (a page per frame), binary (dev's .raw beside its .ini), npy, or video (Motion JPEG AVI of 8-bit frames,
+    the values from low to high scaled to 0..255; both 0 for the 0.5th and 99.5th percentiles of the first frames)."""
     stack = _open_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     first, last = int(options.get("firstFrame", 1)), int(options.get("lastFrame", 0)) or frames
     if not 1 <= first <= last <= frames:
         raise NansenError("invalid-options", f"frames {first} to {last} are not frames of the stack's {frames}")
+    form = options.get("format", "tiff")
+    if form not in EXPORT_FORMATS:
+        raise NansenError("invalid-options", f"format is one of {', '.join(EXPORT_FORMATS)}")
     path = Path(_fill(str(options["path"]), entity))
     if not path.is_absolute():
         path = Path(context.project.folder) / path
     path.parent.mkdir(parents=True, exist_ok=True)
+    shape = (height, width, last - first + 1)
     from nansen.adapters import load_object
-    TiffPageWriter = load_object("ophys_adapters:TiffPageWriter", Path(__file__).resolve().parent)
-    with TiffPageWriter(path, (height, width, last - first + 1), stack.dtype) as out:
+    adapters = Path(__file__).resolve().parent
+    scale = None
+    if form == "tiff":
+        out = load_object("ophys_adapters:TiffPageWriter", adapters)(path, shape, stack.dtype)
+    elif form == "binary":
+        out = load_object("ophys_adapters:BinaryStack", adapters)().create(path, shape, stack.dtype)
+    elif form == "npy":
+        out = context.project.adapters.get("npy").create(path, shape, stack.dtype)
+    else:
+        low, high = float(options.get("low", 0)), float(options.get("high", 0))
+        if low == 0 and high == 0:
+            sample = np.asarray(stack.frames(first - 1, min(first - 1 + CHUNK, last)), dtype=np.float64).reshape(-1, 1)
+            low, high = float(_percentile(sample, 0.5)[0]), float(_percentile(sample, 99.5)[0])
+        if high <= low:
+            high = low + 1
+        scale = (low, high)
+        out = VideoWriter(path, shape)
+    with out:
         for start in range(first - 1, last, CHUNK):
             context.check_cancelled()
             stop = min(start + CHUNK, last)
-            out.write(start - first + 1, stack.frames(start, stop))
+            chunk = stack.frames(start, stop)
+            if scale is not None:
+                chunk = to_uint8(chunk, *scale)
+            out.write(start - first + 1, chunk)
             context.progress((stop - first + 1) / (last - first + 1), f"frame {stop}/{last}")
     context.log(f"{_name(entity)}: frames {first} to {last} written to {path}")
-    return {"frames": last - first + 1, "path": str(path)}
+    return {"frames": last - first + 1, "path": str(path), "format": form}
+
+
+def to_uint8(chunk, low, high):
+    """Values from low to high as 0..255, rounded half up and cut at both ends, as data.frame scales an image."""
+    scaled = np.floor((np.asarray(chunk, dtype=np.float64) - low) / (high - low) * 255 + 0.5)
+    return np.clip(scaled, 0, 255).astype(np.uint8)
+
+
+class VideoWriter:
+    """Motion JPEG AVI frames, a chunk at a time, with imageio's ffmpeg (the video extra), as MATLAB's VideoWriter
+    writes them; write(start, chunk) with 8-bit height x width x n chunks in order."""
+
+    def __init__(self, path, shape):
+        try:
+            import imageio.v2 as iio
+            import imageio_ffmpeg  # noqa: F401
+        except ImportError:
+            raise NansenError("dependency-missing", 'video export needs imageio and imageio-ffmpeg: pip install "nansen-core[video]"') from None
+        self.shape, self.written = tuple(int(n) for n in shape), 0
+        self.path = Path(path)
+        self._writer = iio.get_writer(str(path), format="ffmpeg", codec="mjpeg", fps=30, quality=None,
+                                      pixelformat="yuvj420p", output_params=["-q:v", "2", "-f", "avi"], macro_block_size=1)
+
+    def write(self, start, chunk):
+        chunk = np.asarray(chunk)
+        if int(start) != self.written:
+            raise NansenError("invalid-params", f"frames come in order: {self.written} were written, not {start}")
+        for t in range(chunk.shape[2]):
+            self._writer.append_data(np.repeat(chunk[:, :, t, None], 3, axis=2))
+        self.written += chunk.shape[2]
+
+    def close(self):
+        if self._writer is not None:
+            self._writer.close()
+            self._writer = None
+            if self.written and (not self.path.is_file() or self.path.stat().st_size == 0):   # ffmpeg says so only on stderr
+                raise NansenError("internal-error", f"ffmpeg wrote no video to {self.path}")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
 
 
 def export_nwb(entity, options, context):

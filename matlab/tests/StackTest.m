@@ -132,6 +132,22 @@ classdef StackTest < matlab.unittest.TestCase
             testCase.verifyEqual(all(project.openStack(entity, "TwoPhotonSeries_Corrected")), whole);
         end
 
+        function aStackIsExportedAsVideo(testCase)
+            % 8-bit Motion JPEG AVI: the frames asked for, read back by the video adapter (Python's test_ophys does the same)
+            project = testCase.ophysProject();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+            path = fullfile(project.Folder, "exports", "s2.avi");
+            result = project.run("ophys.export_stack", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", ...
+                "format", "video", "path", path, "firstFrame", 3, "lastFrame", 12));
+            testCase.verifyEqual(result{1}.frames, 10);
+            video = ophys.VideoFile().open(path);
+            testCase.verifyEqual(size(video), [32, 32, 10]);
+            raw = double(project.load(entity, "TwoPhotonSeries_Original"));
+            frame = double(video.frames(4, 4));
+            c = corrcoef(frame(:), reshape(raw(:, :, 6), [], 1));
+            testCase.verifyGreaterThan(c(1, 2), 0.95);   % JPEG is lossy: the same picture, not the same bytes
+        end
+
         function aPreviewReadsTheFirstFramesAndWritesNothing(testCase)
             project = testCase.ophysProject();
             key = struct("subject_id", "m1", "session_id", "s2");

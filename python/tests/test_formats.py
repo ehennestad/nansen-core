@@ -138,6 +138,20 @@ def test_thorimage_frames_read_as_channels():
         adapter("ThorLabsTiffs").open([FILES / "binary" / "stack.raw"])
 
 
+def test_tsm_files_read_less_their_dark_frame(tmp_path):
+    expected = EXPECTED["tsm"]
+    stack = adapter("TsmStack").open([FILES / "macroscope.tsm"])
+    assert list(stack.shape) == expected["size"] and stack.dtype == np.int16
+    data = np.asarray(stack)
+    for name in ("pixel", "saturated"):
+        assert int(data[tuple(expected[name]["at"])]) == expected[name]["value"], name
+    assert int(data.astype(np.int64).sum()) == expected["sum"]
+    assert (stack.frames(1, 3) == data[..., 1:3]).all()
+    (tmp_path / "cut.tsm").write_bytes((FILES / "macroscope.tsm").read_bytes()[:3000])
+    with pytest.raises(NansenError):
+        adapter("TsmStack").open([tmp_path / "cut.tsm"])
+
+
 def test_a_dev_binary_stack_reads_and_writes(tmp_path):
     stack = adapter("BinaryStack").open([FILES / "binary" / "stack.raw"])
     expected = EXPECTED["devBinary"]

@@ -82,6 +82,20 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyEqual(one.all(), squeeze(data(:, :, 1, :)));
         end
 
+        function readsTsmFilesLessTheirDarkFrame(testCase)
+            stack = ophys.TsmStack().open(fullfile(testCase.Files, "macroscope.tsm"));
+            expected = testCase.Expected.tsm;
+            testCase.verifyEqual(size(stack), expected.size');
+            testCase.verifyEqual(stack.ClassName, "int16");
+            data = stack.all();
+            for name = ["pixel", "saturated"]
+                at = num2cell(expected.(name).at' + 1);
+                testCase.verifyEqual(double(data(at{:})), expected.(name).value, name);
+            end
+            testCase.verifyEqual(sum(double(data), "all"), expected.sum);
+            testCase.verifyEqual(stack.frames(2, 3), data(:, :, 2:3));
+        end
+
         function readsAndWritesDevBinaryStacks(testCase)
             raw = fullfile(testCase.Files, "binary", "stack.raw");
             stack = ophys.BinaryStack().open(raw);

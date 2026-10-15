@@ -25,6 +25,7 @@
     "methods/detect_rois.method.nansen.json",
     "methods/downsample.method.nansen.json",
     "methods/export_nwb.method.nansen.json",
+    "methods/export_stack.method.nansen.json",
     "methods/export_tiff.method.nansen.json",
     "methods/extract.method.nansen.json",
     "methods/extract_signals.method.nansen.json",
@@ -51,6 +52,7 @@
     "adapters/suite2p_binary.fileAdapter.nansen.json",
     "adapters/suite2p_rois.fileAdapter.nansen.json",
     "adapters/thorlabs_tiffs.fileAdapter.nansen.json",
+    "adapters/tsm_stack.fileAdapter.nansen.json",
     "adapters/tiff_stack.fileAdapter.nansen.json",
     "adapters/video_file.fileAdapter.nansen.json"
   ],

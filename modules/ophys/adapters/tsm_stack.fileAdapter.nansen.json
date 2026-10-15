@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.tsm_stack",
+  "version": "1.0.0",
+  "title": "TSM file",
+  "description": "A TSM file of a SciMeasure / RedShirt camera, as dev's TSM stack reads one (its macroscope recordings): a FITS-like header with the size (NAXIS1 columns, NAXIS2 rows, NAXIS3 frames), int16 frames and a dark frame, which is subtracted from every frame. Read a chunk at a time; read only.",
+  "extensions": [
+    ".tsm"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:TsmStack",
+    "matlab": "ophys.TsmStack"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.export_stack",
+  "version": "1.0.0",
+  "title": "Export stack",
+  "category": "Two-photon/Export",
+  "entityType": "*",
+  "description": "Writes frames of a stack to a file, a chunk at a time, as dev's imviewer exports a stack: TIFF (a page per frame), dev's binary stack (a .raw beside its .ini), NumPy .npy, or a video (Motion JPEG AVI of 8-bit frames, the values from low to high scaled to 0..255; both 0 for the 0.5th and 99.5th percentiles of the first frames). A relative path is in the project's folder, and {field} tokens in it are the entity's values. Of a stack with channels or planes, one channel and plane are written. Video needs imageio and imageio-ffmpeg in Python (the video extra).",
+  "implementations": {
+    "python": "ophys_methods:export_stack",
+    "matlab": "ophys.exportStack"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack"
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "tiff",
+          "binary",
+          "npy",
+          "video"
+        ],
+        "default": "tiff",
+        "title": "Format"
+      },
+      "path": {
+        "type": "string",
+        "default": "exports/{subject_id}_{session_id}.tif",
+        "title": "File",
+        "description": "Where the file is written; relative to the project's folder unless absolute. Give it the format's extension (.tif, .raw, .npy, .avi)."
+      },
+      "firstFrame": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "First frame"
+      },
+      "lastFrame": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Last frame",
+        "description": "0 for the last frame of the stack."
+      },
+      "channel": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Channel"
+      },
+      "plane": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Plane"
+      },
+      "low": {
+        "type": "number",
+        "default": 0,
+        "title": "Video: lowest value",
+        "description": "Shown as black; low and high both 0 for the 0.5th and 99.5th percentiles of the first frames."
+      },
+      "high": {
+        "type": "number",
+        "default": 0,
+        "title": "Video: highest value",
+        "description": "Shown as white."
+      }
+    }
+  }
+}

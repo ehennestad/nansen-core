@@ -369,3 +369,30 @@ def test_shape_detection_finds_ring_shaped_somata_where_they_are():
         assert abs(found[0] - cy) < 0.5 and abs(found[1] - cx) < 0.5
         assert 80 <= len(roi) <= 115   # the ring's outer edge, about 5.5 px out
     assert ophys["shape_rois"](np.full((64, 64), 7.0), 3, 5) == []
+
+
+def test_a_stack_is_exported_as_video(tmp_path):
+    pytest.importorskip("imageio")
+    pytest.importorskip("imageio_ffmpeg")
+    import shutil
+    from nansen.api import Api
+    folder = tmp_path / "project"
+    shutil.copytree(Path(__file__).resolve().parents[2] / "conformance" / "api" / "ophys" / "project", folder)
+    api = Api(start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    try:
+        for method, params in [("project.open", {"path": str(folder)}), ("project.scan", {}), ("project.sync", {}),
+                               ("tools.run", {"methodId": "ophys.setup_variables", "options": {"rawFilePattern": "tiff", "rawFileAdapter": "ophys.tiff_stack"}})]:
+            assert "result" in call(method, **params), method
+        key = {"subject_id": "m1", "session_id": "s2"}   # as StackTest does in MATLAB
+        path = folder / "exports" / "s2.avi"
+        result = call("methods.run", methodId="ophys.export_stack", entityType="session", keys=[key],
+                      options={"stack": "TwoPhotonSeries_Original", "format": "video", "path": str(path), "firstFrame": 3, "lastFrame": 12})
+        assert result["result"]["results"][0]["frames"] == 10, result
+        video = adapter("VideoFile").open([path])
+        assert video.shape == (32, 32, 10)
+        raw = np.asarray(api.project.load(api.project.entity("session", key), "TwoPhotonSeries_Original"), dtype=float)
+        frame = np.asarray(video.frames(3, 4), dtype=float)[:, :, 0]
+        assert np.corrcoef(frame.ravel(), raw[:, :, 5].ravel())[0, 1] > 0.95   # JPEG is lossy: the same picture
+    finally:
+        api.close()

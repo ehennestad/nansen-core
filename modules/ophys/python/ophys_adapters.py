@@ -316,6 +316,65 @@ class TiffStack:
         return TiffPageWriter(path, shape, dtype)
 
 
+class TsmStack:
+    """A TSM file (SciMeasure / RedShirt cameras, dev's macroscope recordings): a FITS-like header of 80-character
+    cards in 2880-byte blocks (NAXIS1 columns, NAXIS2 rows, NAXIS3 frames), then int16 frames, little-endian, the
+    columns fastest, then a dark frame, which is subtracted from every frame (saturating at int16's range), as dev's
+    TSM stack does. Read a chunk at a time; read only."""
+
+    extensions = [".tsm"]
+
+    @staticmethod
+    def header(path):
+        """(columns, rows, frames, offset of the data) from the header cards."""
+        values, offset = {}, 0
+        with open(path, "rb") as f:
+            while True:
+                block = f.read(2880)
+                if len(block) < 2880:
+                    raise NansenError("invalid-data", f"{path} ends inside its header (no END card)")
+                offset += 2880
+                cards = [block[i:i + 80].decode("ascii", "replace") for i in range(0, 2880, 80)]
+                for card in cards:
+                    key = card[:8].strip()
+                    if key == "END":
+                        break
+                    if card[8:10] == "= ":
+                        values[key] = card[10:].split("/")[0].strip()
+                else:
+                    continue
+                break
+        try:
+            columns, rows, frames = (int(values[k]) for k in ("NAXIS1", "NAXIS2", "NAXIS3"))
+        except (KeyError, ValueError):
+            raise NansenError("invalid-data", f"{path} has no NAXIS1, NAXIS2 and NAXIS3") from None
+        return columns, rows, frames, offset
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import Stack, join, natural_order
+        parts = []
+        for path in natural_order(paths):
+            columns, rows, frames, offset = self.header(path)
+            needed = offset + (frames + 1) * rows * columns * 2
+            if Path(path).stat().st_size < needed:
+                raise NansenError("invalid-data", f"{path} is {Path(path).stat().st_size} bytes; {frames} frames and a dark frame of {rows} x {columns} need {needed}")
+            data = np.memmap(path, dtype="<i2", mode="r", offset=offset, shape=(frames + 1, rows, columns))
+            dark = np.asarray(data[frames], dtype=np.int32)
+
+            def read(start, stop, data=data, dark=dark):
+                chunk = np.asarray(data[start:stop], dtype=np.int32) - dark
+                return np.moveaxis(np.clip(chunk, -32768, 32767).astype(np.int16), 0, 2)
+
+            parts.append(Stack((rows, columns, frames), np.int16, read))
+        return join(parts)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "TSM files are written by the camera; save stacks as TIFF")
+
+
 class ThorLabsTiffs:
     """A ThorImage recording: a TIFF file per frame and channel, named ChanA_001_001_001_0001.tif and so on, as dev's
     ThorLabsTiffs reads them. The files of each channel letter are its frames, in natural order; with more than
