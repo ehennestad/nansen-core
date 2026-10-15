@@ -1,0 +1,406 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "modules.list",
+        "id": 1,
+        "params": {}
+      },
+      "expect": {
+        "error": "no-project"
+      }
+    },
+    {
+      "request": {
+        "method": "project.open",
+        "id": 2,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.options",
+        "id": 3,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "locations": [
+            {
+              "id": "raw",
+              "title": "Raw two-photon data",
+              "access": "read",
+              "filePatterns": [
+                "acquisition_config",
+                "two_photon_movie"
+              ]
+            },
+            {
+              "id": "processed",
+              "title": "Processed two-photon data",
+              "access": "readwrite",
+              "filePatterns": [
+                "motion_corrected",
+                "roi_signals"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.options",
+        "id": 4,
+        "params": {
+          "entityType": "subject"
+        }
+      },
+      "expect": {
+        "result": {
+          "locations": [
+            {
+              "id": "raw",
+              "filePatterns": []
+            },
+            {
+              "id": "processed",
+              "filePatterns": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.options",
+        "id": 5,
+        "params": {
+          "entityType": "probe"
+        }
+      },
+      "expect": {
+        "error": "unknown-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 6,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "roi_signals",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "filePattern": "roi_signals",
+            "fileName": "{session_id}_roi_signals.mat",
+            "fileAdapter": "mat"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "roi_signals",
+          "fileAdapter": "mat"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 7,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "roi_signals",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "filePattern": "nonesuch",
+            "fileName": "{session_id}_roi_signals.mat",
+            "fileAdapter": "mat"
+          }
+        }
+      },
+      "expect": {
+        "error": "unknown-file-pattern"
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 8,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "roi_signals",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "filePattern": "roi_signals",
+            "fileName": "{session_id}_roi_signals.mat",
+            "fileAdapter": "nonesuch"
+          }
+        }
+      },
+      "expect": {
+        "error": "unknown-file-adapter"
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.list",
+        "id": 9,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "roi_signals",
+            "fileName": "{session_id}_roi_signals.mat"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 10,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "roi_signals",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "filePattern": "roi_signals",
+            "fileName": "{session_id}_roi.mat",
+            "fileAdapter": "mat"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "roi_signals"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.list",
+        "id": 11,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "roi_signals",
+            "fileName": "{session_id}_roi.mat"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.delete",
+        "id": 12,
+        "params": {
+          "name": "roi_signals"
+        }
+      },
+      "expect": {
+        "result": {
+          "removed": "roi_signals"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.delete",
+        "id": 13,
+        "params": {
+          "name": "roi_signals"
+        }
+      },
+      "expect": {
+        "error": "unknown-data-variable"
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.list",
+        "id": 14,
+        "params": {}
+      },
+      "expect": {
+        "result": []
+      }
+    },
+    {
+      "request": {
+        "method": "modules.list",
+        "id": 15,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "lab",
+            "title": "Lab module",
+            "listed": false
+          },
+          {
+            "id": "core",
+            "listed": true
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "modules.add",
+        "id": 16,
+        "params": {
+          "id": "nonesuch"
+        }
+      },
+      "expect": {
+        "error": "unknown-module"
+      }
+    },
+    {
+      "request": {
+        "method": "modules.add",
+        "id": 17,
+        "params": {
+          "id": "lab"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton",
+          "modules": [
+            {
+              "id": "core"
+            },
+            {
+              "id": "lab"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.attach",
+        "id": 18,
+        "params": {
+          "entityType": "subject",
+          "fragmentId": "lab.surgery"
+        }
+      },
+      "expect": {
+        "result": {
+          "entityType": "subject",
+          "fragments": [
+            "notes",
+            "lab.surgery"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "modules.remove",
+        "id": 19,
+        "params": {
+          "id": "lab"
+        }
+      },
+      "expect": {
+        "error": "module-in-use"
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.detach",
+        "id": 20,
+        "params": {
+          "entityType": "subject",
+          "fragmentId": "lab.surgery"
+        }
+      },
+      "expect": {
+        "result": {
+          "fragments": [
+            "notes"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "modules.remove",
+        "id": 21,
+        "params": {
+          "id": "lab"
+        }
+      },
+      "expect": {
+        "result": {
+          "modules": [
+            {
+              "id": "core"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "modules.remove",
+        "id": 22,
+        "params": {
+          "id": "lab"
+        }
+      },
+      "expect": {
+        "error": "unknown-module"
+      }
+    },
+    {
+      "request": {
+        "method": "modules.list",
+        "id": 23,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "lab",
+            "listed": false
+          },
+          {
+            "id": "core",
+            "listed": true
+          }
+        ]
+      }
+    }
+  ]
+}

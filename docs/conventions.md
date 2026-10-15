@@ -103,6 +103,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `file-name-mismatch` | A generated file name would not match the variable's file pattern, so it would not be found again |
 | `unknown-module` | A module listed by the project cannot be found |
 | `module-mismatch` | The folder of a listed module holds a different module |
+| `module-in-use` | A module cannot be removed while the project uses its fragments, file adapters or methods |
 | `unknown-method` | No method has that id |
 | `method-unavailable` | The method has no implementation in this language |
 | `wrong-entity-type` | The method runs on another entity type |

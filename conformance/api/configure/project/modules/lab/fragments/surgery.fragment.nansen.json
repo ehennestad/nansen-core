@@ -1,0 +1,10 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "lab.surgery",
+  "version": "1.0.0",
+  "title": "Surgery",
+  "columns": [
+    { "name": "surgery_date", "dataType": "date" }
+  ]
+}

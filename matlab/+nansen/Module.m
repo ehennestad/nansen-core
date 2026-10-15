@@ -87,6 +87,34 @@ classdef Module
             folder = string(fullfile(nansen.internal.repoRoot(), "modules"));
         end
 
+        function modules = available(projectFolder)
+            %available The modules a project could list: in <project>/modules/, then the built-in ones, by id
+            %
+            %   This is for choosing a module to add; a listed module is still found only as resolve says.
+            modules = {};
+            ids = strings(1, 0);
+            for root = [string(fullfile(projectFolder, "modules")), nansen.Module.builtInFolder()]
+                if ~isfolder(root)
+                    continue
+                end
+                listing = dir(fullfile(root, "*", "module.nansen.json"));
+                for folder = sort(string({listing.folder}))
+                    try
+                        module = nansen.Module.read(folder);
+                    catch err
+                        if isa(err, "nansen.NansenError")
+                            continue   % a broken module is not offered
+                        end
+                        rethrow(err)
+                    end
+                    if ~ismember(module.Id, ids)
+                        ids(end + 1) = module.Id; %#ok<AGROW>
+                        modules{end + 1} = module; %#ok<AGROW>
+                    end
+                end
+            end
+        end
+
         function module = resolve(entry, projectFolder)
             %resolve Find a module listed in a project: its path, else <project>/modules/<id>, else the built-in modules
             id = string(entry.id);

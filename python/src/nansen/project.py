@@ -388,6 +388,23 @@ class Project:
         self._adapters = None
         return module
 
+    def remove_module(self, module_id: str) -> None:
+        """Take a module off the project's list; module-in-use while the project uses what it provides."""
+        listed = [m for m in self.document.get("modules", []) if m["id"] != module_id]
+        if len(listed) == len(self.document.get("modules", [])):
+            raise NansenError("unknown-module", f"the project does not list module {module_id!r}")
+        prefix = module_id + "."
+        users = [f"{t['name']} ({f})" for t in self.document["entityTypes"] for f in t.get("fragments", []) if f.startswith(prefix)]
+        users += [f"data variable {v.name} ({v.file_adapter})" for v in self.data_variables() if v.file_adapter.startswith(prefix)]
+        users += [f"pipeline {p['id']} ({s['method']})" for p in self.pipelines() if self.pipeline_source(p["id"]) == "project"
+                  for s in p["steps"] if s["method"].startswith(prefix)]
+        if users:
+            raise NansenError("module-in-use", f"module {module_id!r} is used by {', '.join(users)}")
+        self.document["modules"] = listed
+        self._check_and_save()
+        self._modules = None
+        self._adapters = None
+
     def methods(self, entity_type: Optional[str] = None) -> List[Method]:
         """The project's own methods (methods/), then its modules'. The first declaration of an id wins."""
         found: Dict[str, Method] = {}
@@ -622,13 +639,23 @@ class Project:
         write_json(path, variable.document)
         return variable
 
-    def _level_patterns(self, variable: DataVariable) -> Dict[str, str]:
+    def delete_data_variable(self, name: str) -> None:
+        path = self.data_variable_path(name)
+        if not path.is_file():
+            raise NansenError("unknown-data-variable", f"the project has no data variable {name!r}")
+        path.unlink()
+
+    def file_patterns(self, data_location: str, entity_type: str) -> Dict[str, str]:
+        """The named file patterns of the entity type's level in a data location (name -> pattern)."""
         config = self.require_dataset().config
-        index = config.entity_level_index(variable.data_location, variable.entity_type)
+        index = config.entity_level_index(data_location, entity_type)
         if index is None:
             return {}
-        level = config.layout(variable.data_location)[index]
+        level = config.layout(data_location)[index]
         return {p["name"]: p["pattern"] for p in level.get("filePatterns", []) if "name" in p}
+
+    def _level_patterns(self, variable: DataVariable) -> Dict[str, str]:
+        return self.file_patterns(variable.data_location, variable.entity_type)
 
     def data_paths(self, entity: Entity, name: str) -> List[Path]:
         """Absolute paths of the files that hold the variable for the entity (they may not exist)."""

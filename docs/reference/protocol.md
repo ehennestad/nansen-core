@@ -87,6 +87,12 @@ Events flow from the core to the frontend:
 | `columns.reset` | `entityType`, `column`, `keys?` | `{reset}`: how many rows got the column's default again (none if it has no default); key columns are `read-only-column` |
 | `fragments.update` | `entityType`, `fragmentId`, `keys?` | `{updated, failed}` |
 | `dataVariables.list` | `entityType?` | Data variable documents |
+| `dataVariables.options` | `entityType` | `{locations[{id, title, access, filePatterns}], fileAdapters}`: what a data variable of the entity type can name; `filePatterns` are the names of the file patterns of the entity type's level in each location, sorted |
+| `dataVariables.save` | `document` (a `nansen.dataVariable`) | The data variable, written into the project (replacing one of the same name) |
+| `dataVariables.delete` | `name` | `{removed}` (`unknown-data-variable` if there is none) |
+| `modules.list` | | `[{id, version, title, description, ..., listed}]`: the modules in the project's `modules/` folder and the built-in ones, and any listed elsewhere; `listed` says whether the project lists it |
+| `modules.add` | `id`, `path?` | `project.info`: the project with the module listed (`unknown-module` if it cannot be found) |
+| `modules.remove` | `id` | `project.info`; `module-in-use` while a fragment, data variable or project pipeline of the project uses the module |
 | `data.status` | `entityType`, `key` | `[{name, dataLocation, fileAdapter, files}]` |
 | `methods.list` | `entityType?` | Method summaries, including the options schema |
 | `methods.run` | `methodId`, `entityType`, `keys?`, `options?`, `preset?` | `{results}`, run in the foreground |

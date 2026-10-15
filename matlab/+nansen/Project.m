@@ -506,6 +506,47 @@ classdef Project < handle
             obj.AdapterCache = [];
         end
 
+        function removeModule(obj, moduleId)
+            %removeModule Take a module off the project's list; module-in-use while the project uses what it provides
+            moduleId = string(moduleId);
+            entries = nansen.internal.asCellOfStructs(nansen.internal.getField(obj.Document, "modules", []));
+            keep = ~cellfun(@(e) string(e.id) == moduleId, entries);
+            if all(keep)
+                nansen.internal.throwError("unknown-module", "the project does not list module '%s'", moduleId)
+            end
+            prefix = moduleId + ".";
+            users = strings(1, 0);
+            for entry = obj.Document.entityTypes
+                for fragment = string(nansen.internal.asCellstr(nansen.internal.getField(entry{1}, "fragments", {})))
+                    if startsWith(fragment, prefix)
+                        users(end + 1) = string(entry{1}.name) + " (" + fragment + ")"; %#ok<AGROW>
+                    end
+                end
+            end
+            for variable = obj.dataVariables()
+                if startsWith(variable.FileAdapter, prefix)
+                    users(end + 1) = "data variable " + variable.Name + " (" + variable.FileAdapter + ")"; %#ok<AGROW>
+                end
+            end
+            for pipeline = obj.pipelines()
+                if obj.pipelineSource(string(pipeline{1}.id)) == "project"
+                    for step = nansen.internal.asCellOfStructs(pipeline{1}.steps)
+                        if startsWith(string(step{1}.method), prefix)
+                            users(end + 1) = "pipeline " + string(pipeline{1}.id) + " (" + string(step{1}.method) + ")"; %#ok<AGROW>
+                        end
+                    end
+                end
+            end
+            if ~isempty(users)
+                nansen.internal.throwError("module-in-use", "module '%s' is used by %s", moduleId, strjoin(users, ", "))
+            end
+            document = obj.Document;
+            document.modules = entries(keep);
+            obj.writeDocument(document)
+            obj.ModuleCache = [];
+            obj.AdapterCache = [];
+        end
+
         function found = entityMethods(obj, entityType)
             %entityMethods The project's own methods (methods/), then its modules'; the first declaration of an id wins
             arguments
@@ -916,10 +957,24 @@ classdef Project < handle
             nansen.internal.writeJson(obj.dataVariablePath(variable.Name), document)
         end
 
+        function deleteDataVariable(obj, name)
+            path = obj.dataVariablePath(string(name));
+            if ~isfile(path)
+                nansen.internal.throwError("unknown-data-variable", "the project has no data variable '%s'", name)
+            end
+            delete(path);
+        end
+
         function patterns = levelPatterns(obj, variable)
             %levelPatterns File pattern names to patterns at the variable's entity level in its location
+            patterns = obj.filePatterns(variable.DataLocation, variable.EntityType);
+        end
+
+        function patterns = filePatterns(obj, dataLocation, entityType)
+            %filePatterns The named file patterns of the entity type's level in a data location (name -> pattern)
             patterns = containers.Map("KeyType", "char", "ValueType", "char");
             config = obj.requireDataset().Config;
+            variable = struct("DataLocation", string(dataLocation), "EntityType", string(entityType));
             if ~ismember(variable.DataLocation, config.locationIds())
                 return
             end

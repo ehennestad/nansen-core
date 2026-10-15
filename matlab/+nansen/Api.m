@@ -38,7 +38,7 @@ classdef Api < handle
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "dataset.setRoot", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -570,6 +570,80 @@ classdef Api < handle
             project = obj.requireProject();
             variables = project.dataVariables(string(nansen.internal.getField(params, "entityType", "")));
             result = arrayfun(@(v) v.Document, variables, UniformOutput=false);
+        end
+
+        function result = apiDataVariablesOptions(obj, params)
+            %apiDataVariablesOptions The locations (with the entity type's file patterns in each) and the file adapters
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            project.entityType(entityType);
+            config = project.requireDataset().Config;
+            locations = {};
+            for location = config.locations()
+                id = string(location{1}.identifier);
+                locations{end + 1} = struct("id", char(id), ...
+                    "title", char(nansen.internal.getField(location{1}, "displayName", id)), ...
+                    "access", char(nansen.internal.getField(location{1}, "access", "read")), ...
+                    "filePatterns", {keys(project.filePatterns(id, entityType))}); %#ok<AGROW>
+            end
+            result = struct("locations", {locations}, "fileAdapters", {cellstr(project.adapters().ids())});
+        end
+
+        function result = apiDataVariablesSave(obj, params)
+            project = obj.requireProject();
+            variable = project.addDataVariable(nansen.Api.param(params, "document"));
+            obj.emit("project", struct("name", char(project.Name)));
+            result = variable.Document;
+        end
+
+        function result = apiDataVariablesDelete(obj, params)
+            project = obj.requireProject();
+            name = string(nansen.Api.param(params, "name"));
+            project.deleteDataVariable(name);
+            obj.emit("project", struct("name", char(project.Name)));
+            result = struct("removed", char(name));
+        end
+
+        function result = apiModulesList(obj, ~)
+            %apiModulesList The modules that can be listed (in the project's modules/ folder or built in), and whether they are
+            project = obj.requireProject();
+            listed = strings(1, 0);
+            for entry = nansen.internal.asCellOfStructs(nansen.internal.getField(project.Document, "modules", []))
+                listed(end + 1) = string(entry{1}.id); %#ok<AGROW>
+            end
+            modules = nansen.Module.available(project.Folder);
+            ids = string(cellfun(@(m) char(m.Id), modules, UniformOutput=false));
+            for module = project.modules()   % a listed module at its own path
+                if ~ismember(module{1}.Id, ids)
+                    modules{end + 1} = module{1}; %#ok<AGROW>
+                    ids(end + 1) = module{1}.Id; %#ok<AGROW>
+                end
+            end
+            result = cell(1, numel(modules));
+            for i = 1:numel(modules)
+                summary = modules{i}.summary();
+                summary.listed = ismember(modules{i}.Id, listed);
+                result{i} = summary;
+            end
+        end
+
+        function result = apiModulesAdd(obj, params)
+            project = obj.requireProject();
+            project.addModule(string(nansen.Api.param(params, "id")), string(nansen.internal.getField(params, "path", "")));
+            result = obj.reopen(project);
+        end
+
+        function result = apiModulesRemove(obj, params)
+            project = obj.requireProject();
+            project.removeModule(string(nansen.Api.param(params, "id")));
+            result = obj.reopen(project);
+        end
+
+        function result = reopen(obj, project)
+            % Open the project again after a change to what it lists, and say so
+            obj.setProject(nansen.Project.open(project.Folder, Environment=project.Environment));
+            obj.emit("project", struct("name", char(obj.Project.Name)));
+            result = obj.apiProjectInfo(struct());
         end
 
         function result = apiDataStatus(obj, params)

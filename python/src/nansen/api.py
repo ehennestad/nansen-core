@@ -515,6 +515,54 @@ class Api:
         project = self._require_project()
         return [v.document for v in project.data_variables(params.get("entityType"))]
 
+    def dataVariables__options(self, params: dict) -> dict:
+        """What a data variable of the entity type can name: the locations (with the file patterns of
+        the entity type's level in each) and the file adapters."""
+        project = self._require_project()
+        project.entity_type(params["entityType"])
+        dataset = project.require_dataset()
+        locations = []
+        for location in dataset.config.locations:
+            locations.append({"id": location["identifier"], "title": location.get("displayName", location["identifier"]),
+                              "access": location.get("access", "read"),
+                              "filePatterns": sorted(project.file_patterns(location["identifier"], params["entityType"]))})
+        return {"locations": locations, "fileAdapters": list(project.adapters.ids)}
+
+    def dataVariables__save(self, params: dict) -> dict:
+        variable = self._require_project().add_data_variable(params["document"])
+        self.emit("project", {"name": self.project.name})
+        return variable.document
+
+    def dataVariables__delete(self, params: dict) -> dict:
+        self._require_project().delete_data_variable(params["name"])
+        self.emit("project", {"name": self.project.name})
+        return {"removed": params["name"]}
+
+    def modules__list(self, params: dict) -> list:
+        """The modules that can be listed (in the project's modules/ folder or built in), and whether they are."""
+        from .modules import available_modules
+
+        project = self._require_project()
+        listed = {m["id"] for m in project.document.get("modules", [])}
+        found = {m.id: m for m in available_modules(project.folder)}
+        for module in project.modules:  # a listed module at its own path
+            found.setdefault(module.id, module)
+        return [dict(m.summary(), listed=m.id in listed) for m in found.values()]
+
+    def modules__add(self, params: dict) -> dict:
+        project = self._require_project()
+        project.add_module(params["id"], params.get("path"))
+        self._set_project(Project.open(project.folder, environment=project.environment))
+        self.emit("project", {"name": self.project.name})
+        return self.project__info({})
+
+    def modules__remove(self, params: dict) -> dict:
+        project = self._require_project()
+        project.remove_module(params["id"])
+        self._set_project(Project.open(project.folder, environment=project.environment))
+        self.emit("project", {"name": self.project.name})
+        return self.project__info({})
+
     def data__status(self, params: dict) -> list:
         project = self._require_project()
         return project.data_status(self._entity(params))

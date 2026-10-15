@@ -1,0 +1,11 @@
+{
+  "schemaType": "nansen.module",
+  "schemaVersion": "0.1.0",
+  "id": "lab",
+  "version": "1.0.0",
+  "title": "Lab module",
+  "description": "A module kept in the project's modules folder.",
+  "fragments": [
+    "fragments/surgery.fragment.nansen.json"
+  ]
+}

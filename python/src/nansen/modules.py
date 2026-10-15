@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .documents import PathLike, read_document
 from .errors import NansenError
@@ -88,3 +88,24 @@ def resolve_module(entry: dict, project_folder: Path) -> Module:
                 raise NansenError("module-mismatch", f"{candidate} holds module {module.id!r}, not {entry['id']!r}")
             return module
     raise NansenError("unknown-module", f"module {entry['id']!r} not found (looked in {', '.join(map(str, candidates))})")
+
+
+def available_modules(project_folder: Path) -> List[Module]:
+    """The modules a project could list: those in <project>/modules/, then the built-in ones, by id.
+
+    This is for choosing a module to add; a listed module is still found only as resolve_module says.
+    """
+    found: Dict[str, Module] = {}
+    roots = [Path(project_folder) / "modules"]
+    built_in = built_in_modules_dir()
+    if built_in is not None:
+        roots.append(built_in)
+    for root in roots:
+        for path in sorted(root.glob(f"*/{MODULE_FILE}")) if root.is_dir() else []:
+            try:
+                module = Module.read(path.parent)
+            except NansenError:
+                continue  # a broken module is not offered
+            found.setdefault(module.id, module)
+    return list(found.values())
+
