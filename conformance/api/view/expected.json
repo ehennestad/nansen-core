@@ -1,4 +1,4 @@
 {
   "description": "Viewing files without a project, as nansen view: the runner registers session.json's viewables (a stack file, the same file with ROIs given, signals) from data/, copied to the scratch folder. Nothing else is read (unknown-viewable), and files.frame still needs a project. ROIs drawn, classified, moved, restored (undo) and imported on a file given none are saved to <stem>_rois.json beside it; ROIs given in a .json file are saved back to it. Motion correction run on the stack (view.run) writes the aligned stack and the shifts beside it, and the aligned stack is viewable; Detect finds a cell around a click, and ROI detection the three cells, viewable over the aligned stack and imported into its ROIs; run again, the outputs keep their ids. make_data.py writes the files and the steps from the ground truth.",
-  "steps": 41
+  "steps": 42
 }

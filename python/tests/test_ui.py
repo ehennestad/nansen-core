@@ -1537,16 +1537,25 @@ def test_draw_detect_merge_and_move_rois_in_the_viewer(empty_app, page):
     assert pixels(rois()[3]) == [(r, c) for r in range(25, 30) for c in range(2, 7)]
     page.click(".viewer-draw")
 
-    # detect: a click on the third cell finds the same pixels as rois.detect does
+    # detect: a click on the third cell finds the same pixels as rois.detect does, in dev's default mode (1), in the
+    # tool's circle (the round ROI's radius, 3); keys 1-5 pick roimanager's other modes while the tool is on, shown beside it
+    assert page.locator(".viewer-detect-mode").is_hidden()
     page.click(".viewer-detect")
+    assert page.locator(".viewer-detect-mode").inner_text() == "Mode 1"
+    page.keyboard.press("4")
+    wait_until(lambda: page.locator(".viewer-detect-mode").inner_text() == "Mode 4")
+    assert page.locator(".viewer-status").inner_text().startswith("Detect mode 4")
+    page.keyboard.press("1")
+    wait_until(lambda: page.locator(".viewer-detect-mode").get_attribute("data-mode") == "1")
     page.mouse.click(*at(22.5, 9.5))
     page.wait_for_selector(".viewer-roi-list li[data-roi='5'].selected")
     found = api.handle({"id": 9, "method": "rois.detect", "params": {"entityType": "session", "key": s1[0], "variable": "TwoPhotonSeries_Corrected",
-                                                                       "point": [22, 9], "radius": 6}})["result"]
+                                                                       "point": [22, 9], "radius": 3}})["result"]
     assert pixels(rois()[4]) == sorted(tuple(p) for p in found["pixels"]) and len(found["pixels"]) > 4
     page.keyboard.press("Escape")   # leaves the tool, not the viewer
     assert page.locator(".viewer-dialog").count() == 1
     assert page.locator(".viewer-detect.active").count() == 0
+    assert page.locator(".viewer-detect-mode").is_hidden()
 
     # merge ROIs 4 and 5 (Ctrl-click selects several); the merged ROI keeps id 4
     page.click(".viewer-roi-list li[data-roi='4']")
@@ -2449,7 +2458,14 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     page.click(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
     page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
 
-    # the std and correlation projections, in a colormap
+    # the std and correlation projections, in a colormap; and dev's Mean CLAHE, the average equalised tile by tile
+    grey = "Array.from(document.querySelector('.viewer-canvas').getContext('2d').getImageData(0, 0, 32, 32).data).join()"
+    page.select_option(".viewer-mode", "mean")
+    page.wait_for_selector(".viewer-frame:text-is('40 frames')")
+    average = page.evaluate(grey)
+    page.select_option(".viewer-mode", "meanClahe")
+    wait_until(lambda: page.evaluate(grey) != average)
+    assert page.locator(".viewer-frame").inner_text() == "40 frames"
     page.select_option(".viewer-mode", "std")
     page.wait_for_selector(".viewer-frame:text-is('40 frames')")
     page.select_option(".viewer-mode", "correlation")
@@ -2497,7 +2513,12 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     page.click(".roi-undo")   # the deleted ROI comes back with its id
     wait_until(lambda: [r["id"] for r in rois()] == [1, 2, 3, 4] and pixels(rois()[3]) == grown)
 
-    # improve (i, dev's improveRois): ROI 1, shrunk, found again around its middle as the Detect tool finds one; its id and class kept
+    # improve (i, dev's improveRois): ROI 1, shrunk, found again around its middle as the Detect tool finds one, in its mode
+    # (5, picked with the tool on) and the radius of a circle of the ROI's area; its id and class kept
+    page.click(".viewer-detect")
+    page.keyboard.press("5")
+    wait_until(lambda: page.locator(".viewer-detect-mode").inner_text() == "Mode 5")
+    page.click(".viewer-detect")
     page.click(".viewer-roi-list li[data-roi='1']")
     page.keyboard.press("a")
     wait_until(lambda: rois()[0].get("classification") == "accepted")
@@ -2506,9 +2527,9 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     wait_until(lambda: len(rois()[0]["pixels"]) < len(before))
     small = pixels(rois()[0])
     middle = [math.floor(sum(p[i] for p in small) / len(small) + 0.5) for i in (0, 1)]
-    radius = max(4, 2 * math.floor(math.sqrt(len(small) / math.pi) + 0.5))
+    radius = max(1, math.floor(math.sqrt(len(small) / math.pi) + 0.5))
     found = api.handle({"id": 9, "method": "rois.detect", "params": {"entityType": "session", "key": s1[0], "variable": "TwoPhotonSeries_Corrected",
-                                                                    "point": middle, "radius": radius}})["result"]["pixels"]
+                                                                    "point": middle, "radius": radius, "mode": 5}})["result"]["pixels"]
     assert found and sorted(map(tuple, found)) != small
     page.keyboard.press("i")
     wait_until(lambda: pixels(rois()[0]) == sorted(map(tuple, found)))

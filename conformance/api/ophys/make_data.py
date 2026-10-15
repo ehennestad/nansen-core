@@ -236,6 +236,76 @@ def projections_expected(aligned):
     return {"std": scaled_bytes(std, 0, 200), "correlation": scaled_bytes(correlation, -1, 1)}
 
 
+def mean_clahe_expected(stack):
+    """The viewer's Mean CLAHE projection (dev's meanclahe: MATLAB's adapthisteq with 32 x 32 tiles, clip limit 0.015,
+    256 bins and a Rayleigh distribution of alpha 0.4, of the mean normalised to 0..1, scaled back and rounded as the
+    stack's uint16), worked out pixel by pixel: the 32 x 32 image is mirrored out to 64 x 64 (16 on every side), so the
+    tiles are 2 x 2 pixels; each tile's histogram (bin floor(v 255 + 0.5)) is clipped at 1 + round(0.015 (4 - 1)) = 1
+    and the excess handed back as adapthisteq does; a pixel's value mixes the mappings of the tiles whose centres are
+    around it, by its distance from them (one or two tiles in the outer half tiles)."""
+    average = stack.astype(float).mean(axis=2)
+    low, high = average.min(), average.max()
+    normal = (average - low) / (high - low)
+    tiles, pad = 32, 16
+    padded = np.pad(normal, pad, mode="symmetric")
+    size = padded.shape[0] // tiles   # 2
+    count = size * size
+    least = -(-count // 256)
+    limit = least + math.floor(0.015 * (count - least) + 0.5)
+    bins = np.floor(padded * 255 + 0.5).astype(int)
+    hconst = 2 * 0.4 ** 2
+    vmax = 1 - math.exp(-1 / hconst)
+    maps = {}
+    for ty in range(tiles):
+        for tx in range(tiles):
+            histogram = list(np.bincount(bins[ty * size:(ty + 1) * size, tx * size:(tx + 1) * size].ravel(), minlength=256))
+            excess = sum(max(v - limit, 0) for v in histogram)
+            share = excess // 256
+            for b in range(256):   # the excess handed back evenly, then one at a time
+                if histogram[b] > limit:
+                    histogram[b] = limit
+                elif histogram[b] > limit - share:
+                    excess -= limit - histogram[b]
+                    histogram[b] = limit
+                else:
+                    excess -= share
+                    histogram[b] += share
+            start = 0
+            while excess:
+                for b in range(start, 256, max(256 // excess, 1)):
+                    if histogram[b] < limit:
+                        histogram[b] += 1
+                        excess -= 1
+                        if not excess:
+                            break
+                start = (start + 1) % 256
+            value = vmax * (np.cumsum(histogram).astype(float) / count)
+            value[value >= 1] = 1 - np.finfo(float).eps
+            maps[ty, tx] = np.minimum(np.sqrt(-hconst * np.log(1 - value)), 1)
+    half = size // 2
+
+    def around(p):
+        """(the two tiles, the block's length, the pixel's place in it) along one axis of the padded image"""
+        if p < half:
+            return (0, 0), half, p
+        if p >= half + (tiles - 1) * size:
+            return (tiles - 1, tiles - 1), half, p - half - (tiles - 1) * size
+        k = (p - half) // size
+        return (k, k + 1), size, (p - half) % size
+
+    out = np.zeros(padded.shape)
+    for y in range(padded.shape[0]):
+        (t0, t1), ny, a = around(y)
+        for x in range(padded.shape[1]):
+            (s0, s1), nx, b = around(x)
+            v = bins[y, x]
+            out[y, x] = ((ny - a) * ((nx - b) * maps[t0, s0][v] + b * maps[t0, s1][v])
+                         + a * ((nx - b) * maps[t1, s0][v] + b * maps[t1, s1][v])) / (ny * nx)
+    image = out[pad:pad + HEIGHT, pad:pad + WIDTH] * (high - low) + low
+    image = np.clip(np.floor(image + 0.5), 0, 65535)   # uint16
+    return frame_bytes(image)["pixels"]
+
+
 def preview_expected(first):
     stats = lambda image: {"size": list(image.shape), "min": round_to(image.min(), 4), "max": round_to(image.max(), 4), "mean": round_to(image.mean(), 4)}
     average, maximum = first.astype(float).mean(axis=2), first.max(axis=2).astype(float)
@@ -357,6 +427,72 @@ def ranges_and_planes_expected(recording, aligned, shifts, disks, scanimage):
     return expected
 
 
+def autodetect_expected(aligned):
+    """The viewer's Detect tool in dev's autodetection modes (rois.detect mode), with the tool's radius 3, on the aligned
+    stack (found here with NumPy and SciPy, not with either reader's code).
+
+    Modes 1 and 5 (flufinder's edge detection: on the activity-weighted mean of the cell's box, or on the average) put
+    the cell's edge where its brightness falls: halfway between its last pixels (at 2 from its centre) and the
+    background (at 3), so the ROI is the pixels within 2.5 of the centre, the disk and the 8 pixels at sqrt(5) around it.
+    Modes 2-4 (flufinder's findSomaMaskByThresholding, outer diameter 6) threshold an image of the box of 3 + 5 around
+    the cell (3 + 11 in mode 4), cut at the image's edges: halfway from the median of the pixels outside the circle of 3
+    around the box's centre (size / 2, 1-based) to the median of those inside, 0s left out, on the image median filtered
+    over 5 x 5 (0 outside, NaN last); 8-connected areas of fewer than round(9 pi / 2) pixels removed, holes filled. The
+    image is in mode 2 the maximum over the frames where the cell's mean (its pixels within 3 of the point) is above
+    its 5th percentile (MATLAB's prctile: NumPy's hazen), and 2 frames either side; in modes 3 and 4 the average as 8
+    bits in single precision, from its sorted values at round(n 0.0005) and round(n 0.9995)."""
+    from scipy import ndimage
+    r = 3
+    within = lambda centre, distance: [[y, x] for y in range(HEIGHT) for x in range(WIDTH)
+                                       if (y - centre[0]) ** 2 + (x - centre[1]) ** 2 <= distance ** 2]
+
+    def box(centre, pad):
+        top, bottom = max(centre[0] - r - pad, 0), min(centre[0] + r + pad, HEIGHT - 1)
+        left, right = max(centre[1] - r - pad, 0), min(centre[1] + r + pad, WIDTH - 1)
+        return top, bottom + 1, left, right + 1
+
+    def threshold(image):
+        im = image.astype(float).copy()
+        im[im == 0] = np.nan
+        h, w = im.shape
+        yy, xx = np.mgrid[1:h + 1, 1:w + 1]
+        soma = (xx - w / 2) ** 2 + (yy - h / 2) ** 2 < r * r
+        low, high = np.nanmedian(im[~soma]), np.nanmedian(im[soma])
+        level = low + (high - low) / 2
+        filtered = ndimage.generic_filter(im, lambda v: np.sort(v)[12], size=5, mode="constant", cval=0.0)
+        labels, count = ndimage.label(filtered > level, structure=np.ones((3, 3)))
+        keep = [k for k in range(1, count + 1) if (labels == k).sum() >= math.floor(math.pi * r * r / 2 + 0.5)]
+        return ndimage.binary_fill_holes(np.isin(labels, keep))
+
+    def placed(mask, bounds):
+        out = np.zeros((HEIGHT, WIDTH), dtype=bool)
+        out[bounds[0]:bounds[1], bounds[2]:bounds[3]] = mask
+        return [[int(y), int(x)] for y, x in zip(*np.nonzero(out))]
+
+    def eight_bits(image):
+        data = image.astype(np.float32)
+        ordered = np.sort(data.ravel())
+        n = ordered.size
+        low = ordered[max(math.floor(n * 0.0005 + 0.5), 1) - 1]
+        high = ordered[min(math.floor(n * (1 - 0.0005) + 0.5), n) - 1]
+        return np.clip(np.floor((((data - low) / (high - low)) * np.float32(255)).astype(float) + 0.5), 0, 255)
+
+    average = aligned.astype(float).mean(axis=2)
+    first, third = CELLS[0], CELLS[2]
+    out = {"1": within(first, 2.5), "5": within(third, 2.5)}
+    bounds = box(first, 5)
+    part = aligned[bounds[0]:bounds[1], bounds[2]:bounds[3], :].astype(float)
+    rows, columns = np.mgrid[bounds[0]:bounds[1], bounds[2]:bounds[3]]
+    signal = part[(rows - first[0]) ** 2 + (columns - first[1]) ** 2 < r * r].mean(axis=0)
+    p5, p50 = np.percentile(signal, [5, 50], method="hazen")
+    active = ndimage.binary_dilation(signal > p50 - (p50 - p5), structure=np.ones(5, dtype=bool))
+    out["2"] = placed(threshold(part[:, :, active].max(axis=2)), bounds)
+    out["3"] = placed(threshold(eight_bits(average[bounds[0]:bounds[1], bounds[2]:bounds[3]])), bounds)
+    bounds = box(third, 11)
+    out["4"] = placed(threshold(eight_bits(average[bounds[0]:bounds[1], bounds[2]:bounds[3]])), bounds)
+    return out
+
+
 def main():
     recording, aligned, shifts, disks, movie = scene(1)
     write_sciscan(HERE / "project/data/raw/sub-m1/ses-s1/rec.raw", recording)
@@ -393,6 +529,7 @@ def main():
         # methods.preview of image_stats on the first 5 frames: the stats of those, and the projections kept in memory
         "preview": preview_expected(recording[:, :, :5]),
         "projections": projections_expected(aligned.astype(np.float64)),
+        "meanClahe": mean_clahe_expected(aligned),
         "rois": {"rois": len(disks), "areas": [int(d.sum()) for d in disks]},
         "signals": {"rois": len(disks), "frames": FRAMES,
                     "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
@@ -567,6 +704,7 @@ def main():
     labels, _ = ndimage.label(mask)
     area = ndimage.binary_fill_holes(labels == labels.ravel()[seed])
     expected["detected"] = [[int(y), int(x)] for y, x in zip(*np.nonzero(area))]
+    expected["autodetected"] = autodetect_expected(aligned)
     expected["scanimage"] = {"height": 16, "width": 64, "frames": 3, "frame": 2,
                              **frame_bytes(scanimage[:, :, 1, 1, 2].astype(float)),
                              "metadata": {"frameRate": 7.5, "pixelSize": [round_to(3.2 * 15 / 32, 6), round_to(1.6 * 15 / 16, 6)], "zStep": 4.0}}

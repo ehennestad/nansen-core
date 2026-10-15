@@ -260,7 +260,7 @@
     const title = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${variable} · ${N.fmt.key(key)}`;
     const stem = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${N.fmt.key(key)}_${variable}`;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
-      playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
+      playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, detectMode: 1, hideRejected: false, channel: 0, plane: 0,
       zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false, links: false, neuropil: false,
       // imviewer's channel colours and volume display: channels counted, shown together (null: not decided yet, on for a
       // stack with channels), which are shown in which colour, each one's contrast; planes one, side by side, or projected
@@ -273,7 +273,8 @@
     const frameLabel = h("span.viewer-frame.mono", "");
     const playButton = h("button.btn.ghost.icon.small.viewer-play", { title: "Play", on: { click: () => toggle() } }, N.icon("play", 14));
     const mode = h("select.input.viewer-mode", { on: { change: () => { state.mode = mode.value; show(); } } },
-      h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "max" }, "Maximum"),
+      h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "meanClahe" }, "Mean CLAHE"),
+      h("option", { value: "max" }, "Maximum"),
       h("option", { value: "min" }, "Minimum"), h("option", { value: "std" }, "Standard deviation"), h("option", { value: "correlation" }, "Local correlation"),
       h("option", { value: "globalCorrelation" }, "Global correlation"),
       h("option", { value: "peakTime" }, "Time of peak (colour)"));
@@ -727,8 +728,9 @@
       try {
         status.textContent = "Detecting…";
         const where = viewable ? { viewable: viewable.id, ...(state.adapter ? { adapter: state.adapter } : {}) } : { entityType, key, variable };
-        const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, point: [y, x], radius: Math.max(2 * state.radius, 4),
-          channel: state.channel, plane: state.plane });
+        // dev's autodetection in the mode picked with keys 1-5, in the tool's circle (the round ROI's radius)
+        const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, point: [y, x], radius: state.radius,
+          mode: state.detectMode, channel: state.channel, plane: state.plane });
         if (found.pixels.length) edit({ add: [{ pixels: found.pixels }] });
         else status.textContent = "No cell found there: click on its bright middle, or draw it";
       } catch (error) { N.showError(error, "Could not detect an ROI"); }
@@ -752,10 +754,23 @@
     const tools = [["circle", "circle", "Add a round ROI where you click", ".viewer-add"],
       ["draw", "freehand", "Draw an ROI: drag around the cell", ".viewer-draw"],
       ["polygon", "polygon", "Draw an ROI as a polygon: click its corners, then the first one again or double-click", ".viewer-polygon"],
-      ["detect", "crosshair", "Detect the cell around where you click", ".viewer-detect"]].map(([name, icon, title, cls]) =>
+      ["detect", "crosshair", "Detect the cell around where you click; keys 1-5 pick dev's detection mode", ".viewer-detect"]].map(([name, icon, title, cls]) =>
       h(`button.btn.ghost.icon.small${cls}`, { title, dataset: { tool: name }, on: { click: () => setTool(state.tool === name ? null : name) } }, N.icon(icon, 13)));
+    // roimanager's autoDetect modes, picked with keys 1-5 while the Detect tool is on (rois.detect mode)
+    const DETECT_MODES = { 1: "the activity-weighted mean of the cell's box, its edge (dev's default)", 2: "the box's peak activity, thresholded",
+      3: "the average, thresholded", 4: "the average in a wider box, thresholded", 5: "the average, its edge" };
+    const detectModeLabel = h("span.viewer-detect-mode", { hidden: true });
+    function setDetectMode(mode) {
+      state.detectMode = mode;
+      detectModeLabel.textContent = `Mode ${mode}`;
+      detectModeLabel.dataset.mode = String(mode);
+      detectModeLabel.title = `Detect mode ${mode}: ${DETECT_MODES[mode]}. Keys 1-5 pick another`;
+      if (state.tool === "detect") status.textContent = `Detect mode ${mode}: ${DETECT_MODES[mode]}`;
+    }
+    setDetectMode(state.detectMode);
     function setTool(name) {
       state.tool = name;
+      detectModeLabel.hidden = name !== "detect";
       state.polygon = [];
       drawOverlay();
       tools.forEach((b) => b.classList.toggle("active", b.dataset.tool === name));
@@ -883,7 +898,7 @@
       if (!mode) return;
       await edit({ import: { ...source, mode } });
     }
-    const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of a round ROI (px); Detect looks twice as far",
+    const radius = h("input.input.viewer-radius", { type: "number", min: 1, max: 50, value: state.radius, title: "Radius of a round ROI and of the Detect tool's circle (px)",
       on: { change: () => { state.radius = Math.max(1, Math.round(Number(radius.value) || 1)); } } });
     const hide = h("input", { type: "checkbox", on: { change: () => { state.hideRejected = hide.checked; redraw(); renderList(); } } });
     // roimanager's display options: the ROIs' numbers on the image, and outlines in place of filled ROIs
@@ -933,7 +948,7 @@
       viewable.roiFile ? `Saved to ${viewable.roiFile.split(/[\\/]/).pop()}` : "Kept while the app is open (an array has no folder)") : null;
     const roiPanel = h("div.viewer-roi-panel",
       h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, improveButton, h("div.spacer"), undoButton, redoButton, galleryButton),
-      h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, addFromButton, h("div.spacer"), radius),
+      h("div.viewer-roi-actions.viewer-roi-tools", tools, detectModeLabel, findButton, addFromButton, h("div.spacer"), radius),
       roiFileNote,
       h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
         h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links"), viewable ? null : neuropilLabel),
@@ -1089,8 +1104,8 @@
       }
       edit({ pixels: [{ id: roi.id, pixels }] });
     }
-    /** dev's improveRois (i): each selected ROI found again around its middle (rois.detect, as the Detect tool, in twice the radius of a
-     * circle of its area), the shape replaced and its id, class and links kept; one undo puts them all back. */
+    /** dev's improveRois (i): each selected ROI found again around its middle (rois.detect, as the Detect tool, in its mode, with the
+     * radius of a circle of its area), the shape replaced and its id, class and links kept; one undo puts them all back. */
     async function improve() {
       if (!state.selection.size || !last) return;
       const where = viewable ? { viewable: viewable.id, ...(state.adapter ? { adapter: state.adapter } : {}) } : { entityType, key, variable };
@@ -1101,8 +1116,9 @@
           const roi = state.rois.find((r) => r.id === id);
           if (!roi || !roi.pixels.length) continue;
           const middle = [0, 1].map((i) => Math.round(roi.pixels.reduce((sum, p) => sum + p[i], 0) / roi.pixels.length));
-          const radius = Math.max(4, 2 * Math.round(Math.sqrt(roi.pixels.length / Math.PI)));
-          const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, point: middle, radius, channel: state.channel, plane: state.plane });
+          const radius = Math.max(1, Math.round(Math.sqrt(roi.pixels.length / Math.PI)));
+          const found = await app.client.request(viewable ? "view.detect" : "rois.detect", { ...where, point: middle, radius, mode: state.detectMode,
+            channel: state.channel, plane: state.plane });
           if (found.pixels.length) changed.push({ id, pixels: found.pixels });
         }
       } catch (error) { N.showError(error, "Could not improve the ROIs"); return; }
@@ -1162,6 +1178,7 @@
       else if (event.key === "Escape" && state.tool === "polygon" && state.polygon.length) { state.polygon = []; drawOverlay(); event.stopPropagation(); }
       else if (event.key === "Escape" && state.tool) { setTool(null); event.stopPropagation(); }
       else if (event.ctrlKey || event.metaKey) return;
+      else if (state.tool === "detect" && /^[1-5]$/.test(event.key)) setDetectMode(Number(event.key));
       else if (event.key === "+" || event.key === "=") reshape(1);
       else if (event.key === "-") reshape(-1);
       else if (event.key === "a") classify("accepted");

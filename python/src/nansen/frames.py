@@ -62,6 +62,8 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         image, frame = local_correlation(stack), None
     elif projection == "globalCorrelation":
         image, frame = global_correlation(stack), None
+    elif projection == "meanClahe":
+        image, frame = mean_clahe(stack), None
     elif projection is None and bin:   # imviewer's binning: the mean or max of the frames around the frame
         if not 0 <= frame < frames:
             raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
@@ -74,7 +76,7 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
             raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
         image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
     else:
-        raise NansenError("invalid-params", f"projection is mean, max, min, std, correlation, globalCorrelation or peakTime, not {projection!r}")
+        raise NansenError("invalid-params", f"projection is mean, max, min, std, correlation, globalCorrelation, meanClahe or peakTime, not {projection!r}")
     if filter:
         image = filter_image(image, filter)
     if limits is not None:
@@ -229,6 +231,134 @@ def global_correlation(stack) -> Any:
         products += (deviation * signal[None, None, start:start + chunk.shape[2]]).sum(axis=2)
     spread = np.sqrt(squares * (signal ** 2).sum())
     return np.divide(products, spread, out=np.zeros_like(products), where=spread > 0)
+
+
+def mean_clahe(stack) -> Any:
+    """dev's Mean CLAHE projection (stack.zproject.meanclahe): the mean over the frames, normalised to 0..1 (from its
+    smallest to its largest finite value), contrast-limited adaptive histogram equalisation (clahe: dev's adapthisteq
+    with 32 x 32 tiles, clip limit 0.015 and a Rayleigh distribution), scaled back to the mean's range and, for a
+    stack of whole numbers, rounded as its type (half away from zero, cut at the type's range). An image smaller than
+    32 pixels either way is the normalised mean, as dev's; a flat one, the mean. MATLAB's nansen.internal.meanClahe
+    gives the same values."""
+    import numpy as np
+    from .stacks import as_stack
+    stack = as_stack(stack)
+    mean = _mean(stack)
+    finite = mean[np.isfinite(mean)]
+    if finite.size == 0 or not finite.max() > finite.min():
+        return mean
+    low, high = float(finite.min()), float(finite.max())
+    normal = (mean - low) / (high - low)
+    if mean.shape[0] < 32 or mean.shape[1] < 32:
+        return normal
+    out = clahe(normal) * (high - low) + low
+    if stack.dtype.kind in "iu":
+        info = np.iinfo(stack.dtype)
+        out = np.clip(np.sign(out) * np.floor(np.abs(out) + 0.5), info.min, info.max)
+    return out
+
+
+CLAHE_TILES, CLAHE_CLIP, CLAHE_BINS, CLAHE_ALPHA = 32, 0.015, 256, 0.4
+
+
+def clahe(image: Any) -> Any:
+    """Contrast-limited adaptive histogram equalisation of an image of values in 0..1, as MATLAB's adapthisteq with
+    NumTiles [32 32], ClipLimit 0.015, NBins 256, Distribution rayleigh (Alpha 0.4) and Range original (0..1 here),
+    written out (no toolbox):
+
+    the image is padded by mirroring (edge pixel repeated, half before and half after, the odd one after) to a whole
+    number of tiles of an even number of rows and columns; each tile's histogram of 256 bins (bin floor(v 255 + 0.5),
+    NaN in bin 0) is clipped at ceil(n / 256) + round(0.015 (n - ceil(n / 256))) (n the tile's pixels) and the excess
+    handed back as adapthisteq does; its mapping is sqrt(-2 alpha^2 log(1 - (1 - exp(-1 / (2 alpha^2))) cumsum / n)),
+    at most 1. Each pixel's value is the bilinear mix of the mappings of the four tiles around it (one or two at the
+    edges), as adapthisteq's makeClaheImage adds them; the padding is cut off again."""
+    import numpy as np
+    image = np.asarray(image, dtype=np.float64)
+    height, width = image.shape
+    tiles, bins = CLAHE_TILES, CLAHE_BINS
+    pads = []
+    for size in (height, width):
+        tile = size // tiles + 1 if size % tiles else size // tiles
+        pad = tile * tiles - size
+        if tile % 2:
+            pad += tiles
+        pads.append((pad // 2, pad - pad // 2))
+    padded = np.pad(image, pads, mode="symmetric")
+    rows, columns = padded.shape[0] // tiles, padded.shape[1] // tiles
+    count = rows * columns
+    least = -(-count // bins)
+    limit = least + _half_away(CLAHE_CLIP * (count - least))
+    with np.errstate(invalid="ignore"):
+        binned = np.clip(np.floor(padded * (bins - 1) + 0.5), 0, bins - 1)
+    binned = np.nan_to_num(binned, nan=0.0).astype(np.int64)
+    hconst = 2 * CLAHE_ALPHA ** 2
+    vmax = 1 - math.exp(-1 / hconst)
+    maps = np.zeros((tiles, tiles, bins))
+    for c in range(tiles):
+        for r in range(tiles):
+            tile = binned[r * rows:(r + 1) * rows, c * columns:(c + 1) * columns]
+            histogram = _clip_histogram([int(v) for v in np.bincount(tile.ravel(), minlength=bins)], limit, bins)
+            total, cumulative = 0, []
+            for v in histogram:
+                total += v
+                cumulative.append(total)
+            value = vmax * (np.array(cumulative, dtype=np.float64) / count)
+            value[value >= 1] = 1 - np.finfo(float).eps
+            maps[r, c] = np.minimum(0 + np.sqrt(-hconst * np.log(1 - value)) * 1, 1)
+    out = np.zeros(padded.shape)
+    top = 0
+    for k in range(tiles + 1):
+        height_k, (upper, lower) = (rows // 2, (0, 0)) if k == 0 else (rows // 2, (tiles - 1, tiles - 1)) if k == tiles else (rows, (k - 1, k))
+        left = 0
+        for m in range(tiles + 1):
+            width_m, (before, after) = (columns // 2, (0, 0)) if m == 0 else (columns // 2, (tiles - 1, tiles - 1)) if m == tiles else (columns, (m - 1, m))
+            index = binned[top:top + height_k, left:left + width_m]
+            row_w = np.arange(height_k, dtype=np.float64)[:, None]
+            row_rev = np.arange(height_k, 0, -1, dtype=np.float64)[:, None]
+            column_w = np.arange(width_m, dtype=np.float64)[None, :]
+            column_rev = np.arange(width_m, 0, -1, dtype=np.float64)[None, :]
+            out[top:top + height_k, left:left + width_m] = (
+                row_rev * (column_rev * maps[upper, before][index] + column_w * maps[upper, after][index])
+                + row_w * (column_rev * maps[lower, before][index] + column_w * maps[lower, after][index])) / (height_k * width_m)
+            left += width_m
+        top += height_k
+    return out[pads[0][0]:pads[0][0] + height, pads[1][0]:pads[1][0] + width]
+
+
+def _half_away(value: float) -> int:
+    """MATLAB's round: half away from zero."""
+    return int(math.copysign(math.floor(abs(value) + 0.5), value))
+
+
+def _clip_histogram(histogram: List[int], limit: int, bins: int) -> List[int]:
+    """adapthisteq's clipHistogram: counts above limit cut to it, and the excess handed back, first evenly (each bin
+    its share, those near the limit only up to it), then one at a time, spread out, from bin 1, 2, ... in turn."""
+    excess = sum(max(v - limit, 0) for v in histogram)
+    share = excess // bins
+    upper = limit - share
+    out = list(histogram)
+    for k in range(bins):
+        if out[k] > limit:
+            out[k] = limit
+        elif out[k] > upper:
+            excess -= limit - out[k]
+            out[k] = limit
+        else:
+            excess -= share
+            out[k] += share
+    start = 0
+    while excess != 0:
+        step = max(bins // excess, 1)
+        for m in range(start, bins, step):
+            if out[m] < limit:
+                out[m] += 1
+                excess -= 1
+                if excess == 0:
+                    break
+        start += 1
+        if start >= bins:
+            start = 0
+    return out
 
 
 def _mean(stack) -> Any:

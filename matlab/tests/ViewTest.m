@@ -231,10 +231,13 @@ classdef ViewTest < matlab.unittest.TestCase
             viewables = nansen.Viewables();
             viewables.addStack(ViewTest.movie());
             api = nansen.Api(Viewables=viewables);
-            found = ViewTest.call(api, "view.detect", struct("viewable", "v1", "point", [5 6], "radius", 4)).result;
+            % mode 0, the threshold (dev's autodetection modes are 1-5, 1 by default)
+            found = ViewTest.call(api, "view.detect", struct("viewable", "v1", "point", [5 6], "radius", 4, "mode", 0)).result;
             [rows, columns] = ndgrid(4:7, 4:7);
             testCase.verifyEqual(sortrows(cell2mat(reshape(found.pixels, [], 1))), sortrows([rows(:), columns(:)]));
             response = ViewTest.call(api, "view.detect", struct("viewable", "v1", "point", [30 0]));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+            response = ViewTest.call(api, "view.detect", struct("viewable", "v1", "point", [5 6], "mode", 9));
             testCase.verifyEqual(string(response.error.code), "invalid-params");
         end
 
