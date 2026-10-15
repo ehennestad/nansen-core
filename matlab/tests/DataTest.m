@@ -93,6 +93,20 @@ classdef DataTest < matlab.unittest.TestCase
             testCase.verifyEqual(present, [true, false, true]);
         end
 
+        function savingAVariableTheProjectDoesNotHaveMakesIt(testCase)   % as dev's saveData; as Python's test
+            entity = testCase.session("m1-001");
+            entity.save("notes_summary", struct("cells", 12));
+            entity.save("trace", [0, 1, 2, 3]);
+            made = testCase.Project.dataVariable("notes_summary");
+            testCase.verifyEqual([made.DataLocation, made.FileName, made.FileAdapter], ["processed", "notes_summary.json", "json"]);
+            made = testCase.Project.dataVariable("trace");
+            testCase.verifyEqual([made.FileName, made.FileAdapter], ["trace.npy", "npy"]);
+            testCase.verifyEqual(entity.load("notes_summary"), struct("cells", 12));
+            trace = entity.load("trace");
+            testCase.verifyEqual(double(trace(:))', [0, 1, 2, 3]);
+            testCase.verifyError(@() entity.save("2bad", 1), "nansen:SchemaValidation");
+        end
+
         function fileNameMustMatchThePattern(testCase)
             testCase.Project.addDataVariable(DataTest.variable("bad", dataLocation="processed", ...
                 filePattern="roi_signals", fileName="{session_id}.json", fileAdapter="json"));

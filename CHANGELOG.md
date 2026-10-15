@@ -16,6 +16,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - Entities are DSM records joined with the authored tables. Table keys are checked against DSM identity, `sync` adds rows for new entities, scans are cached, and roots are chosen per environment ([entities](docs/reference/entities.md)).
 - New entities get their paths from DSM's path generation (added to DSM, in both of its readers).
 - Data variables find their files through DSM file patterns or file name templates, and read and write them with file adapters: `json`, `text`, `mat` and `npy`. MATLAB reads and writes `.npy` itself (C or Fortran order, either byte order), so arrays move between the languages with the shape and indexing they have in NumPy.
+- `save` to a variable the project does not have makes it (as dev's saveData): in the first writable data location, `.npy` for arrays and `.json` for anything else.
 - `load` keeps what it read in the project's data cache, as dev's `DataCache` does: 2 GiB, least recently used out first. An entry is read again when its file's time or size changes, and `save` drops the entry of the file it writes. `load` also finds what `save` wrote to a folder made since the last scan. `load(..., cached=False)` / `Cached=false` reads without it.
 
 - The Python app server answers only the page it served: a random token in its `index.html`, needed by `POST /api` and `GET /events`, and Host and Origin checks, so another web page in the browser cannot drive it (cross-site requests, DNS rebinding).

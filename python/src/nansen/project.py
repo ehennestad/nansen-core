@@ -1128,7 +1128,13 @@ class Project:
         return StackWriter(shape, dtype, finish=lambda data: (adapter.write(path, data), forget()))
 
     def save(self, entity: Entity, name: str, data: Any) -> Path:
-        """Write the variable for the entity, creating folders as needed. Returns the path written."""
+        """Write the variable for the entity, creating folders as needed. Returns the path written.
+
+        A variable the project does not have yet is made first, as dev's saveData makes one: of the entity's type, in
+        the first data location that can be written, as <name>.npy for an array of numbers or truth values (more than
+        one of them) and as <name>.json for anything else."""
+        if not self.data_variable_path(name).is_file():
+            self.add_data_variable(self.new_variable_document(entity, name, data))
         variable = self.data_variable(name)
         path = self.write_path(entity, name)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1141,6 +1147,21 @@ class Project:
         adapter.write(path, data)
         self.data_cache.remove((variable.file_adapter, str(path.resolve())))  # a rewrite in the same tick keeps mtime
         return path
+
+    def new_variable_document(self, entity: Entity, name: str, data: Any) -> dict:
+        """The data variable save makes for a value of a name the project does not have (see save)."""
+        writable = [loc["identifier"] for loc in self.require_dataset().config.locations if loc.get("access", "read") == "readwrite"]
+        if not writable:
+            raise NansenError("unknown-data-variable", f"no data variable {name!r}, and no data location can be written to make one")
+        array = False
+        try:
+            import numpy as np
+            array = isinstance(data, np.ndarray) and data.size > 1 and (np.issubdtype(data.dtype, np.number) or data.dtype == bool)
+        except ImportError:
+            pass
+        return {"schemaType": "nansen.dataVariable", "schemaVersion": current_version("nansen.dataVariable"), "name": name,
+                "entityType": entity.entity_type, "dataLocation": writable[0],
+                "fileName": f"{name}.npy" if array else f"{name}.json", "fileAdapter": "npy" if array else "json"}
 
     def data_status(self, entity: Entity) -> List[Dict[str, Any]]:
         """Each data variable of the entity's type: whether a file exists, and where."""

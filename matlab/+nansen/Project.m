@@ -1814,6 +1814,15 @@ classdef Project < handle
 
         function path = save(obj, entity, name, data)
             %save Write the variable for the entity, creating folders as needed; returns the path written
+            %
+            %   A variable the project does not have yet is made first, as
+            %   dev's saveData makes one: of the entity's type, in the first
+            %   data location that can be written, as <name>.npy for an array
+            %   of numbers or truth values (more than one of them) and as
+            %   <name>.json for anything else. As Python's Project.save.
+            if ~isfile(obj.dataVariablePath(string(name)))
+                obj.addDataVariable(obj.newVariableDocument(entity, name, data));
+            end
             variable = obj.dataVariable(name);
             path = obj.writePath(entity, name);
             folder = fileparts(path);
@@ -1834,6 +1843,29 @@ classdef Project < handle
             end
             adapter.write(path, data);
             obj.DataCache.remove(nansen.Project.cacheKey(variable.FileAdapter, path));   % a rewrite in the same tick keeps the time
+        end
+
+        function document = newVariableDocument(obj, entity, name, data)
+            %newVariableDocument The data variable save makes for a value of a name the project does not have
+            writable = string.empty;
+            for location = obj.requireDataset().Config.locations()
+                if string(nansen.internal.getField(location{1}, "access", "read")) == "readwrite"
+                    writable(end + 1) = string(location{1}.identifier); %#ok<AGROW>
+                end
+            end
+            if isempty(writable)
+                nansen.internal.throwError("unknown-data-variable", "no data variable '%s', and no data location can be written to make one", name)
+            end
+            extension = ".json";
+            adapter = "json";
+            if (isnumeric(data) || islogical(data)) && numel(data) > 1
+                extension = ".npy";
+                adapter = "npy";
+            end
+            entry = nansen.internal.schemaEntry("nansen.dataVariable");
+            document = struct("schemaType", 'nansen.dataVariable', "schemaVersion", char(entry.version), "name", char(name), ...
+                "entityType", char(entity.EntityType), "dataLocation", char(writable(1)), ...
+                "fileName", char(string(name) + extension), "fileAdapter", char(adapter));
         end
 
         function status = dataStatus(obj, entity)

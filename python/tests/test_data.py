@@ -65,6 +65,21 @@ def test_variable_without_pattern_uses_its_file_name(project):
     assert project.read_targets(entity, "summary") == [("processed", "m1/m1-001/qc/summary.json")]
 
 
+def test_saving_a_variable_the_project_does_not_have_makes_it(project):   # as dev's saveData
+    np = pytest.importorskip("numpy")
+    entity = session(project, "m1-001")
+    entity.save("notes_summary", {"cells": 12})
+    entity.save("trace", np.arange(4.0))
+    made = {v.name: v.document for v in project.data_variables("session")}
+    assert {k: made["notes_summary"][k] for k in ("dataLocation", "fileName", "fileAdapter")} == {
+        "dataLocation": "processed", "fileName": "notes_summary.json", "fileAdapter": "json"}
+    assert (made["trace"]["fileName"], made["trace"]["fileAdapter"]) == ("trace.npy", "npy")
+    assert entity.load("notes_summary") == {"cells": 12} and entity.load("trace").tolist() == [0, 1, 2, 3]
+    with pytest.raises(NansenError) as error:
+        entity.save("2bad", 1)
+    assert error.value.code == "schema-validation"
+
+
 def test_data_status(project):
     entity = session(project, "m1-001")
     entity.save("summary", {})
