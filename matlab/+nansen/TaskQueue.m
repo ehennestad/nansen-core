@@ -306,6 +306,24 @@ classdef TaskQueue < handle
             task = obj.requireChanged(taskId, obj.changeQueued(taskId, @(t) withHold(t, onHold)));
         end
 
+        function task = comment(obj, taskId, text)
+            %comment A note on a queued or finished task (dev's Comment column); an empty one takes it away
+            %
+            %   A running task's file is its worker's to write, so it is
+            %   commented on before it starts or once it is done. As Python's TaskQueue.comment.
+            text = strtrim(string(text));
+            task = obj.get(taskId);
+            if string(task.status) == "queued"
+                task = obj.requireChanged(taskId, obj.changeQueued(taskId, @(t) withComment(t, text)));
+                return
+            end
+            if ~ismember(string(task.status), ["completed", "failed", "cancelled"])
+                nansen.internal.throwError("task-running", "task %s is %s: comment on it once it is done", taskId, task.status)
+            end
+            task = withComment(task, text);
+            obj.save(task)
+        end
+
         function task = update(obj, taskId, options)
             %update Give a queued task new options: the preset's values (if given) with these on top, resolved and validated
             arguments
@@ -674,6 +692,14 @@ function task = withHold(task, onHold)
         task.onHold = true;
     elseif isfield(task, "onHold")
         task = rmfield(task, "onHold");
+    end
+end
+
+function task = withComment(task, text)
+    if text ~= ""
+        task.comment = char(text);
+    elseif isfield(task, "comment")
+        task = rmfield(task, "comment");
     end
 end
 

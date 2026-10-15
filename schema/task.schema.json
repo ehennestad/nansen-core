@@ -169,6 +169,10 @@
           "type": "string"
         }
       }
+    },
+    "comment": {
+      "type": "string",
+      "description": "A note on the task, as dev's task manager's Comment column: written in the queue or the history."
     }
   },
   "definitions": {

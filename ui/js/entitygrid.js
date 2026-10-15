@@ -69,6 +69,11 @@
       if (this.editing && this.data && this.data.entityType === data.entityType) { this.pendingData = data; return; }
       this.pendingData = null;
       const sameType = this.data && this.data.entityType === data.entityType;
+      // dev's Notebook column: how many notes each entity has, and of which kinds (sorted by how many)
+      if (data.rows.some((r) => r.notes) && !data.columns.some((c) => c.source === "notes")) {
+        data.columns = data.columns.concat([{ name: "__notes", dataType: "integer", title: "Notes", unit: null, source: "notes", editable: false }]);
+        data.rows.forEach((r) => { r.values.__notes = r.notes ? r.notes.count : 0; });
+      }
       this.data = data;
       this.byId = new Map(data.rows.map((r) => [N.keyId(r.key), r]));
       if (!sameType) {
@@ -308,6 +313,15 @@
       const editable = column.editable && row.inTable && !this.locked;
       if (editable && column.dataType !== "boolean") classes.push("editable");
       const td = h(classes.join("."), { style: this.sizeStyle(column.name) });
+      if (column.source === "notes") {
+        const notes = row.notes;
+        if (!notes) { td.classList.add("missing"); td.textContent = "—"; return td; }
+        const kinds = [["important", "Important", "warn"], ["todo", "To do", "info"], ["question", "Question", "accent"]].filter(([k]) => notes[k]);
+        td.title = `${notes.count} note${notes.count === 1 ? "" : "s"}` + kinds.map(([k, label]) => ` · ${notes[k]} ${label.toLowerCase()}`).join("");
+        td.appendChild(h("span.notes-cell", `${notes.count} note${notes.count === 1 ? "" : "s"}`,
+          kinds.map(([k, label, kind]) => h(`span.pill.${kind}.note-kind`, { title: label }, `${notes[k]} ${label.toLowerCase()}`))));
+        return td;
+      }
       if (column.source === "progress") {
         const state = row.progress;
         if (!state) { td.classList.add("missing"); td.textContent = "—"; return td; }

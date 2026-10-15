@@ -701,3 +701,5 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .preview-columns { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; align-items: start; }
 .preview-options { max-height: 60vh; overflow: auto; padding-right: 6px; border-right: 1px solid var(--border); }
 @media (max-width: 760px) { .preview-columns { grid-template-columns: 1fr; } .preview-options { border-right: none; max-height: none; } }
+.notes-cell { display: inline-flex; gap: 6px; align-items: center; }
+.notes-cell .note-kind { font-size: 10.5px; padding: 1px 6px; }

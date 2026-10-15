@@ -45,7 +45,7 @@ classdef Api < handle
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
-                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
+                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.comment", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
             for name = names
                 % "entities.list" -> apiEntitiesList
@@ -663,6 +663,27 @@ classdef Api < handle
                         rows{i}.progress = struct("pipeline", state.pipeline, "title", state.title, ...
                             "done", state.done, "total", state.total);
                     end
+                end
+            end
+            % dev's Notebook column: each entity's notes, and how many of each kind
+            counts = containers.Map("KeyType", "char", "ValueType", "any");
+            for note = project.notebook(entityType).notes([])
+                id = char(nansen.internal.runKeyId(note{1}.key));
+                if ~isKey(counts, id)
+                    counts(id) = struct("count", 0, "important", 0, "todo", 0, "question", 0);
+                end
+                count = counts(id);
+                count.count = count.count + 1;
+                kind = string(nansen.internal.getField(note{1}, "type", ""));
+                if ismember(kind, ["important", "todo", "question"])
+                    count.(kind) = count.(kind) + 1;
+                end
+                counts(id) = count;
+            end
+            for i = 1:numel(rows)
+                id = char(nansen.internal.runKeyId(rows{i}.key));
+                if isKey(counts, id)
+                    rows{i}.notes = counts(id);
                 end
             end
             result = struct("entityType", char(entityType), "key", {cellstr(table.Key)}, ...
@@ -1827,6 +1848,14 @@ classdef Api < handle
             result = obj.queue().submit(string(nansen.Api.param(params, "methodId")), obj.entities(params), ...
                 Options=obj.optionsOf(params), Preset=obj.presetOf(params), ...
                 Language=string(nansen.internal.getField(params, "language", "")));
+        end
+
+        function result = apiTasksComment(obj, params)
+            comment = nansen.internal.getField(params, "comment", "");
+            if isempty(comment)
+                comment = "";
+            end
+            result = obj.queue().comment(string(nansen.Api.param(params, "id")), string(comment));
         end
 
         function result = apiTasksList(obj, params)

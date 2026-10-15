@@ -698,6 +698,15 @@ class Api:
                 row["values"]["progress"] = state["done"] / state["total"] if state else None
                 if state:
                     row["progress"] = {k: state[k] for k in ("pipeline", "title", "done", "total")}
+        counts: Dict[Any, Dict[str, int]] = {}   # dev's Notebook column: each entity's notes, and how many of each kind
+        for note in project.notebook(entity_type).notes(None):
+            count = counts.setdefault(runs.key_id(note["key"]), {"count": 0, "important": 0, "todo": 0, "question": 0})
+            count["count"] += 1
+            if note.get("type") in ("important", "todo", "question"):
+                count[note["type"]] += 1
+        for row in rows:
+            if runs.key_id(row["key"]) in counts:
+                row["notes"] = counts[runs.key_id(row["key"])]
         return {"entityType": entity_type, "key": table.spec.key, "columns": columns, "rows": rows}
 
     def _columns(self, entity_type: str, table, entities: List[Entity]) -> List[dict]:
@@ -1458,6 +1467,9 @@ class Api:
 
     def pipelines__submit(self, params: dict) -> list:
         return self._queue().submit_pipeline(params["pipelineId"], self._entities(params), params.get("language"))
+
+    def tasks__comment(self, params: dict) -> dict:
+        return self._queue().comment(params["id"], params.get("comment", ""))
 
     def tasks__list(self, params: dict) -> list:
         return self._queue().list(params.get("status"))

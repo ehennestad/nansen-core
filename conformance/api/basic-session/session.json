@@ -663,6 +663,9 @@
             }
           }
         }
+      },
+      "keep": {
+        "queuedTask": "/id"
       }
     },
     {
@@ -728,6 +731,64 @@
             "name": "quick"
           }
         ]
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.comment",
+        "id": 33,
+        "params": {
+          "id": "${queuedTask}",
+          "comment": "  check the motion  "
+        }
+      },
+      "expect": {
+        "result": {
+          "status": "queued",
+          "comment": "check the motion"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.get",
+        "id": 34,
+        "params": {
+          "id": "${queuedTask}"
+        }
+      },
+      "expect": {
+        "result": {
+          "comment": "check the motion"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.comment",
+        "id": 35,
+        "params": {
+          "id": "${queuedTask}",
+          "comment": ""
+        }
+      },
+      "expect": {
+        "result": {
+          "status": "queued"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tasks.comment",
+        "id": 36,
+        "params": {
+          "id": "no-such-task",
+          "comment": "x"
+        }
+      },
+      "expect": {
+        "error": "unknown-task"
       }
     }
   ]

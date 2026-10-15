@@ -300,6 +300,64 @@
           }
         ]
       }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "id": 18,
+        "params": {
+          "entityType": "subject"
+        }
+      },
+      "expect": {
+        "result": {
+          "rows": [
+            {
+              "key": {
+                "subject_id": "m999"
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m110"
+              },
+              "notes": {
+                "count": 1,
+                "important": 0,
+                "todo": 1,
+                "question": 0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "id": 19,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "rows": [
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              },
+              "notes": {
+                "count": 2,
+                "important": 0,
+                "todo": 0,
+                "question": 0
+              }
+            }
+          ]
+        }
+      }
     }
   ]
 }

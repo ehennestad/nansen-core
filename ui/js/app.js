@@ -54,6 +54,7 @@
       this.client.on("notes", (data) => {   // the page and an entity's drawer can both show notes
         if (this.onNotesEvent) this.onNotesEvent(data);
         if (this.onDrawerNotesEvent) this.onDrawerNotesEvent(data);
+        if (data && data.entityType) this.entitiesEvent({ entityTypes: [data.entityType] });   // the table's note counts
       });
       this.client.on("scan", () => this.reloadProject());
       this.client.on("project", () => this.reloadProject().then(() => this.render()));

@@ -297,6 +297,26 @@ class TaskQueue:
             task["method"]["version"] = method.version
         return self._require_changed(task_id, self._change_queued(task_id, change))
 
+    def comment(self, task_id: str, text: str) -> dict:
+        """A note on a queued or finished task (dev's Comment column); an empty one takes it away. A running task's file
+        is its worker's to write, so it is commented on before it starts or once it is done."""
+        text = str(text or "").strip()
+
+        def change(task):
+            if text:
+                task["comment"] = text
+            else:
+                task.pop("comment", None)
+        task = self.get(task_id)
+        if task["status"] == "queued":
+            return self._require_changed(task_id, self._change_queued(task_id, change))
+        if task["status"] not in TERMINAL:
+            raise NansenError("task-running", f"task {task_id} is {task['status']}: comment on it once it is done")
+        change(task)
+        check_document(task, "nansen.task")
+        self._save(task)
+        return task
+
     def reorder(self, task_ids: List[str]) -> List[dict]:
         """Put these queued tasks first, in this order; the other queued tasks follow in the order they had.
 

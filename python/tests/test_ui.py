@@ -110,6 +110,7 @@ def test_write_find_and_delete_a_note(app, page):
     note = page.locator(".drawer li.note").first
     assert "To do" in note.inner_text() and "Check #motion" in note.inner_text()
     assert note.locator(".tag").all_inner_texts() == ["#motion", "#zdrift"]
+    page.wait_for_selector(".grid-table tbody tr[data-id] .notes-cell:has-text('1 note') .note-kind:has-text('1 to do')")   # dev's Notebook column
 
     page.goto(app["server"].url + "#/notes")
     page.wait_for_selector(".content li.note")
@@ -145,6 +146,9 @@ def test_run_method_in_the_queue(app, page):
     page.wait_for_selector(".task.selected:has-text('completed')", timeout=15000)
     page.wait_for_function("() => (document.getElementById('task-log') || {}).textContent?.includes('done waiting')",
                            timeout=10000)
+    page.fill(".task-comment", "slow disk today")   # dev's Comment column, in the history
+    page.locator(".task-comment").press("Enter")
+    page.wait_for_selector(".task.selected .task-comment-text:has-text('slow disk today')")
 
 
 def test_projects_page_lists_the_catalog(app, page):

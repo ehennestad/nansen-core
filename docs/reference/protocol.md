@@ -90,7 +90,7 @@ Events flow from the core to the frontend:
 | `dataset.unassign` | `dataLocation`, `path` | `{removed}`: the assignment taken out (`unknown-assignment` if there is none); the next scan matches the entry by its name again |
 | `dataset.assignments` | | `[{dataLocation, path, entityType, key}]`: the entries matched by hand, in the order they were first made |
 | `project.sync` | `entityType?` | `{added{type: [keys]}}`; added rows get the first pipeline whose `assignWhen` filters they pass |
-| `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute\|progress, editable, choices?, display?, action?}], rows[{key, inStore, inTable, values, issues?, progress?}]}; with `core.pipeline`, a `progress` column (the fraction of the pipeline done) and each row's `progress {pipeline, title, done, total}` |
+| `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute\|progress, editable, choices?, display?, action?}], rows[{key, inStore, inTable, values, issues?, progress?, notes?}]}; `notes` (when the entity has any) is `{count, important, todo, question}`, how many notes of each kind, as dev's Notebook column; with `core.pipeline`, a `progress` column (the fraction of the pipeline done) and each row's `progress {pipeline, title, done, total}` |
 | `entities.get` | `entityType`, `key` | A row plus `locations`, `issueDetails`, `data` (data variable status), and `pipeline` when it has one: `{pipeline, title, steps[{title, method, queueable, done, finishedAt}], done, total}` |
 | `entities.update` | `entityType`, `key`, `values` | The updated row; key and computed columns are `read-only-column` |
 | `entities.add` | `entityType`, `key`, `values?` | The new row |
@@ -160,6 +160,7 @@ Events flow from the core to the frontend:
 | `tasks.cancel` / `tasks.retry` / `tasks.remove` | `id` | The task (or `{removed}`) |
 | `tasks.hold` | `id`, `hold?` (default true) | The task: a queued task on hold (`onHold`) is not started until it is released with `hold: false`; it keeps its place |
 | `tasks.update` | `id`, `options?`, `preset?` | The task with new options: the preset's values with `options` on top, resolved and validated as in `tasks.submit` |
+| `tasks.comment` | `id`, `comment` (empty takes it away) | The task with its `comment`, a note shown in the queue and the history (dev's Comment column). A queued or finished task; `task-running` while it runs, as its worker writes it then |
 | `tasks.reorder` | `ids` | The queued tasks in their new order: these first, in this order, then the others as they were. A task still waits for the tasks in its `after` |
 | `tasks.clear` | | `{removed: count}` of finished tasks |
 | `tasks.runNext` | | The task run now in the foreground, or null |

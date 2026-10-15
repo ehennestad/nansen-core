@@ -1,4 +1,4 @@
 {
   "description": "Notes on entities: adding notes with types and #tags, listing them per entity, per entity type and for the project (newest first), errors for a bad key, type, empty note or unknown entity type, and removing a note (ids are not reused).",
-  "steps": 17
+  "steps": 19
 }

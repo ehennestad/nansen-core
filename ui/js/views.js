@@ -1515,7 +1515,8 @@
             task.startedAt ? `ran ${N.fmt.duration(task.startedAt, task.finishedAt)}` : null,
             task.message && task.status === "running" ? task.message : null,
             task.error ? task.error.message : null,
-          ].filter(Boolean).join(" · "))),
+          ].filter(Boolean).join(" · ")),
+          task.comment ? h("div.sub.task-comment-text", N.icon("note", 11), " ", task.comment) : null),
         h("div.actions", queueActions,
           task.status === "queued" || task.status === "running" ? h("button.btn.small", { on: { click: (e) => { e.stopPropagation(); act("tasks.cancel", task); } } }, N.icon("stop", 14), "Cancel") : null,
           ["failed", "cancelled", "completed"].includes(task.status) ? h("button.btn.small", { on: { click: (e) => { e.stopPropagation(); act("tasks.retry", task); } } }, N.icon("retry", 14), "Retry") : null,
@@ -1548,7 +1549,16 @@
             h("dt", "Queued"), h("dd", N.fmt.time(task.createdAt)),
             task.startedAt ? [h("dt", "Started"), h("dd", N.fmt.time(task.startedAt))] : null,
             task.finishedAt ? [h("dt", "Finished"), h("dd", N.fmt.time(task.finishedAt))] : null,
-            task.error ? [h("dt", "Error"), h("dd", { style: { color: "var(--bad)" } }, task.error.message)] : null),
+            task.error ? [h("dt", "Error"), h("dd", { style: { color: "var(--bad)" } }, task.error.message)] : null,
+            // dev's Comment column: a note on the task, in the queue or the history (not while it runs)
+            h("dt", "Comment"), h("dd", task.status === "running" ? (task.comment || h("span.muted", "—")) : (() => {
+              const input = h("input.input.task-comment", { value: task.comment || "", placeholder: "A note on this task",
+                on: { change: async () => {
+                  try { await app.client.request("tasks.comment", { id: task.id, comment: input.value }); N.toast("Comment saved", "", "success", 1500); }
+                  catch (error) { N.showError(error, "Could not save the comment"); }
+                } } });
+              return input;
+            })())),
           h("div.section-title", "Log"),
           h("pre.log", { id: "task-log" }, task.logText || "(nothing logged yet)"))));
     }
