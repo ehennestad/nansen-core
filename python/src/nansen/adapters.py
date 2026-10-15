@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
@@ -32,9 +34,16 @@ class JsonAdapter:
             return json.load(f)
 
     def write(self, path: Path, data: Any) -> None:
-        with open(path, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            f.write("\n")
+        # through a file beside it, so a reader (another process, the app) never sees half of it
+        temporary = Path(path).with_name(f"{Path(path).name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        try:
+            with open(temporary, "w", encoding="utf-8", newline="\n") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            os.replace(temporary, path)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
 
 
 class TextAdapter:

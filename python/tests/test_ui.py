@@ -1457,7 +1457,12 @@ def test_review_rois_across_sessions(empty_app, page):
     page.locator(".rr-table tr[data-roi='1'] td").nth(2).dblclick()   # ROI 1 in s3
     page.wait_for_selector(".viewer-dialog .viewer-roi-list li[data-roi='1'].selected")
     page.keyboard.press("Alt+ArrowDown")
-    wait_until(lambda: sorted(map(tuple, load(s3)[0]["pixels"])) == [(r + 1, c) for r, c in before[("m1", "s3")]])
+    def moved():
+        try:
+            return sorted(map(tuple, load(s3)[0]["pixels"])) == [(r + 1, c) for r, c in before[("m1", "s3")]]
+        except ValueError:   # a JSON file read while the app writes it
+            return False
+    wait_until(moved)
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
     page.wait_for_selector(".rr-table tbody tr")
     assert sorted(map(tuple, load(s1)[0]["pixels"])) == before[("m1", "s1")]   # the other session's is as it was
