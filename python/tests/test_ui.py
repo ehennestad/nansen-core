@@ -141,13 +141,10 @@ def test_run_method_in_the_queue(app, page):
     page.wait_for_selector(".method-detail:has(h3:text-is('Wait')) .preset-row")
     page.fill(".field:has-text('Seconds') input", "0")
     page.click(".dialog-foot button:has-text('Add to queue')")
-    page.wait_for_selector(".task")
-    deadline = time.time() + 15
-    while time.time() < deadline and "completed" not in page.locator(".task").first.inner_text():
-        time.sleep(0.1)
-    assert "completed" in page.locator(".task").first.inner_text()
-    page.wait_for_selector("#task-log")
-    assert "done waiting" in page.locator("#task-log").inner_text()
+    # The page opens the new task; other tests' tasks may be listed too, so watch the selected one
+    page.wait_for_selector(".task.selected:has-text('completed')", timeout=15000)
+    page.wait_for_function("() => (document.getElementById('task-log') || {}).textContent?.includes('done waiting')",
+                           timeout=10000)
 
 
 def test_projects_page_lists_the_catalog(app, page):
