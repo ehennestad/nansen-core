@@ -94,3 +94,28 @@ def test_invalid_dataset(tmp_path):
     with pytest.raises(NansenError) as error:
         project.dataset
     assert error.value.code == "dataset-invalid"
+
+
+@pytest.mark.parametrize("recorded", ["/Volumes/LabDisk/data/raw", "E:\\data\\raw", "/media/someone/LabDisk/data/raw"])
+def test_a_root_on_a_removable_drive_is_found_where_it_is_mounted_now(tmp_path, monkeypatch, recorded):
+    import json as _json
+
+    from nansen.dataset import Dataset, path_in_volume
+
+    assert path_in_volume(recorded, "LabDisk") == "data/raw"
+    mounted = tmp_path / "mounts" / "LabDisk" / "data" / "raw" / "sub-m1"
+    mounted.mkdir(parents=True)
+    config = {"schemaVersion": "0.1.0", "entityTypes": [{"name": "subject", "identifierRef": "subject_id"}],
+              "metadataDefinitions": {"subject_id": {"name": "subject_id", "dataType": "string", "ofEntity": "subject"}},
+              "dataLocations": [{"identifier": "raw", "displayName": "Raw", "dataCategory": "raw", "sourceType": "filesystem",
+                                 "filesystemSource": {"rootStoragePaths": [{"identifier": "disk", "path": recorded, "volumeName": "LabDisk"}],
+                                                      "entityLayout": [{"name": "subjects", "entityType": "subject", "matchPattern": "^sub-.+$"}],
+                                                      "metadataMapping": [{"metadataRef": "subject_id", "extraction": {
+                                                          "method": "regex", "pattern": "^sub-(.+)$", "entityLayoutLevel": 0}}]}}]}
+    (tmp_path / "dataset.dsm.json").write_text(_json.dumps(config))
+    dataset = Dataset.load(tmp_path / "dataset.dsm.json")
+    assert dataset.roots()[0].available is False
+    monkeypatch.setenv("NANSEN_VOLUME_ROOTS", str(tmp_path / "mounts"))
+    root = dataset.roots()[0]
+    assert root.available and root.path == tmp_path / "mounts" / "LabDisk" / "data" / "raw"
+    assert len(dataset.scan().records) == 1

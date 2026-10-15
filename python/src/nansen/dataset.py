@@ -27,6 +27,56 @@ class RootInfo:
     available: bool
 
 
+def volume_mounts(name: str) -> List[Path]:
+    """Where a volume of this name is mounted now: /Volumes on macOS; /media, /run/media and /mnt on Linux;
+    a drive with this label on Windows; and the folders listed in NANSEN_VOLUME_ROOTS (os.pathsep-separated)."""
+    import getpass
+    import sys
+
+    parents = [Path(p) for p in os.environ.get("NANSEN_VOLUME_ROOTS", "").split(os.pathsep) if p]
+    found: List[Path] = []
+    if sys.platform == "win32":
+        found += _windows_drives_labelled(name)
+    elif sys.platform == "darwin":
+        parents.append(Path("/Volumes"))
+    else:
+        try:
+            user = getpass.getuser()
+        except Exception:  # no user name to be had
+            user = ""
+        parents += [Path("/media") / user, Path("/run/media") / user, Path("/media"), Path("/mnt")]
+    found += [parent / name for parent in parents if (parent / name).is_dir()]
+    return list(dict.fromkeys(found))
+
+
+def _windows_drives_labelled(name: str) -> List[Path]:
+    import ctypes
+    import string
+
+    drives = []
+    for letter in string.ascii_uppercase:
+        root = f"{letter}:\\"
+        if not os.path.isdir(root):
+            continue
+        label = ctypes.create_unicode_buffer(261)
+        if ctypes.windll.kernel32.GetVolumeInformationW(root, label, 261, None, None, None, None, 0) and label.value == name:  # type: ignore[attr-defined]
+            drives.append(Path(root))
+    return drives
+
+
+def path_in_volume(path: str, name: str) -> Optional[str]:
+    """The part of a root path inside its volume ("" for the volume itself), or None when that cannot be told:
+    after a drive letter, or after a folder named as the volume (/Volumes/<name>, /media/<user>/<name>...)."""
+    text = re.sub("/+", "/", path.replace("\\", "/"))
+    drive = re.match(r"^[A-Za-z]:/?", text)
+    if drive:
+        return text[drive.end():].strip("/")
+    parts = [p for p in text.split("/") if p]
+    if name in parts:
+        return "/".join(parts[parts.index(name) + 1:])
+    return None
+
+
 @dataclass
 class Scan:
     """What one walk of the stores found: entity records in the DSM JSON form, and the roots read."""
@@ -132,9 +182,23 @@ class Dataset:
                 path = Path(entry["path"])
                 if not path.is_absolute():  # relative to the config's folder, "." and ".." resolved
                     path = Path(os.path.normpath(self.folder / path))
+                if not path.is_dir() and entry.get("volumeName"):
+                    path = self._found_on_volume(entry["path"], entry["volumeName"]) or path
                 roots.append(RootInfo(location, entry["identifier"], path, environment,
                                       entry.get("priority", 0), path.is_dir()))
         return roots
+
+    @staticmethod
+    def _found_on_volume(path: str, volume: str) -> Optional[Path]:
+        """The root on its volume mounted somewhere else now (a removable drive under another letter), if it is."""
+        inside = path_in_volume(path, volume)
+        if inside is None:
+            return None
+        for mount in volume_mounts(volume):
+            candidate = mount / inside if inside else mount
+            if candidate.is_dir():
+                return candidate
+        return None
 
     def root(self, data_location: str, root_storage_path: Optional[str] = None) -> RootInfo:
         """A root of the location: the named one, or the available one with the lowest priority number."""

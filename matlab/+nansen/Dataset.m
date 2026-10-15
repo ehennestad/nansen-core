@@ -117,6 +117,23 @@ classdef Dataset < handle
                         % folders without them, so a walk could not tell its entries are under this root.
                         path = replace(nansen.internal.normalizePath(fullfile(obj.Folder, path)), "/", filesep);
                     end
+                    volume = string(nansen.internal.getField(entry, "volumeName", ""));
+                    if ~isfolder(path) && volume ~= ""
+                        % A removable drive mounted somewhere else now (another drive letter, say)
+                        inside = nansen.internal.pathInVolume(string(entry.path), volume);
+                        if ~ismissing(inside)
+                            for mount = nansen.internal.volumeMounts(volume)
+                                candidate = mount;
+                                if inside ~= ""
+                                    candidate = string(fullfile(mount, inside));
+                                end
+                                if isfolder(candidate)
+                                    path = candidate;
+                                    break
+                                end
+                            end
+                        end
+                    end
                     roots(end + 1) = struct("DataLocation", location, "RootStoragePath", string(entry.identifier), ...
                         "Path", path, "Environment", environment, ...
                         "Priority", nansen.internal.getField(entry, "priority", 0), "Available", isfolder(path)); %#ok<AGROW>

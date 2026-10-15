@@ -48,3 +48,8 @@ A row whose record disappears is kept: the stores may be offline, or the data mo
 ## Writing new entities
 
 `dataset.generate_path(location, type, values)` / `generatePath` gives the path a new entity takes in a `readwrite` location. It uses DSM's generation, which checks every generated name against its level's pattern, so the next scan finds it.
+
+## Removable drives
+
+A root on a removable drive can name its volume (`volumeName` in the DSM root). When the root's folder is not there, NANSEN looks for the same path inside that volume where it is mounted now: under `/Volumes` (macOS), `/media/<user>`, `/run/media/<user>`, `/media` and `/mnt` (Linux), on the drive with that label (Windows), and under the folders listed in the `NANSEN_VOLUME_ROOTS` environment variable. The path inside the volume is what follows the drive letter, or the folder named as the volume. The config is not changed.
+

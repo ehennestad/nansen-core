@@ -134,6 +134,32 @@ classdef EntitiesTest < matlab.unittest.TestCase
             testCase.verifyEqual(numel(testCase.Project.lastScan().Records), numel(scan.Records));
         end
 
+        function aRootOnARemovableDriveIsFoundWhereItIsMountedNow(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            testCase.verifyEqual(nansen.internal.pathInVolume("/Volumes/LabDisk/data/raw", "LabDisk"), "data/raw");
+            testCase.verifyEqual(nansen.internal.pathInVolume("E:\data\raw", "LabDisk"), "data/raw");
+            testCase.verifyTrue(ismissing(nansen.internal.pathInVolume("/somewhere/else", "LabDisk")));
+            mkdir(fullfile(fixture.Folder, "mounts", "LabDisk", "data", "raw", "sub-m1"));
+            config = struct("schemaVersion", '0.1.0', ...
+                "entityTypes", {{struct("name", 'subject', "identifierRef", 'subject_id')}}, ...
+                "metadataDefinitions", struct("subject_id", struct("name", 'subject_id', "dataType", 'string', "ofEntity", 'subject')), ...
+                "dataLocations", {{struct("identifier", 'raw', "displayName", 'Raw', "dataCategory", 'raw', "sourceType", 'filesystem', ...
+                    "filesystemSource", struct( ...
+                        "rootStoragePaths", {{struct("identifier", 'disk', "path", '/Volumes/LabDisk/data/raw', "volumeName", 'LabDisk')}}, ...
+                        "entityLayout", {{struct("name", 'subjects', "entityType", 'subject', "matchPattern", '^sub-.+$')}}, ...
+                        "metadataMapping", {{struct("metadataRef", 'subject_id', "extraction", ...
+                            struct("method", 'regex', "pattern", '^sub-(.+)$', "entityLayoutLevel", 0))}}))}});
+            nansen.internal.writeJson(fullfile(fixture.Folder, "dataset.dsm.json"), config);
+            dataset = nansen.Dataset.load(fullfile(fixture.Folder, "dataset.dsm.json"));
+            roots = dataset.roots();
+            testCase.verifyFalse(roots(1).Available);
+            testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture("NANSEN_VOLUME_ROOTS", fullfile(fixture.Folder, "mounts")));
+            roots = dataset.roots();
+            testCase.verifyTrue(roots(1).Available);
+            testCase.verifyEqual(string(roots(1).Path), string(fullfile(fixture.Folder, "mounts", "LabDisk", "data", "raw")));
+            testCase.verifyEqual(numel(dataset.scan([]).Records), 1);
+        end
+
         function environmentSelectsRoots(testCase)
             lab = nansen.Project.open(testCase.Folder, Environment="lab");
             roots = lab.dataset().roots();
