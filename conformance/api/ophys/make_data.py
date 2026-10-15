@@ -138,6 +138,14 @@ def percentile(values, p):
     return ordered[low] + (position - low) * (ordered[high] - ordered[low])
 
 
+def preview_expected(first):
+    stats = lambda image: {"size": list(image.shape), "min": round_to(image.min(), 4), "max": round_to(image.max(), 4), "mean": round_to(image.mean(), 4)}
+    average, maximum = first.astype(float).mean(axis=2), first.max(axis=2).astype(float)
+    return {"frames": 5, "results": [{"n_frames": 5, "height": HEIGHT, "width": WIDTH, "mean_intensity": round_to(first.astype(float).mean(), 4),
+                                      "max_intensity": float(first.max())}],
+            "outputs": [dict(name="FovAverageProjection", kind="array", **stats(average)), dict(name="FovMaximumProjection", kind="array", **stats(maximum))]}
+
+
 def main():
     recording, aligned, shifts, disks, movie = scene(1)
     write_sciscan(HERE / "project/data/raw/sub-m1/ses-s1/rec.raw", recording)
@@ -171,6 +179,8 @@ def main():
         "motion": {"frames": FRAMES, "maxShift": int(np.abs(shifts).max()),
                    "meanShift": round_to(np.sqrt((shifts ** 2).sum(axis=1)).mean(), 4)},
         "corrected": {"mean_intensity": round_to(aligned.mean(), 4), "max_intensity": float(aligned.max())},
+        # methods.preview of image_stats on the first 5 frames: the stats of those, and the projections kept in memory
+        "preview": preview_expected(recording[:, :, :5]),
         "rois": {"rois": len(disks), "areas": [int(d.sum()) for d in disks]},
         "signals": {"rois": len(disks), "frames": FRAMES,
                     "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],

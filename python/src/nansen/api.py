@@ -976,6 +976,13 @@ class Api:
         from .tasks import _json_result
         return {"results": _json_result(results)}
 
+    def methods__preview(self, params: dict) -> dict:
+        """Run a method on the first frames of one entity's stacks, saving nothing (nansen.preview)."""
+        from .preview import FRAMES, preview
+        project = self._require_project()
+        return preview(project, params["methodId"], self._entity(params), params.get("options"), params.get("preset"),
+                       int(params.get("frames", FRAMES)))
+
     # -- tasks --------------------------------------------------------------------------------
 
     def _queue(self) -> TaskQueue:

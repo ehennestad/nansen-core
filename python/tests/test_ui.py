@@ -1326,3 +1326,26 @@ def test_install_and_remove_add_ons_from_the_settings_page(empty_app, page, monk
     page.click(".dialog-foot button:has-text('Remove')")
     page.wait_for_selector(".addon-list li[data-addon='normcorre'] .install-addon")
     assert not (folder / "normcorre").exists()
+
+
+def test_preview_a_method_on_the_first_frames(empty_app, page):
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    api = ophys_project(empty_app)
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.sel input").click()
+    page.click(".selection-bar button:has-text('Run method')")
+    page.locator(".method-item").filter(has=page.locator(".t:text-is('Correct motion')")).click()
+    page.wait_for_selector(".method-detail:has(h3:text-is('Correct motion')) .preset-row")
+    page.fill(".field:has-text('Frames in the first reference') input", "1")
+    page.click(".dialog-foot button:has-text('Preview')")
+    page.wait_for_selector(".preview-output[data-name='TwoPhotonSeries_Corrected'] canvas.preview-image")
+    assert '"frames": 20' in page.locator(".preview-result").inner_text()
+    assert "32 × 32 × 20" in page.locator(".preview-output[data-name='TwoPhotonSeries_Corrected']").inner_text()
+    page.fill(".preview-frames", "5")
+    page.click(".preview-again")
+    page.wait_for_selector(".preview-output[data-name='MotionCorrectionShifts']:has-text('5 × 2')")
+    status = api.handle({"id": 9, "method": "data.status", "params": {"entityType": "session", "key": s1}})["result"]
+    assert [d["files"] for d in status if d["name"] in ("TwoPhotonSeries_Corrected", "MotionCorrectionShifts")] == [[], []]
+    page.locator(".preview-dialog .dialog-foot button:has-text('Close')").click()
+    assert page.locator(".dialog-foot button:has-text('Run now')").count() == 1   # back in the run dialog

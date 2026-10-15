@@ -1081,16 +1081,74 @@
         }
       } catch (error) { N.showError(error, `${current.title} failed`); }
     };
+    const preview = () => {
+      if (!current) { N.toast("Choose a method", "A pipeline is not previewed: preview its steps one by one", "error"); return; }
+      if (!rows.length) { N.toast("Select an entity", "The preview runs on one entity: select it in the table first", "error"); return; }
+      const problems = form.validate();
+      if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
+      N.views.preview(app, current, entityType, rows[0].key, form.getValue());
+    };
     N.dialog({
       title: `Run a method on ${target}`,
       content: h("div.method-layout", list, detail),
       buttons: [
         { label: "Cancel" },
+        { label: "Preview", icon: "eye", onClick: () => preview() },
         { label: "Run now", onClick: (close) => run(close, false) },
         { label: "Add to queue", kind: "primary", icon: "play", onClick: (close) => run(close, true) },
       ],
     });
     select(methods[0]);
+  };
+
+  /** A grayscale canvas of a frame-like payload ({height, width, pixels}, as data.frame gives). */
+  function grayCanvas(image, className) {
+    const canvas = h("canvas." + className);
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const ctx = canvas.getContext("2d");
+    const data = ctx.createImageData(image.width, image.height);
+    const bytes = atob(image.pixels);
+    for (let i = 0; i < bytes.length; i++) {
+      const v = bytes.charCodeAt(i);
+      data.data[4 * i] = v; data.data[4 * i + 1] = v; data.data[4 * i + 2] = v; data.data[4 * i + 3] = 255;
+    }
+    ctx.putImageData(data, 0, 0);
+    return canvas;
+  }
+
+  /** A method run on the first frames of one entity, writing nothing (methods.preview): what it returns and saves. */
+  N.views.preview = function (app, method, entityType, key, options) {
+    const body = h("div.preview-body", h("div.muted", "Running…"));
+    const frames = h("input.input.preview-frames", { type: "number", min: 1, value: 20, title: "Frames the preview runs on" });
+    async function run() {
+      N.fill(body, h("div.muted.preview-running", "Running ", method.title, " on the first ", frames.value, " frames…"));
+      try {
+        const result = await app.client.request("methods.preview", { methodId: method.id, entityType, key, options, frames: Number(frames.value) || 20 });
+        N.fill(body,
+          h("div.preview-section", h("h4", "Result"), h("pre.preview-result.mono", JSON.stringify(result.results.length === 1 ? result.results[0] : result.results, null, 2))),
+          h("div.preview-section", h("h4", "Saved (in the preview only)"),
+            result.outputs.length ? h("div.preview-outputs", result.outputs.map((o) => h("div.preview-output", { dataset: { name: o.name } },
+              o.image ? grayCanvas(o.image, "preview-image") : h("div.preview-noimage", N.icon(o.kind === "document" ? "file" : "grid", 20)),
+              h("div.preview-name", o.name),
+              h("div.muted.preview-facts", o.kind === "array" ? `${o.size.join(" × ")} · ${o.min} to ${o.max}, mean ${o.mean}`
+                : o.kind === "document" ? (o.rois !== undefined ? `${o.rois} ROIs` : "a document") : o.size.join(" × ")))))
+              : h("div.muted", "Nothing")),
+          result.log.length ? h("div.preview-section", h("h4", "Log"), h("pre.preview-log.mono", result.log.join("\n"))) : null);
+      } catch (error) {
+        N.fill(body, h("div.preview-error", h("b", error.code ? `[${error.code}] ` : ""), error.message || String(error)));
+      }
+    }
+    const view = N.dialog({
+      title: `Preview · ${method.title} on ${N.fmt.key(key)}`,
+      content: h("div.preview", h("div.preview-bar", h("span.muted", "Runs on the first"), frames, h("span.muted", "frames of each stack and writes nothing."),
+        h("div.spacer"), h("button.btn.small.preview-again", { on: { click: () => run() } }, N.icon("retry", 13), "Run again")), body),
+      buttons: [{ label: "Close" }],
+    });
+    view.el.classList.add("preview-dialog");
+    frames.addEventListener("keydown", (event) => { if (event.key === "Enter") run(); });
+    run();
+    return view;
   };
 
   /* ------------------------------------------------------------------ tasks */

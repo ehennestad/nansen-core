@@ -3500,6 +3500,80 @@
           ]
         }
       }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 82,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "options": {
+            "stack": "TwoPhotonSeries_Original"
+          },
+          "frames": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 5,
+          "results": [
+            {
+              "n_frames": 5,
+              "height": 32,
+              "width": 32,
+              "mean_intensity": 201.7643,
+              "max_intensity": 812.0
+            }
+          ],
+          "outputs": [
+            {
+              "name": "FovAverageProjection",
+              "kind": "array",
+              "size": [
+                32,
+                32
+              ],
+              "min": 106.2,
+              "max": 394.6,
+              "mean": 201.7643
+            },
+            {
+              "name": "FovMaximumProjection",
+              "kind": "array",
+              "size": [
+                32,
+                32
+              ],
+              "min": 157.0,
+              "max": 812.0,
+              "mean": 251.6592
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 83,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "frames": 0
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
     }
   ]
 }
