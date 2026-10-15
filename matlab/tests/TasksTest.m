@@ -62,7 +62,8 @@ classdef TasksTest < matlab.unittest.TestCase
             sessions = testCase.sessions();
             ids = strings(1, 3);
             for i = 1:3
-                task = testCase.Queue.submit("core.wait", sessions(i), Options=struct("seconds", 0));
+                task = testCase.Queue.submit("core.wait", sessions(mod(i - 1, numel(sessions)) + 1), ...
+                    Options=struct("seconds", 0));   % the fixture has two sessions
                 ids(i) = string(task.id);
             end
             testCase.Queue.hold(ids(1));
