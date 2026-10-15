@@ -50,14 +50,19 @@
       ["Shift + click", "Select a range of rows"],
       // the stack viewer's keys: imviewer's and roimanager's
       ["In the viewer"],
-      ["← →", "A frame back or on (with Shift, 5 frames)"], ["z", "Zoom in"], ["Shift + Z", "Zoom out"], ["Shift + B", "Binning on or off"],
-      ["a r q u", "Accept, reject, unresolved or clear the selected ROIs"], ["Delete", "Delete the selected ROIs"],
-      ["m", "Merge the selected ROIs"], ["+ -", "Grow or shrink the selected ROI by a pixel"], ["i", "Improve the selected ROIs"],
-      ["↑ ↓", "The ROI before or after (also j and k)"], ["Alt + arrows", "Move the selected ROI a pixel"],
-      ["Shift + E", "Excitatory (Shift + I inhibitory, Shift + X axon)"], ["Shift + C", "Link the selected ROIs"], ["Shift + N", "The selected ROI's neuropil"],
+      ["← →", "A frame back or on (with Shift, 5 frames); the wheel steps through the frames"],
+      ["z", "Zoom in (also +); Shift + Z or - zoom out; Shift and the wheel zoom"], ["Shift + 1", "A quarter of the image (1 to 4); Shift + 0 all of it"],
+      ["Alt + arrows", "Pan"], ["p", "Play or stop; ` slower, ~ faster"], ["n m b", "The mean, the maximum, Mean CLAHE"],
+      ["Shift + N", "Moving average on or off (Shift + M moving maximum)"], ["c", "Brightness: the histogram and its limits"],
+      ["r", "Turn a quarter clockwise, with no ROI selected (Shift + R back; Alt for a degree)"], ["0 1 2", "All channels in colour, or one channel"],
+      ["1 2 3", "Accept, reject or unresolved the selected ROIs (0 clears; also a r q u)"], ["Delete", "Delete the selected ROIs"],
+      ["arrows", "Move the selected ROIs a pixel (5 with Shift)"], ["g h", "Grow or shrink the selected ROI by a pixel"],
+      ["m", "Merge the selected ROIs (two or more)"], ["i", "Improve the selected ROIs"], ["j k", "The ROI before or after"],
+      ["Shift + E", "Excitatory (Shift + I inhibitory, Shift + X axon)"], ["Shift + C", "Link the selected ROIs"], ["Shift + O", "The selected ROI's neuropil"],
+      ["1 … 5", "With the Detect tool: dev's detection mode"],
       ["Ctrl + Z", "Undo (Ctrl + Shift + Z redo)"], ["Shift + drag", "Select the ROIs in a rectangle"], ["Esc", "Leave the drawing tool"],
     ];
-    const keysOf = (keys) => (keys.includes(" ") && !["← →", "a r q u", "+ -", "↑ ↓"].includes(keys) ? keys.split(" ") : [keys])
+    const keysOf = (keys) => (keys.includes(" ") && !["← →", "n m b", "0 1 2", "1 2 3", "g h", "j k", "1 … 5"].includes(keys) ? keys.split(" ") : [keys])
       .map((k) => (["then", "+"].includes(k) ? h("span.muted", ` ${k} `) : h("kbd", k)));
     N.dialog({
       title: "Keyboard shortcuts", narrow: true,

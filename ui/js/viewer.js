@@ -272,6 +272,55 @@
     const slider = h("input.viewer-slider", { type: "range", min: 0, max: 0, value: 0, on: { input: () => { state.frame = Number(slider.value); show(); } } });
     const frameLabel = h("span.viewer-frame.mono", "");
     const playButton = h("button.btn.ghost.icon.small.viewer-play", { title: "Play", on: { click: () => toggle() } }, N.icon("play", 14));
+    // imviewer's playback speed: ` halves it, ~ doubles it
+    const speedLabel = h("button.btn.ghost.small.viewer-speed", { title: "Playback speed: ` slower, ~ faster; click for normal speed", style: { display: "none" },
+      on: { click: () => setSpeed(1) } }, "");
+    function setSpeed(speed) {
+      state.speed = Math.min(16, Math.max(1 / 16, speed));
+      speedLabel.textContent = `×${state.speed >= 1 ? state.speed : `1/${1 / state.speed}`}`;
+      speedLabel.style.display = state.speed === 1 ? "none" : "";
+    }
+    // imviewer's brightness slider (c) and Show Histogram: the image's values between the limits, and the limits to drag
+    const histogram = h("canvas.viewer-histogram", { width: 256, height: 48 });
+    const lowSlider = h("input.viewer-brightness-low", { type: "range", min: 0, max: 1000, value: 0, on: { input: () => fromSliders() } });
+    const highSlider = h("input.viewer-brightness-high", { type: "range", min: 0, max: 1000, value: 1000, on: { input: () => fromSliders() } });
+    const brightness = h("div.viewer-brightness.hidden", histogram,
+      h("div.viewer-brightness-sliders", h("label", "Low", lowSlider), h("label", "High", highSlider)));
+    const brightnessButton = h("button.btn.ghost.icon.small.viewer-brightness-toggle", { title: "Brightness and histogram (c)",
+      on: { click: () => showBrightness(brightness.classList.contains("hidden")) } }, N.icon("sun", 14));
+    function showBrightness(on) {
+      brightness.classList.toggle("hidden", !on);
+      brightnessButton.classList.toggle("active", on);
+      if (on) drawHistogram();
+    }
+    /** The sliders run over the values of the image shown with automatic limits (its smallest to its largest). */
+    function fromSliders() {
+      const [bottom, top] = state.range || [state.low, state.high];
+      const at = (slider) => bottom + (top - bottom) * Number(slider.value) / 1000;
+      state.auto = false;
+      auto.checked = false;
+      state.low = Math.min(at(lowSlider), at(highSlider));
+      state.high = Math.max(at(lowSlider), at(highSlider));
+      low.value = String(state.low);
+      high.value = String(state.high);
+      show();
+    }
+    function drawHistogram() {
+      if (!last || brightness.classList.contains("hidden")) return;
+      const [bottom, top] = state.range || [last.low, last.high];
+      const place = (value) => String(Math.round(top > bottom ? (value - bottom) / (top - bottom) * 1000 : 0));
+      lowSlider.value = place(state.low);
+      highSlider.value = place(state.high);
+      const counts = new Array(64).fill(0);
+      const bytes = last.pixels ? atob(last.pixels) : "";
+      for (let i = 0; i < bytes.length; i++) counts[bytes.charCodeAt(i) >> 2]++;
+      const ctx = histogram.getContext("2d");
+      ctx.clearRect(0, 0, histogram.width, histogram.height);
+      const most = Math.max(1, ...counts);
+      ctx.fillStyle = getComputedStyle(histogram).color || "#888";
+      counts.forEach((n, k) => { const tall = Math.round(Math.sqrt(n / most) * histogram.height); ctx.fillRect(k * 4, histogram.height - tall, 3, tall); });
+      histogram.dataset.pixels = String(bytes.length);
+    }
     const mode = h("select.input.viewer-mode", { on: { change: () => { state.mode = mode.value; show(); } } },
       h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "meanClahe" }, "Mean CLAHE"),
       h("option", { value: "max" }, "Maximum"),
@@ -415,7 +464,12 @@
     // --- where the pointer is: image coordinates (fractional) and pixels -------------------------------------------
     const pointAt = (event) => {
       const rect = canvas.getBoundingClientRect();
-      return [(event.clientY - rect.top) / rect.height * last.height, (event.clientX - rect.left) / rect.width * last.width];
+      if (!state.rotation) return [(event.clientY - rect.top) / rect.height * last.height, (event.clientX - rect.left) / rect.width * last.width];
+      // the image turned (imviewer's r): the pointer turned back about the image's middle, on the image's own size
+      const width = canvas.offsetWidth, height = canvas.offsetHeight, turn = -state.rotation * Math.PI / 180;
+      const dx = event.clientX - (rect.left + rect.width / 2), dy = event.clientY - (rect.top + rect.height / 2);
+      const x = dx * Math.cos(turn) - dy * Math.sin(turn), y = dx * Math.sin(turn) + dy * Math.cos(turn);
+      return [(y + height / 2) / height * last.height, (x + width / 2) / width * last.width];
     };
     const pixelAt = (event) => pointAt(event).map(Math.floor);
     const visible = () => (state.rois || []).filter((r) => !(state.hideRejected && r.classification === "rejected"));
@@ -469,11 +523,28 @@
       stage.scrollLeft += after.left + fx * after.width - clientX;
       stage.scrollTop += after.top + fy * after.height - clientY;
     }
+    // imviewer's mouse: the wheel steps through the frames; with Shift (or a pinch, which comes with Ctrl) it zooms, and a
+    // projection or a single image only zooms
     stage.addEventListener("wheel", (event) => {
       if (!last) return;
       event.preventDefault();
-      zoomTo(state.zoom * (event.deltaY < 0 ? 1.25 : 0.8), event.clientX, event.clientY);
+      const delta = event.deltaY || event.deltaX;
+      if (!delta) return;
+      if (event.shiftKey || event.ctrlKey || state.mode !== "frame" || state.frames < 2) zoomTo(state.zoom * (delta < 0 ? 1.25 : 0.8), event.clientX, event.clientY);
+      else stepFrames(delta < 0 ? -1 : 1);
     }, { passive: false });
+    function stepFrames(by) {
+      state.frame = Math.min(state.frames - 1, Math.max(0, state.frame + by));
+      slider.value = String(state.frame);
+      show();
+    }
+    /** Turn the image clockwise by degrees (imviewer's r: 90 at a time, back with Shift; 1 at a time with Alt). */
+    function rotate(by) {
+      state.rotation = ((state.rotation || 0) + by) % 360;
+      holder.style.transform = state.rotation ? `rotate(${state.rotation}deg)` : "";
+      canvas.dataset.rotation = String(state.rotation);
+      drawOverlay();
+    }
     canvas.addEventListener("dblclick", (event) => { if (!state.tool) zoomTo(state.zoom > 1 ? 1 : 4, event.clientX, event.clientY); });
     const resizing = new ResizeObserver(() => layout());
     resizing.observe(stage);
@@ -744,9 +815,9 @@
       ["clear", "retry", "Clear (u)", () => classify(null)],
       ["delete", "trash", "Delete (Delete)", () => remove()],
     ].map(([name, icon, title, run]) => h(`button.btn.ghost.icon.small.roi-${name}`, { title, on: { click: run } }, N.icon(icon, 13)));
-    const growButton = h("button.btn.ghost.icon.small.roi-grow", { title: "Grow the selected ROI by a pixel (+)", on: { click: () => reshape(1) } }, N.icon("plus", 13));
+    const growButton = h("button.btn.ghost.icon.small.roi-grow", { title: "Grow the selected ROI by a pixel (g)", on: { click: () => reshape(1) } }, N.icon("plus", 13));
     const improveButton = h("button.btn.ghost.icon.small.roi-improve", { title: "Improve the selected ROIs (i): find each again around its middle, as the Detect tool does, keeping its id and class", on: { click: () => improve() } }, N.icon("crosshair", 13));
-    const shrinkButton = h("button.btn.ghost.icon.small.roi-shrink", { title: "Shrink the selected ROI by a pixel (-)", on: { click: () => reshape(-1) } }, N.icon("minus", 13));
+    const shrinkButton = h("button.btn.ghost.icon.small.roi-shrink", { title: "Shrink the selected ROI by a pixel (h)", on: { click: () => reshape(-1) } }, N.icon("minus", 13));
     const undoButton = h("button.btn.ghost.icon.small.roi-undo", { title: "Undo (Ctrl+Z)", on: { click: () => undo() } }, N.icon("undo", 13));
     const redoButton = h("button.btn.ghost.icon.small.roi-redo", { title: "Redo (Ctrl+Shift+Z)", on: { click: () => redo() } }, N.icon("redo", 13));
     const mergeButton = h("button.btn.ghost.icon.small.roi-merge", { title: "Merge the selected ROIs into one (m); Ctrl-click selects several", on: { click: () => merge() } }, N.icon("merge", 13));
@@ -1157,60 +1228,102 @@
       edit({ merge: [ids] });
     }
     function onKey(event) {
-      if (event.key === "B" && !event.ctrlKey && !event.metaKey && state.mode === "frame" && document.body.contains(canvas)
-          && !["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) {   // imviewer's binning toggle
-        state.binLast = state.bin || state.binLast || "mean:10";
-        state.bin = state.bin ? "" : state.binLast;
-        binPick.value = state.bin;
-        show();
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName) || !document.body.contains(canvas) || onSelect) return;
+      const rois = Boolean(state.rois) && state.volume === "single";   // the ROIs are of one plane
+      if (event.ctrlKey || event.metaKey) {
+        if (!rois) return;
+        if (event.key.toLowerCase() === "z") { if (event.shiftKey) redo(); else undo(); }
+        else if (event.key.toLowerCase() === "y") redo();
+        else return;
+        event.preventDefault();
         return;
       }
-      const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName);
-      if (!typing && document.body.contains(canvas) && !onSelect && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        // imviewer's keys: ← and → a frame back and on (with Shift, 5 frames), z and Shift+Z zoom in and out
-        if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && state.mode === "frame" && state.frames > 1) {
-          const by = (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 5 : 1);
-          state.frame = Math.min(state.frames - 1, Math.max(0, state.frame + by));
-          slider.value = String(state.frame);
-          show();
-          event.preventDefault();
-          return;
-        }
-        if (event.key === "z" || event.key === "Z") { zoomTo(state.zoom * (event.key === "z" ? 1.25 : 0.8)); event.preventDefault(); return; }
-      }
-      if (typing || !state.rois || !document.body.contains(canvas)) return;
-      if (state.volume !== "single") return;   // the ROIs are of one plane
-      if (onSelect) return;   // the gallery has the keys
+      if (event.key === "Escape" && state.tool === "polygon" && state.polygon.length) { state.polygon = []; drawOverlay(); event.stopPropagation(); return; }
+      if (event.key === "Escape" && state.tool) { setTool(null); event.stopPropagation(); return; }
+      if ((rois && roiKey(event)) || viewerKey(event)) event.preventDefault();
+    }
+    /** roimanager's keys (its RoiDisplayInputHandler, with the selected ROIs; and the rebuild's): true when one was used. */
+    function roiKey(event) {
+      const key = event.key, some = state.selection.size > 0;
       const order = visible().map((r) => r.id);
       const at = order.indexOf(state.selected);
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { if (event.shiftKey) redo(); else undo(); }
-      else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") redo();
-      else if (event.key === "Escape" && state.tool === "polygon" && state.polygon.length) { state.polygon = []; drawOverlay(); event.stopPropagation(); }
-      else if (event.key === "Escape" && state.tool) { setTool(null); event.stopPropagation(); }
-      else if (event.ctrlKey || event.metaKey) return;
-      else if (state.tool === "detect" && /^[1-5]$/.test(event.key)) setDetectMode(Number(event.key));
-      else if (event.key === "+" || event.key === "=") reshape(1);
-      else if (event.key === "-") reshape(-1);
-      else if (event.key === "a") classify("accepted");
-      else if (event.key === "r") classify("rejected");
-      else if (event.key === "q") classify("unresolved");
-      else if (event.key === "u") classify(null);
-      else if (event.key === "m") merge();
-      else if (event.key === "i") improve();
-      else if (event.key === "E") setCellType("excitatory");
-      else if (event.key === "I") setCellType("inhibitory");
-      else if (event.key === "X") setCellType("axon");
-      else if (event.key === "C") linkRois();
-      else if (event.key === "N" && !viewable) setNeuropil(!state.neuropil);
-      else if (event.key === "Delete" || event.key === "Backspace") remove();
-      else if (event.altKey && event.key.startsWith("Arrow")) {   // move the selected ROI a pixel
-        if (state.selected === null) return;
-        const [rows, columns] = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[event.key];
-        edit({ move: [{ id: state.selected, rows, columns }] });
-      } else if (event.key === "ArrowDown" || event.key === "j") select(order[Math.min(order.length - 1, at + 1)] ?? null);
-      else if (event.key === "ArrowUp" || event.key === "k") select(order[Math.max(0, at - 1)] ?? null);
-      else return;
-      event.preventDefault();
+      const arrows = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+      if (state.tool === "detect" && /^[1-5]$/.test(key) && !event.altKey) setDetectMode(Number(key));
+      else if (some && !event.altKey && /^Digit[0-3]$/.test(event.code) && !event.shiftKey)   // dev's classes: 1 accepted, 2 rejected, 3 unresolved; 0 none
+        classify([null, "accepted", "rejected", "unresolved"][Number(event.code.slice(5))]);
+      else if (some && !event.altKey && arrows[key]) {   // move the selected ROIs a pixel (5 with Shift)
+        const [rows, columns] = arrows[key].map((v) => v * (event.shiftKey ? 5 : 1));
+        edit({ move: selectedIds().map((id) => ({ id, rows, columns })) });
+      }
+      else if (event.altKey) return false;
+      else if (some && (key === "g" || key === "h")) reshape(key === "g" ? 1 : -1);
+      else if (some && key === "a") classify("accepted");
+      else if (some && key === "r") classify("rejected");
+      else if (some && key === "q") classify("unresolved");
+      else if (some && key === "u") classify(null);
+      else if (state.selection.size > 1 && key === "m") merge();
+      else if (some && key === "i") improve();
+      else if (some && key === "E") setCellType("excitatory");
+      else if (some && key === "I") setCellType("inhibitory");
+      else if (some && key === "X") setCellType("axon");
+      else if (some && key === "C") linkRois();
+      else if (key === "O" && !viewable) setNeuropil(!state.neuropil);
+      else if (some && (key === "Delete" || key === "Backspace")) remove();
+      else if (key === "j" || (!some && key === "ArrowDown" && order.length)) select(order[Math.min(order.length - 1, at + 1)] ?? null);
+      else if (key === "k" || (!some && key === "ArrowUp" && order.length)) select(order[Math.max(0, at - 1)] ?? null);
+      else return false;
+      return true;
+    }
+    /** imviewer's keys (its App's onKeyPressed): true when one was used. */
+    function viewerKey(event) {
+      const key = event.key;
+      const setMode = (value) => { mode.value = value; state.mode = value; show(); };
+      const toggleBin = (method) => {   // dev's moving average (Shift+N) or maximum (Shift+M), on and off
+        if (state.mode !== "frame") return;
+        state.bin = state.bin && state.bin.startsWith(method) ? "" : `${method}:${(state.binLast || "mean:10").split(":")[1]}`;
+        if (state.bin) state.binLast = state.bin;
+        binPick.value = state.bin;
+        show();
+      };
+      if (event.altKey && key.startsWith("Arrow")) {   // pan
+        const [down, right] = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[key];
+        stage.scrollTop += down * stage.clientHeight / 10;
+        stage.scrollLeft += right * stage.clientWidth / 10;
+      } else if (/^Digit[0-4]$/.test(event.code)) {
+        const k = Number(event.code.slice(5));
+        if (event.shiftKey) {   // a quadrant (1-4), or all of it (0)
+          if (!k) { zoomTo(1); return true; }
+          zoomTo(2);
+          stage.scrollLeft = k === 2 || k === 4 ? stage.scrollWidth : 0;
+          stage.scrollTop = k > 2 ? stage.scrollHeight : 0;
+        } else if (state.channels < 2) return false;
+        else if (!k) { state.composite = true; state.shown = state.shown.map(() => true); N.fill(channelStrip); showChannels(); show(); }
+        else if (k > state.channels) return false;
+        else if (event.altKey && composite()) { state.shown[k - 1] = !state.shown[k - 1]; N.fill(channelStrip); showChannels(); show(); }
+        else { state.composite = false; showChannels(); toPlace(() => pickChannel(k - 1)); channelPick.value = String(k - 1); }
+      }
+      else if (event.altKey && (key === "r" || key === "R" || key === "®")) rotate(event.shiftKey ? -1 : 1);
+      else if (event.altKey) return false;
+      else if ((key === "ArrowLeft" || key === "ArrowRight") && state.mode === "frame" && state.frames > 1) stepFrames((key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 5 : 1));
+      else if (key === "z" || key === "+" || key === "=") zoomTo(state.zoom * 1.25);
+      else if (key === "Z" || key === "-") zoomTo(state.zoom * 0.8);
+      else if (key === "p") toggle();
+      else if (key === "n") setMode("mean");
+      else if (key === "m") setMode("max");
+      else if (key === "b") setMode("meanClahe");
+      else if (key === "N") toggleBin("mean");
+      else if (key === "M") toggleBin("max");
+      else if (key === "B" && state.mode === "frame") {   // binning off, or on again as it was last
+        if (state.bin) state.binLast = state.bin;
+        state.bin = state.bin ? "" : state.binLast || "mean:10";
+        binPick.value = state.bin;
+        show();
+      }
+      else if (key === "c") showBrightness(brightness.classList.contains("hidden"));
+      else if (key === "r" || key === "R") rotate(key === "r" ? 90 : -90);
+      else if (key === "`" || key === "~") setSpeed((state.speed || 1) * (key === "~" ? 2 : 0.5));
+      else return false;
+      return true;
     }
     document.addEventListener("keydown", onKey, true);
 
@@ -1636,7 +1749,7 @@
     paneStage.addEventListener("wheel", (event) => {
       if (!pane || !pane.last) return;
       event.preventDefault();
-      zoomLinked((pane.linked ? state.zoom : pane.zoom) * (event.deltaY < 0 ? 1.25 : 0.8), event.clientX, event.clientY);
+      zoomLinked((pane.linked ? state.zoom : pane.zoom) * ((event.deltaY || event.deltaX) < 0 ? 1.25 : 0.8), event.clientX, event.clientY);
     }, { passive: false });
     paneCanvas.addEventListener("dblclick", (event) => {
       if (pane && pane.last) zoomLinked((pane.linked ? state.zoom : pane.zoom) > 1 ? 1 : 4, event.clientX, event.clientY);
@@ -1754,7 +1867,7 @@
         slider.max = String(Math.max(0, frame.frames - 1));
         slider.disabled = state.mode !== "frame" || frame.frames < 2;
         playButton.disabled = slider.disabled;
-        if (state.auto) { state.low = frame.low; state.high = frame.high; low.value = String(frame.low); high.value = String(frame.high); }
+        if (state.auto) { state.low = frame.low; state.high = frame.high; low.value = String(frame.low); high.value = String(frame.high); state.range = [frame.low, frame.high]; }
         frameLabel.textContent = state.mode === "frame" ? `${state.frame + 1} / ${frame.frames}` + (frame.binned ? ` (${frame.binned[0] + 1}–${frame.binned[1]})` : "")
           : `${frame.frames} frames`;
         binPick.disabled = state.mode !== "frame";
@@ -1763,6 +1876,7 @@
         if (resized) layout(); else { drawOverlay(); drawScalebar(); }
         showNeuropil();
         showLinked();
+        drawHistogram();
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
         const planes = frame.layers && state.volume !== "single" && state.planes > 1 && state.mode !== "peakTime"
@@ -1775,7 +1889,7 @@
       } finally {
         state.busy = false;
         if (state.pending) { state.pending = false; show(); }
-        else if (state.playing) setTimeout(step, 80);
+        else if (state.playing) setTimeout(step, 80 / (state.speed || 1));
       }
     }
 
@@ -1795,10 +1909,11 @@
 
     const content = h("div.viewer" + (signalPanel ? ".with-signal" : ""),
       h("div.viewer-bar",
-        playButton, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
-        h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
+        playButton, speedLabel, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
+        h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high, brightnessButton,
         binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, groupsButton, roiVariables.length ? roiColorPick : null, mirrorLabel, measurement, measureButton, scaleButton,
         linkButton, exportButton),
+      brightness,
       h("div.viewer-main", stage, linkedPanel, roiVariables.length ? roiPanel : null),
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel, gridButton));

@@ -578,6 +578,13 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .viewer-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .viewer-slider, .viewer-linked-slider { flex: 1; min-width: 140px; accent-color: var(--accent); }
 .viewer-frame { min-width: 70px; font-size: 12px; color: var(--muted); }
+.viewer-speed { font-size: 12px; font-variant-numeric: tabular-nums; }
+.viewer-brightness { display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.viewer-histogram { width: 256px; height: 48px; color: var(--accent); background: var(--surface-2, transparent); border-radius: 6px; }
+.viewer-brightness-sliders { display: flex; flex-direction: column; gap: 4px; }
+.viewer-brightness-sliders label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.viewer-brightness-sliders input { width: 220px; accent-color: var(--accent); }
+.viewer-holder { transition: transform 0.15s ease; }
 .viewer-bar .input { width: auto; padding-top: 5px; padding-bottom: 5px; }
 .viewer-bar input.input[type=number] { width: 90px; }
 .viewer-bar label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }

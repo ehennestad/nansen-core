@@ -1485,6 +1485,51 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     wait_until(lambda: width() > fitted * 1.2)
     page.keyboard.press("Shift+Z")
     wait_until(lambda: abs(width() - fitted) < 1)
+    page.keyboard.press("+")   # + and - zoom too, as in dev's help
+    wait_until(lambda: width() > fitted * 1.2)
+    page.keyboard.press("-")
+    wait_until(lambda: abs(width() - fitted) < 1)
+    box = page.locator(".viewer-canvas").bounding_box()
+    middle = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.move(*middle)
+    page.mouse.wheel(0, 100)   # imviewer's wheel: a frame on
+    page.wait_for_selector(".viewer-frame:text-is('7 / 40')")
+    mode_is = lambda value: page.locator(".viewer-mode").input_value() == value
+    page.keyboard.press("n")   # imviewer's n, m and b: the mean, the maximum and Mean CLAHE
+    wait_until(lambda: mode_is("mean"))
+    page.keyboard.press("m")
+    wait_until(lambda: mode_is("max"))
+    page.keyboard.press("b")
+    wait_until(lambda: mode_is("meanClahe"))
+    page.keyboard.press("c")   # imviewer's brightness: the image's histogram, and its limits to drag
+    page.wait_for_selector(".viewer-brightness:not(.hidden) .viewer-histogram[data-pixels='1024']")
+    page.locator(".viewer-brightness-high").evaluate("(e) => { e.value = 500; e.dispatchEvent(new Event('input')); }")
+    wait_until(lambda: not page.locator(".viewer-contrast input").is_checked())
+    page.keyboard.press("c")
+    page.wait_for_selector(".viewer-brightness.hidden", state="attached")
+    page.keyboard.press("r")   # imviewer's r turns the image a quarter clockwise; the pointer still finds its pixel
+    page.wait_for_selector(".viewer-canvas[data-rotation='90']")
+    page.wait_for_timeout(300)   # the turn's transition
+    row, column = 4, 20
+    dx, dy = (column + 0.5) / 32 * box["width"] - box["width"] / 2, (row + 0.5) / 32 * box["height"] - box["height"] / 2
+    page.mouse.move(middle[0] - dy, middle[1] + dx)   # a clockwise quarter turn takes (dx, dy) to (-dy, dx)
+    wait_until(lambda: page.locator(".viewer-where").inner_text().startswith(f"row {row}, column {column}"))
+    page.keyboard.press("Shift+R")
+    page.wait_for_selector(".viewer-canvas[data-rotation='0']")
+    page.select_option(".viewer-mode", "frame")
+    page.evaluate("document.activeElement.blur()")
+    page.keyboard.press("p")   # imviewer's p plays and stops; ~ and ` double and halve the speed
+    page.wait_for_selector(".viewer-play[title='Pause']")
+    page.keyboard.press("~")
+    page.wait_for_selector(".viewer-speed:text-is('×2')")
+    page.keyboard.press("`")
+    page.keyboard.press("`")
+    page.wait_for_selector(".viewer-speed:text-is('×1/2')")
+    page.keyboard.press("p")
+    page.wait_for_selector(".viewer-play[title='Play']")
+    page.click(".viewer-speed")
+    page.wait_for_selector(".viewer-speed", state="hidden")
+    page.locator(".viewer-auto, .viewer-contrast input").first.check()
     page.locator(".viewer-slider").fill("9")
     page.wait_for_selector(".viewer-frame:text-is('10 / 40')")
     page.select_option(".viewer-mode", "max")
@@ -1503,6 +1548,21 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     page.click(".viewer-roi-list li[data-roi='2']")
     page.keyboard.press("r")
     page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('rejected')")
+    page.keyboard.press("1")   # roimanager's classes by digit: 1 accepted, 2 rejected
+    page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('accepted')")
+    page.keyboard.press("2")
+    page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('rejected')")
+    page.keyboard.press("Shift+1")   # imviewer's Shift+1: the top-left quarter, zoomed; Alt and the arrows pan
+    page.wait_for_selector(".viewer-zoom:text-is('200%')")
+    for _ in range(4):
+        page.keyboard.press("z")
+    pan = "(() => { const s = document.querySelector('.viewer-stage'); return [s.scrollLeft, s.scrollTop]; })()"
+    start = page.evaluate(pan)
+    page.keyboard.press("Alt+ArrowRight")
+    page.keyboard.press("Alt+ArrowDown")
+    wait_until(lambda: page.evaluate(pan)[0] > start[0] and page.evaluate(pan)[1] > start[1])
+    page.keyboard.press("Shift+0")
+    page.wait_for_selector(".viewer-zoom", state="hidden")
     page.click(".viewer-add")
     box = page.locator(".viewer-canvas").bounding_box()
     page.mouse.click(box["x"] + box["width"] * 5.5 / 32, box["y"] + box["height"] * 26.5 / 32)
@@ -1606,12 +1666,14 @@ def test_draw_detect_merge_and_move_rois_in_the_viewer(empty_app, page):
     page.mouse.move(*at(row + 2.5, column - 0.5), steps=6)
     page.mouse.up()
     wait_until(lambda: pixels(rois()[0]) == [(r + 2, c - 1) for r, c in before])
-    page.keyboard.press("Alt+ArrowUp")   # and back up a row with the keys
+    page.keyboard.press("ArrowUp")   # and back up a row with the keys (roimanager's arrows move the selected ROIs)
     wait_until(lambda: pixels(rois()[0]) == [(r + 1, c - 1) for r, c in before])
 
     # zoom with the wheel and back with a double-click; save the image
     page.mouse.move(*at(16, 16))
+    page.keyboard.down("Shift")   # imviewer's Shift and the wheel zoom
     page.mouse.wheel(0, -300)
+    page.keyboard.up("Shift")
     page.wait_for_selector(".viewer-zoom:visible")
     assert page.locator(".viewer-canvas").bounding_box()["width"] > box["width"] * 1.2
     page.locator(".viewer-canvas").dblclick()
@@ -1851,6 +1913,14 @@ def test_channels_in_colour_and_planes_side_by_side(empty_app, page):   # imview
     page.uncheck(".viewer-composite")   # one channel again, in the colormap
     wait_until(lambda: all(r == g == b for r, g, b in rgb()["rgb"]))
     assert not page.locator(".viewer-channel-strip").is_visible()
+    page.evaluate("document.activeElement.blur()")
+    page.keyboard.press("0")   # imviewer's 0: every channel, in colour; 2: channel 2 alone
+    page.wait_for_selector(".viewer-composite:checked")
+    page.keyboard.press("2")
+    page.wait_for_selector(".viewer-composite:not(:checked)")
+    wait_until(lambda: page.locator(".viewer-channel").input_value() == "1")
+    page.keyboard.press("1")
+    wait_until(lambda: page.locator(".viewer-channel").input_value() == "0")
 
     # the planes side by side, labelled, 10 pixels apart; their maximum and mean are on the montage's one scale
     page.select_option(".viewer-volume", "montage")
@@ -2133,10 +2203,12 @@ def test_a_linked_stack_beside_the_viewer_keeps_its_frame_zoom_and_pan(empty_app
     width = "(selector) => document.querySelector(selector).parentElement.getBoundingClientRect().width"
     before = page.evaluate(width, ".viewer-canvas")
     page.locator(".viewer-stage").first.hover()
+    page.keyboard.down("Shift")   # imviewer's Shift and the wheel zoom (the wheel alone steps through the frames)
     page.mouse.wheel(0, -100)   # the zoom, in step
     page.wait_for_selector(".viewer-zoom:text-is('125%')")
     page.mouse.wheel(0, -100)
     page.wait_for_selector(".viewer-zoom:text-is('156%')")
+    page.keyboard.up("Shift")
     wait_until(lambda: abs(page.evaluate(width, ".viewer-linked-canvas") - page.evaluate(width, ".viewer-canvas")) < 1)
     assert page.evaluate(width, ".viewer-canvas") > before * 1.5
     scroll = "(selector) => { const s = document.querySelector(selector); return [s.scrollLeft / Math.max(1, s.scrollWidth - s.clientWidth), s.scrollWidth - s.clientWidth]; }"
@@ -2182,7 +2254,7 @@ def test_the_selected_rois_neuropil_is_shown_as_signal_extraction_takes_it(empty
     page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
     page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
     page.click(".viewer-roi-list li[data-roi='1']")
-    page.keyboard.press("Shift+N")
+    page.keyboard.press("Shift+O")
     page.wait_for_selector(".viewer-canvas:not([data-neuropil=''])")
 
     def neuropil(roi):   # what the extraction takes, with its preferred preset
@@ -2200,7 +2272,7 @@ def test_the_selected_rois_neuropil_is_shown_as_signal_extraction_takes_it(empty
     page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('rejected')")
     page.click(".viewer-roi-list li[data-roi='1']")
     page.wait_for_selector(f".viewer-canvas[data-neuropil='{neuropil(1)}']")
-    page.keyboard.press("Shift+N")
+    page.keyboard.press("Shift+O")
     page.wait_for_selector(".viewer-canvas[data-neuropil='']")
     assert not page.locator(".viewer-roi-neuropil").is_checked()
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
@@ -2350,7 +2422,7 @@ def test_review_rois_across_sessions(empty_app, page):
     before = {tuple(k.values()): sorted(map(tuple, load(k)[0]["pixels"])) for k in (s1, s3)}
     page.locator(".rr-table tr[data-roi='1'] td").nth(2).dblclick()   # ROI 1 in s3
     page.wait_for_selector(".viewer-dialog .viewer-roi-list li[data-roi='1'].selected")
-    page.keyboard.press("Alt+ArrowDown")
+    page.keyboard.press("ArrowDown")
     def moved():
         try:
             return sorted(map(tuple, load(s3)[0]["pixels"])) == [(r + 1, c) for r, c in before[("m1", "s3")]]
@@ -2386,7 +2458,7 @@ def test_roi_edits_go_to_all_aligned_sessions(empty_app, page):
     page.locator(".rr-table tr[data-roi='1'] td").nth(2).dblclick()
     page.wait_for_selector(".viewer-dialog .viewer-roi-list li[data-roi='1'].selected")
     assert page.locator(".viewer-dialog .viewer-mirror").is_checked()
-    page.keyboard.press("Alt+ArrowDown")
+    page.keyboard.press("ArrowDown")
     settled(lambda: sorted(map(tuple, load(s1)[0]["pixels"])) == [(r + 1, c) for r, c in before])
     page.wait_for_selector(".viewer-dialog .viewer-status:has-text('also in 1 aligned session')")
     # ROI 2 deleted there is deleted in s1 too
@@ -2407,7 +2479,7 @@ def test_roi_edits_go_to_all_aligned_sessions(empty_app, page):
     page.locator(".rr-table tr[data-roi='1'] td").nth(2).dblclick()
     page.wait_for_selector(".viewer-dialog .viewer-roi-list li[data-roi='1'].selected")
     assert not page.locator(".viewer-dialog .viewer-mirror").is_checked()
-    page.keyboard.press("Alt+ArrowUp")
+    page.keyboard.press("ArrowUp")
     settled(lambda: sorted(map(tuple, load(s3)[0]["pixels"])) == before3)
     assert sorted(map(tuple, load(s1)[0]["pixels"])) == [(r + 1, c) for r, c in before]
 
@@ -2555,7 +2627,7 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     page.keyboard.press("a")
     wait_until(lambda: rois()[0].get("classification") == "accepted")
     before = pixels(rois()[0])
-    page.keyboard.press("-")
+    page.keyboard.press("h")   # roimanager's g and h grow and shrink
     wait_until(lambda: len(rois()[0]["pixels"]) < len(before))
     small = pixels(rois()[0])
     middle = [math.floor(sum(p[i] for p in small) / len(small) + 0.5) for i in (0, 1)]
