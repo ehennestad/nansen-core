@@ -1263,6 +1263,7 @@
                 } } }, "Change path")));
             }))) : h("div.card-body.muted", "No dataset.")),
         h("div.card.data-variables", h("div.card-head", N.icon("file"), h("h3", "Data variables"), h("div.spacer"),
+          h("button.btn.small.ghost.new-adapter", { title: "Start a file adapter of the project, for a file format NANSEN cannot read yet", on: { click: () => newAdapterDialog(app) } }, N.icon("file"), "New file adapter"),
           dataset && project.entityTypes.length ? h("button.btn.small.add-variable", { on: { click: () => dataVariableDialog(app) } }, N.icon("plus"), "Add data variable") : null),
           variables.length ? h("table.simple", h("thead", h("tr", ["Name", "Entity", "Location", "File", "Adapter", ""].map((t) => h("th", t)))),
             h("tbody", variables.map((v) => h("tr", { dataset: { variable: v.name } }, h("td", h("b", v.title || v.name), v.title ? h("div.muted.mono", v.name) : null),
@@ -1562,6 +1563,31 @@
       ],
     });
     return d;
+  }
+
+  /* Start a project file adapter: its document and a class per language to fill in. */
+  function newAdapterDialog(app) {
+    formDialog({
+      title: "New file adapter",
+      intro: "A file adapter reads and writes one kind of file for data variables. NANSEN writes its document into file-adapters/ and a class with read and write for each language, in the project's python/ and matlab/ folders; fill them in.",
+      label: "Create",
+      required: ["id"],
+      schema: { type: "object", properties: {
+        id: { type: "string", title: "Id", description: "A lower-case letter, then letters, digits or _", pattern: "^[a-z][a-z0-9_]*$" },
+        title: { type: "string", title: "Title" },
+        extensions: { type: "string", title: "File extensions", description: "Separated by commas, such as .tif, .tiff" },
+        python: { type: "boolean", title: "Python", default: true },
+        matlab: { type: "boolean", title: "MATLAB", default: true },
+      } },
+      submit: async (values) => {
+        const languages = ["python", "matlab"].filter((l) => values[l]);
+        if (!languages.length) throw new Error("Choose Python, MATLAB or both");
+        const extensions = (values.extensions || "").split(",").map((e) => e.trim()).filter(Boolean).map((e) => (e.startsWith(".") ? e : "." + e));
+        const result = await app.client.request("adapters.create", { id: values.id, title: values.title || "", extensions, languages });
+        app.render();
+        N.toast("File adapter created", result.files.join(" · "), "success", 8000);
+      },
+    });
   }
 
   /* Start a project method: its document and a file per language to fill in. */

@@ -466,6 +466,134 @@
       "expect": {
         "error": "invalid-params"
       }
+    },
+    {
+      "request": {
+        "method": "adapters.create",
+        "id": 25,
+        "params": {
+          "id": "tiff_stack",
+          "title": "TIFF stack",
+          "extensions": [
+            ".tif",
+            ".tiff"
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "tiff_stack",
+          "title": "TIFF stack",
+          "extensions": [
+            ".tif",
+            ".tiff"
+          ],
+          "implementations": {
+            "python": "tiff_stack_adapter:TiffStackAdapter",
+            "matlab": "TiffStackAdapter"
+          },
+          "files": [
+            "file-adapters/tiff_stack.fileAdapter.nansen.json",
+            "python/tiff_stack_adapter.py",
+            "matlab/TiffStackAdapter.m"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.options",
+        "id": 26,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "locations": [
+            {
+              "id": "raw"
+            },
+            {
+              "id": "processed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.create",
+        "id": 27,
+        "params": {
+          "id": "tiff_stack"
+        }
+      },
+      "expect": {
+        "error": "adapter-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.create",
+        "id": 28,
+        "params": {
+          "id": "json"
+        }
+      },
+      "expect": {
+        "error": "adapter-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.create",
+        "id": 29,
+        "params": {
+          "id": "raw",
+          "extensions": [
+            "raw"
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.create",
+        "id": 30,
+        "params": {
+          "id": "RawFile"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "adapters.create",
+        "id": 31,
+        "params": {
+          "id": "single",
+          "languages": [
+            "python"
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "implementations": {
+            "python": "single_adapter:SingleAdapter"
+          },
+          "files": [
+            "file-adapters/single.fileAdapter.nansen.json",
+            "python/single_adapter.py"
+          ]
+        }
+      }
     }
   ]
 }

@@ -95,6 +95,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `read-only-column` | A key column, or a column of a computed fragment, cannot be edited |
 | `generation-failed` | DSM cannot generate a path for the entity in the location (the DSM code is in the message) |
 | `unknown-data-variable` | The project has no data variable of that name |
+| `adapter-exists` | The project has a file adapter of that id, or a file a new adapter would be written to |
 | `unknown-file-adapter` | No file adapter has that id |
 | `unknown-file-pattern` | A data variable names a file pattern that its entity's level does not have |
 | `adapter-unavailable` | The file adapter needs a package that is not installed (for example SciPy for `mat`) |

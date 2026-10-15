@@ -692,6 +692,98 @@ classdef Project < handle
 
         % -- data variables and file adapters ------------------------------------------
 
+        function result = createAdapter(obj, adapterId, options)
+            %createAdapter Start a file adapter of the project: its document in file-adapters/ and, per language,
+            %   a class to fill in (python/<id>_adapter.py, matlab/<Id>Adapter.m), from the templates that ship with NANSEN
+            arguments
+                obj
+                adapterId (1,1) string
+                options.Title (1,1) string = ""
+                options.Extensions (1,:) string = strings(1, 0)
+                options.Languages (1,:) string = ["python", "matlab"]
+            end
+            if isempty(regexp(adapterId, "^[a-z][a-z0-9_]*$", "once"))
+                nansen.internal.throwError("invalid-params", "a project adapter's id is a lower-case letter, then letters, digits or _")
+            end
+            languages = unique(options.Languages, "stable");
+            if isempty(languages) || ~all(ismember(languages, ["python", "matlab"]))
+                nansen.internal.throwError("invalid-params", "languages are python and/or matlab")
+            end
+            extensions = unique(options.Extensions, "stable");
+            for extension = extensions
+                if isempty(regexp(extension, "^\.[A-Za-z0-9.]+$", "once"))
+                    nansen.internal.throwError("invalid-params", "'%s' is not a file extension such as .tif", extension)
+                end
+            end
+            title = strjoin(split(strtrim(options.Title))', " ");
+            if title == ""
+                title = adapterId;
+            end
+            parts = split(adapterId, "_")';
+            capitalized = arrayfun(@(p) char(upper(extractBefore(p, 2)) + extractAfter(p, 1)), parts, UniformOutput=false);
+            className = strjoin(string(capitalized), "") + "Adapter";
+            paths = string(fullfile(obj.Folder, "file-adapters", adapterId + ".fileAdapter.nansen.json"));
+            relative = "file-adapters/" + adapterId + ".fileAdapter.nansen.json";
+            templates = "";
+            if ismember("python", languages)
+                paths(end + 1) = string(fullfile(obj.Folder, "python", adapterId + "_adapter.py"));
+                relative(end + 1) = "python/" + adapterId + "_adapter.py";
+                templates(end + 1) = "adapter.py.template";
+            end
+            if ismember("matlab", languages)
+                paths(end + 1) = string(fullfile(obj.Folder, "matlab", className + ".m"));
+                relative(end + 1) = "matlab/" + className + ".m";
+                templates(end + 1) = "adapter.m.template";
+            end
+            existing = relative(isfile(paths));
+            if ~isempty(existing) || ismember(adapterId, obj.adapters().ids())
+                what = "a file adapter '" + adapterId + "'";
+                if ~isempty(existing)
+                    what = strjoin(existing, ", ");
+                end
+                nansen.internal.throwError("adapter-exists", "the project already has %s", what)
+            end
+            implementations = struct();
+            if ismember("python", languages)
+                implementations.python = char(adapterId + "_adapter:" + className);
+            end
+            if ismember("matlab", languages)
+                implementations.matlab = char(className);
+            end
+            entry = nansen.internal.schemaEntry("nansen.fileAdapter");
+            document = struct("schemaType", 'nansen.fileAdapter', "schemaVersion", char(entry.version), "id", char(adapterId), ...
+                "version", '0.1.0', "title", char(title), "implementations", implementations);
+            if ~isempty(extensions)
+                document.extensions = cellstr(extensions);
+            end
+            nansen.checkDocument(document, ExpectedType="nansen.fileAdapter");
+            shownExtensions = "its";
+            if ~isempty(extensions)
+                shownExtensions = strjoin(extensions, ", ");
+            end
+            tokens = ["__ID__", "__CLASS__", "__TITLE__", "__EXTENSIONS__"];
+            values = [adapterId, className, replace(title, """", "'"), shownExtensions];
+            for i = 1:numel(paths)
+                folder = fileparts(paths(i));
+                if ~isfolder(folder)
+                    mkdir(folder);
+                end
+                if templates(i) == ""
+                    nansen.internal.writeJson(paths(i), document)
+                    continue
+                end
+                text = string(nansen.internal.readText(fullfile(nansen.internal.repoRoot(), "templates", templates(i))));
+                for k = 1:numel(tokens)
+                    text = replace(text, tokens(k), values(k));
+                end
+                nansen.internal.writeText(paths(i), text);
+            end
+            rehash
+            obj.AdapterCache = [];
+            result = document;
+            result.files = cellstr(relative);
+        end
+
         function registry = adapters(obj)
             %adapters Built-in file adapters, those declared in file-adapters/ (code in matlab/), then the modules'
             if isempty(obj.AdapterCache)

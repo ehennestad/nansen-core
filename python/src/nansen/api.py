@@ -714,6 +714,14 @@ class Api:
                               "filePatterns": sorted(project.file_patterns(location["identifier"], params["entityType"]))})
         return {"locations": locations, "fileAdapters": list(project.adapters.ids)}
 
+    def adapters__create(self, params: dict) -> dict:
+        """Start a project file adapter from the templates: its document, and a class to fill in per language."""
+        project = self._require_project()
+        result = project.create_adapter(params["id"], params.get("title", ""), params.get("extensions", []),
+                                        params.get("languages", ["python", "matlab"]))
+        self.emit("project", {"name": project.name})
+        return result
+
     def dataVariables__save(self, params: dict) -> dict:
         variable = self._require_project().add_data_variable(params["document"])
         self.emit("project", {"name": self.project.name})

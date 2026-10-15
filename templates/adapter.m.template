@@ -1,0 +1,19 @@
+classdef __CLASS__
+%__CLASS__ __TITLE__: a file adapter of this project
+%
+%   Reads and writes __EXTENSIONS__ files for data variables that name the
+%   __ID__ adapter. NANSEN made this file as a starting point; change it as
+%   you need.
+
+    methods
+        function data = read(~, path)
+            %read What the file at path holds, as the methods that load it should get it
+            error("nansen:adapter:NotImplemented", "__ID__ cannot read %s yet", path)
+        end
+
+        function write(~, path, data) %#ok<INUSD>
+            %write Write data to the file at path (its folder exists)
+            error("nansen:adapter:NotImplemented", "__ID__ cannot write %s yet", path)
+        end
+    end
+end

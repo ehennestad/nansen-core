@@ -11,6 +11,7 @@ A project is a folder. Everything about it is in that folder, in files that foll
   tables/<entityType>.table.nansen.json      nansen.table sidecar
   tables/<entityType>.csv                    authored values
   data-variables/<name>.dataVariable.nansen.json   nansen.dataVariable
+  file-adapters/<id>.fileAdapter.nansen.json  nansen.fileAdapter, project-defined file adapters (start one with adapters.create)
   methods/<name>.method.nansen.json          nansen.method, project-defined methods and tools (start one with methods.create)
   python/, matlab/                           the code of project-defined methods and adapters
   pipelines/<name>.pipeline.nansen.json      nansen.pipeline, project-defined pipelines

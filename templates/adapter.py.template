@@ -1,0 +1,13 @@
+"""__TITLE__: a file adapter of this project. NANSEN made this file as a starting point; change it as you need."""
+
+
+class __CLASS__:
+    """Reads and writes __EXTENSIONS__ files for data variables that name the __ID__ adapter."""
+
+    def read(self, path):
+        """What the file at path holds, as the methods that load it should get it."""
+        raise NotImplementedError(f"__ID__ cannot read {path} yet")
+
+    def write(self, path, data):
+        """Write data to the file at path (its folder exists)."""
+        raise NotImplementedError(f"__ID__ cannot write {path} yet")

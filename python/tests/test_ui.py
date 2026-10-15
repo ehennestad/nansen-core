@@ -868,3 +868,18 @@ def test_describe_the_data_folders(empty_app, page):
     assert info["dataset"]["locations"][0]["id"] == "raw"
     scan = api.handle({"id": 3, "method": "project.scan"})["result"]
     assert scan["records"] == {"subject": 2, "session": 3}
+
+
+def test_start_a_file_adapter(empty_app, page):
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    page.goto(empty_app["server"].url + "#/data")
+    page.click(".data-variables .new-adapter")
+    page.fill(".dialog .field:has-text('Id') input", "tiff_stack")
+    page.fill(".dialog .field:has-text('File extensions') input", "tif, .tiff")
+    page.click(".dialog-foot button:has-text('Create')")
+    page.wait_for_selector(".toast:has-text('File adapter created')")
+    assert (folder / "python" / "tiff_stack_adapter.py").is_file() and (folder / "matlab" / "TiffStackAdapter.m").is_file()
+    options = api.handle({"id": 2, "method": "dataVariables.options", "params": {"entityType": "session"}})["result"]
+    assert "tiff_stack" in options["fileAdapters"]

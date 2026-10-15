@@ -102,6 +102,7 @@ Events flow from the core to the frontend:
 | `fragments.update` | `entityType`, `fragmentId`, `keys?` | `{updated, failed}` |
 | `dataVariables.list` | `entityType?` | Data variable documents |
 | `dataVariables.options` | `entityType` | `{locations[{id, title, access, filePatterns}], fileAdapters}`: what a data variable of the entity type can name; `filePatterns` are the names of the file patterns of the entity type's level in each location, sorted |
+| `adapters.create` | `id` (a lower-case letter, then letters, digits or `_`), `title?`, `extensions?` (such as `.tif`), `languages?` (default both) | The new file adapter document of the project, plus `files`: it in `file-adapters/` and a class to fill in per language (`python/<id>_adapter.py`, `matlab/<Id>Adapter.m`, with read and write), from `templates/`. `adapter-exists` if the id (built in or not) or a file is taken |
 | `dataVariables.save` | `document` (a `nansen.dataVariable`) | The data variable, written into the project (replacing one of the same name) |
 | `dataVariables.delete` | `name` | `{removed}` (`unknown-data-variable` if there is none) |
 | `modules.list` | | `[{id, version, title, description, ..., listed}]`: the modules in the project's `modules/` folder and the built-in ones, and any listed elsewhere; `listed` says whether the project lists it |

@@ -866,6 +866,55 @@ class Project:
             self._adapters = registry
         return self._adapters
 
+    def create_adapter(self, adapter_id: str, title: str = "", extensions: Sequence[str] = (),
+                       languages: Sequence[str] = ("python", "matlab")) -> dict:
+        """Start a file adapter of the project: its document in file-adapters/ and, per language, a class to fill
+        in (python/<id>_adapter.py, matlab/<Id>Adapter.m), from the templates that ship with NANSEN."""
+        from .modules import template_text
+
+        if not re.match(r"^[a-z][a-z0-9_]*$", adapter_id or ""):
+            raise NansenError("invalid-params", "a project adapter's id is a lower-case letter, then letters, digits or _")
+        languages = list(dict.fromkeys(languages))
+        if not languages or any(language not in ("python", "matlab") for language in languages):
+            raise NansenError("invalid-params", "languages are python and/or matlab")
+        extensions = list(dict.fromkeys(extensions))
+        for extension in extensions:
+            if not re.match(r"^\.[A-Za-z0-9.]+$", extension):
+                raise NansenError("invalid-params", f"{extension!r} is not a file extension such as .tif")
+        title = " ".join(str(title).split()) or adapter_id
+        class_name = "".join(part.capitalize() for part in adapter_id.split("_")) + "Adapter"
+        files = {self.folder / "file-adapters" / f"{adapter_id}.fileAdapter.nansen.json": None}
+        if "python" in languages:
+            files[self.folder / "python" / f"{adapter_id}_adapter.py"] = "adapter.py.template"
+        if "matlab" in languages:
+            files[self.folder / "matlab" / f"{class_name}.m"] = "adapter.m.template"
+        existing = [str(p.relative_to(self.folder)) for p in files if p.exists()]
+        if existing or adapter_id in self.adapters.ids:
+            raise NansenError("adapter-exists", f"the project already has {', '.join(existing) or 'a file adapter ' + repr(adapter_id)}")
+        document = {"schemaType": "nansen.fileAdapter", "schemaVersion": current_version("nansen.fileAdapter"),
+                    "id": adapter_id, "version": "0.1.0", "title": title, "implementations": {}}
+        if extensions:
+            document["extensions"] = extensions
+        if "python" in languages:
+            document["implementations"]["python"] = f"{adapter_id}_adapter:{class_name}"
+        if "matlab" in languages:
+            document["implementations"]["matlab"] = class_name
+        check_document(document, "nansen.fileAdapter")
+        replacements = {"__ID__": adapter_id, "__CLASS__": class_name, "__TITLE__": title.replace('"', "'"),
+                        "__EXTENSIONS__": ", ".join(extensions) if extensions else "its"}
+        for path, template in files.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if template is None:
+                write_json(path, document)
+                continue
+            text = template_text(template)
+            for token, value in replacements.items():
+                text = text.replace(token, value)
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+        self._adapters = None
+        return dict(document, files=[str(p.relative_to(self.folder).as_posix()) for p in files])
+
     def data_variable_path(self, name: str) -> Path:
         return self.folder / "data-variables" / f"{name}.dataVariable.nansen.json"
 
