@@ -34,6 +34,8 @@ The built-in **`core`** module provides:
 
 The built-in **`ophys`** module brings over the core of dev's two-photon workflow (`+nansen/+module/+ophys/+twophoton`). Its methods are native in both languages and give the same results, which the `ophys` conformance case checks on a synthetic recording with known shifts and cells. Stacks are height x width x frames in both languages (`stack[y, x, t]` in Python is `stack(y+1, x+1, t+1)` in MATLAB, and `.npy` files keep that indexing). Python needs NumPy and, for TIFF, tifffile: `pip install "nansen-core[ophys]"`.
 
+Its `tutorial/` folder describes the two-photon quickstart (`demo.create` with `kind` `two-photon`; see [getting started](../getting-started.md)): `tutorial.json` sets the synthetic recordings and the project, and `dataset.dsm.json` is the project's DSM config.
+
 | Method | What it does |
 |---|---|
 | `ophys.setup_variables` | A project tool: adds the data variables the methods read and write (in a subfolder of each entity's folder in a data location: `.npy` arrays and a `.json` ROI file), `TwoPhotonSeries_Original` through a DSM file pattern of the raw recording, and the `ophys.imaging`, `ophys.scan` and `ophys.image_stats` columns. `MotionCorrectionShifts` and `FrameStats` are time series (`dataType` `TimeSeries`, with `columnNames`), which an entity's drawer plots over the frames. Variables that exist are left alone |

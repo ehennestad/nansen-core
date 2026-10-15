@@ -29,6 +29,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                      help="how queued tasks run (default: the user's setting, queue.worker)")
     demo = commands.add_parser("demo", help="create a demo project with a small dataset")
     demo.add_argument("folder")
+    demo.add_argument("--kind", choices=["sessions", "two-photon"], default="sessions",
+                      help="sessions (the default), or two-photon: the quickstart, with synthetic recordings to process")
     legacy = commands.add_parser("import-legacy", help="make a project from a NANSEN dev export (nansen.legacyExport)")
     legacy.add_argument("export", help="the JSON written by nansen.legacy.exportProject in MATLAB")
     legacy.add_argument("folder", help="new, empty project folder")
@@ -58,9 +60,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "demo":
-        from .demo import create_demo
+        from .demo import create_demo_kind
 
-        project = create_demo(args.folder)
+        project = create_demo_kind(args.folder, args.kind)
         print(f"Created {project.title} in {project.folder}. Open it with: nansen app {project.folder}")
         return 0
 

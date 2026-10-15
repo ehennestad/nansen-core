@@ -490,9 +490,10 @@ class Api:
         return self.project__info({})
 
     def demo__create(self, params: dict) -> dict:
-        from .demo import create_demo
+        """A demo project in a new folder, now open: kind sessions (the default) or two-photon (the quickstart)."""
+        from .demo import create_demo_kind
 
-        self._set_project(create_demo(params["path"]))
+        self._set_project(create_demo_kind(params["path"], params.get("kind", "sessions")))
         self.emit("project", {"name": self.project.name})
         return self.project__info({})
 
