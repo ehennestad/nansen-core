@@ -125,3 +125,25 @@ def test_an_invalid_dataset_is_not_kept(tmp_path):
     assert error.value.code == "dataset-invalid"
     assert "dataset" not in Project.open(tmp_path / "p").document
     assert not (tmp_path / "p" / "dataset.dsm.json").exists()
+
+
+def test_files_resolve_and_reveal_stay_inside_the_project(tmp_path):
+    from nansen.demo import create_demo
+
+    project = create_demo(tmp_path / "demo")
+    api = Api(project=project, start_queue=False)
+    opened = []
+    api.open_folder = opened.append
+    result = api.handle({"id": 1, "method": "files.reveal", "params": {"path": "tables/session.csv"}})["result"]
+    assert result["exists"] and not result["isFolder"]
+    assert opened == [(tmp_path / "demo" / "tables").resolve()]  # a file's folder is shown
+    session = project.entities("session")[0]
+    location = session.locations[0]
+    params = {"dataLocation": location["dataLocationIdentifier"], "rootStoragePath": location["rootStoragePathIdentifier"],
+              "path": location["paths"][0]}
+    assert api.handle({"id": 2, "method": "files.resolve", "params": params})["result"]["isFolder"]
+    for bad in ({"path": "../elsewhere"}, {"path": "/etc"}, dict(params, path="../../..")):
+        assert api.handle({"id": 3, "method": "files.resolve", "params": bad})["error"]["code"] == "invalid-params"
+    assert api.handle({"id": 4, "method": "files.reveal", "params": {"path": "nothing/here"}})["error"]["code"] == "file-not-found"
+    assert len(opened) == 1
+    api.close()

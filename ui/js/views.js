@@ -57,7 +57,10 @@
 
     N.fill(content, 
       h("div.hero",
-        h("div", h("h1", project.title), project.description ? h("p", project.description) : null, h("div.path", project.folder)),
+        h("div", h("h1", project.title), project.description ? h("p", project.description) : null,
+          h("div.path", project.folder, h("button.btn.ghost.icon.small", { title: "Show the project folder in the file browser",
+            on: { click: () => app.client.request("files.reveal", { path: "" }).catch((error) => N.showError(error, "Could not open the folder")) } },
+            N.icon("folder", 13)))),
         h("div.spacer"),
         h("div.actions",
           dataset ? h("button.btn", { on: { click: () => app.scan() } }, N.icon("scan"), "Scan stores") : null,
@@ -117,10 +120,15 @@
       }
       N.menu(columnsButton, items);
     });
+    const hideIgnored = h("button.btn", { title: "Hide the rows marked as ignored", on: { click: () => {
+      grid.setHideIgnored(!grid.hideIgnored);
+      hideIgnored.classList.toggle("on", grid.hideIgnored);
+    } } }, N.icon("eye-off"), "Hide ignored");
     const computed = (app.fragments || []).filter((f) => f.computed && type.fragments.includes(f.id));
     const toolbar = h("div.toolbar",
       h("div.search", N.icon("search", 14), search), chips, h("div.spacer"),
       computed.length ? h("button.btn", { on: { click: (e) => updateMenu(e.currentTarget) } }, N.icon("zap"), "Update") : null,
+      type.fragments.includes("core.notes") ? hideIgnored : null,
       columnsButton,
       app.project.dataset ? h("button.btn", { on: { click: () => app.sync(entityType) } }, N.icon("sync"), "Sync") : null,
       h("button.btn.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play"), "Run method"));
@@ -146,7 +154,29 @@
       N.fill(selectionBar, 
         h("span", `${rows.length} selected`),
         h("button.btn.small.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play", 14), "Run method"),
+        h("button.btn.small", { title: "Copy the keys as tab-separated text", on: { click: () => {
+          const selected = grid.selectedRows();
+          const names = grid.data.key;
+          const text = [names.join("\t"), ...selected.map((r) => names.map((n) => r.key[n]).join("\t"))].join("\n");
+          N.copyText(text).then(() => N.toast("Copied", `${selected.length} key(s)`, "success"), (error) => N.showError(error, "Could not copy"));
+        } } }, N.icon("copy", 14), "Copy keys"),
+        h("button.btn.small", { on: { click: () => removeRows(grid.selectedRows()) } }, N.icon("trash", 14), "Remove from table"),
         h("button.btn.small", { on: { click: () => grid.clearSelection() } }, "Clear"));
+    }
+    async function removeRows(rows) {
+      const inTable = rows.filter((r) => r.inTable);
+      if (!inTable.length) { N.toast("Nothing to remove", "None of the selected rows is in the table"); return; }
+      const message = `${inTable.length} row(s) and what was typed in them are removed from the ${type.title || entityType} table. ` +
+        "The data on disk is not touched; entities still in the stores come back as new rows after a sync.";
+      if (!(await N.confirm("Remove from the table?", message, "Remove", "danger"))) return;
+      let removed = 0;
+      for (const row of inTable) {
+        try { await app.client.request("entities.remove", { entityType, key: row.key }); removed++; } catch (error) { N.showError(error); break; }
+      }
+      N.toast("Removed", `${removed} row(s)`, "success");
+      grid.clearSelection();
+      await app.reloadProject();
+      app.reloadEntities();
     }
     function renderFooter() {
       const c = grid.counts();
@@ -164,6 +194,7 @@
       try {
         const data = await app.client.request("entities.list", { entityType });
         grid.setData(data);
+        hideIgnored.classList.toggle("on", grid.hideIgnored);
         renderChips();
         renderFooter();
       } catch (error) { N.showError(error, `Could not load ${entityType}`); }
@@ -193,10 +224,21 @@
     const props = h("dl.props", values.map(([k, v]) => [h("dt", label(k)), h("dd", show(k, v))]));
     const locations = (detail.locations || []).map((loc) => {
       const files = Object.entries(loc.files || {});
+      const where = (p) => ({ dataLocation: loc.dataLocationIdentifier, rootStoragePath: loc.rootStoragePathIdentifier, path: p });
+      const pathActions = (p) => h("span.path-actions",
+        h("button.btn.ghost.icon.small", { title: "Show in the file browser", on: { click: () => app.client.request("files.reveal", where(p))
+          .catch((error) => N.showError(error, "Could not open the folder")) } }, N.icon("folder", 13)),
+        h("button.btn.ghost.icon.small", { title: "Copy the full path", on: { click: async () => {
+          try {
+            const resolved = await app.client.request("files.resolve", where(p));
+            await N.copyText(resolved.path);
+            N.toast("Path copied", resolved.path, "success");
+          } catch (error) { N.showError(error, "Could not copy the path"); }
+        } } }, N.icon("copy", 13)));
       return h("div.loc",
         h("div.loc-head", N.icon("folder", 14), loc.dataLocationIdentifier, h("span.muted", { style: { fontWeight: 400 } }, "· " + loc.rootStoragePathIdentifier),
           loc.isComplete === false ? h("span.pill.warn", "incomplete") : null),
-        h("ul.path-list", (loc.paths || []).map((p) => h("li", p))),
+        h("ul.path-list", (loc.paths || []).map((p) => h("li", h("span.path-text", p), pathActions(p)))),
         files.length ? h("dl.props", { style: { marginTop: "8px" } }, files.map(([name, paths]) => [h("dt", name),
           h("dd", paths.length ? paths.map((p) => h("div.mono", { style: { fontSize: "12px" } }, p.split("/").pop())) : h("span.muted", "none"))])) : null);
     });
@@ -402,6 +444,14 @@
           select(method, name);
         } catch (error) { N.showError(error, "Could not save the preset"); }
       } } }, "Save as…");
+      const remove = preset && preset.name !== "default" ? h("button.btn.ghost", { title: "Delete this preset", on: { click: async () => {
+        if (!(await N.confirm("Delete preset?", `The preset '${preset.name}' of ${method.title} is deleted.`, "Delete", "danger"))) return;
+        try {
+          await app.client.request("presets.delete", { methodId: method.id, name: preset.name });
+          N.toast("Preset deleted", preset.name, "success");
+          select(method);
+        } catch (error) { N.showError(error, "Could not delete the preset"); }
+      } } }, N.icon("trash", 14)) : null;
       N.fill(detail, 
         h("h3", method.title),
         h("div.muted", method.description || ""),
@@ -410,7 +460,7 @@
           h("span.pill.accent", method.batchMode === "batch" ? "once for all" : "once per entity"),
           method.languages.map((l) => h("span.pill.plain", l)),
           method.module ? h("span.pill.plain", "module " + method.module) : null),
-        h("div.preset-row", h("label.name", { style: { fontWeight: 600 } }, "Preset"), presetSelect, save),
+        h("div.preset-row", h("label.name", { style: { fontWeight: 600 } }, "Preset"), presetSelect, save, remove),
         form.el);
     }
 

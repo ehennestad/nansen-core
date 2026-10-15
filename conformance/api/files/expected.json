@@ -1,0 +1,4 @@
+{
+  "description": "Paths for showing files: resolved inside the project folder or a data location's root, never outside it (.. or an absolute path), with whether they exist; revealing a missing file is an error. Reveal is not run on an existing path here, since it would open a file browser.",
+  "steps": 14
+}

@@ -1,0 +1,192 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 1,
+        "params": {
+          "path": ""
+        }
+      },
+      "expect": {
+        "error": "no-project"
+      }
+    },
+    {
+      "request": {
+        "method": "project.open",
+        "id": 2,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 3,
+        "params": {
+          "path": ""
+        }
+      },
+      "expect": {
+        "result": {
+          "exists": true,
+          "isFolder": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 4,
+        "params": {
+          "path": "tables/session.csv"
+        }
+      },
+      "expect": {
+        "result": {
+          "exists": true,
+          "isFolder": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 5,
+        "params": {
+          "path": "tables/../tables/./session.csv"
+        }
+      },
+      "expect": {
+        "result": {
+          "exists": true,
+          "isFolder": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 6,
+        "params": {
+          "path": "no/such/file.txt"
+        }
+      },
+      "expect": {
+        "result": {
+          "exists": false,
+          "isFolder": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 7,
+        "params": {
+          "path": "../outside"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 8,
+        "params": {
+          "path": "tables/../../outside"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 9,
+        "params": {
+          "path": "/etc/passwd"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 10,
+        "params": {
+          "path": "C:/Windows"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 11,
+        "params": {
+          "dataLocation": "processed",
+          "rootStoragePath": "analysis-mac",
+          "path": "m110/session-1"
+        }
+      },
+      "expect": {
+        "result": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 12,
+        "params": {
+          "dataLocation": "processed",
+          "path": "../.."
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.resolve",
+        "id": 13,
+        "params": {
+          "dataLocation": "nowhere",
+          "path": "x"
+        }
+      },
+      "expect": {
+        "error": "unknown-location"
+      }
+    },
+    {
+      "request": {
+        "method": "files.reveal",
+        "id": 14,
+        "params": {
+          "path": "no/such/folder"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    }
+  ]
+}

@@ -17,6 +17,11 @@ classdef Api < handle
         Queue = []
     end
 
+    properties
+        % Opens a folder in the system's file browser; tests put their own here
+        OpenFolder function_handle = @nansen.Api.openInFileBrowser
+    end
+
     properties (Access = private)
         Methods
         Listeners (1,:) cell = {}
@@ -33,7 +38,7 @@ classdef Api < handle
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "dataset.setRoot", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "notes.list", "notes.add", "notes.remove", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
+                "entities.remove", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -365,6 +370,42 @@ classdef Api < handle
             table.write();
             obj.emit("entities", struct("entityTypes", {{char(params.entityType)}}));
             result = struct("removed", params.key);
+        end
+
+        function result = apiFilesResolve(obj, params)
+            project = obj.requireProject();
+            relative = string(nansen.internal.getField(params, "path", ""));
+            if startsWith(relative, ["/", "\"]) || ~isempty(regexp(relative, "^[A-Za-z]:", "once"))
+                nansen.internal.throwError("invalid-params", "'%s' is not a relative path", relative)
+            end
+            if isfield(params, "dataLocation")
+                rootPath = "";
+                if isfield(params, "rootStoragePath")
+                    rootPath = string(params.rootStoragePath);
+                end
+                base = project.requireDataset().root(string(params.dataLocation), rootPath).Path;
+            else
+                base = project.Folder;
+            end
+            base = regexprep(nansen.internal.normalizePath(base), "(?<=.)/$", "");
+            path = nansen.internal.normalizePath(base + "/" + relative);
+            if path ~= base && ~startsWith(path, regexprep(base, "/$", "") + "/")
+                nansen.internal.throwError("invalid-params", "'%s' is outside %s", relative, base)
+            end
+            native = replace(path, "/", filesep);
+            result = struct("path", char(native), "exists", isfile(native) || isfolder(native), "isFolder", isfolder(native));
+        end
+
+        function result = apiFilesReveal(obj, params)
+            result = obj.apiFilesResolve(params);
+            if ~result.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", result.path)
+            end
+            folder = string(result.path);
+            if ~result.isFolder
+                folder = string(fileparts(folder));
+            end
+            obj.OpenFolder(folder);
         end
 
         function result = apiNotesList(obj, params)
@@ -716,6 +757,22 @@ classdef Api < handle
                             "source", 'attribute', "editable", false); %#ok<AGROW>
                     end
                 end
+            end
+        end
+    end
+
+    methods (Static)
+        function openInFileBrowser(folder)
+            %openInFileBrowser Show a folder in Finder, Explorer or the desktop's file manager
+            if ispc
+                winopen(folder);
+            elseif ismac
+                status = system(sprintf('open "%s"', folder));
+            else
+                status = system(sprintf('xdg-open "%s" > /dev/null 2>&1 &', folder));
+            end
+            if ~ispc && status ~= 0
+                nansen.internal.throwError("cannot-open", "could not open %s", folder)
             end
         end
     end

@@ -8,6 +8,7 @@ no global state.
 from __future__ import annotations
 
 import json
+import re
 import threading
 import traceback
 from pathlib import Path
@@ -27,6 +28,22 @@ from .tasks import TaskQueue
 PROTOCOL_VERSION = "0.1"
 
 
+def open_in_file_browser(folder: Path) -> None:
+    """Show a folder in Finder, Explorer or the desktop's file manager, without waiting."""
+    import os
+    import subprocess
+    import sys
+
+    if sys.platform == "win32":
+        os.startfile(str(folder))  # type: ignore[attr-defined]
+    else:
+        command = "open" if sys.platform == "darwin" else "xdg-open"
+        try:
+            subprocess.Popen([command, str(folder)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as error:
+            raise NansenError("cannot-open", f"could not open {folder}: {error}") from None
+
+
 class Api:
     def __init__(self, catalog: Optional[Catalog] = None, project: Optional[Project] = None,
                  executor: str = "thread", start_queue: bool = True):
@@ -36,6 +53,8 @@ class Api:
         self.executor = executor
         self.start_queue = start_queue
         self._listeners: List[Listener] = []
+        # Opens a folder in the system's file browser; tests put their own here
+        self.open_folder: Callable[[Path], None] = open_in_file_browser
         self._lock = threading.RLock()
         self._methods: Dict[str, Callable[[dict], Any]] = {
             name.replace("__", "."): getattr(self, name) for name in dir(self)
@@ -346,6 +365,31 @@ class Api:
         table.write()
         self.emit("entities", {"entityTypes": [params["entityType"]]})
         return {"removed": params["key"]}
+
+    # -- files ---------------------------------------------------------------------------------
+
+    def files__resolve(self, params: dict) -> dict:
+        project = self._require_project()
+        relative = str(params.get("path", ""))
+        if relative.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", relative):
+            raise NansenError("invalid-params", f"{relative!r} is not a relative path")
+        if "dataLocation" in params:
+            base = project.require_dataset().root(params["dataLocation"], params.get("rootStoragePath")).path
+        else:
+            base = project.folder
+        base = Path(base).resolve()
+        path = (base / relative).resolve()
+        if path != base and base not in path.parents:
+            raise NansenError("invalid-params", f"{relative!r} is outside {base}")
+        return {"path": str(path), "exists": path.exists(), "isFolder": path.is_dir()}
+
+    def files__reveal(self, params: dict) -> dict:
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        path = Path(resolved["path"])
+        self.open_folder(path if resolved["isFolder"] else path.parent)
+        return resolved
 
     # -- notes ---------------------------------------------------------------------------------
 

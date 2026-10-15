@@ -50,6 +50,20 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(projects{1}.name), "Pilot");
         end
 
+        function revealShowsFoldersInsideTheProject(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            api = nansen.Api(Project=project);
+            api.OpenFolder = @(folder) assignin("base", "nansenApiTestOpened", folder);
+            response = api.handle(struct("id", 1, "method", "files.reveal", "params", struct("path", "tables/session.csv")));
+            testCase.verifyTrue(response.result.exists);
+            opened = evalin("base", "nansenApiTestOpened");
+            evalin("base", "clear nansenApiTestOpened");
+            testCase.verifyEqual(string(opened), string(fullfile(project.Folder, "tables")));
+            response = api.handle(struct("id", 2, "method", "files.resolve", "params", struct("path", "../x")));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+        end
+
         function catalogListsTheLastOpenedFirstWithinOneSecond(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));

@@ -31,6 +31,7 @@
       this.search = "";
       this.status = "all";
       this.hidden = new Set();
+      this.hideIgnored = false;
       this.lastClicked = null;
       this.el = h("div.grid-wrap", { on: { scroll: () => this.renderBody() } });
       this.table = h("table.grid-table");
@@ -49,6 +50,7 @@
         this.selected.clear();
         this.sort = null;
         this.hidden = new Set(store(`nansen.hidden.${data.entityType}`) || []);
+        this.hideIgnored = store(`nansen.hideIgnored.${data.entityType}`) === true;
       } else {
         for (const id of [...this.selected]) if (!this.byId.has(id)) this.selected.delete(id);
       }
@@ -71,6 +73,11 @@
 
     setSearch(text) { this.search = text.trim().toLowerCase(); this.refresh(); }
     setStatus(status) { this.status = status; this.refresh(); }
+    setHideIgnored(hide) {
+      this.hideIgnored = hide;
+      store(`nansen.hideIgnored.${this.data.entityType}`, hide);
+      this.refresh();
+    }
 
     toggleColumn(name) {
       if (this.hidden.has(name)) this.hidden.delete(name); else this.hidden.add(name);
@@ -82,6 +89,7 @@
       if (!this.data) return;
       let rows = this.data.rows;
       if (this.status !== "all") rows = rows.filter((r) => statusOf(r) === this.status);
+      if (this.hideIgnored) rows = rows.filter((r) => r.values.ignore !== true);
       if (this.search) {
         rows = rows.filter((r) => Object.values(r.values).some((v) => v !== null && v !== undefined && String(v).toLowerCase().includes(this.search)));
       }

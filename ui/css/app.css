@@ -177,6 +177,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
 .btn.primary:hover { background: var(--accent-2); }
 .btn.danger { color: var(--bad); }
+.btn.on { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
 .btn.ghost { border-color: transparent; box-shadow: none; background: transparent; }
 .btn.ghost:hover { background: var(--surface-3); }
 .btn.small { height: 26px; padding: 0 9px; font-size: 12px; border-radius: 6px; }
@@ -337,7 +338,10 @@ dl.props { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margi
 dl.props dt { color: var(--text-3); }
 dl.props dd { margin: 0; word-break: break-word; }
 .path-list { margin: 0; padding: 0; list-style: none; }
-.path-list li { font-family: var(--mono); font-size: 12px; padding: 4px 8px; background: var(--surface-3); border-radius: 6px; margin: 4px 0; word-break: break-all; }
+.path-list li { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; padding: 4px 4px 4px 8px; background: var(--surface-3); border-radius: 6px; margin: 4px 0; }
+.path-list .path-text { flex: 1; min-width: 0; word-break: break-all; }
+.path-actions { display: inline-flex; gap: 2px; flex: none; }
+.hero .path { display: flex; align-items: center; gap: 6px; }
 .loc { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
 .loc-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }
 
