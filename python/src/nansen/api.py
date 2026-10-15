@@ -898,7 +898,7 @@ class Api:
             raise NansenError("invalid-params", "limits is [low, high]")
         stack, adapter, candidates = project.open_file_stack(Path(resolved["path"]), params.get("adapter"))
         result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
-                             int(params.get("plane", 0)))
+                             int(params.get("plane", 0)), params.get("filter"))
         return dict(result, metadata=dict(stack.metadata), adapter=adapter, adapters=candidates, name=Path(resolved["path"]).name)
 
     def files__open(self, params: dict) -> dict:
@@ -1099,7 +1099,7 @@ class Api:
             raise NansenError("invalid-params", "limits is [low, high]")
         stack = project.open_stack(entity, params["variable"])
         result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
-                             int(params.get("plane", 0)))
+                             int(params.get("plane", 0)), params.get("filter"))
         result["metadata"] = dict(stack.metadata)
         if params.get("rois"):   # those of the plane and channel shown, when they have places
             result["rois"] = roi_outlines(rois_at(project.load(entity, params["rois"]), int(params.get("plane", 0)) + 1,

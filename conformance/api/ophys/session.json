@@ -1654,6 +1654,88 @@
     },
     {
       "request": {
+        "method": "data.frame",
+        "id": 2622,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "frame": 3,
+          "filter": "smooth"
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 40,
+          "channels": 1,
+          "planes": 1,
+          "frame": 3,
+          "low": 0,
+          "high": 493.953125,
+          "pixels": "AAcjS2RpamtoYlxYWV9pcXV3eXZsYFtaXGJoZ1xTVl8AByFJYmhqbGplYFxeZW5ycG5saWNeXWBiZWloYVtbXwAGHkRfaG1vbmtmZGZtcnBpY19dXWFlamtra2lmZGNiAAUcQF1rcXNwbWpqb3RybGVfW1pfZ25yc3FubGpqZ2QABh1DYnBzcGpmZmtzdnJsaGZjYmZtcnR1dXNwbmtmYwAHIUppc3BnX1teaHN3dXJycW9sa21vcXN1dXNvaWJgAAclUW1waF9YVVlkcHd4eXp5dW5qaWpsb3FxbmhiXl8ACCZRaGVdWlpYWWBrdHl7fHhxaWVlZmdoaGVgW1haYQAHJEtbVVJYX19aW2NudXl5c2lhX2FgX15aU01LTFViAAchQk5JTFljYVlVWmZxdnVtYlpbXVxZVk9GPz5CTlwABhs4RkhQW2BdVU9TX2txb2ZZUlRbYGBaT0Q9Oz9JVAAFFjFETldcW1ZRTU5VXmJfVUlDS1xweG1ZTEdGRkpQAAQULkVTW11ZVVFNSUlLTUk/NTVHaY6cimtbWVlXU1IABRc0TFlgYl1WUUxFPzw9PDYwNlOBrbyngmtpbGlgWAAGHD5WYWZnYVdQSkM8OTxCQ0FIZJG7y7iRc292dmteAAYgRF1laWpkW1RPSkVFTVdcXF5ti6/DtZFzbHR5cWQAByJIYGdpa2pmYFtYVlpjbXBvbnF8k6agh3Bna3FvaAAHJExkaWpsbm9taWZnanF1dnV2dnV8h4p/cWZkaGtrAAglUGlsamptcXJwcHFxcXFxdHp8eXV5fXtyaGNlamwACCVQaGtnaHN9enNzdXNtamtyfIJ/eXl8e3VtaWptbgAHJExiZWZ1k6aZgHZ4dm9pa3N9hYWAfX9/enVxcHFwAAciSF5ibpPG38ibfXd2cW1tdH6HiYWBgYKAe3VycXIAByNJXWJ1p+T/5a2BcnFvbG1yfIWIhYB/gYF8c29wcgAHI0tgYWyY0/DXoXpsa2pqam51fYGAfXt8fHVtam1wAAcjS19dXneiu6qJc2trbGxqaWtvdHh4eHh0bGVlam4AByFGWVZVYXiGgnl1c3N0cmtlY2VqcHR3d3FnYWNobQAGH0BRUFFbZ2xtcXqBgoB4bWRhYmZrb3R3c2pjZGhsAAYePlBRU1xkZWJoeIiNh3ptZGFjZmhpbnJzbmhnaWsABh09UFNVWVtYUlZneoJ8cWRcWl1gYF9fYmRjYWBiYwAEFi9AQ0NBQDw4OURRWFZQSEJAQkZHREJCQkNDREVGAAIKFh8hIB4cGhgZHSIkJCMgHRweHyAfHRwcHBwdHh4AAAIFBgcHBgUFBQUFBgcHBwYGBgYGBgYGBgUFBQYGBg==",
+          "metadata": {}
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 2623,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "mean",
+          "filter": "gradient",
+          "limits": [
+            0,
+            100
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 40,
+          "channels": 1,
+          "planes": 1,
+          "frame": null,
+          "low": 0,
+          "high": 100,
+          "pixels": "EUNVMkAyMikkMCoqKzZIRjIYFhg7MhMmJyk7N2wzLh4kTmw+RjlNT1VsXVFSfoFNPCYOFi5YWX1pYmEoelRhEhQ9VkAlSHlrZHVzeI+LYisqIR4WMZeDh3eDTCdtcXtGFDpLZzuJa0UmISYzdURTQUdGS0GJXlM4Pk5SSjZSSFAcPFFlaWklUEZePjxFBlYfNEJiQU4vExUSGhBhLlNhHiRMkIFXHVBiSWNPayEzRV1DWUxLGyYhEzAOFB0oWXEVJ0eWeTNPhkcyDipvdxcBSRYkI008HykWEyUxN2tlSAMaR6debLNcHR9RLjPLDBMpBzNUaRMSEDoZSFaDcFkqNQ4nakKPoU0/S2Aa/5z/Fh0eRF9DKg03aUSIb6NPWjYrGk2JNOZRlqozYv//Uvb/LxkuWglCJFEPEE8nQg02J0EhWm6PaIWjPmjyvh5Vgbr0VlJyClYZPX5FPkwwEBQvIw8taGo/ZzM1TTD//yz//3iVi8CMdmle/39nX298USMREhY/DklJIRYxHyL/2/9vfYm2qFuYs/+T/yxJf5qIRSolH1uiezAkRVUbJTH/Rm5TMSg+hsn/yY7/62NWZqhkKBJNnGdQM2QgYUklMkJKC15zk8Ou/+E4H0yxalklnatbIWSGZCkgGVJTQScaO26OrKiym5JV//5r8P8HbqFGqV5KgG0hPylFNEaPlmhgXY2uczpDP0kb/9jVjY0teGZ1SkdnYztALiIORzQ0aj5YRkUaLh0sOGsMwT0oSk0fWjYwQI1tIk4KGRtWTjQnL0EKQn1MCEkiUhJHG0xNRS0WDxhQlJo8Kx8lY197ji4KJE9COlRiTgRdWDEgFR1DUVU6P0N1sENrMERe/8DtiHoPTjxELxRIHyBTLxRVN0QNKEgxP1mEOTcVPf//H///fV8pQjgdNVwqKUsPSx0ub08qPShSbYkxMAu03kRsOMx8bi1LDiYcMzkJKy4yIxguW0E5GlxpdSVOOCX//03//1U3Nx0SHnpLhjFJKTFHLoVmFBUWK2l8M1VBDST///84VSY3LS9TIip/fjoTNSs1VDEOOjModotZdmA2RCr/MCxPa2VFQTMNPRZFOEcyIFFrMSAWDDpocy5uGT9YITY+Vy+YfzhHjT4LPUYRSyMQTHJSFzclOV+SJjE1Tn46PHKPq1diXkQuGwg1EBM7XlcjU304JhAwZ5I1Lz01O36JZoT/5aiBm25SblQ/IjdVop6bRFA3SC9TkXApEEt2iYhHRJP+/9qXcV9oYHAtPTRonc3WkZJ4MC1odjI9aWQxRw4PG0dWVFBuVkw+WjMZNGVUUoFUck4aCEJpLStUFQ8bJDMvLBMWKisYJSM3LwciQT9DECIqIQ==",
+          "metadata": {}
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 2624,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "filter": "sharpen"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
         "method": "dataVariables.save",
         "id": 2603,
         "params": {

@@ -1,4 +1,4 @@
-function result = imageFrame(data, frame, channel, projection, limits, plane)
+function result = imageFrame(data, frame, channel, projection, limits, plane, filter)
 %imageFrame A frame of an image or stack, as 8-bit values for the dashboard's viewer
 %
 %   data is height x width (x frames), height x width x channels x frames,
@@ -13,6 +13,9 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
 %   row after row. Python's nansen.frames.image_frame gives the same bytes.
     if nargin < 6
         plane = 0;
+    end
+    if nargin < 7
+        filter = "";
     end
     [stack, channels, planes] = nansen.internal.pickChannel(data, channel, plane);
     [height, width, frames] = size(stack);
@@ -78,6 +81,9 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
             image = double(stack.frames(frame + 1, frame + 1));
         otherwise
             nansen.internal.throwError("invalid-params", "projection is mean, max, min, std, correlation or peakTime, not '%s'", projection)
+    end
+    if strlength(string(filter)) > 0
+        image = nansen.internal.filterImage(image, filter);
     end
     if isempty(limits)
         finite = image(isfinite(image));

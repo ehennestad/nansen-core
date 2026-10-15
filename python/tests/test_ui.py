@@ -1490,6 +1490,12 @@ def test_viewer_projections_and_roi_display_options(empty_app, page):
     wait_until(lambda: page.evaluate(colourful) > 100)
     page.select_option(".viewer-mode", "min")
     wait_until(lambda: page.evaluate(colourful) == 0)
+    pixels = "Array.from(document.querySelector('.viewer-canvas').getContext('2d').getImageData(0, 0, 32, 32).data).join()"
+    plain = page.evaluate(pixels)
+    page.select_option(".viewer-filter", "gradient")   # imviewer's 2-D filters
+    wait_until(lambda: page.evaluate(pixels) != plain)
+    page.select_option(".viewer-filter", "")
+    wait_until(lambda: page.evaluate(pixels) == plain)
     page.check(".viewer-rois")
     page.check(".viewer-roi-labels")   # roimanager's numbers on the ROIs
     page.wait_for_selector(".viewer-canvas[data-labels='3']")

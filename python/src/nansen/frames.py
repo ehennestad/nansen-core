@@ -14,7 +14,7 @@ from .errors import NansenError
 
 
 def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optional[str] = None,
-                limits: Optional[List[float]] = None, plane: int = 0) -> Dict[str, Any]:
+                limits: Optional[List[float]] = None, plane: int = 0, filter: Optional[str] = None) -> Dict[str, Any]:
     """A frame of a height x width (x frames), height x width x channels x frames or height x width x channels x
     planes x frames array or stack (nansen.stacks.Stack, read a chunk of frames at a time), as 8-bit values.
 
@@ -65,6 +65,8 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
     else:
         raise NansenError("invalid-params", f"projection is mean, max, min, std, correlation or peakTime, not {projection!r}")
+    if filter:
+        image = filter_image(image, filter)
     if limits is not None:
         low, high = float(limits[0]), float(limits[1])
     else:
@@ -89,6 +91,26 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
 
 
 CHUNK = 100   # frames read at a time for a projection
+
+
+def filter_image(image: Any, name: str) -> Any:
+    """imviewer's 2-D filters of an image: smooth, a binomial blur ([1 4 6 4 1] / 16 along rows, then columns); gradient,
+    the magnitude of the central differences ((next - previous) / 2). Edges repeat the last pixel. Exact sums in a fixed
+    order, so MATLAB's nansen.internal.filterImage gives the same values."""
+    import numpy as np
+    image = np.asarray(image, dtype=np.float64)
+    if name == "smooth":
+        for axis in (0, 1):
+            padded = np.pad(image, [(2, 2) if a == axis else (0, 0) for a in (0, 1)], mode="edge")
+            take = lambda k: np.take(padded, range(k, k + image.shape[axis]), axis=axis)
+            image = (take(0) + 4 * take(1) + 6 * take(2) + 4 * take(3) + take(4)) / 16
+        return image
+    if name == "gradient":
+        padded = np.pad(image, 1, mode="edge")
+        dy = (padded[2:, 1:-1] - padded[:-2, 1:-1]) / 2
+        dx = (padded[1:-1, 2:] - padded[1:-1, :-2]) / 2
+        return np.sqrt(dy * dy + dx * dx)
+    raise NansenError("invalid-params", f"filter is smooth or gradient, not {name!r}")
 
 
 def _pick(data: Any, channel: int = 0, plane: int = 0):

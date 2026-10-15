@@ -147,6 +147,9 @@
       h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "max" }, "Maximum"),
       h("option", { value: "min" }, "Minimum"), h("option", { value: "std" }, "Standard deviation"), h("option", { value: "correlation" }, "Local correlation"),
       h("option", { value: "peakTime" }, "Time of peak (colour)"));
+    // imviewer's 2-D filters, applied to the frame or projection shown
+    const filterPick = h("select.input.viewer-filter", { title: "Filter", on: { change: () => { state.filter = filterPick.value; show(); } } },
+      h("option", { value: "" }, "No filter"), h("option", { value: "smooth" }, "Smooth"), h("option", { value: "gradient" }, "Gradient"));
     const colormapPick = h("select.input.viewer-colormap", { title: "Colormap", on: { change: () => { state.colormap = colormapPick.value; redraw(); } } },
       N.colormaps.map((name) => h("option", { value: name }, name)));
     const low = h("input.input.viewer-low", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.low = Number(low.value); show(); } } });
@@ -884,6 +887,7 @@
       const params = options.file ? { ...options.file, channel: state.channel, plane: state.plane }
         : { entityType, key, variable, channel: state.channel, plane: state.plane };
       if (options.file && state.adapter) params.adapter = state.adapter;
+      if (state.filter) params.filter = state.filter;
       if (state.mode === "frame") params.frame = state.frame; else params.projection = state.mode;
       if (!state.auto) params.limits = [state.low, state.high];
       if (state.showRois && state.roiVariable && !state.rois) params.rois = state.roiVariable;
@@ -944,7 +948,7 @@
       h("div.viewer-bar",
         playButton, slider, frameLabel, timeLabel, mode, channelPick, planePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, scaleButton,
+        filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, scaleButton,
         exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,
