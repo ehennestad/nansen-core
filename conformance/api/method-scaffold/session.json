@@ -204,6 +204,123 @@
       "expect": {
         "error": "invalid-params"
       }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 12,
+        "params": {
+          "id": "tally",
+          "title": "Tally",
+          "entityType": "@project"
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "tally",
+          "entityType": "@project",
+          "tool": true,
+          "files": [
+            "methods/tally.method.nansen.json",
+            "matlab/tally.m",
+            "python/tally.py"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tools.list",
+        "id": 13,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "tally",
+            "title": "Tally",
+            "tool": true
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "tools.run",
+        "id": 14,
+        "params": {
+          "methodId": "tally"
+        }
+      },
+      "expect": {
+        "result": {
+          "result": {}
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "tools.run",
+        "id": 15,
+        "params": {
+          "methodId": "core.wait"
+        }
+      },
+      "expect": {
+        "error": "wrong-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 16,
+        "params": {
+          "methodId": "tally",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "wrong-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.list",
+        "id": 17,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "count_frames",
+            "tool": false
+          },
+          {
+            "id": "summarize",
+            "entityType": "*"
+          },
+          {
+            "id": "core.file_stats"
+          },
+          {
+            "id": "core.export_keys"
+          },
+          {
+            "id": "core.wait"
+          },
+          {
+            "id": "core.backup"
+          }
+        ]
+      }
     }
   ]
 }

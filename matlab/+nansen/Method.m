@@ -62,7 +62,12 @@ classdef Method
         end
 
         function tf = appliesTo(obj, entityType)
-            tf = obj.EntityType == "*" || obj.EntityType == string(entityType);
+            tf = ~obj.isTool() && (obj.EntityType == "*" || obj.EntityType == string(entityType));
+        end
+
+        function tf = isTool(obj)
+            %isTool A project tool (entityType @project) runs once on the project, not on entities
+            tf = obj.EntityType == "@project";
         end
 
         function schema = optionsSchema(obj)
@@ -113,7 +118,7 @@ classdef Method
                 "description", char(nansen.internal.getField(obj.Document, "description", "")), ...
                 "category", char(nansen.internal.getField(obj.Document, "category", "")), ...
                 "batchMode", char(obj.BatchMode), "queueable", obj.Queueable, ...
-                "languages", {cellstr(obj.Languages)}, "module", char(obj.Module), "options", obj.optionsSchema());
+                "languages", {cellstr(obj.Languages)}, "module", char(obj.Module), "options", obj.optionsSchema(), "tool", obj.isTool());
         end
     end
 end

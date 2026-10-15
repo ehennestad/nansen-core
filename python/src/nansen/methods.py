@@ -16,6 +16,8 @@ from .errors import NansenError
 EMPTY_OPTIONS = {"type": "object", "properties": {}}
 
 
+PROJECT_TOOL = "@project"  # the entityType of a method that runs once on the project
+
 class Method:
     """A nansen.method declaration, with the folder its Python code is imported from."""
 
@@ -47,7 +49,12 @@ class Method:
         return self.document["entityType"]
 
     def applies_to(self, entity_type: str) -> bool:
-        return self.entity_type in ("*", entity_type)
+        return not self.is_tool and self.entity_type in ("*", entity_type)
+
+    @property
+    def is_tool(self) -> bool:
+        """A project tool runs once on the project, not on entities."""
+        return self.entity_type == PROJECT_TOOL
 
     @property
     def batch_mode(self) -> str:
@@ -89,7 +96,7 @@ class Method:
         return {"id": self.id, "version": self.version, "title": self.title, "entityType": self.entity_type,
                 "description": self.document.get("description", ""), "category": self.document.get("category", ""),
                 "batchMode": self.batch_mode, "queueable": self.queueable, "languages": self.languages,
-                "module": self.module, "options": self.options_schema}
+                "module": self.module, "options": self.options_schema, "tool": self.is_tool}
 
 
 def defaults_of(schema: dict) -> Any:
@@ -159,6 +166,18 @@ class MethodContext:
     def check_cancelled(self) -> None:
         if self.cancelled:
             raise Cancelled()
+
+
+def run_tool(method: Method, project, options: Optional[dict] = None, context: Optional[MethodContext] = None) -> Any:
+    """Run a project tool in this process: once, as function(project, options, context)."""
+    if not method.is_tool:
+        raise NansenError("wrong-entity-type", f"{method.id} runs on {method.entity_type}, not on the project")
+    context = context or MethodContext(project=project, method=method)
+    resolved = method.resolve_options(options)
+    context.check_cancelled()
+    result = method.function()(project, resolved, context)
+    context.progress(1.0)
+    return result
 
 
 def run_method(method: Method, entities: List[Any], options: Optional[dict] = None,

@@ -679,3 +679,18 @@ def test_lock_editing_and_keyboard_shortcuts(empty_app, page):
     page.keyboard.press("Escape")  # out of the search box, which has the focus
     page.keyboard.press("?")
     page.wait_for_selector(".dialog .shortcuts")
+
+
+def test_run_a_project_tool_from_the_overview(empty_app, page):
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    api.handle({"id": 2, "method": "methods.create", "params": {"id": "tally", "title": "Tally sessions", "entityType": "@project"}})
+    code = folder / "python" / "tally.py"
+    code.write_text(code.read_text().replace("return {}", "return {'sessions': len(project.entities('session'))}"))
+    page.goto(empty_app["server"].url + "#/overview")
+    page.click(".tools-card li[data-tool='tally'] .run-tool")
+    page.click(".dialog-foot button:has-text('Run')")
+    page.wait_for_selector(".dialog .tool-result")
+    assert '"sessions": 14' in page.locator(".dialog .tool-result").inner_text()
+    assert "Tally sessions" in page.locator(".dialog .tool-output").inner_text()

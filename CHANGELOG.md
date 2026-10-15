@@ -21,7 +21,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 **Methods and tasks**
 
 - Added modules, which provide fragments, methods, file adapters and pipelines. Added the built-in `core` module: notes, file statistics, export, backup and wait methods, an inspect pipeline, and the demo ([modules](docs/reference/modules.md)).
-- Methods declare JSON Schema options and save presets, and can be implemented in MATLAB, in Python or both. Modules can ship presets; a project preset of the same name is used instead. A project method can be started from templates, from the API or the Data page (`methods.create`), and Python method code is imported again when its file changes. Computed fragments are filled by a method.
+- Methods declare JSON Schema options and save presets, and can be implemented in MATLAB, in Python or both. Modules can ship presets; a project preset of the same name is used instead. A method with `entityType` `@project` is a project tool, run once on the project from the overview's Tools card (`tools.list`, `tools.run`). A project method can be started from templates, from the API or the Data page (`methods.create`), and Python method code is imported again when its file changes. Computed fragments are filled by a method.
 - Added a task queue in the project folder, with atomic claims, cancellation, logs, recovery, retry, dependencies and pipelines. As in dev's batch processor, queued tasks can be put on hold, reordered and given new options (`tasks.hold`, `tasks.reorder`, `tasks.update`); a task is changed only while its claim is held, so no worker starts it halfway. Python runs tasks in threads or processes, and MATLAB in the foreground or on a `backgroundPool`.
 
 **App**

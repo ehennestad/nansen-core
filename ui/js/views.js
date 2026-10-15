@@ -51,6 +51,12 @@
         h("div.sub", `${task.entities.length} ${task.entities[0].entityType}(s) · ${N.fmt.ago(task.createdAt)}`))))) :
       h("div.card-body.muted", "No tasks yet. Select entities and run a method.");
 
+    const tools = (app.methods || []).filter((m) => m.tool);
+    const toolsCard = tools.length ? h("div.card.tools-card", h("div.card-head", N.icon("zap"), h("h3", "Tools")),
+      h("ul.list", tools.map((m) => h("li", { dataset: { tool: m.id } },
+        h("div.grow", h("div.title", m.title), h("div.sub", m.description || m.id)),
+        h("button.btn.small.run-tool", { on: { click: () => toolDialog(app, m) } }, N.icon("play", 14), "Run"))))) : null;
+
     const modules = project.modules.length ? h("ul.list", project.modules.map((m) => h("li", N.icon("puzzle"),
       h("div.grow", h("div.title", m.title || m.id), h("div.sub", m.description || m.id)), h("span.pill.plain", "v" + m.version)))) :
       h("div.card-body.muted", "No modules.");
@@ -73,6 +79,7 @@
         h("div.grid",
           h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Recent tasks"), h("div.spacer"),
             h("a", { href: "#/tasks" }, "All tasks")), taskList),
+          toolsCard,
           h("div.card.modules", h("div.card-head", N.icon("layers"), h("h3", "Modules"), h("div.spacer"),
             h("button.btn.small.manage-modules", { on: { click: () => modulesDialog(app) } }, N.icon("settings"), "Manage")), modules))));
   };
@@ -1153,7 +1160,7 @@
               h("div.sub", `${f.id} ${f.version} · ${f.columns.map((c) => c.name).join(", ")}`)))))),
           h("div.card.methods-card", h("div.card-head", N.icon("zap"), h("h3", "Methods"), h("div.spacer"),
             h("button.btn.small.new-method", { on: { click: () => newMethodDialog(app) } }, N.icon("plus", 14), "New method")),
-            h("ul.list", methods.map((m) => h("li", h("div.grow", h("div.title", m.title), h("div.sub", `${m.id} · ${m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)))))))));
+            h("ul.list", methods.map((m) => h("li", h("div.grow", h("div.title", m.title), h("div.sub", `${m.id} · ${m.tool ? "project tool" : m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)))))))));
   };
 
   /* ------------------------------------------------------------------ projects */
@@ -1317,6 +1324,40 @@
     loadOptions(true);
   }
 
+  /* Run a project tool: its options, then what it returned and logged. */
+  function toolDialog(app, method) {
+    const form = N.schemaForm(method.options || {}, {});
+    const output = h("div.tool-output.hidden");
+    let running = false;
+    const d = N.dialog({
+      title: method.title,
+      content: h("div", { style: { padding: "16px 20px" } },
+        method.description ? h("p.muted", { style: { marginTop: 0 } }, method.description) : null,
+        Object.keys((method.options || {}).properties || {}).length ? form.el : h("p.muted", "It has no options."), output),
+      buttons: [
+        { label: "Close" },
+        { label: "Run", kind: "primary", icon: "play", onClick: async () => {
+          if (running) return;
+          const problems = form.validate();
+          if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
+          running = true;
+          N.fill(output, h("div.muted", "Running…"));
+          output.classList.remove("hidden");
+          try {
+            const answer = await app.client.request("tools.run", { methodId: method.id, options: form.getValue() });
+            N.fill(output,
+              h("div.section-title", "Result"), h("pre.log.tool-result", JSON.stringify(answer.result, null, 2)),
+              h("div.section-title", "Log"), h("pre.log", answer.log.length ? answer.log.join("\n") : "(nothing logged)"));
+            if (app.reloadEntities) app.reloadEntities();
+          } catch (error) {
+            N.fill(output, h("div.form-message", (error.code ? `[${error.code}] ` : "") + (error.message || String(error))));
+          } finally { running = false; }
+        } },
+      ],
+    });
+    return d;
+  }
+
   /* Start a project method: its document and a file per language to fill in. */
   function newMethodDialog(app) {
     const types = app.project.entityTypes.map((t) => t.name);
@@ -1328,7 +1369,8 @@
       schema: { type: "object", properties: {
         id: { type: "string", title: "Id", description: "A lower-case letter, then letters, digits or _; also the file and function name", pattern: "^[a-z][a-z0-9_]*$" },
         title: { type: "string", title: "Title" },
-        entityType: { type: "string", title: "Runs on", enum: ["*", ...types], default: types[types.length - 1] || "*" },
+        entityType: { type: "string", title: "Runs on", enum: ["*", ...types, "@project"], default: types[types.length - 1] || "*",
+          description: "An entity type, * for any, or @project for a tool that runs once on the project" },
         batchMode: { type: "string", title: "Runs", enum: ["serial", "batch"], default: "serial", description: "serial: once per entity; batch: once with all of them" },
         python: { type: "boolean", title: "Python", default: true },
         matlab: { type: "boolean", title: "MATLAB", default: true },

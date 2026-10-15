@@ -15,7 +15,7 @@
     "title": { "type": "string" },
     "description": { "type": "string" },
     "category": { "type": "string", "description": "Menu group, e.g. 'Process' or 'Plot'. Slashes nest groups." },
-    "entityType": { "type": "string", "pattern": "^([A-Za-z][A-Za-z0-9_]*|\\*)$", "description": "The entity type the method runs on, or * for any." },
+    "entityType": { "type": "string", "pattern": "^([A-Za-z][A-Za-z0-9_]*|\\*|@project)$", "description": "The entity type the method runs on, * for any, or @project for a project tool: it runs once on the project, as function(project, options, context)." },
     "implementations": {
       "type": "object",
       "minProperties": 1,

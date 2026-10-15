@@ -80,6 +80,22 @@ classdef MethodsTest < matlab.unittest.TestCase
                 "function result = summarize(entities, options, context)"));
         end
 
+        function aProjectToolRunsOnceOnTheProject(testCase)
+            project = testCase.Project;
+            tool = project.createMethod("tally", Title="Tally", EntityType="@project");
+            testCase.verifyTrue(tool.isTool());
+            code = fullfile(project.Folder, "matlab", "tally.m");
+            text = string(nansen.internal.readText(code));
+            testCase.verifyTrue(startsWith(text, "function result = tally(project, options, context)"));
+            nansen.internal.writeText(code, replace(text, "result = struct();", "result = struct(""sessions"", numel(project.entities(""session"")));"));
+            rehash
+            clear("tally")   % written in the same second as the template, which a timestamp check could miss
+            testCase.verifyEqual([project.tools().Id], "tally");
+            testCase.verifyFalse(ismember("tally", [project.entityMethods("session").Id]));
+            testCase.verifyEqual(project.runTool("tally").sessions, 3);
+            testCase.verifyError(@() project.runTool("core.wait"), "nansen:WrongEntityType");
+        end
+
         function defaultOptionsAndValidation(testCase)
             method = testCase.Project.method("core.wait");
             defaults = method.defaultOptions();

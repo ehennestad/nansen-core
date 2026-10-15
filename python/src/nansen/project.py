@@ -471,7 +471,7 @@ class Project:
 
         if not re.match(r"^[a-z][a-z0-9_]*$", method_id or ""):
             raise NansenError("invalid-params", "a project method's id is a lower-case letter, then letters, digits or _")
-        if entity_type != "*":
+        if entity_type not in ("*", "@project"):
             self.entity_type(entity_type)
         if batch_mode not in ("serial", "batch"):
             raise NansenError("invalid-params", "batchMode is serial or batch")
@@ -499,13 +499,16 @@ class Project:
             document["implementations"]["matlab"] = method_id
         check_document(document, "nansen.method")
         batch = batch_mode == "batch"
+        tool = entity_type == "@project"
         replacements = {
             "__ID__": method_id, "__TITLE__": title.replace('"', "'"),
             "__DESCRIPTION__": description or title,
-            "__ARG__": "entities" if batch else "entity",
-            "__ARG_HELP__": ("entities are the entities it runs on, all at once" if batch else "entity is the entity it runs on")
+            "__ARG__": "project" if tool else "entities" if batch else "entity",
+            "__ARG_HELP__": "project is the project it runs on: project.entities(entity_type), project.table(entity_type)." if tool
+            else ("entities are the entities it runs on, all at once" if batch else "entity is the entity it runs on")
             + (" (each with .key, .values, .locations, .load(name))." if batch else ": entity.key, entity.values, entity.locations, entity.load(name)."),
-            "__ARG_HELP_M__": ("entities is a cell row of the entities it runs on, all at once" if batch else "entity is the entity it runs on")
+            "__ARG_HELP_M__": "project is the project it runs on: project.entities(entityType), project.table(entityType)." if tool
+            else ("entities is a cell row of the entities it runs on, all at once" if batch else "entity is the entity it runs on")
             + (" (each with .Key, .values(), .locations(), .load(name))." if batch else ": entity.Key, entity.values(), entity.locations(), entity.load(name)."),
         }
         for path, template in files.items():
@@ -671,6 +674,24 @@ class Project:
         results = run_method(method, entities, values, context)
         runs.record(self.folder, method.id, method.version, entities)
         return results
+
+    def tools(self) -> List[Method]:
+        """The project tools: methods that run once on the project (entityType @project)."""
+        return [m for m in self.methods() if m.is_tool]
+
+    def run_tool(self, method_id: str, options: Optional[Dict[str, Any]] = None, preset: Optional[str] = None,
+                 context: Optional[MethodContext] = None) -> Any:
+        """Run a project tool now, in this process; returns what it returns."""
+        from .methods import run_tool
+
+        method = self.method(method_id)
+        values = self.preset(method_id, preset) if preset else {}
+        if options:
+            values = dict(values, **options)
+        context = context or MethodContext(project=self, method=method)
+        if context.project is None:
+            context.project = self
+        return run_tool(method, self, values, context)
 
     def update_fragment(self, entity_type: str, fragment_id: str, keys: Optional[List[Dict[str, Any]]] = None,
                         context: Optional[MethodContext] = None) -> Dict[str, Any]:

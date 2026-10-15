@@ -23,6 +23,7 @@ from .dataset import Dataset
 from .documents import check_document
 from .entities import Entity
 from .errors import NansenError
+from .methods import MethodContext
 from . import runs
 from .project import Project
 from .tasks import TaskQueue
@@ -622,6 +623,18 @@ class Api:
     def methods__list(self, params: dict) -> list:
         project = self._require_project()
         return [m.summary() for m in project.methods(params.get("entityType"))]
+
+    def tools__list(self, params: dict) -> list:
+        return [m.summary() for m in self._require_project().tools()]
+
+    def tools__run(self, params: dict) -> dict:
+        """Run a project tool now; its result and log."""
+        project = self._require_project()
+        method = project.method(params["methodId"])
+        context = MethodContext(project=project, method=method)
+        result = project.run_tool(method.id, params.get("options"), params.get("preset"), context)
+        self.emit("entities", {"entityTypes": project.entity_types})
+        return {"result": result, "log": context.lines}
 
     def methods__create(self, params: dict) -> dict:
         """Start a project method from the templates: its document, and a file to fill in per language."""

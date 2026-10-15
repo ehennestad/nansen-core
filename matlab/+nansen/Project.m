@@ -644,7 +644,7 @@ classdef Project < handle
             if isempty(regexp(methodId, "^[a-z][a-z0-9_]*$", "once"))
                 nansen.internal.throwError("invalid-params", "a project method's id is a lower-case letter, then letters, digits or _")
             end
-            if options.EntityType ~= "*"
+            if ~ismember(options.EntityType, ["*", "@project"])
                 obj.entityType(options.EntityType);
             end
             if ~ismember(options.BatchMode, ["serial", "batch"])
@@ -696,7 +696,11 @@ classdef Project < handle
             end
             nansen.checkDocument(document, ExpectedType="nansen.method");
             batch = options.BatchMode == "batch";
-            if batch
+            if options.EntityType == "@project"
+                argument = "project";
+                help = "project is the project it runs on: project.entities(entity_type), project.table(entity_type).";
+                helpM = "project is the project it runs on: project.entities(entityType), project.table(entityType).";
+            elseif batch
                 argument = "entities";
                 help = "entities are the entities it runs on, all at once (each with .key, .values, .locations, .load(name)).";
                 helpM = "entities is a cell row of the entities it runs on, all at once (each with .Key, .values(), .locations(), .load(name)).";
@@ -1017,6 +1021,36 @@ classdef Project < handle
             end
             results = nansen.runMethod(method, entities, values, context);
             nansen.internal.recordRuns(obj.Folder, method.Id, method.Version, entities);
+        end
+
+        function found = tools(obj)
+            %tools The project tools: methods that run once on the project (entityType @project), a row of nansen.Method
+            found = obj.entityMethods();
+            found = found(arrayfun(@(m) m.isTool(), found));
+        end
+
+        function result = runTool(obj, methodId, options)
+            %runTool Run a project tool now, in this MATLAB session; returns what it returns
+            arguments
+                obj
+                methodId (1,1) string
+                options.Options = struct()
+                options.Preset (1,1) string = ""
+                options.Context = []
+            end
+            method = obj.method(methodId);
+            values = struct();
+            if options.Preset ~= ""
+                values = obj.preset(methodId, options.Preset);
+            end
+            values = nansen.internal.mergeStructs(values, options.Options);
+            context = options.Context;
+            if isempty(context)
+                context = nansen.MethodContext(Project=obj, Method=method);
+            elseif isempty(context.Project)
+                context.Project = obj;
+            end
+            result = nansen.runTool(method, obj, values, context);
         end
 
         function summary = updateFragment(obj, entityType, fragmentId, options)
