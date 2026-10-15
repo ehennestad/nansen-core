@@ -4,7 +4,9 @@ classdef ThorLabsTiffs < nansen.FileAdapter
 %   As dev's ThorLabsTiffs reads them: the files of each channel letter
 %   are its frames, in natural order; with more than one channel the stack
 %   is height x width x channels x frames, channels in letter order. Read a
-%   chunk at a time. Python's ophys_adapters.ThorLabsTiffs reads the same.
+%   chunk at a time. Its Metadata: frameRate and pixelSizeUM of the LSM
+%   element in the Experiment.xml beside the files. Python's
+%   ophys_adapters.ThorLabsTiffs reads the same.
 
     methods
         function data = read(obj, path)
@@ -27,8 +29,10 @@ classdef ThorLabsTiffs < nansen.FileAdapter
             for k = 1:numel(names)
                 channels{k} = ophys.TiffStack().open(paths(letters == names(k)));
             end
+            metadata = ophys.ThorLabsTiffs.metadata(fullfile(fileparts(paths(1)), "Experiment.xml"));
             if numel(channels) == 1
                 stack = channels{1};
+                stack.Metadata = metadata;
                 return
             end
             first = channels{1};
@@ -40,6 +44,7 @@ classdef ThorLabsTiffs < nansen.FileAdapter
             [height, width, frames] = size(first);
             stack = nansen.Stack([height, width, numel(channels), frames], first.ClassName, ...
                 @(a, b) ophys.ThorLabsTiffs.together(channels, a, b));
+            stack.Metadata = metadata;
         end
 
         function write(~, ~, ~)
@@ -48,6 +53,27 @@ classdef ThorLabsTiffs < nansen.FileAdapter
     end
 
     methods (Static)
+        function metadata = metadata(path)
+            %metadata frameRate and pixelSizeUM of the LSM element of a ThorImage Experiment.xml; struct() without one
+            metadata = struct();
+            if ~isfile(path)
+                return
+            end
+            tag = regexp(fileread(path), '<LSM\s[^>]*>', "match", "once");
+            [names, values] = ophys.internal.xmlAttributes(tag);
+            rate = NaN;
+            pixel = NaN;
+            at = find(names == "frameRate", 1, "last");
+            if ~isempty(at)
+                rate = ophys.internal.textNumber(values(at));
+            end
+            at = find(names == "pixelSizeUM", 1, "last");
+            if ~isempty(at)
+                pixel = ophys.internal.textNumber(values(at));
+            end
+            metadata = ophys.internal.stackMetadata(rate, [pixel, pixel]);
+        end
+
         function data = together(channels, first, last)
             %together Frames first..last of every channel, as height x width x channels x frames
             parts = cellfun(@(c) permute(c.frames(first, last), [1, 2, 4, 3]), channels, UniformOutput=false);

@@ -4,8 +4,10 @@ classdef TsmStack < nansen.FileAdapter
 %   A FITS-like header of 80-character cards in 2880-byte blocks (NAXIS1
 %   columns, NAXIS2 rows, NAXIS3 frames), then int16 frames, little-endian,
 %   the columns fastest, then a dark frame, which is subtracted from every
-%   frame (int16 arithmetic, so saturating), as dev's TSM stack does. Read a
-%   chunk at a time; read only. Python's ophys_adapters.TsmStack is the same.
+%   frame (int16 arithmetic, so saturating), as dev's TSM stack does. The
+%   frame rate is 1 / EXPOSURE (seconds per frame), when the header has it.
+%   Read a chunk at a time; read only. Python's ophys_adapters.TsmStack is
+%   the same.
 
     methods
         function data = read(obj, path)
@@ -16,7 +18,7 @@ classdef TsmStack < nansen.FileAdapter
             paths = nansen.internal.naturalOrder(paths);
             parts = cell(1, numel(paths));
             for i = 1:numel(paths)
-                [columns, rows, frames, offset] = ophys.TsmStack.header(paths(i));
+                [columns, rows, frames, offset, exposure] = ophys.TsmStack.header(paths(i));
                 listing = dir(paths(i));
                 needed = offset + (frames + 1) * rows * columns * 2;
                 if listing.bytes < needed
@@ -27,6 +29,7 @@ classdef TsmStack < nansen.FileAdapter
                 dark = ophys.TsmStack.frames(path, offset, rows, columns, frames + 1, frames + 1, zeros(rows, columns, "int16"));
                 parts{i} = nansen.Stack([rows, columns, frames], "int16", ...
                     @(a, b) ophys.TsmStack.frames(path, offset, rows, columns, a, b, dark));
+                parts{i}.Metadata = ophys.internal.stackMetadata(1 / exposure);
             end
             stack = nansen.Stack.join(parts);
         end
@@ -37,8 +40,8 @@ classdef TsmStack < nansen.FileAdapter
     end
 
     methods (Static)
-        function [columns, rows, frames, offset] = header(path)
-            %header Columns, rows and frames from the header cards, and where the data starts
+        function [columns, rows, frames, offset, exposure] = header(path)
+            %header Columns, rows and frames from the header cards, where the data starts, and EXPOSURE (NaN without it)
             fid = fopen(path, "r");
             if fid < 0
                 nansen.internal.throwError("cannot-open", "cannot open %s", path)
@@ -71,6 +74,10 @@ classdef TsmStack < nansen.FileAdapter
             columns = str2double(values.NAXIS1);
             rows = str2double(values.NAXIS2);
             frames = str2double(values.NAXIS3);
+            exposure = NaN;
+            if isfield(values, "EXPOSURE")
+                exposure = ophys.internal.textNumber(values.EXPOSURE);
+            end
         end
 
         function data = frames(path, offset, rows, columns, first, last, dark)

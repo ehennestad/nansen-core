@@ -1,0 +1,25 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.read_metadata",
+  "version": "1.0.0",
+  "title": "Read recording metadata",
+  "category": "Two-photon/Setup",
+  "entityType": "*",
+  "description": "Reads the frame rate, pixel size and z step from the recording's files (ScanImage, SciScan, ThorImage, Prairie View, TSM, video), as dev's getScanParameters, and writes them into the entity's frame_rate (ophys.imaging), pixel_size_um and z_step_um (ophys.scan) columns. A value the files do not give is left as it is.",
+  "implementations": {
+    "python": "ophys_methods:read_metadata",
+    "matlab": "ophys.readMetadata"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Original",
+        "title": "Stack",
+        "description": "Variable that holds the recording, read with a microscope's file adapter."
+      }
+    }
+  }
+}

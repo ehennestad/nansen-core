@@ -32,14 +32,19 @@ class Stack:
     ``stack[:, :, a:b]`` (any index whose last part picks frames) reads those frames only; ``np.asarray``
     reads them all. ``max_frames``, when set, is the most one read may ask for, reading them all included:
     a test sets it to show that a method reads a recording in chunks and never whole.
+
+    ``metadata`` is what the files tell about the recording, each key only when they give it: ``frameRate``
+    (frames per second; volumes per second for a stack with planes), ``pixelSize`` ([x, y] µm per pixel) and
+    ``zStep`` (µm between planes).
     """
 
     max_frames: Optional[int] = None
 
-    def __init__(self, shape: Tuple[int, ...], dtype: Any, read: Callable[[int, int], Any]):
+    def __init__(self, shape: Tuple[int, ...], dtype: Any, read: Callable[[int, int], Any], metadata: Optional[dict] = None):
         self.shape = tuple(int(n) for n in shape)
         self.dtype = _numpy().dtype(dtype)
         self._read = read
+        self.metadata = dict(metadata or {})
 
     @property
     def ndim(self) -> int:
@@ -100,7 +105,7 @@ class Stack:
         np = _numpy()
         index = tuple(index) + (slice(None),)
         shape = np.empty(self.shape[:-1] + (0,), dtype=self.dtype)[index].shape[:-1] + (self.frame_count,)
-        return Stack(shape, self.dtype, lambda start, stop: self.frames(start, stop)[index])
+        return Stack(shape, self.dtype, lambda start, stop: self.frames(start, stop)[index], self.metadata)
 
     def __array__(self, dtype=None, copy=None):
         data = self.frames(0, self.frame_count)   # with max_frames below the frame count, this is refused
@@ -129,7 +134,7 @@ def as_stack(value: Any) -> Stack:
 
 
 def join(stacks: Sequence[Any]) -> Stack:
-    """Stacks one after the other along the frames; they must agree in everything else."""
+    """Stacks one after the other along the frames; they must agree in everything else. The first one's metadata is kept."""
     parts = [as_stack(s) for s in stacks]
     if not parts:
         raise NansenError("invalid-data", "no stacks to join")
@@ -154,7 +159,7 @@ def join(stacks: Sequence[Any]) -> Stack:
                 pieces.append(part.frames(low - offset, high - offset))
         return np.concatenate(pieces, axis=-1)
 
-    return Stack(first.shape[:-1] + (offsets[-1],), first.dtype, read)
+    return Stack(first.shape[:-1] + (offsets[-1],), first.dtype, read, first.metadata)
 
 
 def pages(path_list: Sequence[Path], page_info: Callable[[Path], Tuple[int, Tuple[int, ...], Any]],

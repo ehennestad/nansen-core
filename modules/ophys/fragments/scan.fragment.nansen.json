@@ -1,0 +1,24 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.scan",
+  "version": "1.0.0",
+  "title": "Scan",
+  "description": "The pixel size and plane spacing of a recording. Filled from the microscope's files by ophys.read_metadata, with ophys.imaging's frame rate.",
+  "columns": [
+    {
+      "name": "pixel_size_um",
+      "dataType": "number",
+      "title": "Pixel size",
+      "unit": "µm",
+      "description": "Width of a pixel (the stack's metadata has its width and height)"
+    },
+    {
+      "name": "z_step_um",
+      "dataType": "number",
+      "title": "Z step",
+      "unit": "µm",
+      "description": "Distance between planes"
+    }
+  ]
+}

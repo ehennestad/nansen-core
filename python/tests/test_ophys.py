@@ -245,6 +245,8 @@ def test_scanimage_reads_channels_planes_and_rois():
     first = adapter("ScanImageTiff").read(files[1])   # 7 pages: one whole volume of 2 channels x 2 planes
     assert first.shape == (16, 64, 2, 2, 1) and (first == data[..., :1]).all()
     assert (stack[:, :, :, :, 1:2] == data[..., 1:2]).all()   # the volume that begins in one file and ends in the next
+    # the volume rate, actualStackZStepSize over stackZStepSize, and the pixel size of the first ROI's scanfield
+    assert stack.metadata == {"frameRate": 7.5, "pixelSize": [1.5, 1.5], "zStep": 4.0}
     with pytest.raises(NansenError) as error:
         adapter("ScanImageTiff").read(folder / "ses-s2" / "rec_part2.tif")
     assert error.value.code == "invalid-data"

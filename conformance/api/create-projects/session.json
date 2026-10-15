@@ -522,6 +522,9 @@
           },
           {
             "id": "ophys.imaging"
+          },
+          {
+            "id": "ophys.scan"
           }
         ]
       }

@@ -75,6 +75,7 @@ classdef FormatsTest < matlab.unittest.TestCase
                 testCase.verifyEqual(sum(double(data), "all"), expected.sum, name);
                 index = repmat({':'}, 1, ndims(data) - 1);
                 testCase.verifyEqual(stack.frames(2, 3), data(index{:}, 2:3), name);   % a chunk reads the same
+                testCase.verifyMetadata(stack, expected.metadata, name);
             end
         end
 
@@ -89,8 +90,10 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyEqual(double(data(at{:})), expected.pixel.value);
             testCase.verifyEqual(sum(double(data), "all"), expected.sum);
             testCase.verifyEqual(stack.frames(2, 3), data(:, :, :, 2:3));
+            testCase.verifyMetadata(stack, expected.metadata, "thorlabs");   % from the Experiment.xml beside the files
             one = ophys.ThorLabsTiffs().open(paths(startsWith(string({listing(end:-1:1).name}), "ChanA")));
             testCase.verifyEqual(one.all(), squeeze(data(:, :, 1, :)));
+            testCase.verifyMetadata(one, expected.metadata, "one channel");
         end
 
         function readsTsmFilesLessTheirDarkFrame(testCase)
@@ -105,6 +108,7 @@ classdef FormatsTest < matlab.unittest.TestCase
             end
             testCase.verifyEqual(sum(double(data), "all"), expected.sum);
             testCase.verifyEqual(stack.frames(2, 3), data(:, :, 2:3));
+            testCase.verifyMetadata(stack, expected.metadata, "tsm");   % 1 / EXPOSURE
         end
 
         function readsAndWritesDevBinaryStacks(testCase)
@@ -120,6 +124,7 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyEqual(double(frame(9, :))', expected.frame2row8);
             data = stack.all();
             testCase.verifyEqual(sum(double(data), "all"), expected.sum);
+            testCase.verifyMetadata(stack, expected.metadata, "devBinary");
             folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
             ophys.BinaryStack().write(fullfile(folder, "out.raw"), data);
             testCase.verifyEqual(splitlines(strtrim(string(fileread(fullfile(folder, "out.ini"))))), ["Size = 9  7  5"; "Class = uint16"]);
@@ -153,6 +158,7 @@ classdef FormatsTest < matlab.unittest.TestCase
             frame = stack.frames(3, 3);
             testCase.verifyEqual(double(frame(:, :, 2)), expected.channel2frame3);
             testCase.verifyEqual(sum(double(stack.all()), "all"), expected.sum);
+            testCase.verifyMetadata(stack, expected.metadata, "prairie");   % 1 / framePeriod and micronsPerPixel
         end
 
         function readsAndWritesHdf5Stacks(testCase)
@@ -164,10 +170,35 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyEqual(double(frame(at(1), at(2))), expected.pixel.value);
             frame = stack.frames(7, 7);
             testCase.verifyEqual(double(frame(3, :))', expected.frame6row2);
+            testCase.verifyMetadata(stack, expected.metadata, "hdf5");
             folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
             data = uint16(reshape(0:59, 3, 4, 5));
             ophys.Hdf5Stack().write(fullfile(folder, "out.h5"), data);
             testCase.verifyEqual(ophys.Hdf5Stack().read(fullfile(folder, "out.h5")), data);
+        end
+
+        function readsTheMetadataOfScanImageFiles(testCase)
+            files = ["scanimage.tif", "scanimage_planes.tif"];
+            keys = ["scanimage", "scanimagePlanes"];
+            for i = 1:2
+                expected = testCase.Expected.(keys(i));
+                stack = ophys.ScanImageTiff().open(fullfile(testCase.Files, files(i)));
+                testCase.verifyEqual(size(stack), expected.size', keys(i));
+                testCase.verifyEqual(sum(double(stack.all()), "all"), expected.sum, keys(i));
+                testCase.verifyMetadata(stack, expected.metadata, keys(i));
+            end
+            testCase.verifyMetadata(stack.select(3, 1), expected.metadata, "a channel of it");
+        end
+
+        function readsTheMetadataOfASciScanZStack(testCase)
+            expected = testCase.Expected.sciscan;
+            raw = fullfile(testCase.Files, "sciscan", "zstack.raw");
+            stacks = {ophys.SciScanRaw().open(raw), ophys.BinaryStack().open(raw)};   % dev's binary stack reads it as SciScan's
+            for i = 1:2
+                testCase.verifyEqual(size(stacks{i}), expected.size');
+                testCase.verifyEqual(sum(double(stacks{i}.all()), "all"), expected.sum);
+                testCase.verifyMetadata(stacks{i}, expected.metadata, "sciscan");
+            end
         end
 
         function loadsTheVersion73File(testCase)   % made by h5py as MATLAB makes them; Python reads it too
@@ -187,6 +218,11 @@ classdef FormatsTest < matlab.unittest.TestCase
     end
 
     methods (Access = private)
+        function verifyMetadata(testCase, stack, expected, name)
+            % compared as JSON, as data.frame sends it
+            testCase.verifyEqual(jsondecode(jsonencode(stack.Metadata)), expected, name);
+        end
+
         function verifyDocument(testCase, actual, expected)
             % compared as JSON: the document as the API would send it
             testCase.verifyEqual(jsondecode(jsonencode(actual)), expected);

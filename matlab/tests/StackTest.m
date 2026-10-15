@@ -37,6 +37,13 @@ classdef StackTest < matlab.unittest.TestCase
             part = joined.frames(3, 5);
             testCase.verifyEqual(reshape(part(1, 1, :), 1, []), [0, 1, 1]);
             testCase.verifyError(@() nansen.Stack.join({zeros(2, 2, 3), ones(2, 3, 1)}), "nansen:InvalidData");
+            testCase.verifyEqual(joined.Metadata, struct());
+            first = nansen.Stack.fromArray(zeros(2, 2, 3));
+            first.Metadata = struct("frameRate", 30, "pixelSize", [1.5, 2]);
+            second = nansen.Stack.fromArray(ones(2, 2, 4));
+            second.Metadata = struct("frameRate", 15);
+            joined = nansen.Stack.join({first, second});
+            testCase.verifyEqual(joined.Metadata, first.Metadata);   % the first part's
             testCase.verifyEqual(nansen.internal.naturalOrder(["f_10.tif", "f_2.tif", "f_1.tif"]), ["f_1.tif", "f_2.tif", "f_10.tif"]);
         end
 

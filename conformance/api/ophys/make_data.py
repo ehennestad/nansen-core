@@ -53,11 +53,12 @@ def scene(seed):
 
 
 def write_sciscan(path, stack):
+    """SciScan's .raw and .ini: 30.9 frames per second, and a FOV of 512 x 384 µm (16 x 12 µm pixels)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     stack.transpose(2, 0, 1).astype(">u2").tofile(path)  # frame after frame, line after line, big-endian
     path.with_suffix(".ini").write_text(
         f'[_]\nx.pixels = {WIDTH}\ny.pixels = {HEIGHT}\nno.of.channels = 1\nno.of.frames.acquired = {FRAMES}\n'
-        f'file.format = 0\nsave.ch.1 = "TRUE"\nframes.p.sec = "30,9"\n', encoding="latin-1")
+        f'file.format = 0\nsave.ch.1 = "TRUE"\nframes.p.sec = "30,9"\nx.fov = 5.12E-4\ny.fov = 3.84E-4\n', encoding="latin-1")
 
 
 def ring(disk, others, gap, width):
@@ -106,7 +107,9 @@ def smooth_naive(data, axis, sigma):
 
 def write_scanimage(path, rng):
     """A multi-ROI ScanImage file: 2 ROIs of 16 x 32 one above the other with 4 flyback lines, 2 channels,
-    2 planes, 3 volumes; returns the stack as the reader gives it (16 x 64 x channels x planes x volumes)."""
+    2 planes, 3 volumes; returns the stack as the reader gives it (16 x 64 x channels x planes x volumes). 7.5 volumes
+    per second, planes 4 µm apart (actualStackZStepSize, not stackZStepSize), and ROIs of 3.2 x 1.6 degrees at 15 µm per
+    degree: 1.5 µm pixels."""
     import tifffile
     strips = rng.integers(0, 4000, size=(2, 16, 32, 2, 2, 3)).astype(np.uint16)  # roi, y, x, channel, plane, volume
     pages = []
@@ -117,10 +120,12 @@ def write_scanimage(path, rng):
                 page[:16] = strips[0, :, :, channel, plane, volume]
                 page[20:] = strips[1, :, :, channel, plane, volume]
                 pages.append(page)
-    software = "SI.VERSION_MAJOR = 2020\nSI.hChannels.channelSave = [1;2]\nSI.hStackManager.numSlices = 2\nSI.hRoiManager.mroiEnable = true\n"
+    software = ("SI.VERSION_MAJOR = 2020\nSI.hChannels.channelSave = [1;2]\nSI.hStackManager.numSlices = 2\nSI.hRoiManager.mroiEnable = true\n"
+                "SI.hRoiManager.scanFrameRate = 30\nSI.hRoiManager.scanVolumeRate = 7.5\nSI.hStackManager.actualStackZStepSize = 4\n"
+                "SI.hStackManager.stackZStepSize = 5\nSI.objectiveResolution = 15\n")
     artist = json.dumps({"RoiGroups": {"imagingRoiGroup": {"rois": [
-        {"name": "A", "scanfields": {"pixelResolutionXY": [32, 16]}},
-        {"name": "B", "scanfields": {"pixelResolutionXY": [32, 16]}}]}}})
+        {"name": "A", "scanfields": {"pixelResolutionXY": [32, 16], "sizeXY": [3.2, 1.6]}},
+        {"name": "B", "scanfields": {"pixelResolutionXY": [32, 16], "sizeXY": [3.2, 1.6]}}]}}})
     path.parent.mkdir(parents=True, exist_ok=True)
     # two files, as ScanImage splits a recording: the second volume begins in the first file and ends in the
     # second. The tags go on each file's first page, which is where the readers look
@@ -353,7 +358,11 @@ def main():
     area = ndimage.binary_fill_holes(labels == labels.ravel()[seed])
     expected["detected"] = [[int(y), int(x)] for y, x in zip(*np.nonzero(area))]
     expected["scanimage"] = {"height": 16, "width": 64, "frames": 3, "frame": 2,
-                             **frame_bytes(scanimage[:, :, 1, 1, 2].astype(float))}
+                             **frame_bytes(scanimage[:, :, 1, 1, 2].astype(float)),
+                             "metadata": {"frameRate": 7.5, "pixelSize": [round_to(3.2 * 15 / 32, 6), round_to(1.6 * 15 / 16, 6)], "zStep": 4.0}}
+    # the SciScan recording's metadata, and ophys.read_metadata writing it into session 1's columns
+    expected["sciscanMetadata"] = {"frameRate": 30.9, "pixelSize": [round_to(5.12e-4 * 1e6 / WIDTH, 6), round_to(3.84e-4 * 1e6 / HEIGHT, 6)]}
+    expected["readMetadata"] = {"frame_rate": 30.9, "pixel_size_um": expected["sciscanMetadata"]["pixelSize"][0]}
     print(json.dumps(expected, indent=1))
 
 

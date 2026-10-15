@@ -1417,6 +1417,27 @@ classdef Project < handle
             result = nansen.runTool(method, obj, values, context);
         end
 
+        function names = updateValues(obj, entity, values)
+            %updateValues Write values (a struct) into the entity's table row, those of columns the table has
+            %
+            %   For a method that fills columns it does not compute. Returns the
+            %   names written; unknown-entity for an entity the table has no row
+            %   of. As Python's Project.update_values.
+            table = obj.table(entity.EntityType);
+            if ~table.hasRow(entity.Key)
+                nansen.internal.throwError("unknown-entity", "%s %s has no row in the table", entity.EntityType, jsonencode(entity.Key))
+            end
+            names = nansen.Project.writableNames(table, values);
+            if ~isempty(names)
+                kept = struct();
+                for name = names
+                    kept.(name) = values.(name);
+                end
+                table.updateRow(entity.Key, kept);
+                table.write();
+            end
+        end
+
         function summary = updateFragment(obj, entityType, fragmentId, options)
             %updateFragment Recompute a computed fragment's columns for the table rows (or those with the given keys)
             arguments
@@ -2006,6 +2027,12 @@ classdef Project < handle
     end
 
     methods (Static)
+        function names = writableNames(table, values)
+            %writableNames The fields of values that are columns of the table and not of its key, in their order
+            names = string(fieldnames(values))';
+            names = names(ismember(names, table.columnNames()) & ~ismember(names, table.Key));
+        end
+
         function name = defaultEnvironment()
             %defaultEnvironment This machine's environment name when none is set: its host name, as a DSM identifier
             name = string(getenv("COMPUTERNAME"));

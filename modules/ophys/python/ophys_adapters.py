@@ -1,5 +1,10 @@
-"""File adapters of the ophys module: SciScan raw recordings and TIFF stacks, as height x width x frames."""
+"""File adapters of the ophys module: SciScan raw recordings and TIFF stacks, as height x width x frames.
 
+The stacks of the microscopes' files carry what the files tell about the recording as their metadata
+(nansen.stacks.Stack): frameRate, pixelSize and zStep, as dev's getScanParameters reads them.
+"""
+
+import math
 import re
 from pathlib import Path
 
@@ -25,6 +30,39 @@ def ini_number(values, name, path):
         return float(values[name].replace(",", "."))
     except (KeyError, ValueError):
         raise NansenError("invalid-data", f"{path} has no number {name}") from None
+
+
+def stack_metadata(frame_rate=None, pixel_size=None, z_step=None):
+    """A stack's metadata: frameRate, pixelSize ([x, y]) and zStep, those given as positive finite numbers, rounded to
+    6 decimals (floor(v * 1e6 + 0.5) / 1e6, as MATLAB's ophys.internal.stackMetadata)."""
+    usable = lambda v: v is not None and math.isfinite(v) and v > 0
+    rounded = lambda v: math.floor(v * 1e6 + 0.5) / 1e6
+    out = {}
+    if usable(frame_rate):
+        out["frameRate"] = rounded(frame_rate)
+    if pixel_size is not None and all(usable(v) for v in pixel_size):
+        out["pixelSize"] = [rounded(v) for v in pixel_size]
+    if usable(z_step):
+        out["zStep"] = rounded(z_step)
+    return out
+
+
+def _number(text):
+    """A number in a file's text (a decimal comma too), or None."""
+    try:
+        return float(str(text).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def sciscan_metadata(values, width, height):
+    """frames.p.sec; the pixel size from x.fov and y.fov (in m) over x.pixels and y.pixels; z.spacing for a z-stack
+    (experiment.type XYTZ), as dev's SciScan stack reads them."""
+    number = lambda name: _number(values[name]) if name in values else None
+    fov = [number("x.fov"), number("y.fov")]
+    size = [abs(fov[0]) * 1e6 / width, abs(fov[1]) * 1e6 / height] if None not in fov else None
+    spacing = number("z.spacing") if values.get("experiment.type") == "XYTZ" else None
+    return stack_metadata(number("frames.p.sec"), size, abs(spacing) if spacing is not None else None)
 
 
 DEV_CLASSES = {"uint8": "u1", "int8": "i1", "uint16": "<u2", "int16": "<i2", "uint32": "<u4", "int32": "<i4",
@@ -171,7 +209,7 @@ class VideoFile:
     """A video file, as dev's Video stack reads one: uint8 frames, height x width x frames, or height x width x 3 x
     frames (red, green, blue as channels) when it has colour. A video whose first frame has the same red, green
     and blue is read as grayscale, so the two languages' decoders agree (ffmpeg always gives colour). Read a chunk
-    of frames at a time with imageio and its ffmpeg (the video extra); read only."""
+    of frames at a time with imageio and its ffmpeg (the video extra); read only. The frame rate is the video's fps."""
 
     extensions = [".avi", ".mp4", ".mov", ".mkv", ".mj2"]
 
@@ -187,6 +225,7 @@ class VideoFile:
             with iio.get_reader(path, format="ffmpeg") as reader:
                 count = reader.count_frames()
                 first = np.asarray(reader.get_data(0))
+                fps = reader.get_meta_data().get("fps")
             if first.ndim == 2:
                 first = first[:, :, None]
             gray = first.shape[2] == 1 or bool((first[:, :, 0] == first[:, :, 1]).all() and (first[:, :, 1] == first[:, :, 2]).all())
@@ -200,7 +239,7 @@ class VideoFile:
                     chunk = chunk[:, :, None, :]
                 return chunk[:, :, 0, :] if gray else chunk[:, :, :3, :]
 
-            parts.append(Stack((height, width, count) if gray else (height, width, 3, count), np.uint8, frames))
+            parts.append(Stack((height, width, count) if gray else (height, width, 3, count), np.uint8, frames, stack_metadata(fps)))
         return join(parts)
 
     def write(self, path, data):
@@ -258,7 +297,7 @@ class SciScanRaw:
             return data[:, :, 0, :] if channels == 1 else data
 
         shape = (height, width, frames) if channels == 1 else (height, width, channels, frames)
-        return Stack(shape, native, read)
+        return Stack(shape, native, read, sciscan_metadata(values, width, height))
 
     def write(self, path, data):
         data = np.asarray(data)
@@ -320,13 +359,14 @@ class TsmStack:
     """A TSM file (SciMeasure / RedShirt cameras, dev's macroscope recordings): a FITS-like header of 80-character
     cards in 2880-byte blocks (NAXIS1 columns, NAXIS2 rows, NAXIS3 frames), then int16 frames, little-endian, the
     columns fastest, then a dark frame, which is subtracted from every frame (saturating at int16's range), as dev's
-    TSM stack does. Read a chunk at a time; read only."""
+    TSM stack does. The frame rate is 1 / EXPOSURE (seconds per frame), when the header has it. Read a chunk at a time;
+    read only."""
 
     extensions = [".tsm"]
 
     @staticmethod
     def header(path):
-        """(columns, rows, frames, offset of the data) from the header cards."""
+        """(columns, rows, frames, offset of the data, EXPOSURE or None) from the header cards."""
         values, offset = {}, 0
         with open(path, "rb") as f:
             while True:
@@ -348,7 +388,7 @@ class TsmStack:
             columns, rows, frames = (int(values[k]) for k in ("NAXIS1", "NAXIS2", "NAXIS3"))
         except (KeyError, ValueError):
             raise NansenError("invalid-data", f"{path} has no NAXIS1, NAXIS2 and NAXIS3") from None
-        return columns, rows, frames, offset
+        return columns, rows, frames, offset, _number(values["EXPOSURE"]) if "EXPOSURE" in values else None
 
     def read(self, path):
         return np.ascontiguousarray(np.asarray(self.open([path])))
@@ -357,7 +397,7 @@ class TsmStack:
         from nansen.stacks import Stack, join, natural_order
         parts = []
         for path in natural_order(paths):
-            columns, rows, frames, offset = self.header(path)
+            columns, rows, frames, offset, exposure = self.header(path)
             needed = offset + (frames + 1) * rows * columns * 2
             if Path(path).stat().st_size < needed:
                 raise NansenError("invalid-data", f"{path} is {Path(path).stat().st_size} bytes; {frames} frames and a dark frame of {rows} x {columns} need {needed}")
@@ -368,7 +408,7 @@ class TsmStack:
                 chunk = np.asarray(data[start:stop], dtype=np.int32) - dark
                 return np.moveaxis(np.clip(chunk, -32768, 32767).astype(np.int16), 0, 2)
 
-            parts.append(Stack((rows, columns, frames), np.int16, read))
+            parts.append(Stack((rows, columns, frames), np.int16, read, stack_metadata(1 / exposure if exposure else None)))
         return join(parts)
 
     def write(self, path, data):
@@ -378,7 +418,8 @@ class TsmStack:
 class ThorLabsTiffs:
     """A ThorImage recording: a TIFF file per frame and channel, named ChanA_001_001_001_0001.tif and so on, as dev's
     ThorLabsTiffs reads them. The files of each channel letter are its frames, in natural order; with more than
-    one channel the stack is height x width x channels x frames, channels in letter order. Read a chunk at a time."""
+    one channel the stack is height x width x channels x frames, channels in letter order. Read a chunk at a time. The
+    frame rate and pixel size are the LSM element's frameRate and pixelSizeUM in the Experiment.xml beside the files."""
 
     extensions = [".tif", ".tiff"]
 
@@ -394,17 +435,30 @@ class ThorLabsTiffs:
                 raise NansenError("invalid-data", f"{Path(path).name} is not a ThorImage frame (ChanA_..., ChanB_...)")
             groups.setdefault(match.group(1), []).append(path)
         channels = [TiffStack().open(groups[letter]) for letter in sorted(groups)]
+        metadata = thorlabs_metadata(Path(paths[0]).parent / "Experiment.xml")
         if len(channels) == 1:
+            channels[0].metadata = metadata
             return channels[0]
         first = channels[0]
         if any(c.shape != first.shape or c.dtype != first.dtype for c in channels):
             raise NansenError("invalid-data", "the channels of the recording differ in size, frames or type")
         height, width, frames = first.shape
         return Stack((height, width, len(channels), frames), first.dtype,
-                     lambda start, stop: np.stack([c.frames(start, stop) for c in channels], axis=2))
+                     lambda start, stop: np.stack([c.frames(start, stop) for c in channels], axis=2), metadata)
 
     def write(self, path, data):
         raise NansenError("invalid-params", "ThorImage files are written by ThorImage; save stacks as TIFF")
+
+
+def thorlabs_metadata(path):
+    """frameRate and pixelSizeUM of the LSM element of a ThorImage Experiment.xml, as dev's getScanParameters; {} without one."""
+    if not path.is_file():
+        return {}
+    tag = re.search(r"<LSM\s[^>]*>", path.read_text(encoding="utf-8", errors="replace"))
+    attributes = dict(re.findall(r'(\w+)="([^"]*)"', tag.group())) if tag else {}
+    number = lambda name: _number(attributes[name]) if name in attributes else None
+    size = number("pixelSizeUM")
+    return stack_metadata(number("frameRate"), [size, size] if size is not None else None)
 
 
 class TiffPageWriter:
@@ -451,6 +505,7 @@ class ScanImageTiff:
     frames with more than one plane. A multi-ROI recording (SI.hRoiManager.mroiEnable) has its ROIs one above
     the other on each page, with flyback lines between them, and their sizes in the Artist tag: the ROIs are
     put side by side, padded with 0 at the bottom to the tallest. Pages after the last whole volume are left out.
+    Its metadata is read from the same text (scanimage_metadata).
     """
 
     def read(self, path):
@@ -488,7 +543,7 @@ class ScanImageTiff:
             return data
 
         probe = read(0, 1) if volumes else read(0, 0)
-        return Stack(probe.shape[:-1] + (volumes,), dtype, read)
+        return Stack(probe.shape[:-1] + (volumes,), dtype, read, scanimage_metadata(text, artist, planes, mosaic))
 
     def write(self, path, data):
         raise NansenError("invalid-params", "ScanImage files are written by ScanImage; save a stack with npy or ophys.tiff_stack")
@@ -501,6 +556,42 @@ def si_numbers(text, name):
         return []
     value = match.group(1).replace("true", "1").replace("false", "0")
     return [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", value)]
+
+
+def scanimage_metadata(text, artist, planes, mosaic):
+    """A ScanImage recording's metadata. frameRate: SI.hRoiManager.scanVolumeRate, else scanFrameRate when it has one
+    plane. zStep, with more than one plane: SI.hStackManager.actualStackZStepSize, else stackZStepSize. pixelSize: the
+    extent of the corners SI.hRoiManager.imagingFovUm (or imagingFovDeg times SI.objectiveResolution, µm per degree)
+    over pixelsPerLine and linesPerFrame; for a multi-ROI recording, the first ROI's scanfield sizeXY (degrees) times
+    SI.objectiveResolution over its pixelResolutionXY."""
+    import json
+
+    first = lambda name: (si_numbers(text, name) or [None])[0]
+    rate = first("hRoiManager.scanVolumeRate")
+    if rate is None and planes == 1:
+        rate = first("hRoiManager.scanFrameRate")
+    step = None
+    if planes > 1:
+        step = first("hStackManager.actualStackZStepSize")
+        if step is None:
+            step = first("hStackManager.stackZStepSize")
+    resolution = first("objectiveResolution")
+    size = None
+    if mosaic:
+        rois = json.loads(artist)["RoiGroups"]["imagingRoiGroup"]["rois"]
+        roi = rois[0] if isinstance(rois, list) else rois
+        field = roi["scanfields"][0] if isinstance(roi["scanfields"], list) else roi["scanfields"]
+        if resolution is not None and "sizeXY" in field:
+            size = [float(field["sizeXY"][k]) * resolution / float(field["pixelResolutionXY"][k]) for k in (0, 1)]
+    else:
+        corners = si_numbers(text, "hRoiManager.imagingFovUm")
+        if not corners and resolution is not None:
+            corners = [v * resolution for v in si_numbers(text, "hRoiManager.imagingFovDeg")]
+        pixels, lines = first("hRoiManager.pixelsPerLine"), first("hRoiManager.linesPerFrame")
+        if len(corners) >= 4 and len(corners) % 2 == 0 and pixels and lines:
+            xs, ys = corners[0::2], corners[1::2]
+            size = [(max(xs) - min(xs)) / pixels, (max(ys) - min(ys)) / lines]
+    return stack_metadata(rate, size, abs(step) if step is not None else None)
 
 
 def mroi_mosaic(data, artist, path):
@@ -843,7 +934,8 @@ class ExtractRois:
 class PrairieTSeries:
     """A Bruker (Prairie View) T-series: the XML file, which lists a TIFF file (and page) per frame and channel.
     Reads height x width x frames, or height x width x channels x frames with more than one channel, a frame at
-    a time from its files."""
+    a time from its files. The frame rate is 1 / framePeriod and the pixel size micronsPerPixel's XAxis and YAxis,
+    of the first PVStateValue of each, as dev's getPrairieMetaData reads them."""
 
     extensions = [".xml"]
 
@@ -887,10 +979,25 @@ class PrairieTSeries:
             return out[:, :, 0, :] if len(channels) == 1 else out
 
         shape = first.shape + ((len(channels),) if len(channels) > 1 else ()) + (len(frames),)
-        return Stack(shape, first.dtype, read)
+        return Stack(shape, first.dtype, read, prairie_metadata(text))
 
     def write(self, path, data):
         raise NansenError("invalid-params", "Prairie View files are written by the microscope; save a stack with npy or ophys.tiff_stack")
+
+
+def prairie_metadata(text):
+    """frameRate (1 / framePeriod) and pixelSize (micronsPerPixel's XAxis and YAxis) of a Prairie View XML file."""
+    attributes = lambda tag: dict(re.findall(r'(\w+)="([^"]*)"', tag))
+    tag = re.search(r'<PVStateValue\s[^>]*key="framePeriod"[^>]*>', text)
+    period = _number(attributes(tag.group()).get("value", "")) if tag else None
+    body = re.search(r'<PVStateValue\s[^>]*key="micronsPerPixel"[^>]*>(.*?)</PVStateValue>', text, flags=re.S)
+    axes = {}
+    for tag in re.findall(r"<IndexedValue\s[^>]*>", body.group(1) if body else ""):
+        found = attributes(tag)
+        if "index" in found and "value" in found:
+            axes.setdefault(found["index"], _number(found["value"]))
+    size = [axes.get("XAxis"), axes.get("YAxis")]
+    return stack_metadata(1 / period if period else None, size if None not in size else None)
 
 
 class Hdf5Stack:

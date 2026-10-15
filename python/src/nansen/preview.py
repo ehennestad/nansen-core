@@ -41,7 +41,8 @@ class PreviewProject:
             if whole.ndim < 3 or count == whole.shape[-1]:
                 stack = whole
             else:
-                stack = Stack(whole.shape[:-1] + (count,), whole.dtype, lambda start, stop: whole.frames(start, min(stop, count)))
+                stack = Stack(whole.shape[:-1] + (count,), whole.dtype, lambda start, stop: whole.frames(start, min(stop, count)),
+                              whole.metadata)
         stack.max_frames = self._project.stack_frame_limit
         return stack
 
@@ -62,6 +63,11 @@ class PreviewProject:
         if not name:
             return StackWriter(shape, dtype)
         return StackWriter(shape, dtype, finish=lambda data: self.saved.__setitem__(name, data.copy()))
+
+    def update_values(self, entity, values: Dict[str, Any]) -> list:
+        """The columns the values would be written to; nothing is written."""
+        table = self._project.table(entity.entity_type)
+        return [n for n in values if n in table.spec.column_names and n not in table.spec.key]
 
     def write_path(self, entity, name: str) -> Path:
         """Where a method that writes files itself (an external tool) writes: a folder deleted after the preview."""

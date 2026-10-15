@@ -179,6 +179,8 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(size(first, 1:5), [16, 64, 2, 2, 1]);
             testCase.verifyEqual(first, data(:, :, :, :, 1));
             testCase.verifyEqual(stack.frames(2, 2), data(:, :, :, :, 2));   % begins in one file and ends in the next
+            % the volume rate, actualStackZStepSize over stackZStepSize, and the pixel size of the first ROI's scanfield
+            testCase.verifyEqual(stack.Metadata, struct("frameRate", 7.5, "pixelSize", [1.5, 1.5], "zStep", 4));
             testCase.verifyError(@() ophys.ScanImageTiff().read(fullfile(folder, "ses-s2", "rec_part2.tif")), "nansen:InvalidData");
         end
 

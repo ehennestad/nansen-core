@@ -5,7 +5,8 @@ classdef VideoFile < nansen.FileAdapter
 %   (red, green, blue as channels) when it has colour. A video whose first
 %   frame has the same red, green and blue is read as grayscale, so the two
 %   languages' decoders agree. Read a chunk of frames at a time; read only.
-%   Python's ophys_adapters.VideoFile reads the same with imageio.
+%   Its Metadata's frameRate is the video's. Python's
+%   ophys_adapters.VideoFile reads the same with imageio.
 
     methods
         function data = read(obj, path)
@@ -27,6 +28,7 @@ classdef VideoFile < nansen.FileAdapter
                 end
                 path = paths(i);
                 parts{i} = nansen.Stack(dimensions, "uint8", @(a, b) ophys.VideoFile.frames(path, a, b, gray));
+                parts{i}.Metadata = ophys.internal.stackMetadata(video.FrameRate);
             end
             stack = nansen.Stack.join(parts);
         end

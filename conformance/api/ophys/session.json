@@ -131,6 +131,7 @@
             "existing": [],
             "fragments": [
               "ophys.imaging",
+              "ophys.scan",
               "ophys.image_stats",
               "ophys.fov_position",
               "ophys.fov_region",
@@ -3136,7 +3137,15 @@
           "frame": 2,
           "low": 2.0,
           "high": 3983.0,
-          "pixels": "YHruIjnuxfaJbs8Us4A6fSW90OaY+MqJwBGhe6l9TCBBDVU2c7HoJbjawNLMrtKveVv09S5C9TLeiRgwpeFGzOQ583hftkHX0YuvxeXXrYjCEnnH2oqAAW/SgZnlUQGaeJzeZym9QdBR2QbgYIjSFDmRZ+EJjaEQgQGK0jtKVEbov7tSM7bDQ+11hOd1mRuIVbmPUDBqhP0h3MZ4+WT/N5urGrpIGHZcrtyRLD0OkFSXmnnGSmUeYWi1PgV49eHXxNAB1WibCuG0cCqEd6/QK47Xth/PEfWfXD1dRjWx9Sj6VPNKWIAqfZuS18UgrrrzgJirEeog1F9DsJqjkCO16EAg5BJM8d05z9XS0oiREa0Yy0NrZDICYNbg8pn0mt05BvvG5v8frowxog8C61lOHPEg+1AM7fDJiFIIRzuuXWoAZAazYd04Wmc6AR+C0CGYkfeAdpUvfyftJXVKgpTFWDPgGThg0nLDmQYvzPjWqmSZHbQuSyc7mYoQPQOqri1fFH1NkE7AOLDjSS9SSBXaZ5yQCPvo0HReHzrfFMJulEYU3gaKlzpZa0zZS/gMGSf458c1aKUyH3ONCKiLjYVAGUZKYlOp4rvRH07MIlOPQepj5PqkXjfJ+GvuXnqGG6jjUsRBeR86B9XdjU9OSBh/ms39bldO+M7g5ZQvIT1EMDS4QH0CDzPwKGE0bvp5/+CkC+TecYvKoNlr/p61YoR3c0J6Q/BTlvniLqYg7JyQKeR3oSO2DaZaxLzhxRDGRLhSy8YuzCQDF/lWTdJEqsrOf1dZBA+p9B01hM5Z4ALNzY0v+jebD4OmzrgsRSPJUSwgBaq4j572T0U2hGGUdGGpEqeodV+aKkEgj/XHIfddcdZEFdVPGM86kTS8Klw5nCTsjWr3yq8kS8D/+DT/SsHYaHjJGgECdZjyRhpniCJ5LFHolPDCFVOZtgHQGH0qvp/5KXg2/raAprufvufIoYJKRzCp+8mlt9zlSL9VEyrvxcyvEqusbTVTLgucAsPE01SORyNUXWPe9ZfZ0uGVDooBkbEeNMOZ20gZXzzCz1htzUl/ti678GHWwKQYyoOnftO7phgm0pWioTnuhZSnd4u4cUyp5ffiuyScD+9z16T0WdyDDi/o8ZDv6+3M3x3mEWRxSW+tKGmIYJv0MXmXzfEKTBWWxQTm2mMp9Yl/NwexIaYrME0zRZne+5UU53GpusS4Z/sFhfoRdhnCggazkTp9nMdmmSbCTDITX385q2prrGBI+HVX2YcJE/Lp+vztyp2F9O/gwLmcUmFcM8dGb0RpVmmPKx+b4MaXPEPoL7Gi/gotCHBmA+MimSln1pT7ogWPww7KX9PLSg24ONkeby70Xw=="
+          "pixels": "YHruIjnuxfaJbs8Us4A6fSW90OaY+MqJwBGhe6l9TCBBDVU2c7HoJbjawNLMrtKveVv09S5C9TLeiRgwpeFGzOQ583hftkHX0YuvxeXXrYjCEnnH2oqAAW/SgZnlUQGaeJzeZym9QdBR2QbgYIjSFDmRZ+EJjaEQgQGK0jtKVEbov7tSM7bDQ+11hOd1mRuIVbmPUDBqhP0h3MZ4+WT/N5urGrpIGHZcrtyRLD0OkFSXmnnGSmUeYWi1PgV49eHXxNAB1WibCuG0cCqEd6/QK47Xth/PEfWfXD1dRjWx9Sj6VPNKWIAqfZuS18UgrrrzgJirEeog1F9DsJqjkCO16EAg5BJM8d05z9XS0oiREa0Yy0NrZDICYNbg8pn0mt05BvvG5v8frowxog8C61lOHPEg+1AM7fDJiFIIRzuuXWoAZAazYd04Wmc6AR+C0CGYkfeAdpUvfyftJXVKgpTFWDPgGThg0nLDmQYvzPjWqmSZHbQuSyc7mYoQPQOqri1fFH1NkE7AOLDjSS9SSBXaZ5yQCPvo0HReHzrfFMJulEYU3gaKlzpZa0zZS/gMGSf458c1aKUyH3ONCKiLjYVAGUZKYlOp4rvRH07MIlOPQepj5PqkXjfJ+GvuXnqGG6jjUsRBeR86B9XdjU9OSBh/ms39bldO+M7g5ZQvIT1EMDS4QH0CDzPwKGE0bvp5/+CkC+TecYvKoNlr/p61YoR3c0J6Q/BTlvniLqYg7JyQKeR3oSO2DaZaxLzhxRDGRLhSy8YuzCQDF/lWTdJEqsrOf1dZBA+p9B01hM5Z4ALNzY0v+jebD4OmzrgsRSPJUSwgBaq4j572T0U2hGGUdGGpEqeodV+aKkEgj/XHIfddcdZEFdVPGM86kTS8Klw5nCTsjWr3yq8kS8D/+DT/SsHYaHjJGgECdZjyRhpniCJ5LFHolPDCFVOZtgHQGH0qvp/5KXg2/raAprufvufIoYJKRzCp+8mlt9zlSL9VEyrvxcyvEqusbTVTLgucAsPE01SORyNUXWPe9ZfZ0uGVDooBkbEeNMOZ20gZXzzCz1htzUl/ti678GHWwKQYyoOnftO7phgm0pWioTnuhZSnd4u4cUyp5ffiuyScD+9z16T0WdyDDi/o8ZDv6+3M3x3mEWRxSW+tKGmIYJv0MXmXzfEKTBWWxQTm2mMp9Yl/NwexIaYrME0zRZne+5UU53GpusS4Z/sFhfoRdhnCggazkTp9nMdmmSbCTDITX385q2prrGBI+HVX2YcJE/Lp+vztyp2F9O/gwLmcUmFcM8dGb0RpVmmPKx+b4MaXPEPoL7Gi/gotCHBmA+MimSln1pT7ogWPww7KX9PLSg24ONkeby70Xw==",
+          "metadata": {
+            "frameRate": 7.5,
+            "pixelSize": [
+              1.5,
+              1.5
+            ],
+            "zStep": 4.0
+          }
         }
       }
     },
@@ -5099,6 +5108,239 @@
       "expect": {
         "result": {
           "entries": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9201,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Original"
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 40,
+          "metadata": {
+            "frameRate": 30.9,
+            "pixelSize": [
+              16.0,
+              12.0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9202,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected"
+        }
+      },
+      "expect": {
+        "result": {
+          "metadata": {}
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 9203,
+        "params": {
+          "methodId": "ophys.read_metadata",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s3"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frame_rate": 30.9,
+              "pixel_size_um": 16.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9204,
+        "params": {
+          "methodId": "ophys.read_metadata",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frame_rate": 30.9,
+              "pixel_size_um": 16.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9205,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "RoiSignals_Dff"
+          ],
+          "maxPoints": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 40,
+          "frameRate": 30.9
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9206,
+        "params": {
+          "methodId": "ophys.read_metadata",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s4"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_ScanImage"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frame_rate": 7.5,
+              "pixel_size_um": 1.5,
+              "z_step_um": 4.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9207,
+        "params": {
+          "methodId": "ophys.read_metadata",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s2"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Tiff"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {}
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "id": 9208,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "rows": [
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s1"
+              },
+              "values": {
+                "frame_rate": 30.9,
+                "pixel_size_um": 16.0
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s2"
+              },
+              "values": {
+                "frame_rate": null,
+                "pixel_size_um": null,
+                "z_step_um": null
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s3"
+              },
+              "values": {
+                "frame_rate": null,
+                "pixel_size_um": null
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s4"
+              },
+              "values": {
+                "frame_rate": 7.5,
+                "pixel_size_um": 1.5,
+                "z_step_um": 4.0
+              }
+            }
+          ]
         }
       }
     }

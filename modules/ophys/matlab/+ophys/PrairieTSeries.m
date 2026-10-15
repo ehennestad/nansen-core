@@ -3,7 +3,9 @@ classdef PrairieTSeries < nansen.FileAdapter
 %
 %   Reads height x width x frames, or height x width x channels x frames
 %   with more than one channel, a frame at a time from its files. Read
-%   only. Python's ophys_adapters.PrairieTSeries reads the same.
+%   only. Its Metadata: the frame rate is 1 / framePeriod and the pixel
+%   size micronsPerPixel's XAxis and YAxis, of the first PVStateValue of
+%   each. Python's ophys_adapters.PrairieTSeries reads the same.
 
     methods
         function data = read(obj, path)
@@ -69,6 +71,36 @@ classdef PrairieTSeries < nansen.FileAdapter
                 dimensions = [size(first), count, numel(files)];
             end
             stack = nansen.Stack(dimensions, class(first), @(a, b) ophys.PrairieTSeries.frames(folder, files, first, count, a, b));
+            stack.Metadata = ophys.PrairieTSeries.metadata(text);
+        end
+
+        function metadata = metadata(text)
+            %metadata frameRate (1 / framePeriod) and pixelSize (micronsPerPixel's XAxis and YAxis) of a Prairie View XML file
+            period = NaN;
+            tag = regexp(text, '<PVStateValue\s[^>]*key="framePeriod"[^>]*>', "match", "once");
+            [names, values] = ophys.internal.xmlAttributes(tag);
+            at = find(names == "value", 1, "last");
+            if ~isempty(at)
+                period = ophys.internal.textNumber(values(at));
+            end
+            perPixel = struct("XAxis", NaN, "YAxis", NaN);
+            seen = strings(0);
+            body = regexp(text, '<PVStateValue\s[^>]*key="micronsPerPixel"[^>]*>(.*?)</PVStateValue>', "tokens", "once");
+            if ~isempty(body)
+                for tag = regexp(body{1}, '<IndexedValue\s[^>]*>', "match")
+                    [names, values] = ophys.internal.xmlAttributes(tag{1});
+                    index = find(names == "index", 1, "last");
+                    value = find(names == "value", 1, "last");
+                    if isempty(index) || isempty(value) || any(seen == values(index))
+                        continue
+                    end
+                    seen(end + 1) = values(index); %#ok<AGROW>
+                    if isfield(perPixel, values(index))
+                        perPixel.(values(index)) = ophys.internal.textNumber(values(value));
+                    end
+                end
+            end
+            metadata = ophys.internal.stackMetadata(1 / period, [perPixel.XAxis, perPixel.YAxis]);
         end
 
         function data = frames(folder, files, first, count, a, b)
