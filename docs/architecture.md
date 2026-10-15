@@ -62,6 +62,9 @@ Each step was usable without a GUI before the next one started.
 Not carried over, by choice or not yet:
 
 - **Add-on and toolbox management.** Out of scope for the core.
+- **The domain modules and viewer apps.** dev's `ophys.twophoton` methods (motion correction, suite2p, EXTRACT, CaImAn, signal extraction, dF/F, ROI curation), its ScanImage, SciScan and ROI file adapters, and the imviewer, fovmanager and roimanager apps are not part of the core. They belong in modules: a module declares methods, adapters and presets that wrap dev's code (the viewers as project tools or methods run by hand), with no change to the core.
+- **Removable drives found again by volume name.** dev re-resolves roots when a disk is mounted under another drive letter. Here a root is a path per environment, changed with "Change path"; DSM roots carry a `volumeName` that a later version can use for this.
+- **Per-column renderers and double-click actions.** Cells are drawn by data type; a fragment column cannot yet set its own renderer or action.
 
 ## Decisions recorded so far
 
