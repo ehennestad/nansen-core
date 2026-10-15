@@ -4,42 +4,129 @@
   "title": "NANSEN legacy export",
   "description": "What a NANSEN dev project holds, read from its .mat files by MATLAB (nansen.legacy.exportProject) and written as plain JSON. Both implementations convert it into a project (nansen.legacy.convert, nansen.legacy.convert_legacy). Field names follow the dev files in lowerCamelCase.",
   "type": "object",
-  "required": ["schemaType", "schemaVersion", "project"],
+  "required": [
+    "schemaType",
+    "schemaVersion",
+    "project"
+  ],
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaType": { "const": "nansen.legacyExport" },
-    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
-    "source": { "type": "string", "description": "The dev project folder that was read. Informational." },
+    "$schema": {
+      "type": "string"
+    },
+    "schemaType": {
+      "const": "nansen.legacyExport"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^0\\.1\\.\\d+$"
+    },
+    "source": {
+      "type": "string",
+      "description": "The dev project folder that was read. Informational."
+    },
     "project": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string", "description": "Properties.Name of the dev project.nansen.json." },
-        "shortName": { "type": "string" },
-        "description": { "type": "string" }
+        "name": {
+          "type": "string",
+          "description": "Properties.Name of the dev project.nansen.json."
+        },
+        "shortName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
-    "dataLocations": { "type": "array", "items": { "$ref": "#/definitions/dataLocation" } },
-    "variables": { "type": "array", "items": { "$ref": "#/definitions/variable" } },
-    "tables": { "type": "array", "items": { "$ref": "#/definitions/table" } }
+    "dataLocations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/dataLocation"
+      }
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/variable"
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/table"
+      }
+    },
+    "pipelines": {
+      "type": "array",
+      "description": "dev's pipelines (configurations/pipeline_settings.mat).",
+      "items": {
+        "$ref": "#/definitions/pipeline"
+      }
+    },
+    "presets": {
+      "type": "array",
+      "description": "dev's option presets (configurations/custom_options/*.mat), by the function they are for; listed, not carried over.",
+      "items": {
+        "type": "object",
+        "required": [
+          "function",
+          "names"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "function": {
+            "type": "string"
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
   },
   "definitions": {
     "dataLocation": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
-        "type": { "type": "string", "description": "recorded, processed, curated or temporary." },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "description": "recorded, processed, curated or temporary."
+        },
         "rootPaths": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["value"],
+            "required": [
+              "value"
+            ],
             "additionalProperties": false,
-            "properties": { "key": { "type": "string" }, "value": { "type": "string" }, "diskName": { "type": "string" } }
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              },
+              "diskName": {
+                "type": "string"
+              }
+            }
           }
         },
         "subfolders": {
@@ -49,11 +136,26 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "name": { "type": "string" },
-              "type": { "type": "string", "description": "Subject, Session, Date or Other." },
-              "expression": { "type": "string", "description": "Regular expression a folder name must contain." },
-              "ignoreList": { "type": "array", "items": { "type": "string" } },
-              "isFolder": { "type": "boolean" }
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "description": "Subject, Session, Date or Other."
+              },
+              "expression": {
+                "type": "string",
+                "description": "Regular expression a folder name must contain."
+              },
+              "ignoreList": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "isFolder": {
+                "type": "boolean"
+              }
             }
           }
         },
@@ -62,19 +164,52 @@
           "description": "MetaDataDef: how each metadata value is read from folder names.",
           "items": {
             "type": "object",
-            "required": ["variableName"],
+            "required": [
+              "variableName"
+            ],
             "additionalProperties": false,
             "properties": {
-              "variableName": { "type": "string" },
+              "variableName": {
+                "type": "string"
+              },
               "subfolderLevel": {
                 "description": "The 1-based folder level(s) the value is read from; dev stores one level as a number.",
-                "anyOf": [ { "type": "integer", "minimum": 1 }, { "type": "array", "items": { "type": "integer", "minimum": 1 } } ]
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                ]
               },
-              "mode": { "type": "string", "enum": ["ind", "expr", "func"] },
-              "input": { "type": "string", "description": "A MATLAB index expression (ind) or a regular expression (expr)." },
-              "format": { "type": "string", "description": "Date or time format of the text, as for MATLAB datetime." },
-              "separator": { "type": "string" },
-              "functionName": { "type": "string" }
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "ind",
+                  "expr",
+                  "func"
+                ]
+              },
+              "input": {
+                "type": "string",
+                "description": "A MATLAB index expression (ind) or a regular expression (expr)."
+              },
+              "format": {
+                "type": "string",
+                "description": "Date or time format of the text, as for MATLAB datetime."
+              },
+              "separator": {
+                "type": "string"
+              },
+              "functionName": {
+                "type": "string"
+              }
             }
           }
         }
@@ -82,58 +217,204 @@
     },
     "variable": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
-        "dataLocation": { "type": "string", "description": "Name of the data location." },
-        "subfolder": { "type": "string" },
-        "fileNameExpression": { "type": "string" },
-        "fileType": { "type": "string" },
-        "fileAdapter": { "type": "string" },
-        "dataType": { "type": "string" },
-        "isInternal": { "type": "boolean" }
+        "name": {
+          "type": "string"
+        },
+        "dataLocation": {
+          "type": "string",
+          "description": "Name of the data location."
+        },
+        "subfolder": {
+          "type": "string"
+        },
+        "fileNameExpression": {
+          "type": "string"
+        },
+        "fileType": {
+          "type": "string"
+        },
+        "fileAdapter": {
+          "type": "string"
+        },
+        "dataType": {
+          "type": "string"
+        },
+        "isInternal": {
+          "type": "boolean"
+        }
       }
     },
     "table": {
       "type": "object",
-      "required": ["name", "entityClass", "columns", "rows"],
+      "required": [
+        "name",
+        "entityClass",
+        "columns",
+        "rows"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
-        "entityClass": { "type": "string", "description": "session, subject or the last part of another MetaTableClass." },
-        "isMaster": { "type": "boolean" },
+        "name": {
+          "type": "string"
+        },
+        "entityClass": {
+          "type": "string",
+          "description": "session, subject or the last part of another MetaTableClass."
+        },
+        "isMaster": {
+          "type": "boolean"
+        },
         "columns": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "dataType"],
+            "required": [
+              "name",
+              "dataType"
+            ],
             "additionalProperties": false,
             "properties": {
-              "name": { "type": "string" },
-              "dataType": { "type": "string", "enum": ["string", "integer", "number", "boolean", "date", "datetime"] }
+              "name": {
+                "type": "string"
+              },
+              "dataType": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "date",
+                  "datetime"
+                ]
+              }
             }
           }
         },
-        "skippedColumns": { "type": "array", "items": { "type": "string" }, "description": "Columns whose values have no table type (structs, objects)." },
+        "skippedColumns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Columns whose values have no table type (structs, objects)."
+        },
         "rows": {
           "type": "array",
-          "items": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean", "null"] } }
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            }
+          }
         },
         "notes": {
           "type": "array",
           "description": "The notes of a Notebook column, each with the index of its row in rows (from 0). The column itself is not listed in columns or skippedColumns.",
           "items": {
             "type": "object",
-            "required": ["row", "createdAt", "author", "type", "title", "text"],
+            "required": [
+              "row",
+              "createdAt",
+              "author",
+              "type",
+              "title",
+              "text"
+            ],
             "additionalProperties": false,
             "properties": {
-              "row": { "type": "integer", "minimum": 0 },
-              "createdAt": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$" },
-              "author": { "type": "string" },
-              "type": { "type": "string", "description": "As dev wrote it: Informal, Important, Todo or Question." },
-              "title": { "type": "string" },
-              "text": { "type": "string" }
+              "row": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "createdAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
+              },
+              "author": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "description": "As dev wrote it: Informal, Important, Todo or Question."
+              },
+              "title": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "required": [
+        "name",
+        "tasks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "function"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "function": {
+                "type": "string"
+              },
+              "preset": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "assign": {
+          "type": "array",
+          "description": "SessionProperties: new sessions get the pipeline when their variable matches.",
+          "items": {
+            "type": "object",
+            "required": [
+              "variable",
+              "mode",
+              "expression"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "variable": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "expression": {
+                "type": "string"
+              }
             }
           }
         }

@@ -1,5 +1,5 @@
 {
-  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table).",
+  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table); dev's pipelines, with the tasks that have a method here and their rules for new sessions.",
   "project": {
     "schemaType": "nansen.project",
     "schemaVersion": "0.1.0",
@@ -21,7 +21,8 @@
         "title": "Sessions",
         "fragments": [
           "core.notes",
-          "legacy.session"
+          "legacy.session",
+          "core.pipeline"
         ]
       }
     ],
@@ -347,7 +348,8 @@
         "Time",
         "NumRois",
         "Quality",
-        "Reviewed"
+        "Reviewed",
+        "pipeline"
       ],
       "rows": [
         {
@@ -358,7 +360,8 @@
           "Time": "09:30",
           "NumRois": 120,
           "Quality": 0.8,
-          "Reviewed": true
+          "Reviewed": true,
+          "pipeline": null
         },
         {
           "subject_id": "m110",
@@ -368,7 +371,8 @@
           "Time": null,
           "NumRois": null,
           "Quality": null,
-          "Reviewed": false
+          "Reviewed": false,
+          "pipeline": null
         }
       ]
     }
@@ -385,7 +389,12 @@
     "table 'Sessions': 1 note(s) on rows that were left out; left out",
     "table 'Sessions': 1 note(s) with no time; left out",
     "table 'Subjects': 1 BiologicalSex value(s) not among female, male, not detected; kept as written",
-    "table 'Sessions (curated)': 1 row(s) not found in the session table; left out of its view"
+    "table 'Sessions (curated)': 1 row(s) not found in the session table; left out of its view",
+    "pipeline 'Two-photon preprocessing': task 'Autosegmentation' used dev's option preset 'Soma', which is not carried over; the method's defaults are used",
+    "pipeline 'Two-photon preprocessing': task 'Plot stats' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
+    "pipeline 'Plots only': task 'Plot stats' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
+    "pipeline 'Plots only': none of its tasks has a method here; left out",
+    "option presets of nansen.wrapper.normcorre.Processor (fast, thorough) are not carried over: dev's options are not the methods' here"
   ],
   "notebooks": [
     {
@@ -493,6 +502,43 @@
               "subject_id": "m110",
               "session_id": "m110-002"
             }
+          ]
+        }
+      ]
+    }
+  ],
+  "pipelines": [
+    {
+      "schemaType": "nansen.pipeline",
+      "schemaVersion": "0.1.0",
+      "id": "legacy.two_photon_preprocessing",
+      "version": "1.0.0",
+      "title": "Two-photon preprocessing",
+      "entityType": "session",
+      "steps": [
+        {
+          "method": "ophys.normcorre",
+          "title": "Motion correction"
+        },
+        {
+          "method": "ophys.quicky",
+          "title": "Autosegmentation"
+        },
+        {
+          "method": "ophys.extract_signals",
+          "title": "Extract signals"
+        },
+        {
+          "method": "ophys.compute_dff",
+          "title": "Compute dF/F"
+        }
+      ],
+      "assignWhen": [
+        {
+          "column": "session_id",
+          "op": "contains",
+          "values": [
+            "m110"
           ]
         }
       ]

@@ -419,5 +419,59 @@
         }
       ]
     }
+  ],
+  "pipelines": [
+    {
+      "name": "Two-photon preprocessing",
+      "tasks": [
+        {
+          "name": "Motion correction",
+          "function": "nansen.module.ophys.twophoton.sessionmethod.process.motionCorrection.normcorre",
+          "preset": "Default"
+        },
+        {
+          "name": "Autosegmentation",
+          "function": "nansen.module.ophys.twophoton.sessionmethod.process.autoSegmentation.Quicky",
+          "preset": "Soma"
+        },
+        {
+          "name": "Plot stats",
+          "function": "nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats"
+        },
+        {
+          "name": "Extract signals",
+          "function": "nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.extractSignals"
+        },
+        {
+          "name": "Compute dF/F",
+          "function": "nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.computeDff"
+        }
+      ],
+      "assign": [
+        {
+          "variable": "sessionID",
+          "mode": "contains",
+          "expression": "m110"
+        }
+      ]
+    },
+    {
+      "name": "Plots only",
+      "tasks": [
+        {
+          "name": "Plot stats",
+          "function": "nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "function": "nansen.wrapper.normcorre.Processor",
+      "names": [
+        "fast",
+        "thorough"
+      ]
+    }
   ]
 }

@@ -8,6 +8,8 @@ function export = exportProject(folder, options)
 %     configurations/datalocation_settings.mat     data locations (Data)
 %     configurations/filepath_settings.mat         variables (Data)
 %     metadata/tables/*.mat                        MetaTables (MetaTableEntries and catalog fields)
+%     configurations/pipeline_settings.mat         pipelines (Data)
+%     configurations/custom_options/*.mat          option presets, by function (OptionsEntries), only named
 %
 %   Table values become JSON values: text, numbers, logicals and dates.
 %   Columns of other types (structs, objects, several columns per variable)
@@ -29,6 +31,8 @@ function export = exportProject(folder, options)
     export.dataLocations = readDataLocations(fullfile(folder, "configurations", "datalocation_settings.mat"));
     export.variables = readVariables(fullfile(folder, "configurations", "filepath_settings.mat"));
     export.tables = readTables(fullfile(folder, "metadata", "tables"));
+    export.pipelines = readPipelines(fullfile(folder, "configurations", "pipeline_settings.mat"));
+    export.presets = readPresets(fullfile(folder, "configurations", "custom_options"));
     export = nansen.checkDocument(nansen.internal.jsonRoundTrip(export), ExpectedType="nansen.legacyExport", ...
         Source="legacy export");
     if options.File ~= ""
@@ -307,6 +311,57 @@ function value = datetimeOrNull(v, format)
     else
         v.TimeZone = '';
         value = char(v, format);
+    end
+end
+
+function pipelines = readPipelines(path)
+    % PipelineCatalog's Data: a name, tasks (TaskName, TaskFunction, OptionPresetSelection) and the session properties that assign it
+    pipelines = {};
+    items = loadData(path);
+    for i = 1:numel(items)
+        tasks = {};
+        list = getOr(items(i), "PipelineTasks", struct([]));
+        for t = 1:numel(list)
+            if isstruct(list)
+                task = struct("name", textOf(list(t), "TaskName"), "function", textOf(list(t), "TaskFunction"));
+                preset = textOf(list(t), "OptionPresetSelection");
+                if ~isempty(preset)
+                    task.preset = preset;
+                end
+                tasks{end + 1} = task; %#ok<AGROW>
+            end
+        end
+        assign = {};
+        rules = getOr(items(i), "SessionProperties", struct([]));
+        for r = 1:numel(rules)
+            if isstruct(rules)
+                assign{end + 1} = struct("variable", textOf(rules(r), "VariableName"), "mode", textOf(rules(r), "Mode"), ...
+                    "expression", textOf(rules(r), "Expression")); %#ok<AGROW>
+            end
+        end
+        pipelines{end + 1} = struct("name", textOf(items(i), "PipelineName"), "tasks", {tasks}, "assign", {assign}); %#ok<AGROW>
+    end
+end
+
+function presets = readPresets(folder)
+    % OptionsManager's files, one per function: the names of the presets a user made (Type Custom)
+    presets = {};
+    listing = dir(fullfile(folder, "*.mat"));
+    for i = 1:numel(listing)
+        S = load(fullfile(listing(i).folder, listing(i).name));
+        if ~isfield(S, "OptionsEntries") || ~isstruct(S.OptionsEntries)
+            continue
+        end
+        names = {};
+        for k = 1:numel(S.OptionsEntries)
+            if string(textOf(S.OptionsEntries(k), "Type")) == "Custom"
+                names{end + 1} = textOf(S.OptionsEntries(k), "Name"); %#ok<AGROW>
+            end
+        end
+        if ~isempty(names)
+            [~, functionName] = fileparts(listing(i).name);
+            presets{end + 1} = struct("function", functionName, "names", {names}); %#ok<AGROW>
+        end
     end
 end
 

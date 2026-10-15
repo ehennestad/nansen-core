@@ -68,6 +68,20 @@ classdef LegacyTest < matlab.unittest.TestCase
                 "IsInternal", {false, false, false, true}, "IsFavorite", {false, false, false, false});
             save(fullfile(folder, "configurations", "filepath_settings.mat"), "Data", "Preferences");
 
+            % a pipeline with a task that has a method here, one that has not, and a rule for new sessions
+            tasks = struct("TaskNum", {1, 2}, "TaskName", {'Extract signals', 'Plot stats'}, ...
+                "TaskFunction", {'nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.extractSignals', ...
+                'nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats'}, "OptionPresetSelection", {'Default', ''});
+            Data = struct("Uuid", 'p1', "PipelineName", 'Signals', "PipelineTasks", tasks, ...
+                "SessionProperties", struct("VariableName", 'sessionID', "Mode", 'contains', "Expression", 'm110'));
+            Preferences = struct("SourceID", '', "DefaultPipeline", '');
+            save(fullfile(folder, "configurations", "pipeline_settings.mat"), "Data", "Preferences");
+            mkdir(fullfile(folder, "configurations", "custom_options"));
+            OptionsEntries = struct("Name", {'Default', 'Fast'}, "Type", {'Preset', 'Custom'}, "Description", {'', ''}, ...
+                "Options", {struct(), struct()});
+            DefaultOptionsName = 'Default';
+            save(fullfile(folder, "configurations", "custom_options", "normcorre.mat"), "OptionsEntries", "DefaultOptionsName");
+
             entries = table();
             entries.sessionID = {'m110-001'; 'm110-002'; 'm111-001'};
             entries.subjectID = {'m110'; 'm110'; ''};
@@ -141,6 +155,9 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyFalse(any(contains(string(report.warnings), "'MotionCorrected'")));
             testCase.verifyTrue(any(contains(string(report.warnings), "1 row(s) with no subject_id or session_id")));
             testCase.verifyEqual(report.notes, struct("session", 2));
+            testCase.verifyEqual(string(report.pipelines), "legacy.signals");   % with extractSignals; plotImageStats has no method here
+            testCase.verifyTrue(any(contains(string(report.warnings), "task 'Plot stats'")));
+            testCase.verifyTrue(any(contains(string(report.warnings), "option presets of normcorre (Fast) are not carried over")));
             testCase.verifyTrue(any(contains(string(report.warnings), "1 note(s) on rows that were left out")));
 
             project = nansen.Project.open(target);

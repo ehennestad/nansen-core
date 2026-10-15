@@ -73,6 +73,11 @@ function report = convert(export, folder)
         project.addDataVariable(plan.dataVariables{i});
         names{end + 1} = plan.dataVariables{i}.name; %#ok<AGROW>
     end
+    pipelineIds = {};
+    for i = 1:numel(plan.pipelines)
+        project.savePipeline(plan.pipelines{i});
+        pipelineIds{end + 1} = plan.pipelines{i}.id; %#ok<AGROW>
+    end
     report = struct("project", char(folder), "rows", rows, "notes", notes, "dataVariables", {names}, ...
-        "warnings", {plan.warnings});
+        "pipelines", {pipelineIds}, "warnings", {plan.warnings});
 end

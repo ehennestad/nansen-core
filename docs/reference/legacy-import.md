@@ -20,6 +20,8 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 | `configurations/datalocation_settings.mat` | Data locations: name, type, root paths, `SubfolderStructure`, `MetaDataDef` |
 | `configurations/filepath_settings.mat` | Variables: name, data location, subfolder, file name expression, file type, file adapter |
 | `metadata/tables/*.mat` | MetaTables: `MetaTableEntries`, `MetaTableClass`, `MetaTableName`, `IsMaster` |
+| `configurations/pipeline_settings.mat` | Pipelines: name, tasks (name, function, option preset), session properties that assign it |
+| `configurations/custom_options/*.mat` | Option presets a user made (`Custom`), by function: listed in the warnings only |
 
 ## How it maps
 
@@ -54,8 +56,15 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 - A variable without a subfolder also gets a DSM file pattern on the session level. Existing files are then found by the end of their name, as dev did.
 - Internal variables are left out.
 
+### Pipelines
+
+- Each pipeline becomes a pipeline of sessions (`legacy.<name>`) with the tasks whose session method has an equivalent here: dev's NoRMCorre and Flow-Registration motion correction, Quicky, suite2p and EXTRACT segmentation, signal extraction, ΔF/F, CaImAn deconvolution, downsampling, DeepInterpolation denoising and backup. Tasks without one (plots, viewers, ROI curation apps) are left out, named in the warnings, and so is a pipeline left with no task.
+- Its session properties become `assignWhen` rules: `contains` stays `contains`, `match` becomes `in`, on the column the variable was imported to. The session table gets `core.pipeline`, which keeps each session's pipeline and progress.
+- A task's option preset other than `Default` is named in the warnings: dev's options are not the methods' here, so the step starts from the method's defaults. The presets users made are listed in the warnings for the same reason.
+
 ## Not carried over
 
 - Session methods, table variable functions and custom file adapters. They are code: port them as module methods, computed fragments and adapters.
-- Pipelines, the task list and per-user preferences.
+- Each session's pipeline progress (dev's `Progress` column), the task list and per-user preferences. Sessions start with no pipeline; a sync assigns one by its rules, or one can be assigned from the table.
+- Option presets: dev's options are not the methods' here (see above).
 - Local root path overrides. Set up the new project's per-machine roots with DSM environments.

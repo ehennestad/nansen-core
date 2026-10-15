@@ -3,12 +3,20 @@ function out = plan(export)
 %
 %   The export must be checked already (nansen.legacy.convert does that).
 %   plan has fields name, title, description, dataset, modules, fragments,
-%   tables, dataVariables and warnings; see nansen.legacy.convert.
+%   tables, dataVariables, pipelines and warnings; see nansen.legacy.convert.
     warnings = {};
     info = nansen.internal.getField(export, "project", struct());
     [dataset, levels, warnings] = buildDataset(export, warnings);
     [variables, dataset, warnings] = buildDataVariables(export, dataset, levels, warnings);
     [fragments, tables, warnings] = buildTables(export, dataset, warnings);
+    [pipelines, warnings] = buildPipelines(export, warnings);
+    if ~isempty(pipelines)   % sessions keep the pipeline they follow, and its progress, in core.pipeline
+        for i = 1:numel(tables)
+            if string(tables{i}.entityType) == "session" && ~ismember("core.pipeline", string(tables{i}.fragments))
+                tables{i}.fragments{end + 1} = 'core.pipeline';
+            end
+        end
+    end
     shortName = textOf(info, "shortName");
     longName = textOf(info, "name");
     source = shortName;
@@ -23,14 +31,115 @@ function out = plan(export)
     if title == ""
         title = name;
     end
-    % the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks)
+    % the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or a pipeline runs its methods
     modules = "core";
-    if any(cellfun(@(v) startsWith(string(v.fileAdapter), "ophys."), variables))
+    usesOphys = any(cellfun(@(v) startsWith(string(v.fileAdapter), "ophys."), variables));
+    for i = 1:numel(pipelines)
+        usesOphys = usesOphys || any(cellfun(@(step) startsWith(string(step.method), "ophys."), pipelines{i}.steps));
+    end
+    if usesOphys
         modules(end + 1) = "ophys";
     end
     out = struct("name", name, "title", title, "description", textOf(info, "description"), ...
         "dataset", dataset, "modules", modules, "fragments", {fragments}, "tables", {tables}, "dataVariables", {variables}, ...
-        "warnings", {warnings});
+        "pipelines", {pipelines}, "warnings", {warnings});
+end
+
+% -- pipelines and presets -------------------------------------------------------------------
+
+function [pipelines, warnings] = buildPipelines(export, warnings)
+    % dev's pipelines of sessions, with the tasks that have a method here, and their rules for new sessions
+    methods_ = struct("motioncorrection_normcorre", "ophys.normcorre", "motioncorrection_flowreg", "ophys.flowreg", ...
+        "autosegmentation_quicky", "ophys.quicky", "autosegmentation_suite2p", "ophys.suite2p", ...
+        "autosegmentation_extract", "ophys.extract", "signalextraction_extractsignals", "ophys.extract_signals", ...
+        "signalextraction_extractsignalsmultichannel", "ophys.extract_signals", ...
+        "signalextraction_computedff", "ophys.compute_dff", "deconvolution_caiman", "ophys.caiman_deconvolution", ...
+        "imageprocessing_downsamplestack", "ophys.downsample", "imageprocessing_denoisestack", "ophys.deep_interpolation", ...
+        "data_backup", "core.backup");
+    idColumns = struct("sessionID", "session_id", "SessionID", "session_id", "subjectID", "subject_id", "SubjectID", "subject_id");
+    pipelines = {};
+    ids = strings(0);
+    items = listOf(nansen.internal.getField(export, "pipelines", {}));
+    for i = 1:numel(items)
+        item = items{i};
+        label = textOf(item, "name");
+        steps = {};
+        tasks = listOf(nansen.internal.getField(item, "tasks", {}));
+        for t = 1:numel(tasks)
+            task = tasks{t};
+            functionName = textOf(task, "function");
+            parts = split(functionName, ".");
+            count = numel(parts);
+            key = lower(strjoin(parts(max(1, count - 1):count), "_"));
+            if ~isvarname(char(key)) || ~isfield(methods_, key)
+                warnings{end + 1} = sprintf("pipeline '%s': task '%s' (%s) has no method here; left out", label, textOf(task, "name"), functionName); %#ok<AGROW>
+                continue
+            end
+            method = string(methods_.(key));
+            stepTitle = textOf(task, "name");
+            if stepTitle == ""
+                stepTitle = method;
+            end
+            preset = textOf(task, "preset");
+            if preset ~= "" && lower(preset) ~= "default"
+                warnings{end + 1} = sprintf("pipeline '%s': task '%s' used dev's option preset '%s', which is not carried over; the method's defaults are used", ...
+                    label, textOf(task, "name"), preset); %#ok<AGROW>
+            end
+            steps{end + 1} = struct("method", char(method), "title", char(stepTitle)); %#ok<AGROW>
+        end
+        if isempty(steps)
+            warnings{end + 1} = sprintf("pipeline '%s': none of its tasks has a method here; left out", label); %#ok<AGROW>
+            continue
+        end
+        [id, ids] = uniqueName(identifier(label, "pipeline", true), ids);
+        pipelineTitle = label;
+        if pipelineTitle == ""
+            pipelineTitle = "Imported pipeline";
+        end
+        document = struct("schemaType", 'nansen.pipeline', "schemaVersion", '0.1.0', "id", char("legacy." + id), ...
+            "version", '1.0.0', "title", char(pipelineTitle), "entityType", 'session', "steps", {steps});
+        rules = {};
+        assign = listOf(nansen.internal.getField(item, "assign", {}));
+        for r = 1:numel(assign)
+            variable = textOf(assign{r}, "variable");
+            if isvarname(char(variable)) && isfield(idColumns, variable)
+                column = string(idColumns.(variable));
+            else
+                column = identifier(variable, "column", false);
+            end
+            mode = lower(textOf(assign{r}, "mode"));
+            if ~ismember(mode, ["contains", "match"])
+                warnings{end + 1} = sprintf("pipeline '%s': an assignment rule of mode '%s' is not carried over", label, mode); %#ok<AGROW>
+                continue
+            end
+            op = "in";
+            if mode == "contains"
+                op = "contains";
+            end
+            rules{end + 1} = struct("column", char(column), "op", char(op), "values", {{char(textOf(assign{r}, "expression"))}}); %#ok<AGROW>
+        end
+        if ~isempty(rules)
+            document.assignWhen = rules;
+        end
+        pipelines{end + 1} = document; %#ok<AGROW>
+    end
+    presets = listOf(nansen.internal.getField(export, "presets", {}));
+    for i = 1:numel(presets)
+        names = string(nansen.internal.getField(presets{i}, "names", {}));
+        warnings{end + 1} = sprintf("option presets of %s (%s) are not carried over: dev's options are not the methods' here", ...
+            textOf(presets{i}, "function"), strjoin(names, ", ")); %#ok<AGROW>
+    end
+end
+
+function items = listOf(value)
+    % A JSON array as jsondecode gives it (a struct array, or a cell when its objects differ) as a cell array
+    if isstruct(value)
+        items = num2cell(reshape(value, 1, []));
+    elseif iscell(value)
+        items = reshape(value, 1, []);
+    else
+        items = {};
+    end
 end
 
 % -- data locations ------------------------------------------------------------------------

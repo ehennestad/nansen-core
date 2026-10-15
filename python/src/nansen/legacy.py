@@ -57,6 +57,14 @@ STACK_ADAPTERS_BY_TYPE = {".tif": "ophys.tiff_stack", ".tiff": "ophys.tiff_stack
                           ".h5": "ophys.hdf5_stack", ".hdf5": "ophys.hdf5_stack", ".npy": "npy"}
 # dev saved these as one named variable of a .mat file (its Default adapter, its RoiSignalArray: several in one file)
 NAMED_IN_FILE = {"default", "", "roisignalarray"}
+# dev's session methods, by the end of their function name, and the method that does the same here
+DEV_METHODS = {"motioncorrection.normcorre": "ophys.normcorre", "motioncorrection.flowreg": "ophys.flowreg",
+               "autosegmentation.quicky": "ophys.quicky", "autosegmentation.suite2p": "ophys.suite2p",
+               "autosegmentation.extract": "ophys.extract", "signalextraction.extractsignals": "ophys.extract_signals",
+               "signalextraction.extractsignalsmultichannel": "ophys.extract_signals",
+               "signalextraction.computedff": "ophys.compute_dff", "deconvolution.caiman": "ophys.caiman_deconvolution",
+               "imageprocessing.downsamplestack": "ophys.downsample", "imageprocessing.denoisestack": "ophys.deep_interpolation",
+               "data.backup": "core.backup"}
 
 
 def convert_legacy(export: dict, folder: PathLike) -> dict:
@@ -94,8 +102,11 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
             notes[table["entityType"]] = len(table["notes"])
     for variable in plan["dataVariables"]:
         project.add_data_variable(variable)
+    for pipeline in plan["pipelines"]:
+        project.save_pipeline(pipeline)
     return {"project": str(folder), "rows": rows, "notes": notes,
-            "dataVariables": [v["name"] for v in plan["dataVariables"]], "warnings": plan["warnings"]}
+            "dataVariables": [v["name"] for v in plan["dataVariables"]],
+            "pipelines": [p["id"] for p in plan["pipelines"]], "warnings": plan["warnings"]}
 
 
 def plan_legacy(export: dict) -> dict:
@@ -105,12 +116,63 @@ def plan_legacy(export: dict) -> dict:
     dataset, levels = _dataset(export, warnings)
     variables = _data_variables(export, dataset, levels, warnings)
     fragments, tables = _tables(export, dataset, warnings)
+    pipelines = _pipelines(export, warnings)
+    if pipelines:   # sessions keep the pipeline they follow, and its progress, in core.pipeline
+        for table in tables:
+            if table["entityType"] == "session" and "core.pipeline" not in table["fragments"]:
+                table["fragments"].append("core.pipeline")
     name = _identifier(info.get("shortName") or info.get("name") or "imported", "p", sep="_", lower=False)
-    # the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks)
-    modules = ["core"] + (["ophys"] if any(v["fileAdapter"].startswith("ophys.") for v in variables) else [])
+    # the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or a pipeline runs its methods
+    uses_ophys = any(v["fileAdapter"].startswith("ophys.") for v in variables) or \
+        any(step["method"].startswith("ophys.") for p in pipelines for step in p["steps"])
+    modules = ["core"] + (["ophys"] if uses_ophys else [])
     return {"name": name, "title": info.get("name") or name, "description": info.get("description") or "",
             "dataset": dataset, "modules": modules, "fragments": fragments, "tables": tables, "dataVariables": variables,
-            "warnings": warnings}
+            "pipelines": pipelines, "warnings": warnings}
+
+
+# -- pipelines and presets -------------------------------------------------------------------
+
+def _pipelines(export: dict, warnings: List[str]) -> List[dict]:
+    """dev's pipelines of sessions, with the tasks that have a method here, and their rules for new sessions."""
+    pipelines: List[dict] = []
+    ids: set = set()
+    for item in export.get("pipelines", []):
+        label = item.get("name", "")
+        steps = []
+        for task in item.get("tasks", []):
+            function = str(task.get("function") or "")
+            method = DEV_METHODS.get(".".join(function.split(".")[-2:]).lower())
+            if method is None:
+                warnings.append(f"pipeline '{label}': task '{task.get('name', '')}' ({function}) has no method here; left out")
+                continue
+            step = {"method": method, "title": str(task.get("name") or method)}
+            preset = str(task.get("preset") or "")
+            if preset and preset.lower() != "default":
+                warnings.append(f"pipeline '{label}': task '{task.get('name', '')}' used dev's option preset '{preset}', "
+                                "which is not carried over; the method's defaults are used")
+            steps.append(step)
+        if not steps:
+            warnings.append(f"pipeline '{label}': none of its tasks has a method here; left out")
+            continue
+        document: Dict[str, Any] = {"schemaType": "nansen.pipeline", "schemaVersion": "0.1.0",
+                                    "id": "legacy." + _unique(_identifier(label, "pipeline", sep="_", lower=True), ids),
+                                    "version": "1.0.0", "title": label or "Imported pipeline", "entityType": "session", "steps": steps}
+        rules = []
+        for rule in item.get("assign", []):
+            column = ID_COLUMNS.get(rule.get("variable", ""), _identifier(rule.get("variable", ""), "column", sep="_", lower=False))
+            mode = str(rule.get("mode") or "").lower()
+            if mode not in ("contains", "match"):
+                warnings.append(f"pipeline '{label}': an assignment rule of mode '{mode}' is not carried over")
+                continue
+            rules.append({"column": column, "op": "contains" if mode == "contains" else "in", "values": [str(rule.get("expression") or "")]})
+        if rules:
+            document["assignWhen"] = rules
+        pipelines.append(document)
+    for item in export.get("presets", []):
+        names = ", ".join(item.get("names", []))
+        warnings.append(f"option presets of {item.get('function', '')} ({names}) are not carried over: dev's options are not the methods' here")
+    return pipelines
 
 
 # -- data locations -------------------------------------------------------------------------

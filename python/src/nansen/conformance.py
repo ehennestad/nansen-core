@@ -173,6 +173,7 @@ def _evaluate_legacy(case: Path) -> dict:
                 "dataVariables": documents("data-variables/*.dataVariable.nansen.json"),
                 "notebooks": documents("notes/*.notebook.nansen.json"),
                 "views": documents("views/*.views.nansen.json"),
+                "pipelines": documents("pipelines/*.pipeline.nansen.json"),
                 "tables": tables, "warnings": report["warnings"]}
 
 
