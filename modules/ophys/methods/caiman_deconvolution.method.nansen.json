@@ -6,7 +6,7 @@
   "title": "Deconvolve (CaImAn)",
   "category": "Two-photon/Signal extraction",
   "entityType": "*",
-  "description": "Spikes and denoised calcium of each trace by CaImAn, when it is installed: constrained foopsi in Python, and foopsi with the given sparsity in MATLAB (deconvolveCa), where CaImAn-MATLAB's constrained solver does not run on current releases.",
+  "description": "Spikes and denoised calcium of each trace by CaImAn's OASIS, when it is installed, with dev's options (its CaImAn deconvolution): thresholded OASIS, spikes of at least spikeSnr times the trace's noise (CaImAn's GetSn), the sparsity penalty CaImAn's choose_lambda gives at lambdaPr (none at dev's 0.5), and the AR coefficients of tauRise and tauDecay as dev's exp2ar gives them, or estimated from each trace. MATLAB runs deconvolveCa ('thresholded'; exp2 with onnls), Python the OASIS class (exp2, the same kernel as AR(2), as AR(2)).",
   "implementations": {
     "python": "ophys_methods:caiman_deconvolution",
     "matlab": "ophys.caimanDeconvolution"
@@ -32,21 +32,59 @@
         "title": "Denoised calcium",
         "description": "Variable the denoised calcium is saved to. Leave empty to not save it."
       },
-      "order": {
-        "type": "integer",
+      "modelType": {
+        "type": "string",
         "enum": [
-          1,
-          2
+          "ar1",
+          "ar2",
+          "exp2",
+          "autoar"
         ],
-        "default": 1,
-        "title": "Autoregressive order"
+        "default": "ar2",
+        "title": "Model",
+        "description": "The calcium kernel (dev's modelType): ar1, ar2, exp2 (a difference of exponentials), or autoar (AR(2) above 15 Hz, else AR(1), its coefficients estimated)"
       },
-      "lambda": {
+      "frameRate": {
         "type": "number",
         "default": 0,
         "minimum": 0,
-        "title": "Sparsity (MATLAB)",
-        "description": "The ℓ1 penalty of foopsi in MATLAB, where CaImAn's constrained solver does not run; Python runs constrained foopsi, which chooses it"
+        "title": "Frame rate (Hz)",
+        "description": "0 for the entity's frame_rate (dev's sampleRate)"
+      },
+      "tauRise": {
+        "type": "number",
+        "default": 0.18,
+        "exclusiveMinimum": 0,
+        "title": "Rise time constant (s)",
+        "description": "dev's 180 ms"
+      },
+      "tauDecay": {
+        "type": "number",
+        "default": 0.55,
+        "exclusiveMinimum": 0,
+        "title": "Decay time constant (s)",
+        "description": "dev's 550 ms"
+      },
+      "estimateTimeConstants": {
+        "type": "boolean",
+        "default": false,
+        "title": "Estimate time constants",
+        "description": "Estimate the AR coefficients from each trace (CaImAn's estimate_time_constant) instead of using tauRise and tauDecay"
+      },
+      "spikeSnr": {
+        "type": "number",
+        "default": 1,
+        "minimum": 0,
+        "title": "Spike SNR",
+        "description": "The smallest spike, in units of the trace's noise"
+      },
+      "lambdaPr": {
+        "type": "number",
+        "default": 0.5,
+        "minimum": 0.5,
+        "exclusiveMaximum": 1,
+        "title": "Sparsity probability",
+        "description": "choose_lambda's probability: the sparsity penalty is the noise times the kernel's norm times the normal distribution's inverse at it (0 at 0.5)"
       }
     }
   }

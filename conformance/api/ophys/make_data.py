@@ -72,6 +72,25 @@ def ring(disk, others, gap, width):
     return out
 
 
+def neuropil_slices(neuropil, disk, count):
+    """dev's splitNeuropilMasks (FISSA's split_npil), with numpy's histogram and percentile: the angle of each
+    neuropil pixel from the disk's centroid, turned so it starts in the middle of the least populated of 20 bins,
+    cut at its count quantiles."""
+    ys, xs = np.nonzero(disk)
+    rows, columns = np.nonzero(neuropil)
+    theta = np.arctan2(rows - ys.mean(), columns - xs.mean())
+    counts, edges = np.histogram(theta, bins=np.linspace(-np.pi, np.pi, 21))
+    theta = (theta - (edges[np.argmin(counts)] + np.pi / 20)) % (2 * np.pi) - np.pi
+    bounds = [-np.inf] + [np.percentile(theta, 100.0 * (k + 1) / count) for k in range(count)]
+    out = []
+    for k in range(count):
+        part = np.zeros_like(neuropil)
+        chosen = (theta > bounds[k]) & (theta <= bounds[k + 1])
+        part[rows[chosen], columns[chosen]] = True
+        out.append(part)
+    return out
+
+
 def frame_bytes(image, limits=None):
     """The viewer's 8-bit frame, as the protocol describes it: base64 of the bytes, row after row."""
     import base64
@@ -90,6 +109,55 @@ def deconvolution_truth(trace, g, lam):
     result = minimize(objective, np.full(T, 0.1), jac=gradient, bounds=[(0, None)] * T, method="L-BFGS-B",
                       options={"ftol": 1e-16, "gtol": 1e-12, "maxiter": 50000, "maxfun": 50000})
     return K @ result.x, result.x
+
+
+def deconvolution_ar2_truth(trace, d, r, lam):
+    """OASIS for an AR(2) model, g1 = d + r and g2 = -d r (Friedrich et al. 2017), written out plainly from its
+    definition (not either reader's code). It is greedy, so not the optimum a general optimiser finds: frames are taken
+    one at a time as pools of their own; each pool's first value is fitted by least squares to y less the penalty's
+    weight on each frame, with the pools before it fixed (the first pool decays by d, the others follow the AR(2)
+    recursion from the last value of the one before), and a pool whose first value is below what the pool before it
+    would continue to is merged with it. With lam 0 it gives what CaImAn's OASIS class (with g2) gives."""
+    T = len(trace)
+    g1, g2 = d + r, -d * r
+    D = np.zeros((T, T))   # s = D c: s_0 = c_0, s_1 = c_1 - d c_0, s_t = c_t - g1 c_t-1 - g2 c_t-2
+    for t in range(T):
+        D[t, t] = 1
+        if t == 1:
+            D[t, 0] = -d
+        elif t >= 2:
+            D[t, t - 1], D[t, t - 2] = -g1, -g2
+    target = trace - lam * D.sum(axis=0)
+
+    def run(start, length, value, before):
+        c = [value]
+        for k in range(1, length):
+            c.append(d * c[-1] if before is None else g1 * c[-1] + g2 * (c[-2] if k > 1 else before))
+        return np.array(c)
+
+    def fitted(pools):
+        values, c = [], np.zeros(T)
+        for i, (start, length) in enumerate(pools):
+            before = None if i == 0 else c[start - 1]
+            base, unit = run(start, length, 0.0, before), run(start, length, 1.0, before) - run(start, length, 0.0, before)
+            value = unit @ (target[start:start + length] - base) / (unit @ unit)
+            value = max(value, 0.0) if i == 0 else value
+            values.append(value)
+            c[start:start + length] = run(start, length, value, before)
+        return values, c
+
+    pools = []
+    for t in range(T):
+        pools.append((t, 1))
+        while len(pools) > 1:
+            values, c = fitted(pools)
+            start = pools[-1][0]
+            continued = d * c[start - 1] if len(pools) == 2 else g1 * c[start - 1] + g2 * c[start - 2]
+            if values[-1] >= continued:
+                break
+            pools[-2:] = [(pools[-2][0], pools[-2][1] + pools[-1][1])]
+    calcium = fitted(pools)[1]
+    return calcium, D @ calcium
 
 
 def smooth_naive(data, axis, sigma):
@@ -372,6 +440,18 @@ def main():
     expected["signalsExpansion"] = {"rois": len(disks), "frames": FRAMES,
                                     "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
                                     "meanNeuropil": [round_to(v, 4) for v in np.stack(expanded, axis=1).mean(axis=0)]}
+    # the ring in 5 slices around each ROI (dev's numNeuropilSlices; pixels at the same angle make them differ in size):
+    # the neuropil signal is the mean of the slices' means
+    sliced = [np.mean([aligned[part].mean(axis=0) for part in neuropil_slices(ring(d, union, 1, 3), d, 5)], axis=0) for d in disks]
+    expected["signalsSlices"] = {"rois": len(disks), "frames": FRAMES,
+                                 "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
+                                 "meanNeuropil": [round_to(v, 4) for v in np.stack(sliced, axis=1).mean(axis=0)]}
+    # dev's neuropil grown 2 steps at most (maxNeuropilRadius 2): by the four sides, then by the four diagonals
+    short = []
+    for d in disks:
+        grown = nd.binary_dilation(nd.binary_dilation(d, sides) & ~d, diagonals) & ~d
+        short.append(aligned[grown & ~ignored].mean(axis=0))
+    expected["signalsShortExpansion"] = dict(expected["signalsExpansion"], meanNeuropil=[round_to(v, 4) for v in np.stack(short, axis=1).mean(axis=0)])
     # rois.signal: ROI 1's pixels read from the aligned stack now, frames 5..19 every 4th, as data.traces gives them
     expected["liveSignal"] = {"frames": FRAMES, "start": 5, "step": 4, "points": 4, "traces": [
         {"variable": "TwoPhotonSeries_Corrected", "count": 1, "columns": [{"column": 0, "values": [four(signals[t, 0]) for t in picked]}]}]}
@@ -411,6 +491,17 @@ def main():
         spike_sum.append(round_to(spikes.sum(), 3))
         max_calcium.append(round_to(calcium.max(), 3))
     expected["deconvolve"] = {"rois": len(disks), "frames": FRAMES, "noise": noise, "spikeSum": spike_sum, "maxCalcium": max_calcium}
+    # order 2 (the default): dev's rise of 0.18 s with the decay of 0.5 s, at 30 Hz
+    d, r = math.exp(-1.0 / (0.5 * 30)), math.exp(-1.0 / (0.18 * 30))
+    spike_sum, max_calcium = [], []
+    for i in range(len(disks)):
+        ordered = np.sort(np.abs(np.diff(dff[:, i])))
+        n = len(ordered)
+        sigma = (ordered[n // 2] if n % 2 else (ordered[n // 2 - 1] + ordered[n // 2]) / 2) / (0.6745 * math.sqrt(2))
+        calcium, spikes = deconvolution_ar2_truth(dff[:, i], d, r, sigma)
+        spike_sum.append(round_to(spikes.sum(), 3))
+        max_calcium.append(round_to(calcium.max(), 3))
+    expected["deconvolveAr2"] = dict(expected["deconvolve"], spikeSum=spike_sum, maxCalcium=max_calcium)
     smoothed = aligned
     for axis in (0, 1, 2):
         smoothed = smooth_naive(smoothed, axis, 1.0)
@@ -441,6 +532,19 @@ def main():
                     second_channel[y, x, k] = frame[y + dy, x + dx]   # moved back by the shift; 0 outside
     expected["secondChannelStats"] = {"n_frames": FRAMES // 2, "height": HEIGHT, "width": WIDTH,
                                       "mean_intensity": round_to(second_channel.mean(), 4), "max_intensity": float(second_channel.max())}
+    # every channel in one run (channel 0, dev's extractSignalsMultiChannel), with ROIs placed in either channel
+    # (rois_channels.json): each ROI's signal from its own channel, its neuropil a ring outside the ROIs of its channel;
+    # channel 1 is the even frames aligned, channel 2 the odd ones moved by the even frames' shifts
+    placed = [(disks[0], 1), (disks[0], 2), (disks[1], 2), (disks[2], 1)]
+    (HERE / "project/data/raw/sub-m1/ses-s1/rois_channels.json").write_text(json.dumps({"imageSize": [HEIGHT, WIDTH], "rois": [
+        {"id": n + 1, "channel": c, "pixels": [[int(y), int(x)] for y, x in zip(*np.nonzero(d))]} for n, (d, c) in enumerate(placed)]}) + "\n",
+        encoding="utf-8")
+    stacks = {1: aligned[:, :, 0::2], 2: second_channel}
+    together = {c: np.any([d for d, k in placed if k == c], axis=0) for c in (1, 2)}
+    expected["channelsSignals"] = {"rois": 4, "frames": FRAMES // 2, "ids": [1, 2, 3, 4],
+                                   "meanSignal": [round_to(stacks[c][d].mean(), 4) for d, c in placed],
+                                   "meanNeuropil": [round_to(stacks[c][ring(d, together[c], 1, 3)].mean(), 4) for d, c in placed],
+                                   "channels": [{"channel": 1, "rois": 2}, {"channel": 2, "rois": 2}]}
     # ROI curation at the end: ROI 3 moved by (1, -1), then merged into ROI 1
     pixels = lambda d: [[int(y), int(x)] for y, x in zip(*np.nonzero(d))]
     moved = sorted([y + 1, x - 1] for y, x in pixels(disks[2]))

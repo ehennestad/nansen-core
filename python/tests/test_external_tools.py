@@ -117,12 +117,14 @@ def test_caiman_deconvolution(api):
     for t in range(FRAMES):
         calcium[t] = (0.95 * calcium[t - 1] if t else 0) + spikes[t]
     api.project.save(api.project.entity("session", SESSION), "RoiSignals_Dff", calcium + rng.normal(0, 0.05, calcium.shape))
-    result = run(api, "ophys.caiman_deconvolution", {})
-    assert result == {"rois": 3, "frames": FRAMES}
-    found = load(api, "RoiSignals_Deconvolved")
-    assert found.shape == (FRAMES, 3)
-    for i in range(3):  # the inferred spikes follow the true ones
-        assert np.corrcoef(found[:, i], spikes[:, i])[0, 1] > 0.5
+    # dev's options: an AR(1) decay of 0.95 per frame at 30 Hz (0.65 s), AR(2) of dev's rise and decay, and estimated
+    for options in ({"modelType": "ar1", "tauDecay": 0.65}, {}, {"modelType": "autoar"}):
+        result = run(api, "ophys.caiman_deconvolution", dict(options, frameRate=30))
+        assert result == {"rois": 3, "frames": FRAMES}
+        found = load(api, "RoiSignals_Deconvolved")
+        assert found.shape == (FRAMES, 3)
+        for i in range(3):  # the inferred spikes follow the true ones
+            assert np.corrcoef(found[:, i], spikes[:, i])[0, 1] > 0.5
 
 
 def test_caiman_cnmf(api):

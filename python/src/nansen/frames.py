@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import base64
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .errors import NansenError
 
@@ -704,7 +704,7 @@ def detect_roi(image: Any, point: List[int], radius: int = 6) -> List[List[int]]
 
 # the neuropil's options and their defaults, as ophys.extract_signals has them
 NEUROPIL_DEFAULTS = {"neuropilMethod": "ring", "neuropilGap": 1, "neuropilWidth": 3, "neuropilExpansionFactor": 4,
-                     "neuropilSeparation": 0, "includeRejected": False}
+                     "neuropilSeparation": 0, "maxNeuropilRadius": 50, "numNeuropilSlices": 1, "includeRejected": False}
 
 
 def neuropil_masks(masks: List[Any], options: Dict[str, Any], which: Optional[List[int]] = None) -> List[Any]:
@@ -715,8 +715,10 @@ def neuropil_masks(masks: List[Any], options: Dict[str, Any], which: Optional[Li
     neuropilMethod ring: the pixels at square distance neuropilGap+1 .. neuropilGap+neuropilWidth from the ROI.
     expansion, dev's (estimateNeuropilMasks): the ROI's mask dilated, alternately by its four sides (even steps) and
     its four diagonals (odd steps), less the ROI, until the part outside the ignored pixels covers
-    neuropilExpansionFactor times the ROI's area (at most the rest of the image), or after 101 steps; the ignored
-    pixels (every ROI, dilated neuropilSeparation times, from a diagonal step) are then taken out.
+    neuropilExpansionFactor times the ROI's area (at most the rest of the image), or after maxNeuropilRadius steps
+    (each one reaches a pixel further out; dev's maxNeuropilRadius, which its estimateNeuropilMasks meant to stop at
+    instead of after 101 steps); the ignored pixels (every ROI, dilated neuropilSeparation times, from a diagonal
+    step) are then taken out. neuropil_slices splits a neuropil in numNeuropilSlices.
     """
     import numpy as np
     options = dict(NEUROPIL_DEFAULTS, **options)
@@ -729,7 +731,7 @@ def neuropil_masks(masks: List[Any], options: Dict[str, Any], which: Optional[Li
     if options["neuropilMethod"] != "expansion":
         gap, width = int(options["neuropilGap"]), int(options["neuropilWidth"])
         return [_dilate_square(masks[i], gap + width) & ~_dilate_square(masks[i], gap) & ~union for i in which]
-    factor = options["neuropilExpansionFactor"]
+    factor, radius = options["neuropilExpansionFactor"], int(options["maxNeuropilRadius"])
     ignored = union.copy()
     for step in range(1, int(options["neuropilSeparation"]) + 1):
         ignored = _dilate_odd_even(ignored, step)
@@ -739,7 +741,7 @@ def neuropil_masks(masks: List[Any], options: Dict[str, Any], which: Optional[Li
         area = int(mask.sum())
         target = min(mask.size - area, factor * area)
         grown, covered, step = mask.copy(), 0, 0
-        while covered < target and step <= 100:
+        while covered < target and step < radius:
             grown = _dilate_odd_even(grown, step)
             grown &= ~mask
             covered = int((grown & ~ignored).sum())
@@ -777,10 +779,47 @@ def _dilate_odd_even(mask: Any, step: int) -> Any:
     return out
 
 
-def roi_neuropil(value: Any, roi: Any, options: Dict[str, Any], height: int, width: int) -> List[List[int]]:
+def neuropil_slices(neuropil: Any, mask: Any, count: int) -> List[Any]:
+    """A neuropil (height x width, boolean) split in count slices of about equal area around its ROI's mask, as dev's
+    splitNeuropilMasks (FISSA's split_npil): the angle of each neuropil pixel seen from the ROI's centroid, measured
+    from the middle of the least populated of 20 equal bins of angle (the first of them, if several), so a slice does
+    not run across the neuropil's narrowest part; slice k (from 1) is the pixels at or below the k / count quantile
+    of those angles (linear interpolation, as numpy.percentile) and above the one before. dev's port leaves out
+    FISSA's turn of the angles to that zero, which this keeps. MATLAB's nansen.internal.neuropilSlices does the same."""
+    import numpy as np
+    count = max(1, int(count))
+    if count == 1:
+        return [neuropil.copy()]
+    out = [np.zeros(neuropil.shape, dtype=bool) for _ in range(count)]
+    rows, columns = np.nonzero(neuropil)
+    inside = np.nonzero(mask)
+    if not rows.size or not inside[0].size:
+        return out
+    cy, cx = float(inside[0].sum()) / inside[0].size, float(inside[1].sum()) / inside[1].size   # whole numbers: exact
+    theta = np.arctan2(rows - cy, columns - cx)
+    edges = [-math.pi + k * (2 * math.pi / 20) for k in range(21)]
+    bins = sum((theta >= edge).astype(int) for edge in edges[1:20])   # bin k holds edges[k] <= theta < edges[k + 1]
+    least = int(np.argmin(np.bincount(bins, minlength=20)))
+    turned = theta - (edges[least] + math.pi / 20)
+    turned = np.where(turned < 0, turned + 2 * math.pi, turned) - math.pi
+    ordered = np.sort(turned)
+    bounds = []
+    for k in range(1, count + 1):
+        position = (ordered.size - 1) * k / count
+        low = int(math.floor(position))
+        high = min(low + 1, ordered.size - 1)
+        bounds.append(ordered[low] + (position - low) * (ordered[high] - ordered[low]))
+    for k in range(count):
+        chosen = (turned <= bounds[k]) if k == 0 else (turned > bounds[k - 1]) & (turned <= bounds[k])
+        out[k][rows[chosen], columns[chosen]] = True
+    return out
+
+
+def roi_neuropil(value: Any, roi: Any, options: Dict[str, Any], height: int, width: int) -> Tuple[List[List[int]], List[int]]:
     """The neuropil pixels ([row, column], 0-based, row-major) of the ROI of id roi in an ROI file, as
     ophys.extract_signals takes them (neuropil_masks): among the file's ROIs, less those rejected unless
-    includeRejected, and the ROI itself always. Pixels outside the height x width image are left out."""
+    includeRejected, and the ROI itself always. Pixels outside the height x width image are left out. With them,
+    the slice (from 1) each pixel is in (neuropil_slices, numNeuropilSlices; all 1 with one slice)."""
     import numpy as np
     rois = roi_outlines(value)
     at = next((i for i, r in enumerate(rois) if r["id"] == roi), None)
@@ -796,7 +835,11 @@ def roi_neuropil(value: Any, roi: Any, options: Dict[str, Any], height: int, wid
                 mask[y, x] = True
         masks.append(mask)
     neuropil = neuropil_masks(masks, options, [kept.index(at)])[0]
-    return [[int(r), int(c)] for r, c in zip(*np.nonzero(neuropil))]
+    labels = np.zeros((height, width), dtype=int)
+    for k, part in enumerate(neuropil_slices(neuropil, masks[kept.index(at)], options["numNeuropilSlices"]), start=1):
+        labels[part] = k
+    rows, columns = np.nonzero(neuropil)
+    return [[int(r), int(c)] for r, c in zip(rows, columns)], [int(v) for v in labels[rows, columns]]
 
 
 def _round2(value: float) -> float:

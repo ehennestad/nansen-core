@@ -75,6 +75,12 @@ N.registerPage({
       input.classList.add("cx-" + name);
       return h("label", h("span", p.title || name, " ", value), input, p.description ? h("span.muted", p.description) : null);
     };
+    // The model: AR(2), a rise and a decay (dev's default), or AR(1); the rise time constant only counts for AR(2)
+    const riseSetting = schema.tauRise ? setting("tauRise", { step: 0.01, max: 1 }) : null;
+    const showRise = () => { if (riseSetting) riseSetting.style.display = options.order === 2 ? "" : "none"; };
+    const orderPick = h("select.input.cx-order", { on: { change: () => { options.order = Number(orderPick.value); showRise(); later(); } } },
+      (schema.order ? schema.order.enum : []).map((n) => h("option", { value: n, selected: n === options.order }, n === 2 ? "AR(2): rise and decay" : "AR(1): decay")));
+    showRise();
 
     /** The plot of what the last preview and traces gave. */
     function draw(preview) {
@@ -91,10 +97,13 @@ N.registerPage({
       const noise = first(result.noise), spikeSum = first(result.spikeSum);
       const rate = options.frameRate || state.traces.frameRate;
       const decay = rate ? Math.exp(-1 / (options.tauDecay * rate)) : null;
+      const rise = rate && options.order === 2 ? Math.exp(-1 / (options.tauRise * rate)) : null;
       stats.dataset.spikeSum = Number.isFinite(spikeSum) ? String(spikeSum) : "";
       N.fill(stats, h("span", "Spikes (sum) ", h("b.cx-spikes", Number.isFinite(spikeSum) ? N.fmt.number(spikeSum) : "—")),
         h("span", "Noise σ ", h("b.cx-noise", Number.isFinite(noise) ? N.fmt.number(noise) : "—")),
-        h("span", "Decay per frame ", h("b", decay ? decay.toFixed(4) : "—")),
+        rise !== null   // dev's exp2ar: g1 = d + r, g2 = -d r
+          ? h("span", "AR(2) coefficients ", h("b.cx-coefficients", `${(decay + rise).toFixed(4)}, ${(-decay * rise).toFixed(4)}`))
+          : h("span", "Decay per frame ", h("b.cx-coefficients", decay ? decay.toFixed(4) : "—")),
         h("span.muted", `${frames} frames` + (state.traces.frameRate ? ` at ${N.fmt.number(state.traces.frameRate)} Hz` : "")));
     }
 
@@ -169,7 +178,9 @@ N.registerPage({
         h("div.card.cx-side",
           h("label", "Session", sessionPick), h("label", "ROI", roiPick),
           h("label", schema.signals.title || "Traces", signalsPick),
-          setting("frameRate", { step: "any" }), setting("tauDecay", { step: 0.01, max: 3 }), setting("sparsity", { step: 0.05, max: 5 }),
+          schema.order ? h("label", schema.order.title || "order", orderPick) : null,
+          setting("frameRate", { step: "any" }), setting("tauDecay", { step: 0.01, max: 3 }),
+          schema.tauRise ? riseSetting : null, setting("sparsity", { step: 0.05, max: 5 }),
           h("div.cx-actions",
             h("button.btn.primary.small.cx-queue-one", { on: { click: () => queue([state.key]) } }, "Run on this session"),
             h("button.btn.small.cx-queue-all", { on: { click: () => queue(rows.map((r) => r.key)) } }, `Run on all ${rows.length}`))),

@@ -11,10 +11,14 @@ function out = neuropilMasks(masks, options, which)
 %   (estimateNeuropilMasks): the ROI's mask dilated, alternately by its four
 %   sides (even steps) and its four diagonals (odd steps), less the ROI,
 %   until the part outside the ignored pixels covers neuropilExpansionFactor
-%   times the ROI's area (at most the rest of the image), or after 101
-%   steps; the ignored pixels (every ROI, dilated neuropilSeparation times,
-%   from a diagonal step) are then taken out. Options not given take
-%   ophys.extract_signals's defaults (ring, 1, 3, 4, 0).
+%   times the ROI's area (at most the rest of the image), or after
+%   maxNeuropilRadius steps (each one reaches a pixel further out; dev's
+%   maxNeuropilRadius, which its estimateNeuropilMasks meant to stop at
+%   instead of after 101 steps); the ignored pixels (every ROI, dilated
+%   neuropilSeparation times, from a diagonal step) are then taken out.
+%   Options not given take ophys.extract_signals's defaults (ring, 1, 3, 4,
+%   0, 50). nansen.internal.neuropilSlices splits a neuropil in
+%   numNeuropilSlices.
     if nargin < 3
         which = 1:numel(masks);
     end
@@ -36,6 +40,7 @@ function out = neuropilMasks(masks, options, which)
         return
     end
     factor = double(nansen.internal.getField(options, "neuropilExpansionFactor", 4));
+    radius = double(nansen.internal.getField(options, "maxNeuropilRadius", 50));
     ignored = union;
     for step = 1:double(nansen.internal.getField(options, "neuropilSeparation", 0))
         ignored = dilateOddEven(ignored, step);
@@ -47,7 +52,7 @@ function out = neuropilMasks(masks, options, which)
         grown = mask;
         covered = 0;
         step = 0;
-        while covered < target && step <= 100
+        while covered < target && step < radius
             grown = dilateOddEven(grown, step);
             grown = grown & ~mask;
             covered = nnz(grown & ~ignored);

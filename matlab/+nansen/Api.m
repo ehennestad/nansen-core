@@ -1755,8 +1755,11 @@ classdef Api < handle
                 nansen.internal.throwError("invalid-params", "the ROIs of %s have no imageSize: give it", variable)
             end
             roi = nansen.internal.getField(params, "roi", []);
-            pixels = nansen.internal.roiNeuropil(document, roi, options, double(imageSize(1)), double(imageSize(2)));
+            [pixels, slices] = nansen.internal.roiNeuropil(document, roi, options, double(imageSize(1)), double(imageSize(2)));
             result = struct("roi", roi, "pixels", {num2cell(pixels, 2)'}, "options", options);
+            if options.numNeuropilSlices > 1
+                result.slices = num2cell(reshape(slices, 1, []));
+            end
         end
 
         function options = neuropilOptions(obj, project, params)
@@ -1782,7 +1785,7 @@ classdef Api < handle
                 values = method.resolveOptions(nansen.internal.mergeStructs(values, given));
             end
             options = struct("neuropilMethod", 'ring', "neuropilGap", 1, "neuropilWidth", 3, "neuropilExpansionFactor", 4, ...
-                "neuropilSeparation", 0, "includeRejected", false);
+                "neuropilSeparation", 0, "maxNeuropilRadius", 50, "numNeuropilSlices", 1, "includeRejected", false);
             for name = reshape(string(fieldnames(options)), 1, [])
                 if isfield(values, name)
                     options.(name) = values.(name);
@@ -1792,11 +1795,13 @@ classdef Api < handle
             kind = options.neuropilMethod;
             valid = (ischar(kind) || (isstring(kind) && isscalar(kind))) && any(string(kind) == ["ring", "expansion"]) ...
                 && whole(options.neuropilGap, 0) && whole(options.neuropilWidth, 1) && whole(options.neuropilSeparation, 0) ...
+                && whole(options.maxNeuropilRadius, 1) && whole(options.numNeuropilSlices, 1) ...
                 && isnumeric(options.neuropilExpansionFactor) && isscalar(options.neuropilExpansionFactor) && options.neuropilExpansionFactor > 0 ...
                 && islogical(options.includeRejected) && isscalar(options.includeRejected);
             if ~valid
                 nansen.internal.throwError("invalid-options", "the neuropil is a ring (neuropilGap 0 or more, neuropilWidth 1 or more) or an " + ...
-                    "expansion (neuropilExpansionFactor above 0, neuropilSeparation 0 or more)")
+                    "expansion (neuropilExpansionFactor above 0, neuropilSeparation 0 or more, maxNeuropilRadius 1 or more), " + ...
+                    "in numNeuropilSlices slices (1 or more)")
             end
             options.neuropilMethod = char(kind);
         end

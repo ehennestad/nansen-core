@@ -1,15 +1,21 @@
-function rois = shapeRois(image, inner, outer)
+function rois = shapeRois(image, inner, outer, upsampling)
 %shapeRois Somata found by their shape in an image, as flufinder's shapeDetection: a cell array of [row, column] pixels (1-based)
 %
 %   The image, scaled to 0..1, is correlated with a ring template
 %   (ophys.internal.ringKernel); where the correlation is above sqrt(0.2)
 %   of its largest, areas (8-connected) of 5 pixels or more are candidates,
-%   at their centroid rounded half up, 15 px from the edge or more.
-%   Candidates whose 21 x 21 patch correlates with the candidates' mean
-%   patch by 0.1 or less are left out; each one's mask is found by
-%   ophys.internal.somaMask and kept when the ring is brighter than both its
-%   edges in more than 60 % of directions and it overlaps no soma kept
-%   before it by more than 75 %. As Python's ophys_methods.shape_rois.
+%   at their centroid rounded half up, 15 px from the edge or more. Each
+%   candidate's 21 x 21 patch is upsampled upsampling times
+%   (ophys.internal.upsampleCubic, as flufinder's imresize by 4);
+%   candidates whose upsampled patch, cut to 0..1, correlates with the mean
+%   of them by 0.1 or less are left out; each one's mask is found in its
+%   upsampled patch by ophys.internal.somaMask and kept when the ring is
+%   brighter than both its edges in more than 60 % of directions and it
+%   overlaps no soma kept before it by more than 75 %. As Python's
+%   ophys_methods.shape_rois.
+    if nargin < 4
+        upsampling = 4;
+    end
     margin = 15;
     rois = {};
     im = double(image);
@@ -45,17 +51,19 @@ function rois = shapeRois(image, inner, outer)
         return
     end
     patches = cell(1, size(centres, 1));
-    meanPatch = zeros(21, 21);
+    clipped = cell(1, size(centres, 1));
+    meanPatch = zeros(21 * upsampling, 21 * upsampling);
     for i = 1:size(centres, 1)
-        patches{i} = im(centres(i, 1) - 9:centres(i, 1) + 11, centres(i, 2) - 9:centres(i, 2) + 11);
-        meanPatch = meanPatch + patches{i};
+        patches{i} = ophys.internal.upsampleCubic(im(centres(i, 1) - 9:centres(i, 1) + 11, centres(i, 2) - 9:centres(i, 2) + 11), upsampling);
+        clipped{i} = min(max(patches{i}, 0), 1);
+        meanPatch = meanPatch + clipped{i};
     end
     meanPatch = meanPatch / numel(patches);
     for i = 1:size(centres, 1)
-        if ~(pearson(meanPatch, patches{i}) > 0.1)
+        if ~(pearson(meanPatch, clipped{i}) > 0.1)
             continue
         end
-        [pixels, ridge] = ophys.internal.somaMask(im, centres(i, 1), centres(i, 2));
+        [pixels, ridge] = ophys.internal.somaMask(patches{i}, upsampling, centres(i, 1), centres(i, 2), height, width);
         if ridge > 0.6 && ~isempty(pixels) && ~any(cellfun(@(r) ophys.internal.overlapShare(pixels, r) > 0.75, rois))
             rois{end + 1} = pixels; %#ok<AGROW>
         end

@@ -497,6 +497,91 @@
     {
       "request": {
         "method": "methods.run",
+        "id": 1602,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "numNeuropilSlices": 5,
+            "output": "",
+            "neuropilOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "meanSignal": [
+                354.3,
+                343.3,
+                352.0442
+              ],
+              "meanNeuropil": [
+                179.7737,
+                185.7849,
+                207.0911
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 1603,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "excludeOverlaps": true,
+            "neuropilMethod": "expansion",
+            "neuropilSeparation": 1,
+            "maxNeuropilRadius": 2,
+            "output": "",
+            "neuropilOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "meanSignal": [
+                354.3,
+                343.3,
+                352.0442
+              ],
+              "meanNeuropil": [
+                182.1162,
+                189.8575,
+                200.9012
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
         "id": 17,
         "params": {
           "methodId": "ophys.compute_dff",
@@ -2318,6 +2403,7 @@
             }
           ],
           "options": {
+            "order": 1,
             "frameRate": 30,
             "tauDecay": 0.5
           }
@@ -2343,6 +2429,51 @@
                 4.688,
                 3.06,
                 3.96
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 3000,
+        "params": {
+          "methodId": "ophys.deconvolve",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "frameRate": 30,
+            "tauDecay": 0.5
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "noise": [
+                3.3309,
+                1.8056,
+                2.4238
+              ],
+              "spikeSum": [
+                2.727,
+                1.036,
+                1.013
+              ],
+              "maxCalcium": [
+                3.121,
+                2.279,
+                2.921
               ]
             }
           ]
@@ -6051,6 +6182,114 @@
             }
           ]
         }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 8101,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "RoiArray_Channels",
+            "entityType": "session",
+            "dataLocation": "raw",
+            "fileName": "rois_channels.json",
+            "fileAdapter": "json",
+            "dataType": "RoiArray"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "RoiArray_Channels"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 8102,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "channel": 0,
+            "rois": "RoiArray_Channels",
+            "output": "",
+            "neuropilOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 4,
+              "frames": 20,
+              "ids": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "meanSignal": [
+                338.6769,
+                198.5846,
+                210.5,
+                321.6615
+              ],
+              "meanNeuropil": [
+                179.97,
+                202.8004,
+                201.9979,
+                207.4092
+              ],
+              "channels": [
+                {
+                  "channel": 1,
+                  "rois": 2
+                },
+                {
+                  "channel": 2,
+                  "rois": 2
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 8103,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "channel": 0,
+            "rois": "RoiArray",
+            "output": "",
+            "neuropilOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-data"
       }
     },
     {
@@ -10648,6 +10887,7 @@
             "session_id": "s1"
           },
           "options": {
+            "order": 1,
             "frameRate": 30,
             "tauDecay": 0.5
           }
@@ -10716,6 +10956,7 @@
             "session_id": "s1"
           },
           "options": {
+            "order": 1,
             "frameRate": 30,
             "tauDecay": 0.5
           },
@@ -11349,6 +11590,208 @@
             ]
           ]
         }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.neuropil",
+        "id": 9523,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "NeuropilRois",
+          "roi": 1,
+          "options": {
+            "neuropilGap": 1,
+            "neuropilWidth": 1,
+            "numNeuropilSlices": 4
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "roi": 1,
+          "options": {
+            "neuropilMethod": "ring",
+            "neuropilGap": 1,
+            "neuropilWidth": 1,
+            "numNeuropilSlices": 4,
+            "maxNeuropilRadius": 50
+          },
+          "pixels": [
+            [
+              2,
+              2
+            ],
+            [
+              2,
+              4
+            ],
+            [
+              2,
+              5
+            ],
+            [
+              2,
+              6
+            ],
+            [
+              3,
+              2
+            ],
+            [
+              3,
+              6
+            ],
+            [
+              4,
+              2
+            ],
+            [
+              4,
+              6
+            ],
+            [
+              5,
+              2
+            ],
+            [
+              5,
+              6
+            ],
+            [
+              6,
+              2
+            ],
+            [
+              6,
+              3
+            ],
+            [
+              6,
+              4
+            ],
+            [
+              6,
+              5
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "slices": [
+            1,
+            1,
+            1,
+            2,
+            1,
+            2,
+            4,
+            2,
+            4,
+            2,
+            4,
+            4,
+            3,
+            3,
+            3
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.neuropil",
+        "id": 9524,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "NeuropilRois",
+          "roi": 1,
+          "options": {
+            "neuropilMethod": "expansion",
+            "neuropilExpansionFactor": 8,
+            "maxNeuropilRadius": 1
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "roi": 1,
+          "options": {
+            "neuropilMethod": "expansion",
+            "maxNeuropilRadius": 1,
+            "numNeuropilSlices": 1
+          },
+          "pixels": [
+            [
+              3,
+              4
+            ],
+            [
+              4,
+              3
+            ],
+            [
+              4,
+              5
+            ],
+            [
+              5,
+              4
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.neuropil",
+        "id": 9525,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "NeuropilRois",
+          "roi": 1,
+          "options": {
+            "numNeuropilSlices": 0
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.neuropil",
+        "id": 9526,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "NeuropilRois",
+          "roi": 1,
+          "options": {
+            "neuropilMethod": "expansion",
+            "maxNeuropilRadius": 2.5
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
       }
     },
     {

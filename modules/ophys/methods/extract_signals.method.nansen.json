@@ -6,7 +6,7 @@
   "title": "Extract signals",
   "category": "Two-photon/Signal extraction",
   "entityType": "*",
-  "description": "The average of each ROI's pixels in every frame (frames x ROIs, in the order of the ROI file, without rejected ROIs), and of surrounding pixels outside every ROI, for neuropil correction. With excludeOverlaps, pixels in more than one ROI are left out of the ROIs' signals, as dev does. The neuropil is a ring that starts neuropilGap pixels from the ROI and is neuropilWidth pixels wide (square distance), or with neuropilMethod expansion, dev's: the ROI grown until the neuropil outside every ROI (and neuropilSeparation pixels around them) covers neuropilExpansionFactor times the ROI's area.",
+  "description": "The average of each ROI's pixels in every frame (frames x ROIs, in the order of the ROI file, without rejected ROIs), and of surrounding pixels outside every ROI, for neuropil correction. With excludeOverlaps, pixels in more than one ROI are left out of the ROIs' signals, as dev does. The neuropil is a ring that starts neuropilGap pixels from the ROI and is neuropilWidth pixels wide (square distance), or with neuropilMethod expansion, dev's: the ROI grown until the neuropil outside every ROI (and neuropilSeparation pixels around them) covers neuropilExpansionFactor times the ROI's area, at most maxNeuropilRadius pixels out. With numNeuropilSlices above 1 the neuropil is split in slices around the ROI (dev's, from FISSA) and its signal is the mean of theirs. With plane 0 or channel 0, every plane or channel is taken in one run, each ROI's signal read from its own plane and channel (its place in the ROI file); the columns stay in the order of the ROI file.",
   "implementations": {
     "python": "ophys_methods:extract_signals",
     "matlab": "ophys.extractSignals"
@@ -80,6 +80,20 @@
         "title": "Separation (pixels)",
         "description": "For expansion: pixels around every ROI that no neuropil takes."
       },
+      "maxNeuropilRadius": {
+        "type": "integer",
+        "default": 50,
+        "minimum": 1,
+        "title": "Largest neuropil radius (px)",
+        "description": "For expansion: it stops growing after this many steps, each a pixel further out (dev's maxNeuropilRadius)."
+      },
+      "numNeuropilSlices": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Neuropil slices",
+        "description": "The neuropil split in this many slices of about equal area around the ROI (dev's numNeuropilSlices, as FISSA); its signal is the mean of the slices' means."
+      },
       "includeRejected": {
         "type": "boolean",
         "default": false,
@@ -103,9 +117,9 @@
       "channel": {
         "type": "integer",
         "default": 1,
-        "minimum": 1,
+        "minimum": 0,
         "title": "Channel",
-        "description": "Of a stack with channels (height x width x channels x frames): the one to use, from 1"
+        "description": "Of a stack with channels (height x width x channels x frames): the one to use, from 1, or 0 for every channel in one run (dev's extractSignalsMultiChannel), each ROI's signal read from its own channel"
       },
       "plane": {
         "type": "integer",
