@@ -312,6 +312,42 @@
       "expect": {
         "error": "invalid-params"
       }
+    },
+    {
+      "request": {
+        "method": "files.open",
+        "id": 21,
+        "params": {
+          "path": "tables"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.open",
+        "id": 22,
+        "params": {
+          "path": "no/such/file.txt"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "files.open",
+        "id": 23,
+        "params": {
+          "path": "../outside.txt"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
     }
   ]
 }

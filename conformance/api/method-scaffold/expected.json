@@ -1,4 +1,4 @@
 {
-  "description": "Starting a project method from the templates: the method document and a file per language are written, the method is listed and runs as it is (it returns nothing yet), and an id that is taken, prefixed or not lower case, an unknown entity type or language are refused. A project tool (entityType @project) is listed by tools.list, runs once on the project with tools.run, and is not offered for entities.",
-  "steps": 17
+  "description": "Starting a project method from the templates: the method document and a file per language are written, the method is listed and runs as it is (it returns nothing yet), and an id that is taken, prefixed or not lower case, an unknown entity type or language are refused. A project tool (entityType @project) is listed by tools.list, runs once on the project with tools.run, and is not offered for entities. A method's code cannot be edited in a language it has no implementation in (opening an editor is not done here).",
+  "steps": 19
 }

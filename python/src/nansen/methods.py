@@ -84,6 +84,18 @@ class Method:
             raise NansenError("invalid-options", f"{self.id}: {details}")
         return options
 
+    def source_files(self) -> Dict[str, Path]:
+        """Where each language's implementation is: language -> the file (which may not exist)."""
+        files: Dict[str, Path] = {}
+        implementations = self.document["implementations"]
+        if "python" in implementations and self.python_root is not None:
+            base = Path(self.python_root).joinpath(*implementations["python"].split(":")[0].split("."))
+            files["python"] = base / "__init__.py" if base.is_dir() else base.with_suffix(".py")
+        if "matlab" in implementations and self.matlab_root is not None:
+            parts = implementations["matlab"].split(".")
+            files["matlab"] = Path(self.matlab_root).joinpath(*["+" + p for p in parts[:-1]], parts[-1] + ".m")
+        return files
+
     def function(self) -> Callable:
         if self._function is None:
             reference = self.document["implementations"].get("python")

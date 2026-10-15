@@ -321,6 +321,31 @@
           }
         ]
       }
+    },
+    {
+      "request": {
+        "method": "methods.edit",
+        "id": 18,
+        "params": {
+          "methodId": "summarize",
+          "language": "matlab"
+        }
+      },
+      "expect": {
+        "error": "method-unavailable"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.edit",
+        "id": 19,
+        "params": {
+          "methodId": "no_such_method"
+        }
+      },
+      "expect": {
+        "error": "unknown-method"
+      }
     }
   ]
 }

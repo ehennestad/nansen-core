@@ -97,6 +97,30 @@ classdef Method
             end
         end
 
+        function files = sourceFiles(obj)
+            %sourceFiles Where each language's implementation is: a struct of language -> file (which may not exist)
+            files = struct();
+            implementations = obj.Document.implementations;
+            if obj.MatlabRoot == ""
+                return
+            end
+            if isfield(implementations, "matlab")
+                parts = split(string(implementations.matlab), ".")';
+                folders = "+" + parts(1:end-1);
+                files.matlab = string(fullfile(obj.MatlabRoot, folders{:}, parts(end) + ".m"));
+            end
+            if isfield(implementations, "python")
+                pythonRoot = fullfile(fileparts(obj.MatlabRoot), "python");   % the module's (or project's) python/ beside matlab/
+                parts = split(extractBefore(string(implementations.python), ":"), ".")';
+                base = fullfile(pythonRoot, parts{:});
+                if isfolder(base)
+                    files.python = string(fullfile(base, "__init__.py"));
+                else
+                    files.python = string(base + ".py");
+                end
+            end
+        end
+
         function handle = functionHandle(obj)
             %functionHandle The MATLAB implementation; the module's matlab/ folder is put on the path
             if ~isfield(obj.Document.implementations, "matlab")

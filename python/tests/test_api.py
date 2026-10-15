@@ -225,3 +225,29 @@ def test_entities_are_sent_to_the_workspace(tmp_path):
     assert [e.key for e in namespace["picked"]] == [r["key"] for r in rows[:2]]
     assert call("workspace.send", entityType="session", name="not valid")["error"]["code"] == "invalid-params"
     assert call("workspace.send", entityType="session", name="class")["error"]["code"] == "invalid-params"
+
+
+def test_open_files_edit_method_code_and_send_data(tmp_path):
+    from nansen.demo import create_demo
+
+    api = Api(project=create_demo(tmp_path / "demo"), start_queue=False)
+    opened, edited = [], []
+    api.open_file, api.edit_file = opened.append, edited.append
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    assert call("files.open", path="project.nansen.json")["result"]["exists"] is True
+    assert opened == [tmp_path / "demo" / "project.nansen.json"]
+
+    call("methods.create", id="count_frames", entityType="session")
+    assert call("methods.edit", methodId="count_frames")["result"]["language"] == "python"
+    assert call("methods.edit", methodId="count_frames", language="matlab")["result"]["path"].endswith("count_frames.m")
+    assert [p.name for p in edited] == ["count_frames.py", "count_frames.m"]
+    assert call("methods.edit", methodId="core.wait")["result"]["path"].endswith("core_methods.py")
+
+    rows = call("entities.list", entityType="session")["result"]["rows"]
+    key = next(r["key"] for r in rows if r["values"].get("ignore") is not True)
+    assert call("data.send", entityType="session", key=key, variable="motion_corrected")["error"]["code"] == "no-workspace"
+    namespace = {}
+    api.workspace = namespace
+    result = call("data.send", entityType="session", key=key, variable="motion_corrected", name="mc")["result"]
+    assert result == {"name": "mc", "variable": "motion_corrected"}
+    assert namespace["mc"] is not None

@@ -531,7 +531,10 @@
             const child = p ? `${p}/${entry.name}` : entry.name;
             if (!entry.isFolder) {
               return h("li.file-entry", { dataset: { name: entry.name } }, N.icon("file", 13), h("span.name", entry.name),
-                h("span.muted.size", N.fmt.bytes(entry.size)), pathActions(child));
+                h("span.muted.size", N.fmt.bytes(entry.size)),
+                h("button.btn.ghost.icon.small.open-file", { title: "Open in its app", on: { click: () => app.client.request("files.open", where(child))
+                  .catch((error) => N.showError(error, "Could not open the file")) } }, N.icon("eye", 13)),
+                pathActions(child));
             }
             let open = null;
             const row = h("li.folder-entry", { dataset: { name: entry.name } },
@@ -562,9 +565,18 @@
         files.length ? h("dl.props", { style: { marginTop: "8px" } }, files.map(([name, paths]) => [h("dt", name),
           h("dd", paths.length ? paths.map((p) => h("div.mono", { style: { fontSize: "12px" } }, p.split("/").pop())) : h("span.muted", "none"))])) : null);
     });
-    const data = (detail.data || []).map((d) => h("li", h("span.dot." + (d.files.length ? "good" : "warn")),
+    const data = (detail.data || []).map((d) => h("li", { dataset: { variable: d.name } }, h("span.dot." + (d.files.length ? "good" : "warn")),
       h("div.grow", h("div.title", d.name), h("div.sub", `${d.dataLocation} · ${d.fileAdapter}`)),
-      h("span.pill.plain", d.files.length ? `${d.files.length} file(s)` : "not written")));
+      h("span.pill.plain", d.files.length ? `${d.files.length} file(s)` : "not written"),
+      d.files.length && app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-data", {
+        title: "Load it into the workspace", on: { click: async () => {
+          const name = await N.prompt(`Load ${d.name} into the workspace`, "Variable name", d.name);
+          if (!name) return;
+          try {
+            const result = await app.client.request("data.send", { entityType, key: detail.key, variable: d.name, name });
+            N.toast("Loaded into the workspace", result.name, "success");
+          } catch (error) { N.showError(error, "Could not load it"); }
+        } } }, N.icon("download", 13)) : null));
     const issues = (detail.issueDetails || []).map((i) => h("li", h("span.dot.warn"), h("div.grow", h("div.title", i.code), h("div.sub", i.message || ""))));
     const actions = [];
     if (!detail.inTable) {
@@ -893,7 +905,10 @@
           h("span.pill.plain", method.id + " " + method.version),
           h("span.pill.accent", method.batchMode === "batch" ? "once for all" : "once per entity"),
           method.languages.map((l) => h("span.pill.plain", l)),
-          method.module ? h("span.pill.plain", "module " + method.module) : null),
+          method.module ? h("span.pill.plain", "module " + method.module) : null,
+          method.module === "project" ? h("button.btn.small.ghost.edit-code", { title: "Open the method's code in an editor", on: { click: () =>
+            app.client.request("methods.edit", { methodId: method.id }).then((r) => N.toast("Opened", r.path), (error) => N.showError(error, "Could not open the code")) } },
+            N.icon("edit", 13), "Edit code") : null),
         h("div.preset-row", h("label.name", { style: { fontWeight: 600 } }, "Preset"), presetSelect, save, remove),
         form.el);
     }

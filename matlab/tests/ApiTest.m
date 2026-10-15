@@ -114,6 +114,38 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(response.error.code), "invalid-params");
         end
 
+        function filesOpenMethodsEditAndDataSend(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            api = nansen.Api(Project=project);
+            api.OpenFile = @(path) assignin("base", "nansenApiTestOpened", string(path));
+            api.EditFile = @(path) assignin("base", "nansenApiTestEdited", string(path));
+            api.SendToWorkspace = @(name, value) assignin("base", "nansenApiTestSent", {name, value});
+            testCase.addTeardown(@() evalin("base", "clear nansenApiTestOpened nansenApiTestEdited nansenApiTestSent"));
+            call = @(method, params) api.handle(struct("id", 1, "method", method, "params", params));
+
+            result = call("files.open", struct("path", "project.nansen.json")).result;
+            testCase.verifyTrue(result.exists);
+            testCase.verifyTrue(endsWith(evalin("base", "nansenApiTestOpened"), "project.nansen.json"));
+
+            call("methods.create", struct("id", "count_frames", "entityType", "session"));
+            result = call("methods.edit", struct("methodId", "count_frames")).result;
+            testCase.verifyEqual(string(result.language), "matlab");
+            testCase.verifyTrue(endsWith(evalin("base", "nansenApiTestEdited"), "count_frames.m"));
+            result = call("methods.edit", struct("methodId", "count_frames", "language", "python")).result;
+            testCase.verifyTrue(endsWith(string(result.path), "count_frames.py"));
+            result = call("methods.edit", struct("methodId", "core.wait")).result;
+            testCase.verifyTrue(endsWith(string(result.path), "nansenCoreWait.m"));
+
+            rows = nansen.internal.asCellOfStructs(call("entities.list", struct("entityType", "session")).result.rows);
+            row = rows{find(cellfun(@(r) ~isequal(nansen.internal.getField(r.values, "ignore", false), true), rows), 1)};
+            result = call("data.send", struct("entityType", "session", "key", row.key, "variable", "motion_corrected", "name", "mc")).result;
+            testCase.verifyEqual(string(result.name), "mc");
+            sent = evalin("base", "nansenApiTestSent");
+            testCase.verifyEqual(string(sent{1}), "mc");
+            testCase.verifyNotEmpty(sent{2});
+        end
+
         function catalogListsTheLastOpenedFirstWithinOneSecond(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));

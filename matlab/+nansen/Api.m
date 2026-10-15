@@ -21,6 +21,8 @@ classdef Api < handle
         % Opens a folder in the system's file browser; tests put their own here
         OpenFolder function_handle = @nansen.Api.openInFileBrowser
         SendToWorkspace function_handle = @nansen.Api.assignInBase   % (name, value): where workspace.send puts entities
+        OpenFile function_handle = @nansen.Api.openInFileBrowser   % opens a file in its default app
+        EditFile function_handle = @nansen.Api.openInEditor   % opens a code file in MATLAB's editor
     end
 
     properties (Access = private)
@@ -39,8 +41,8 @@ classdef Api < handle
             names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
-                "methods.list", "methods.create", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "data.send", "modules.list", "modules.add", "modules.remove", ...
+                "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
             for name = names
@@ -552,6 +554,18 @@ classdef Api < handle
             result.truncated = numel(listing) > limit;
         end
 
+        function result = apiFilesOpen(obj, params)
+            % Open a file in its default app, as files.resolve finds it
+            result = obj.apiFilesResolve(params);
+            if ~result.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", result.path)
+            end
+            if result.isFolder
+                nansen.internal.throwError("invalid-params", "%s is a folder; files.reveal shows folders", result.path)
+            end
+            obj.OpenFile(string(result.path));
+        end
+
         function result = apiFilesReveal(obj, params)
             result = obj.apiFilesResolve(params);
             if ~result.exists
@@ -771,6 +785,44 @@ classdef Api < handle
             project = obj.requireProject();
             methods = project.entityMethods(string(nansen.internal.getField(params, "entityType", "")));
             result = arrayfun(@(m) m.summary(), methods, UniformOutput=false);
+        end
+
+        function result = apiMethodsEdit(obj, params)
+            % Open a method's code in an editor: in this language unless asked for the other
+            method = obj.requireProject().method(string(nansen.Api.param(params, "methodId")));
+            files = method.sourceFiles();
+            language = string(nansen.internal.getField(params, "language", ""));
+            if language == ""
+                language = "matlab";
+                if ~isfield(files, "matlab") && isfield(files, "python")
+                    language = "python";
+                end
+            end
+            if ~isfield(files, language)
+                nansen.internal.throwError("method-unavailable", "%s has no %s implementation", method.Id, language)
+            end
+            path = files.(language);
+            if ~isfile(path)
+                nansen.internal.throwError("file-not-found", "%s does not exist", path)
+            end
+            obj.EditFile(path);
+            result = struct("language", char(language), "path", char(path));
+        end
+
+        function result = apiDataSend(obj, params)
+            % Load a data variable of an entity and put it in the base workspace
+            variable = string(nansen.Api.param(params, "variable"));
+            name = string(nansen.internal.getField(params, "name", variable));
+            if name == ""
+                name = variable;
+            end
+            if ~isscalar(name) || ~isvarname(name)
+                nansen.internal.throwError("invalid-params", "'%s' is not a variable name", strjoin(name, " "))
+            end
+            project = obj.requireProject();
+            value = project.load(obj.entity(params), variable);
+            obj.SendToWorkspace(name, value);
+            result = struct("name", char(name), "variable", char(variable));
         end
 
         function result = apiToolsList(obj, ~)
@@ -1156,6 +1208,10 @@ classdef Api < handle
                 return
             end
             entries = entries(cellfun(@(u) string(nansen.internal.getField(u, "reason", "")) ~= "excluded", entries));
+        end
+
+        function openInEditor(path)
+            edit(char(path));
         end
 
         function assignInBase(name, value)

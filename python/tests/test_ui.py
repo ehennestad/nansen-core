@@ -728,3 +728,32 @@ def test_review_and_ignore_what_a_scan_did_not_match(empty_app, page):
     page.wait_for_selector(".unmatched-card li[data-path='junk_folder/']", state="detached")
     assert "^junk_folder$" in (folder / "dataset.dsm.json").read_text()
     assert api.handle({"id": 4, "method": "project.scan"})["result"]["unmatched"] == 0
+
+
+def test_open_files_send_data_and_edit_code_from_the_app(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    api.handle({"id": 2, "method": "methods.create", "params": {"id": "count_frames", "title": "Count frames", "entityType": "session"}})
+    opened, edited, namespace = [], [], {}
+    api.open_file, api.edit_file, api.workspace = opened.append, edited.append, namespace
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").nth(1).locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='motion_corrected'] .send-data")
+    page.click(".drawer li[data-variable='motion_corrected'] .send-data")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".toast:has-text('Loaded into the workspace')")
+    assert "motion_corrected" in namespace
+
+    tree = ".drawer .loc:has(.loc-head:has-text('raw'))"
+    page.locator(f"{tree} .path-list .browse").first.click()
+    page.locator(f"{tree} li.file-entry .open-file").first.click()
+    wait_until(lambda: len(opened) == 1)
+    assert opened[0].is_file()
+    page.locator(".drawer-head button[title='Close']").click()
+
+    page.click(".toolbar button:has-text('Run method')")
+    page.click(".method-item:has-text('Count frames')")
+    page.click(".method-detail .edit-code")
+    wait_until(lambda: len(edited) == 1)
+    assert edited[0].name == "count_frames.py"

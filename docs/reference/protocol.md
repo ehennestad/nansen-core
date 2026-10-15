@@ -80,6 +80,7 @@ Events flow from the core to the frontend:
 | `entities.remove` | `entityType`, `key` | `{removed}` |
 | `files.resolve` | `path` (relative; "" for the folder itself), `dataLocation?`, `rootStoragePath?` | `{path, exists, isFolder}`: the absolute path inside the project folder, or inside the location's root. `invalid-params` for an absolute path or one that leads out with `..` |
 | `files.list` | `path`, `dataLocation?`, `rootStoragePath?`, `limit?` (default 500) | As `files.resolve`, plus `entries[{name, isFolder, size, modified}]` (folders first, then files, each by name; `size` is null for a folder) and `truncated`. `file-not-found` if there is nothing there, `invalid-params` if it is a file |
+| `files.open` | `path`, `dataLocation?`, `rootStoragePath?` | As `files.resolve`; the file is opened in its default app (`file-not-found` if it is not there, `invalid-params` for a folder) |
 | `files.reveal` | as `files.resolve` | The same, after showing the folder (a file's folder) in the system's file browser; `file-not-found` if it does not exist |
 | `views.list` | `entityType` | The entity type's saved views: `[{name, description?, keys?, filters?, hiddenColumns?, search?}]` |
 | `views.save` | `entityType`, `view` | The view, added or put in place of the one of the same name. A filter is `{column, op}` with `op` `in` (`values`), `range` (`min`, `max`), `is` (`value`), `contains` (`text`), `empty` or `notEmpty` |
@@ -101,7 +102,9 @@ Events flow from the core to the frontend:
 | `modules.add` | `id`, `path?` | `project.info`: the project with the module listed (`unknown-module` if it cannot be found) |
 | `modules.remove` | `id` | `project.info`; `module-in-use` while a fragment, data variable or project pipeline of the project uses the module |
 | `data.status` | `entityType`, `key` | `[{name, dataLocation, fileAdapter, files}]` |
+| `data.send` | `entityType`, `key`, `variable`, `name?` (default: the variable's name) | `{name, variable}`: the data variable is loaded for the entity and put in the workspace the app was opened from, as `workspace.send` does (`no-workspace` when there is none) |
 | `methods.list` | `entityType?` | Method summaries, including the options schema and `tool` (whether it is a project tool); with `entityType`, only the methods that run on it, so no tools |
+| `methods.edit` | `methodId`, `language?` | `{language, path}`: the method's code file, opened in an editor (MATLAB's editor; in Python `$VISUAL`, `$EDITOR` or the system's editor). Without `language`, the app's own language when the method has it. `method-unavailable` for a language it has no implementation in |
 | `tools.list` | | Summaries of the project tools: methods with `entityType` `@project` |
 | `tools.run` | `methodId`, `options?`, `preset?` | `{result, log}`: the tool, run now and once on the project, and the lines it logged; `wrong-entity-type` for a method that is not a tool |
 | `methods.create` | `id` (a lower-case letter, then letters, digits or `_`), `title?`, `entityType?` (default `*`), `description?`, `batchMode?` (`serial` or `batch`), `languages?` (default both) | The new project method's summary, plus `files`: its document in `methods/` and a file to fill in per language (`python/<id>.py` with `run`, `matlab/<id>.m`), made from the templates in `templates/`. `method-exists` if the id or a file is taken |

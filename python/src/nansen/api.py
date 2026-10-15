@@ -31,6 +31,29 @@ from .tasks import TaskQueue
 PROTOCOL_VERSION = "0.1"
 
 
+def edit_in_editor(path: Path) -> None:
+    """Open a code file for editing, without waiting: $VISUAL or $EDITOR, else the system's editor for it.
+
+    Not the default app: on Windows that would run a .py file."""
+    import os
+    import shlex
+    import subprocess
+    import sys
+
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    try:
+        if editor:
+            subprocess.Popen(shlex.split(editor) + [str(path)])
+        elif sys.platform == "win32":
+            os.startfile(str(path), "edit")  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-t", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as error:
+        raise NansenError("cannot-open", f"could not open {path} for editing: {error}") from None
+
+
 def open_in_file_browser(folder: Path) -> None:
     """Show a folder in Finder, Explorer or the desktop's file manager, without waiting."""
     import os
@@ -60,6 +83,8 @@ class Api:
         self._listeners: List[Listener] = []
         # Opens a folder in the system's file browser; tests put their own here
         self.open_folder: Callable[[Path], None] = open_in_file_browser
+        self.open_file: Callable[[Path], None] = open_in_file_browser  # the file's default app
+        self.edit_file: Callable[[Path], None] = edit_in_editor
         # Where workspace.send puts entities: a namespace such as a notebook's globals(), or None for none
         self.workspace: Optional[Dict[str, Any]] = None
         self._lock = threading.RLock()
@@ -490,6 +515,16 @@ class Api:
         entries.sort(key=lambda e: (not e["isFolder"], e["name"]))
         return dict(resolved, entries=entries[:limit], truncated=len(entries) > limit)
 
+    def files__open(self, params: dict) -> dict:
+        """Open a file in its default app, as files.resolve finds it."""
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        if resolved["isFolder"]:
+            raise NansenError("invalid-params", f"{resolved['path']} is a folder; files.reveal shows folders")
+        self.open_file(Path(resolved["path"]))
+        return resolved
+
     def files__reveal(self, params: dict) -> dict:
         resolved = self.files__resolve(params)
         if not resolved["exists"]:
@@ -654,6 +689,31 @@ class Api:
     def methods__list(self, params: dict) -> list:
         project = self._require_project()
         return [m.summary() for m in project.methods(params.get("entityType"))]
+
+    def methods__edit(self, params: dict) -> dict:
+        """Open a method's code in an editor: in this language unless asked for the other."""
+        method = self._require_project().method(params["methodId"])
+        files = method.source_files()
+        language = params.get("language") or ("python" if "python" in files else next(iter(files), None))
+        if language not in files:
+            raise NansenError("method-unavailable", f"{method.id} has no {language or 'code'} implementation")
+        path = files[language]
+        if not path.is_file():
+            raise NansenError("file-not-found", f"{path} does not exist")
+        self.edit_file(path)
+        return {"language": language, "path": str(path)}
+
+    def data__send(self, params: dict) -> dict:
+        """Load a data variable of an entity and put it in the workspace the app was opened from."""
+        name = params.get("name") or params["variable"]
+        if not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name):
+            raise NansenError("invalid-params", f"{name!r} is not a variable name")
+        if self.workspace is None:
+            raise NansenError("no-workspace", "this app was not opened from a workspace")
+        project = self._require_project()
+        value = project.load(self._entity(params), params["variable"])
+        self.workspace[name] = value
+        return {"name": name, "variable": params["variable"]}
 
     def tools__list(self, params: dict) -> list:
         return [m.summary() for m in self._require_project().tools()]
