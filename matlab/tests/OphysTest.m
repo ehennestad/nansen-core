@@ -71,14 +71,18 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(found, {[1, 3; 1, 4; 2, 4], [2, 1; 3, 1; 3, 2], [4, 3]});
         end
 
-        function dilatesBySquareDistance(testCase)
+        function neuropilRingIsAtASquareDistanceOutsideEveryRoi(testCase)
+            % extraction's neuropil is the core's (nansen.internal.neuropilMasks, as rois.neuropil gives it)
             mask = false(7);
             mask(4, 4) = true;
-            testCase.verifyEqual(nnz(ophys.internal.dilate(mask, 2)), 25);
-            union = mask;
-            union(4, 6) = true;
-            ring = ophys.internal.dilate(mask, 2) & ~ophys.internal.dilate(mask, 1) & ~union;
-            testCase.verifyEqual(nnz(ring), 15);
+            out = nansen.internal.neuropilMasks({mask}, struct("neuropilGap", 0, "neuropilWidth", 2));
+            testCase.verifyEqual(nnz(out{1}), 25 - 1);
+            other = false(7);
+            other(4, 6) = true;   % another ROI in the ring
+            out = nansen.internal.neuropilMasks({mask, other}, struct("neuropilGap", 1, "neuropilWidth", 1), 1);
+            testCase.verifyEqual(numel(out), 1);
+            testCase.verifyEqual(nnz(out{1}), 15);
+            testCase.verifyFalse(out{1}(4, 6) || out{1}(4, 5));
         end
 
         function devNeuropilGrowsAroundTheRoiOutsideEveryRoi(testCase)
@@ -87,10 +91,12 @@ classdef OphysTest < matlab.unittest.TestCase
             a(3:4, 3:4) = true;
             b = false(9, 9);
             b(4:5, 4:5) = true;
-            out = ophys.internal.expansionNeuropil({a, b}, a | b, 2, 1);
+            expansion = struct("neuropilMethod", "expansion", "neuropilExpansionFactor", 2, "neuropilSeparation", 1);
+            out = nansen.internal.neuropilMasks({a, b}, expansion);
             testCase.verifyEqual(OphysTest.pixelsOf(out{1}), [0 1; 0 2; 0 3; 0 4; 1 0; 1 5; 2 0; 3 0; 4 0; 5 1]);
             testCase.verifyEqual(OphysTest.pixelsOf(out{2}), [1 5; 2 6; 3 6; 4 6; 5 1; 5 6; 6 2; 6 3; 6 4; 6 5]);
-            out = ophys.internal.expansionNeuropil({a, b}, a | b, 2, 0);
+            expansion.neuropilSeparation = 0;
+            out = nansen.internal.neuropilMasks({a, b}, expansion, 1);
             testCase.verifyEqual(nnz(out{1}), 22);
             testCase.verifyFalse(any(out{1} & (a | b), "all"));
         end

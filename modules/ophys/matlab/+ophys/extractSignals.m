@@ -5,7 +5,7 @@ function result = extractSignals(entity, options, context)
 %   excludeRoiOverlaps), pixels in more than one ROI are left out of the
 %   ROIs' signals. The neuropil is a ring (neuropilGap pixels from the ROI,
 %   neuropilWidth wide), or with neuropilMethod "expansion" dev's (see
-%   ophys.internal.expansionNeuropil). With plane 0, each ROI's signal is
+%   nansen.internal.neuropilMasks). With plane 0, each ROI's signal is
 %   read from its own plane (its place; the ROIs of the other channels are
 %   left out), and the ROIs of a plane are those every ROI and neuropil is
 %   reckoned with: the columns are the ROIs in the file's order, whatever
@@ -79,26 +79,15 @@ function [signals, neuropil] = planeSignals(stack, document, options, context, p
     count = numel(masks);
     signals = nan(frames, count);
     neuropil = nan(frames, count);
-    union = false(height, width);
     covered = zeros(height, width);
     for i = 1:count
-        union = union | masks{i};
         covered = covered + masks{i};
     end
     own = masks;
     if nansen.internal.getField(options, "excludeOverlaps", false)
         own = cellfun(@(m) m & covered == 1, masks, UniformOutput=false);
     end
-    if string(nansen.internal.getField(options, "neuropilMethod", "ring")) == "expansion"
-        rings = ophys.internal.expansionNeuropil(masks, union, nansen.internal.getField(options, "neuropilExpansionFactor", 4), ...
-            nansen.internal.getField(options, "neuropilSeparation", 0));
-    else
-        rings = cell(1, count);
-        for i = 1:count
-            rings{i} = ophys.internal.dilate(masks{i}, options.neuropilGap + options.neuropilWidth) ...
-                & ~ophys.internal.dilate(masks{i}, options.neuropilGap) & ~union;
-        end
-    end
+    rings = nansen.internal.neuropilMasks(masks, options);   % the core's, as rois.neuropil shows it
     for start = 1:ophys.internal.chunk():frames
         context.checkCancelled();
         stop = min(start + ophys.internal.chunk() - 1, frames);

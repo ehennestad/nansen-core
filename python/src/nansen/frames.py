@@ -702,6 +702,103 @@ def detect_roi(image: Any, point: List[int], radius: int = 6) -> List[List[int]]
     return [[int(r + top), int(c + left)] for r, c in zip(*np.nonzero(~outside))]
 
 
+# the neuropil's options and their defaults, as ophys.extract_signals has them
+NEUROPIL_DEFAULTS = {"neuropilMethod": "ring", "neuropilGap": 1, "neuropilWidth": 3, "neuropilExpansionFactor": 4,
+                     "neuropilSeparation": 0, "includeRejected": False}
+
+
+def neuropil_masks(masks: List[Any], options: Dict[str, Any], which: Optional[List[int]] = None) -> List[Any]:
+    """The neuropil around ROIs, outside every ROI: masks (height x width, boolean) for the ROIs at which (indices
+    into masks, all by default), with every ROI of masks reckoned with. ophys.extract_signals's neuropil, and
+    rois.neuropil's; MATLAB's nansen.internal.neuropilMasks makes the same.
+
+    neuropilMethod ring: the pixels at square distance neuropilGap+1 .. neuropilGap+neuropilWidth from the ROI.
+    expansion, dev's (estimateNeuropilMasks): the ROI's mask dilated, alternately by its four sides (even steps) and
+    its four diagonals (odd steps), less the ROI, until the part outside the ignored pixels covers
+    neuropilExpansionFactor times the ROI's area (at most the rest of the image), or after 101 steps; the ignored
+    pixels (every ROI, dilated neuropilSeparation times, from a diagonal step) are then taken out.
+    """
+    import numpy as np
+    options = dict(NEUROPIL_DEFAULTS, **options)
+    which = range(len(masks)) if which is None else which
+    if not masks:
+        return []
+    union = np.zeros(masks[0].shape, dtype=bool)
+    for mask in masks:
+        union |= mask
+    if options["neuropilMethod"] != "expansion":
+        gap, width = int(options["neuropilGap"]), int(options["neuropilWidth"])
+        return [_dilate_square(masks[i], gap + width) & ~_dilate_square(masks[i], gap) & ~union for i in which]
+    factor = options["neuropilExpansionFactor"]
+    ignored = union.copy()
+    for step in range(1, int(options["neuropilSeparation"]) + 1):
+        ignored = _dilate_odd_even(ignored, step)
+    out = []
+    for i in which:
+        mask = masks[i]
+        area = int(mask.sum())
+        target = min(mask.size - area, factor * area)
+        grown, covered, step = mask.copy(), 0, 0
+        while covered < target and step <= 100:
+            grown = _dilate_odd_even(grown, step)
+            grown &= ~mask
+            covered = int((grown & ~ignored).sum())
+            step += 1
+        out.append(grown & ~ignored)
+    return out
+
+
+def _dilate_square(mask: Any, distance: int) -> Any:
+    """Pixels within square (Chebyshev) distance of the mask."""
+    out = mask.copy()
+    for axis in (0, 1):
+        grown = out.copy()
+        size = out.shape[axis]
+        for step in range(1, distance + 1):
+            if step >= size:
+                break
+            lead = [slice(None), slice(None)]
+            trail = [slice(None), slice(None)]
+            lead[axis], trail[axis] = slice(step, None), slice(None, -step)
+            grown[tuple(lead)] |= out[tuple(trail)]
+            grown[tuple(trail)] |= out[tuple(lead)]
+        out = grown
+    return out
+
+
+def _dilate_odd_even(mask: Any, step: int) -> Any:
+    """One dilation by the four sides (step even) or the four diagonals (step odd), nothing past the edges."""
+    out = mask.copy()
+    offsets = [(1, 0), (-1, 0), (0, 1), (0, -1)] if step % 2 == 0 else [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+    height, width = mask.shape
+    for dy, dx in offsets:
+        out[max(dy, 0):height + min(dy, 0), max(dx, 0):width + min(dx, 0)] |= \
+            mask[max(-dy, 0):height + min(-dy, 0), max(-dx, 0):width + min(-dx, 0)]
+    return out
+
+
+def roi_neuropil(value: Any, roi: Any, options: Dict[str, Any], height: int, width: int) -> List[List[int]]:
+    """The neuropil pixels ([row, column], 0-based, row-major) of the ROI of id roi in an ROI file, as
+    ophys.extract_signals takes them (neuropil_masks): among the file's ROIs, less those rejected unless
+    includeRejected, and the ROI itself always. Pixels outside the height x width image are left out."""
+    import numpy as np
+    rois = roi_outlines(value)
+    at = next((i for i, r in enumerate(rois) if r["id"] == roi), None)
+    if at is None:
+        raise NansenError("invalid-params", f"there is no ROI {roi}")
+    options = dict(NEUROPIL_DEFAULTS, **options)
+    kept = [i for i, r in enumerate(rois) if i == at or options["includeRejected"] or r.get("classification") != "rejected"]
+    masks = []
+    for i in kept:
+        mask = np.zeros((height, width), dtype=bool)
+        for y, x in rois[i]["pixels"]:
+            if 0 <= y < height and 0 <= x < width:
+                mask[y, x] = True
+        masks.append(mask)
+    neuropil = neuropil_masks(masks, options, [kept.index(at)])[0]
+    return [[int(r), int(c)] for r, c in zip(*np.nonzero(neuropil))]
+
+
 def _round2(value: float) -> float:
     return math.floor(value * 100 + 0.5) / 100
 

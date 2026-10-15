@@ -24,7 +24,7 @@ from .dataset import Dataset
 from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
-from .frames import _mean as mean_image, _pick as pick_channel, alignment_entry, detect_roi, image_frame, import_rois_at, mirror_rois_at, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
+from .frames import NEUROPIL_DEFAULTS, _mean as mean_image, _pick as pick_channel, alignment_entry, detect_roi, image_frame, import_rois_at, mirror_rois_at, roi_neuropil, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -1366,6 +1366,41 @@ class Api:
         stack, _, _ = pick_channel(project.open_stack(entity, params["variable"]), int(params.get("channel", 0)), int(params.get("plane", 0)))
         image = mean_image(stack)
         return {"pixels": detect_roi(image, point, int(params.get("radius", 6)))}
+
+    def rois__neuropil(self, params: dict) -> dict:
+        """An ROI's neuropil, as ophys.extract_signals takes it (nansen.frames.neuropil_masks), among the ROIs of its
+        plane and channel: the viewer's neuropil overlay, as dev's roimanager's showNeuropilMask."""
+        project = self._require_project()
+        entity = self._entity(params)
+        plane, channel = int(params.get("plane", 0)) + 1, int(params.get("channel", 0)) + 1
+        options = self._neuropil_options(project, params)
+        document = rois_at(self._rois_of(project, entity, params["variable"]), plane, channel)
+        size = (document.get("imageSize") if isinstance(document, dict) else None) or params.get("imageSize")
+        if not isinstance(size, list) or len(size) != 2:
+            raise NansenError("invalid-params", f"the ROIs of {params['variable']} have no imageSize: give it")
+        pixels = roi_neuropil(document, params.get("roi"), options, int(size[0]), int(size[1]))
+        return {"roi": params.get("roi"), "pixels": pixels, "options": options}
+
+    def _neuropil_options(self, project, params: dict) -> dict:
+        """rois.neuropil's options: those given on ophys.extract_signals's defaults, or with methodId, the method's
+        options as methods.run takes them (its preset, or the preferred one when neither a preset nor options are
+        given, with the options on top), validated by its schema."""
+        values = params.get("options") or {}
+        if not isinstance(values, dict):
+            raise NansenError("invalid-params", "options is an object")
+        if params.get("methodId"):
+            method = project.method(params["methodId"])
+            preset = self._preset_of(params)
+            values = method.resolve_options(dict(project.preset(method.id, preset) if preset else {}, **values))
+        options = {name: values.get(name, default) for name, default in NEUROPIL_DEFAULTS.items()}
+        whole = lambda v, low: isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() and v >= low
+        if options["neuropilMethod"] not in ("ring", "expansion") or not whole(options["neuropilGap"], 0) \
+                or not whole(options["neuropilWidth"], 1) or not whole(options["neuropilSeparation"], 0) \
+                or not isinstance(options["neuropilExpansionFactor"], (int, float)) or isinstance(options["neuropilExpansionFactor"], bool) \
+                or not options["neuropilExpansionFactor"] > 0 or not isinstance(options["includeRejected"], bool):
+            raise NansenError("invalid-options", "the neuropil is a ring (neuropilGap 0 or more, neuropilWidth 1 or more) or an "
+                                                 "expansion (neuropilExpansionFactor above 0, neuropilSeparation 0 or more)")
+        return options
 
     def rois__signal(self, params: dict) -> dict:
         """An ROI's signal read from a stack now (the mean of its pixels per frame), as data.traces gives one: the
