@@ -7,11 +7,15 @@ function report = importProject(legacyFolder, folder, options)
 %   report.warnings names everything that could not be carried over.
 %
 %   importProject(..., ExportFile=path) also keeps the intermediate export.
+%   importProject(..., UserFolder=path) reads the user's dev preferences
+%   (option presets of dev's methods, the task list, the app's settings)
+%   from path, dev's nansen.prefdir; by default prefdir/Nansen/default.
     arguments
         legacyFolder (1,1) string
         folder (1,1) string
         options.ExportFile (1,1) string = ""
+        options.UserFolder (1,1) string = string(fullfile(prefdir, "Nansen", "default"))
     end
-    export = nansen.legacy.exportProject(legacyFolder, File=options.ExportFile);
+    export = nansen.legacy.exportProject(legacyFolder, File=options.ExportFile, UserFolder=options.UserFolder);
     report = nansen.legacy.convert(export, folder);
 end

@@ -167,7 +167,16 @@ def _evaluate_legacy(case: Path) -> dict:
         for name in project.entity_types:
             table = project.table(name)
             tables[name] = {"key": table.spec.key, "columns": table.spec.column_names, "rows": table.to_json_rows()}
+        presets = sorted(folder.glob("options/*/*.options.nansen.json"), key=lambda p: p.relative_to(folder).as_posix())
+        # tasks in their queue order, without their ids (new ones each time)
+        tasks = sorted(documents("tasks/*.task.nansen.json"), key=lambda t: t.get("order", 0))
+        runs = folder / "runs" / "session.runs.jsonl"
         return {"project": json.loads((folder / "project.nansen.json").read_text(encoding="utf-8")),
+                "fileAdapters": documents("file-adapters/*.fileAdapter.nansen.json"),
+                "presets": [json.loads(p.read_text(encoding="utf-8")) for p in presets],
+                "tasks": [{k: v for k, v in t.items() if k != "id"} for t in tasks],
+                "runs": [json.loads(line) for line in runs.read_text(encoding="utf-8").splitlines()] if runs.is_file() else [],
+                "settings": report["settings"],
                 "dataset": json.loads((folder / "dataset.dsm.json").read_text(encoding="utf-8")),
                 "fragments": documents("fragments/*.fragment.nansen.json"),
                 "dataVariables": documents("data-variables/*.dataVariable.nansen.json"),

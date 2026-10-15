@@ -9,20 +9,39 @@ function export = exportProject(folder, options)
 %     configurations/filepath_settings.mat         variables (Data)
 %     metadata/tables/*.mat                        MetaTables (MetaTableEntries and catalog fields)
 %     configurations/pipeline_settings.mat         pipelines (Data)
-%     configurations/custom_options/*.mat          option presets, by function (OptionsEntries), only named
+%     configurations/custom_options/*.mat          option presets users made, by function (OptionsEntries
+%                                                  of Type Custom, with their Options), and DefaultOptionsName
 %     code/+<package>/+sessionmethod/**/*.m         the project's own session methods, with their text
+%     code/+<package>/+fileadapter/**               the project's own file adapters (.m files, and the
+%                                                  fileadapter.json of function-based ones), with their text
+%
+%   and, from the user's preferences (dev's nansen.prefdir: UserFolder=,
+%   by default prefdir/Nansen/default):
+%
+%     custom_options/*.mat                         option presets of dev's own methods (NoRMCorre, Quicky, ...)
+%     projects/<name>/task_list.mat                the task list: queued tasks (method, sessions, options,
+%                                                  preset, created, comment) and the history (method,
+%                                                  sessions, status, finished)
+%     settings/nansen_app_settings.mat             nansen.App's preferences (settings)
 %
 %   Table values become JSON values: text, numbers, logicals and dates.
 %   Columns of other types (structs, objects, several columns per variable)
 %   are listed in skippedColumns. Empty text and NaN/NaT are null. The notes
 %   of a Notebook column (dev's nansen.notes.Note structs) are the table's
-%   notes, each with the index of its row.
+%   notes, each with the index of its row, and its Progress column (the
+%   pipeline of each session) is the table's progress: per row, the
+%   pipeline's name and the tasks of it dev marked finished, with the date.
+%   Options become JSON values where they have one (structs, text, numbers,
+%   logicals, cells of text); those that have not are named (skippedOptions).
+%   A task's sessions are its entityId, or the sessionID of the sessions it
+%   was given, or its name (dev names a task of one session by its id).
 %
 %   exportProject(folder, File=path) also writes the export as JSON, which
 %   the Python command `nansen import-legacy` converts as well.
     arguments
         folder (1,1) string
         options.File (1,1) string = ""
+        options.UserFolder (1,1) string = string(fullfile(prefdir, "Nansen", "default"))
     end
     if ~isfolder(folder)
         nansen.internal.throwError("file-not-found", "no folder %s", folder)
@@ -33,8 +52,18 @@ function export = exportProject(folder, options)
     export.variables = readVariables(fullfile(folder, "configurations", "filepath_settings.mat"));
     export.tables = readTables(fullfile(folder, "metadata", "tables"));
     export.pipelines = readPipelines(fullfile(folder, "configurations", "pipeline_settings.mat"));
-    export.presets = readPresets(fullfile(folder, "configurations", "custom_options"));
+    export.presets = [readPresets(fullfile(folder, "configurations", "custom_options")), ...
+        readPresets(fullfile(options.UserFolder, "custom_options"))];
     export.sessionMethods = readSessionMethods(folder);
+    export.fileAdapters = readFileAdapters(folder);
+    taskList = taskListPath(folder, export.project, options.UserFolder);
+    if taskList ~= ""
+        export.tasks = readTaskList(taskList);
+    end
+    settings = readSettings(fullfile(options.UserFolder, "settings", "nansen_app_settings.mat"));
+    if ~isempty(settings)
+        export.settings = settings;
+    end
     export = nansen.checkDocument(nansen.internal.jsonRoundTrip(export), ExpectedType="nansen.legacyExport", ...
         Source="legacy export");
     if options.File ~= ""
@@ -140,7 +169,7 @@ function tables = readTables(folder)
         className = textOf(S, "MetaTableClass");
         parts = split(string(className), ".");
         entries = S.MetaTableEntries;
-        [columns, skipped, rows, notes] = readEntries(entries);
+        [columns, skipped, rows, notes, progress] = readEntries(entries);
         label = textOf(S, "MetaTableName");
         if label == ""
             [~, label] = fileparts(name);
@@ -149,18 +178,26 @@ function tables = readTables(folder)
         isMaster = getOr(S, "IsMaster", true);
         tables{end + 1} = struct("name", label, "entityClass", char(lower(parts(end))), ...
             "isMaster", ~isempty(isMaster) && logical(isMaster(1)), "columns", {columns}, ...
-            "skippedColumns", {cellstr(skipped)}, "notes", {notes}, "rows", {rows}); %#ok<AGROW>
+            "skippedColumns", {cellstr(skipped)}, "notes", {notes}, "progress", {progress}, "rows", {rows}); %#ok<AGROW>
     end
 end
 
-function [columns, skipped, rows, notes] = readEntries(entries)
+function [columns, skipped, rows, notes, progress] = readEntries(entries)
     names = string(entries.Properties.VariableNames);
     columns = {};
     skipped = strings(1, 0);
     values = {};
     kept = strings(1, 0);
     notes = {};
+    progress = {};
     for name = names
+        if name == "Progress"
+            [isProgress, columnProgress] = progressOf(entries.(name));
+            if isProgress
+                progress = columnProgress;
+                continue
+            end
+        end
         [isNotebook, columnNotes] = notebookNotes(name, entries.(name));
         if isNotebook
             notes = [notes, columnNotes]; %#ok<AGROW>
@@ -346,25 +383,271 @@ function pipelines = readPipelines(path)
 end
 
 function presets = readPresets(folder)
-    % OptionsManager's files, one per function: the names of the presets a user made (Type Custom)
+    % OptionsManager's files, one per function: the presets a user made (Type Custom), with their options, and the
+    % preset the function runs with when none is chosen (DefaultOptionsName)
     presets = {};
     listing = dir(fullfile(folder, "*.mat"));
-    for i = 1:numel(listing)
-        S = load(fullfile(listing(i).folder, listing(i).name));
+    names = sort(string({listing.name}));
+    for i = 1:numel(names)
+        S = loadQuietly(fullfile(folder, names(i)));
         if ~isfield(S, "OptionsEntries") || ~isstruct(S.OptionsEntries)
             continue
         end
-        names = {};
+        custom = {};
+        entries = {};
         for k = 1:numel(S.OptionsEntries)
-            if string(textOf(S.OptionsEntries(k), "Type")) == "Custom"
-                names{end + 1} = textOf(S.OptionsEntries(k), "Name"); %#ok<AGROW>
+            option = S.OptionsEntries(k);
+            if string(textOf(option, "Type")) ~= "Custom"
+                continue
             end
+            custom{end + 1} = textOf(option, "Name"); %#ok<AGROW>
+            entry = struct("name", textOf(option, "Name"));
+            if ~isempty(textOf(option, "Description"))
+                entry.description = textOf(option, "Description");
+            end
+            values = getOr(option, "Options", struct());
+            if ~(isstruct(values) && isscalar(values))
+                values = struct();
+            end
+            [entry.options, unreadable] = jsonOptions(values, "");
+            if ~isempty(unreadable)
+                entry.skippedOptions = cellstr(unreadable);
+            end
+            entries{end + 1} = entry; %#ok<AGROW>
         end
-        if ~isempty(names)
-            [~, functionName] = fileparts(listing(i).name);
-            presets{end + 1} = struct("function", functionName, "names", {names}); %#ok<AGROW>
+        defaultName = textOf(S, "DefaultOptionsName");
+        if ~isempty(custom) || ~(isempty(defaultName) || strcmpi(defaultName, 'Default'))
+            functionName = char(extractBefore(names(i), strlength(names(i)) - 3));   % less .mat
+            item = struct("function", functionName, "names", {custom}, "entries", {entries});
+            if ~isempty(defaultName)
+                item.defaultName = defaultName;
+            end
+            presets{end + 1} = item; %#ok<AGROW>
         end
     end
+end
+
+function [out, unreadable] = jsonOptions(options, prefix)
+    % A struct of options as JSON values: the fields that have one, and the paths (a.b) of those that have not
+    out = struct();
+    unreadable = strings(1, 0);
+    for name = reshape(string(fieldnames(options)), 1, [])
+        value = options.(name);
+        if isstruct(value) && isscalar(value)
+            [out.(name), more] = jsonOptions(value, prefix + name + ".");
+            unreadable = [unreadable, more]; %#ok<AGROW>
+            continue
+        end
+        [ok, value] = jsonValue(value);
+        if ok
+            out.(name) = value;
+        else
+            unreadable(end + 1) = prefix + name; %#ok<AGROW>
+        end
+    end
+end
+
+function [ok, value] = jsonValue(value)
+    % A value as JSON (text, a number or logical, a row or matrix of them, a cell of text), or ok false
+    ok = true;
+    if ischar(value) && (isrow(value) || isempty(value))
+        value = char(value);
+    elseif (isstring(value) || iscategorical(value)) && isscalar(value)
+        value = textOrNull(string(value));
+    elseif (isnumeric(value) && isreal(value)) || islogical(value)
+        if isempty(value)
+            value = [];
+        elseif ~ismatrix(value)
+            ok = false;
+        elseif isnumeric(value)
+            value = double(value);
+        end
+    elseif iscell(value) && (isempty(value) || iscellstr(value))
+        value = reshape(cellfun(@char, value, UniformOutput=false), 1, []);
+    else
+        ok = false;
+    end
+end
+
+function path = taskListPath(folder, info, userFolder)
+    % dev's task list of the project: <user folder>/projects/<name>/task_list.mat, the name being the project's
+    % package (code/+<name>), its short name or its folder's name; "" when there is none
+    candidates = strings(1, 0);
+    for package = reshape(dir(fullfile(folder, "code", "+*")), 1, [])
+        if package.isdir
+            candidates(end + 1) = extractAfter(string(package.name), 1); %#ok<AGROW>
+        end
+    end
+    candidates(end + 1) = string(textOf(info, "shortName"));
+    [~, name] = fileparts(folder);
+    candidates(end + 1) = string(name);
+    path = "";
+    for candidate = candidates(strlength(candidates) > 0)
+        if isfile(fullfile(userFolder, "projects", candidate, "task_list.mat"))
+            path = string(fullfile(userFolder, "projects", candidate, "task_list.mat"));
+            return
+        end
+    end
+end
+
+function tasks = readTaskList(path)
+    % TaskProcessor's lists (taskListQueue, taskListHistory): what each task runs, on which sessions, and how
+    tasks = struct("queue", {{}}, "history", {{}});
+    S = loadQuietly(path);
+    queue = getOr(S, "taskListQueue", struct([]));
+    if ~isstruct(queue)
+        queue = struct([]);
+    end
+    for i = 1:numel(queue)
+        item = queue(i);
+        task = struct("function", functionOf(getOr(item, "method", '')), "name", textOf(item, "name"), ...
+            "entities", {entityIdsOf(item, true)});
+        args = getOr(item, "args", {});
+        if iscell(args) && numel(args) >= 2 && isstruct(args{2}) && isscalar(args{2})
+            task.options = jsonOptions(args{2}, "");
+        end
+        if ~isempty(textOf(item, "parameters"))
+            task.preset = textOf(item, "parameters");
+        end
+        created = stampOf(getOr(item, "timeCreated", ''));
+        if created ~= ""
+            task.createdAt = char(created);
+        end
+        if ~isempty(textOf(item, "comments"))
+            task.comment = textOf(item, "comments");
+        end
+        tasks.queue{end + 1} = task;
+    end
+    history = getOr(S, "taskListHistory", struct([]));
+    if ~isstruct(history)
+        history = struct([]);
+    end
+    for i = 1:numel(history)
+        item = history(i);
+        task = struct("function", functionOf(getOr(item, "method", '')), "name", textOf(item, "name"), ...
+            "entities", {entityIdsOf(item, false)}, "status", textOf(item, "status"));
+        finished = stampOf(getOr(item, "timeFinished", ''));
+        if finished ~= ""
+            task.finishedAt = char(finished);
+        end
+        tasks.history{end + 1} = task;
+    end
+end
+
+function name = functionOf(method)
+    % The name of a task's method: func2str of its function handle
+    name = '';
+    if isa(method, "function_handle")
+        name = func2str(method);
+    elseif ischar(method) && isrow(method)
+        name = method;
+    end
+end
+
+function ids = entityIdsOf(item, queued)
+    % A task's sessions, by id: its entityId (set when it went into the history); else the sessionID of the sessions
+    % it was given (a queued task's first argument), when they load; else its name, unless it is Multisession
+    ids = {};
+    stored = getOr(item, "entityId", {});
+    if (iscellstr(stored) || isstring(stored)) && ~isempty(stored)
+        ids = reshape(cellstr(stored), 1, []);
+        return
+    end
+    args = getOr(item, "args", {});
+    if queued && iscell(args) && ~isempty(args)
+        try
+            sessions = args{1};
+            for k = 1:numel(sessions)
+                id = sessions(k).sessionID;
+                if ischar(id) && isrow(id)
+                    ids{end + 1} = id; %#ok<AGROW>
+                end
+            end
+        catch
+            ids = {};   % dev's session objects, which do not load without dev
+        end
+    end
+    name = textOf(item, "name");
+    if isempty(ids) && ~isempty(name) && ~strcmp(name, 'Multisession')
+        ids = {name};
+    end
+end
+
+function stamp = stampOf(value)
+    % A time as yyyy-MM-ddTHH:mm:ss: a datetime, or dev's text of one (yyyy.MM.dd HH:mm:ss); "" for none
+    stamp = "";
+    try
+        if (ischar(value) || isstring(value)) && strlength(string(value)) > 0
+            value = datetime(char(value), "InputFormat", "yyyy.MM.dd HH:mm:ss");
+        end
+        if isdatetime(value) && isscalar(value) && ~isnat(value)
+            value.TimeZone = '';
+            stamp = string(char(value, 'yyyy-MM-dd''T''HH:mm:ss'));
+        end
+    catch
+        stamp = "";
+    end
+end
+
+function [isProgress, progress] = progressOf(value)
+    % The Progress column: per row, the struct of the pipeline dev assigned (PipelineName, TaskList), or empty
+    progress = {};
+    if isstruct(value)
+        cells = num2cell(value);
+    elseif iscell(value)
+        cells = value;
+    else
+        isProgress = false;
+        return
+    end
+    isProgress = size(value, 2) == 1 && all(cellfun(@(v) isempty(v) || (isstruct(v) && isfield(v, "TaskList")), cells));
+    if ~isProgress
+        return
+    end
+    for r = 1:numel(cells)
+        if isempty(cells{r})
+            continue
+        end
+        pipeline = cells{r}(1);
+        tasks = {};
+        list = getOr(pipeline, "TaskList", struct([]));
+        if ~isstruct(list)
+            list = struct([]);
+        end
+        for t = 1:numel(list)
+            finished = getOr(list(t), "IsFinished", false);
+            if isempty(finished) || ~(islogical(finished) || isnumeric(finished)) || ~finished(1)
+                continue
+            end
+            stamp = stampOf(getOr(list(t), "DateFinished", NaT));
+            finishedAt = [];
+            if stamp ~= ""
+                finishedAt = char(stamp);
+            end
+            tasks{end + 1} = struct("function", textOf(list(t), "FunctionName"), "finishedAt", finishedAt); %#ok<AGROW>
+        end
+        progress{end + 1} = struct("row", r - 1, "pipeline", textOf(pipeline, "PipelineName"), "tasks", {tasks}); %#ok<AGROW>
+    end
+end
+
+function settings = readSettings(path)
+    % nansen.App's preferences (its settings struct), as JSON values; [] when there are none
+    settings = [];
+    if ~isfile(path)
+        return
+    end
+    S = loadQuietly(path);
+    if isfield(S, "settings") && isstruct(S.settings) && isscalar(S.settings)
+        settings = jsonOptions(S.settings, "");
+    end
+end
+
+function S = loadQuietly(path)
+    % A .mat file of dev's, which may hold objects of dev's classes: loaded without the warnings for those
+    state = warning("off", "all");
+    restore = onCleanup(@() warning(state));
+    S = load(path);
+    clear restore
 end
 
 function methods_ = readSessionMethods(folder)
@@ -383,15 +666,35 @@ function methods_ = readSessionMethods(folder)
     end
 end
 
-function files = packageFiles(folder, relative)
-    % The relative paths of the .m files in a folder and its package folders (+name)
+function adapters = readFileAdapters(folder)
+    % The files of the project's file adapter packages (code/+<package>/+fileadapter, and the packages in it): the
+    % .m files, and the fileadapter.json of dev's function-based adapters, in order of their paths, with their text
+    adapters = {};
+    files = strings(0, 1);
+    for package = reshape(dir(fullfile(folder, "code", "+*")), 1, [])
+        root = fullfile(folder, "code", package.name, "+fileadapter");
+        if package.isdir && isfolder(root)
+            files = [files; packageFiles(root, "code/" + string(package.name) + "/+fileadapter/", true)]; %#ok<AGROW>
+        end
+    end
+    for file = reshape(sort(files), 1, [])
+        adapters{end + 1} = struct("file", char(file), "text", nansen.internal.readText(fullfile(folder, file))); %#ok<AGROW>
+    end
+end
+
+function files = packageFiles(folder, relative, definitions)
+    % The relative paths of the .m files in a folder and its package folders (+name); with definitions, also their
+    % fileadapter.json files
+    if nargin < 3
+        definitions = false;
+    end
     files = strings(0, 1);
     for item = reshape(dir(folder), 1, [])
         name = string(item.name);
-        if ~item.isdir && endsWith(name, ".m")
+        if ~item.isdir && (endsWith(name, ".m") || (definitions && name == "fileadapter.json"))
             files(end + 1, 1) = relative + name; %#ok<AGROW>
         elseif item.isdir && startsWith(name, "+") && strlength(name) > 1
-            files = [files; packageFiles(fullfile(folder, name), relative + name + "/")]; %#ok<AGROW>
+            files = [files; packageFiles(fullfile(folder, name), relative + name + "/", definitions)]; %#ok<AGROW>
         end
     end
 end

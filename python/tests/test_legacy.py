@@ -105,5 +105,8 @@ def test_cli(tmp_path, capsys):
     export.write_text(json.dumps(export_for(raw, processed)))
     assert main(["import-legacy", str(export), str(tmp_path / "project")]) == 0
     out = capsys.readouterr().out
-    assert "2 subject(s), 2 session(s), 7 data variable(s)" in out   # dev's ROI, signal and binary stack variables too
+    # dev's ROI, signal and binary stack variables too, and those read by the project's own file adapters
+    assert "2 subject(s), 2 session(s), 9 data variable(s), 2 file adapter(s), 2 method(s), 6 preset(s), " \
+           "3 queued task(s) on hold, 2 completed run(s)" in out
+    assert '"saveToDataFolders": true' in out
     assert "note: variable 'MotionCorrected'" not in out

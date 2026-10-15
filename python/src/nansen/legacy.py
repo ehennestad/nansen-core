@@ -20,18 +20,29 @@ What maps over:
   which kept all the ROI signals in one file) is that variable of the file (variableInFile);
 - the notes of a ``Notebook`` column go into the entity type's notebook, in the order they were written;
 - the project's own session methods (``code/+<package>/+sessionmethod``) become methods of sessions that run dev's
-  code unchanged in MATLAB (``nansen.legacymethods``), and pipeline tasks that call them become steps.
+  code unchanged in MATLAB (``nansen.legacymethods``), and pipeline tasks that call them become steps;
+- the project's own file adapters (``code/+<package>/+fileadapter``: classes and function-based ones) become file
+  adapters that run dev's code unchanged in MATLAB (``nansen.legacyadapters``), and the variables dev read with them
+  data variables;
+- the option presets users made become presets of the methods here: those of the project's own session methods as
+  they are, those of NoRMCorre and Quicky with dev's options mapped to the module's (``DEV_OPTIONS``); dev's chosen
+  default preset becomes the method's preferred preset;
+- the queued tasks of dev's task list become queued tasks, on hold; the completed tasks of its history and the
+  finished tasks of the ``Progress`` column become lines of the run journal, and the column's pipeline the session's
+  pipeline (``core.pipeline``);
+- dev's app preferences that are app settings here are in the report's ``settings`` (``legacy.import`` saves them).
 
 Whatever cannot be mapped is left out and named in the report's ``warnings``.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import legacymethods
+from . import legacyadapters, legacymethods
 from .documents import PathLike, check_document, write_json
 from .errors import NansenError
 from .project import Project
@@ -74,6 +85,22 @@ DEV_METHODS = {"motioncorrection.normcorre": "ophys.normcorre", "motioncorrectio
 # the same values here: dev's Default of Quicky is its Soma values, of NoRMCorre its 4 x 4 nonrigid
 DEV_PRESETS = {"ophys.quicky": {"default": "soma", "soma": "soma", "soma_virus": "soma_virus", "axon": "axon"},
                "ophys.normcorre": {"default": "nonrigid", "nonrigid": "nonrigid", "rigid": "rigid"}}
+# dev keeps the presets of those methods under the class that defines their options (OptionsManager's file name)
+DEV_OPTION_FUNCTIONS = {"nansen.wrapper.normcorre.Processor": "ophys.normcorre",
+                        "nansen.wrapper.quicky.Processor": "ophys.quicky"}
+# dev's options of those methods (nansen.wrapper.normcorre.Options, flufinder.getDefaultOptions), by their path, and the
+# module method's option of the same meaning (None: covered by another; numCols is patches as numRows is)
+DEV_OPTIONS = {"ophys.normcorre": [("Configuration.numRows", "patches"), ("Configuration.numCols", None),
+                                   ("Configuration.patchOverlap", "overlap"), ("Template.initialBatchSize", "initialBatchSize"),
+                                   ("Template.updateTemplate", "updateTemplate"), ("Template.binWidth", "binWidth"),
+                                   ("Correction.maximumShift", "maxShift"), ("Correction.maximumDeviation", "maxDeviation"),
+                                   ("Correction.subpixelUpsampling", "upsampling"), ("Correction.numIterations", "iterations")],
+               "ophys.quicky": [("General.RoiDiameter", "roiDiameter"), ("Preprocessing.BinningSize", "binSize"),
+                                ("Preprocessing.SmoothingSigma", "smoothingSigma"),
+                                ("Detection.PrctileForBinarization", "binarizationPercentile"),
+                                ("Detection.NumObservationsRequired", "observationsRequired"),
+                                ("Detection.MaxNumRois", "maxRois"), ("Detection.UseShapeDetection", "useShapeDetection"),
+                                ("Detection.InnerRadius", "innerRadius"), ("Detection.OuterRadius", "outerRadius")]}
 
 
 def _dev_preset(method: str, name: str) -> Optional[str]:
@@ -91,6 +118,7 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
     write_json(folder / "dataset.dsm.json", plan["dataset"])
     project = Project.create(folder, plan["name"], plan["title"], dataset="dataset.dsm.json",
                              description=plan["description"] or None)
+    legacyadapters.write(folder, plan["fileAdapters"])   # before the modules, whose adding reads the adapters again
     for module in plan["modules"]:
         project.add_module(module)
     for fragment in plan["fragments"]:
@@ -116,12 +144,95 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
     for variable in plan["dataVariables"]:
         project.add_data_variable(variable)
     legacymethods.write(project, plan["methods"])
+    warnings = list(plan["warnings"])
+    presets = []
+    for preset in plan["presets"]:
+        method = project.method(preset["method"])
+        where = f"option preset '{preset['name']}' of {method.id}"
+        project.save_preset(method.id, preset["name"], _fitting(method, preset["values"], where, warnings),
+                            preset["description"])
+        presets.append(f"{method.id}/{preset['name']}")
+    for preferred in plan["preferredPresets"]:
+        project.set_preferred_preset(preferred["method"], preferred["preset"])
     for pipeline in plan["pipelines"]:
         project.save_pipeline(pipeline)
+    tasks = _write_tasks(project, plan["tasks"], warnings)
+    _write_runs(project, plan["runs"])
     return {"project": str(folder), "rows": rows, "notes": notes,
             "dataVariables": [v["name"] for v in plan["dataVariables"]],
+            "fileAdapters": [a["document"]["id"] for a in plan["fileAdapters"]],
             "methods": [m["document"]["id"] for m in plan["methods"]],
-            "pipelines": [p["id"] for p in plan["pipelines"]], "warnings": plan["warnings"]}
+            "presets": presets, "pipelines": [p["id"] for p in plan["pipelines"]], "tasks": tasks,
+            "runs": len(plan["runs"]), "settings": plan["settings"], "warnings": warnings}
+
+
+def _fitting(method, values: dict, where: str, warnings: List[str]) -> dict:
+    """The values of the options the method's options schema has, or does not name, less those of a value it refuses."""
+    from jsonschema import Draft7Validator
+
+    properties = method.options_schema.get("properties", {})
+    kept = {}
+    for name, value in values.items():
+        if name in properties and not Draft7Validator(properties[name]).is_valid(value):
+            warnings.append(f"{where}: option '{name}' does not fit the method's options; left out")
+            continue
+        kept[name] = value
+    return kept
+
+
+def _write_tasks(project: Project, planned: List[dict], warnings: List[str]) -> int:
+    """dev's queued tasks as queued tasks on hold, in dev's queue order, so nothing runs before it is released."""
+    import uuid
+
+    from .schemas import current_version
+    from .tasks import now, write_task
+
+    count = 0
+    for item in planned:
+        method = project.method(item["method"])
+        where = f"queued task '{item['name']}' ({method.id})"
+        if not method.queueable:
+            warnings.append(f"{where}: {method.id} cannot run as a background task; left out")
+            continue
+        base = project.preset(method.id, item["preset"]) if item.get("preset") else {}   # dev's options over its preset's
+        values = method.resolve_options(dict(base, **_fitting(method, item["values"], where, warnings)))
+        task: Dict[str, Any] = {"schemaType": "nansen.task", "schemaVersion": current_version("nansen.task"),
+                                "id": str(uuid.uuid4()), "method": {"id": method.id, "version": method.version},
+                                "entities": [{"entityType": "session", "key": key} for key in item["entities"]],
+                                "options": {"values": values}, "status": "queued",
+                                "createdAt": item.get("createdAt") or now(), "progress": 0}
+        if item.get("preset"):
+            task["options"]["preset"] = item["preset"]
+        if len(method.languages) == 1:   # only that language's worker takes it
+            task["language"] = method.languages[0]
+        task["order"] = count
+        task["onHold"] = True
+        if item.get("comment"):
+            task["comment"] = item["comment"]
+        (project.folder / "tasks").mkdir(exist_ok=True)
+        write_task(project.folder / "tasks" / f"{task['id']}.task.nansen.json", task)
+        count += 1
+    return count
+
+
+def _write_runs(project: Project, planned: List[dict]) -> None:
+    """What dev recorded as done (its task history and Progress column) as lines of the run journal."""
+    if not planned:
+        return
+    from .schemas import current_version
+
+    versions = {}
+    lines = []
+    for run in planned:
+        if run["method"] not in versions:
+            versions[run["method"]] = project.method(run["method"]).version
+        line = {"schemaType": "nansen.run", "schemaVersion": current_version("nansen.run"),
+                "method": {"id": run["method"], "version": versions[run["method"]]}, "key": run["key"],
+                "finishedAt": run["finishedAt"]}
+        lines.append(json.dumps(check_document(line, "nansen.run"), ensure_ascii=False) + "\n")
+    (project.folder / "runs").mkdir(exist_ok=True)
+    with open(project.folder / "runs" / "session.runs.jsonl", "a", encoding="utf-8", newline="\n") as f:
+        f.write("".join(lines))
 
 
 def plan_legacy(export: dict) -> dict:
@@ -129,22 +240,39 @@ def plan_legacy(export: dict) -> dict:
     warnings: List[str] = []
     info = export.get("project", {})
     dataset, levels = _dataset(export, warnings)
-    variables = _data_variables(export, dataset, levels, warnings)
+    adapters = _file_adapters(export, warnings)
+    by_name: Dict[str, str] = {}   # dev's name of each of the project's own file adapters (any case) -> its id
+    for adapter in adapters:
+        by_name.setdefault(adapter["name"].lower(), adapter["document"]["id"])
+    variables = _data_variables(export, dataset, levels, by_name, warnings)
     fragments, tables = _tables(export, dataset, warnings)
     methods = _session_methods(export, warnings)
-    pipelines = _pipelines(export, {m["function"]: m["document"]["id"] for m in methods}, warnings)
+    imported = {m["function"]: m["document"]["id"] for m in methods}
+    preset_warnings: List[str] = []
+    presets, preferred, preset_names = _presets(export, imported, preset_warnings)
+    pipelines, pipeline_ids = _pipelines(export, imported, preset_names, warnings)
+    warnings.extend(preset_warnings)
+    session = next((t for t in tables if t["entityType"] == "session"), None)
+    runs = _progress(tables, pipeline_ids, imported, warnings)
+    tasks, done = _task_list(export, session, imported, preset_names, warnings)
+    runs = _ordered_runs(done + runs)
+    for table in tables:
+        table.pop("progress", None)
     if pipelines:   # sessions keep the pipeline they follow, and its progress, in core.pipeline
         for table in tables:
             if table["entityType"] == "session" and "core.pipeline" not in table["fragments"]:
                 table["fragments"].append("core.pipeline")
     name = _identifier(info.get("shortName") or info.get("name") or "imported", "p", sep="_", lower=False)
-    # the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or a pipeline runs its methods
+    # the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or a
+    # pipeline, preset, task or completed run is of one of its methods
     uses_ophys = any(v["fileAdapter"].startswith("ophys.") for v in variables) or \
-        any(step["method"].startswith("ophys.") for p in pipelines for step in p["steps"])
+        any(step["method"].startswith("ophys.") for p in pipelines for step in p["steps"]) or \
+        any(item["method"].startswith("ophys.") for item in presets + tasks + runs)
     modules = ["core"] + (["ophys"] if uses_ophys else [])
     return {"name": name, "title": info.get("name") or name, "description": info.get("description") or "",
             "dataset": dataset, "modules": modules, "fragments": fragments, "tables": tables, "dataVariables": variables,
-            "methods": methods, "pipelines": pipelines, "warnings": warnings}
+            "fileAdapters": adapters, "methods": methods, "presets": presets, "preferredPresets": preferred,
+            "pipelines": pipelines, "tasks": tasks, "runs": runs, "settings": _settings(export), "warnings": warnings}
 
 
 # -- session methods, pipelines and presets ----------------------------------------------------
@@ -158,11 +286,29 @@ def _session_methods(export: dict, warnings: List[str]) -> List[dict]:
     return methods
 
 
-def _pipelines(export: dict, imported: Dict[str, str], warnings: List[str]) -> List[dict]:
+def _file_adapters(export: dict, warnings: List[str]) -> List[dict]:
+    """The project's own file adapters (code/+<package>/+fileadapter), as file adapters that run dev's code in MATLAB
+    (legacyadapters.plan)."""
+    entries, skipped = legacyadapters.plan([(item["file"], item["text"]) for item in export.get("fileAdapters", [])])
+    warnings.extend(skipped)
+    return entries
+
+
+def _method_of(function: str, imported: Dict[str, str]) -> Optional[str]:
+    """The method here of a dev function: one of the project's own session methods, imported, or the equivalent of one
+    of dev's (by the end of its name, or the class whose options its presets are kept under)."""
+    return imported.get(function) or DEV_OPTION_FUNCTIONS.get(function) or \
+        DEV_METHODS.get(".".join(function.split(".")[-2:]).lower())
+
+
+def _pipelines(export: dict, imported: Dict[str, str], preset_names: Dict[Tuple[str, str], str],
+               warnings: List[str]) -> Tuple[List[dict], Dict[str, str]]:
     """dev's pipelines of sessions, with the tasks that have a method here (one of dev's that has an equivalent, or
-    one of the project's own session methods, imported), and their rules for new sessions."""
+    one of the project's own session methods, imported), and their rules for new sessions; and each one's id by dev's
+    name of it."""
     pipelines: List[dict] = []
     ids: set = set()
+    by_name: Dict[str, str] = {}
     for item in export.get("pipelines", []):
         label = item.get("name", "")
         steps = []
@@ -174,7 +320,9 @@ def _pipelines(export: dict, imported: Dict[str, str], warnings: List[str]) -> L
                 continue
             step = {"method": method, "title": str(task.get("name") or method)}
             preset = str(task.get("preset") or "")
-            if _dev_preset(method, preset or "default"):   # the module's preset of dev's values
+            if preset and (method, preset) in preset_names:   # a preset a user made, imported
+                step["preset"] = preset_names[(method, preset)]
+            elif _dev_preset(method, preset or "default"):   # the module's preset of dev's values
                 step["preset"] = _dev_preset(method, preset or "default")
             elif preset and preset.lower() != "default":
                 warnings.append(f"pipeline '{label}': task '{task.get('name', '')}' used dev's option preset '{preset}', "
@@ -197,10 +345,234 @@ def _pipelines(export: dict, imported: Dict[str, str], warnings: List[str]) -> L
         if rules:
             document["assignWhen"] = rules
         pipelines.append(document)
+        by_name.setdefault(label, document["id"])
+    return pipelines, by_name
+
+
+def _presets(export: dict, imported: Dict[str, str], warnings: List[str]) \
+        -> Tuple[List[dict], List[dict], Dict[Tuple[str, str], str]]:
+    """The option presets users made in dev (OptionsManager's Custom entries), as presets of the method here: those of
+    the project's own session methods as dev saved them, those of NoRMCorre and Quicky with dev's options mapped to the
+    module method's (DEV_OPTIONS). Returns the presets {method, name, description, values}, the preferred presets
+    (dev's DefaultOptionsName, when a user chose one) and each preset's name here by (method, dev's name)."""
+    presets: List[dict] = []
+    preferred: List[dict] = []
+    names: Dict[Tuple[str, str], str] = {}
+    used: Dict[str, set] = {}
     for item in export.get("presets", []):
-        names = ", ".join(item.get("names", []))
-        warnings.append(f"option presets of {item.get('function', '')} ({names}) are not carried over: dev's options are not the methods' here")
-    return pipelines
+        function = str(item.get("function") or "")
+        listed = ", ".join(item.get("names", []))
+        method = _method_of(function, imported)
+        if method is None:
+            if listed:   # (an item with no names only says which preset dev runs the function with)
+                warnings.append(f"option presets of {function} ({listed}) are not carried over: {function} has no method here")
+            continue
+        legacy = function in imported
+        entries = item.get("entries")
+        if not legacy and method not in DEV_OPTIONS:
+            if listed:
+                warnings.append(f"option presets of {function} ({listed}) are not carried over: dev's options of {function} "
+                                f"have no equivalent in {method}")
+            entries = []
+        elif entries is None:
+            if listed:
+                warnings.append(f"option presets of {function} ({listed}) are not carried over: the export holds no values of them")
+            entries = []
+        for entry in entries:
+            dev_name = str(entry.get("name") or "")
+            where = f"option preset '{dev_name}' of {function}"
+            name = _preset_name(dev_name, used.setdefault(method, set()))
+            if dev_name.strip().lower() == "default":
+                warnings.append(f"{where}: imported as '{name}', since 'default' is the method's own defaults here")
+            if entry.get("skippedOptions"):
+                warnings.append(f"{where}: {', '.join(entry['skippedOptions'])} hold values with no JSON form; left out")
+            options = entry.get("options") or {}
+            if legacy:
+                values = dict(options)
+            else:
+                values, unmapped = _mapped_options(method, options)
+                if unmapped:
+                    warnings.append(f"{where}: dev's options {', '.join(unmapped)} have no equivalent in {method}; left out")
+            presets.append({"method": method, "name": name, "description": str(entry.get("description") or ""),
+                            "values": values})
+            names[(method, dev_name)] = name
+        default = str(item.get("defaultName") or "")
+        target = names.get((method, default)) or (_dev_preset(method, default) if default.lower() != "default" else None)
+        if default and target:   # the preset dev ran the method with when none was chosen
+            preferred = [p for p in preferred if p["method"] != method] + [{"method": method, "preset": target}]
+    return presets, preferred, names
+
+
+def _preset_name(name: str, used: set) -> str:
+    """A preset's name here: dev's, with characters other than letters, digits, _, . and - as _, and not 'default'."""
+    text = re.sub(r"[^A-Za-z0-9_.-]+", "_", name.strip()).strip("_.") or "preset"
+    if text.lower() == "default":
+        text += "_dev"
+    candidate, n = text, 2
+    while candidate in used:
+        candidate, n = f"{text}_{n}", n + 1
+    used.add(candidate)
+    return candidate
+
+
+def _mapped_options(method: str, options: dict) -> Tuple[Dict[str, Any], List[str]]:
+    """dev's options of NoRMCorre or Quicky (nested, as dev's Options classes give them) as the module method's
+    options: each that DEV_OPTIONS maps, a row ([y, x, z] shifts and overlaps) as its first value; and the paths of
+    those it does not map."""
+    mapping = dict(DEV_OPTIONS[method])
+    values: Dict[str, Any] = {}
+    unmapped: List[str] = []
+
+    def walk(node: dict, prefix: str) -> None:
+        for key, value in node.items():
+            path = prefix + key
+            if isinstance(value, dict):
+                walk(value, path + ".")
+            elif path not in mapping:
+                unmapped.append(path)
+            elif mapping[path] is not None:
+                if isinstance(value, list):
+                    value = value[0] if value else None
+                if value is not None:
+                    values[mapping[path]] = value
+
+    walk(options, "")
+    return values, unmapped
+
+
+def _progress(tables: List[dict], pipelines: Dict[str, str], imported: Dict[str, str], warnings: List[str]) -> List[dict]:
+    """dev's Progress column: each session's pipeline (when it was imported) in core.pipeline, and the pipeline tasks
+    dev marked finished, with their date, as completed runs of their method."""
+    runs: List[dict] = []
+    for table in tables:
+        progress = table.get("progress")
+        if not progress or table["entityType"] != "session":   # dev's pipelines are of sessions
+            continue
+        absent = undone = undated = 0
+        for index, key, item in progress["rows"]:
+            pipeline = str(item.get("pipeline") or "")
+            if pipeline in pipelines:
+                table["rows"][index]["pipeline"] = pipelines[pipeline]
+            elif pipeline:
+                absent += 1
+            for task in item.get("tasks", []):
+                method = _method_of(str(task.get("function") or ""), imported)
+                if method is None:
+                    undone += 1
+                elif not task.get("finishedAt"):
+                    undated += 1
+                else:
+                    runs.append({"method": method, "key": key, "finishedAt": task["finishedAt"]})
+        label = progress["label"]
+        if absent:
+            warnings.append(f"table '{label}': {absent} row(s) follow a dev pipeline that is not here; they get no pipeline")
+        if undone:
+            warnings.append(f"table '{label}': {undone} finished pipeline task(s) of a method not here; left out")
+        if undated:
+            warnings.append(f"table '{label}': {undated} finished pipeline task(s) with no date; left out")
+    return runs
+
+
+def _session_keys(session: Optional[dict], ids: List[str]) -> Tuple[List[dict], List[str]]:
+    """The keys of the sessions of these dev session ids that the session table has, and the ids it has not."""
+    keys: List[dict] = []
+    missing: List[str] = []
+    for session_id in ids:
+        found = [r for r in session["rows"] if r.get("session_id") == session_id] if session else []
+        if len(found) != 1:
+            missing.append(str(session_id))
+            continue
+        key = {k: found[0][k] for k, _ in session["key"]}
+        if key not in keys:
+            keys.append(key)
+    return keys, missing
+
+
+def _task_list(export: dict, session: Optional[dict], imported: Dict[str, str], preset_names: Dict[Tuple[str, str], str],
+               warnings: List[str]) -> Tuple[List[dict], List[dict]]:
+    """dev's task list: its queued tasks of a method here, on the sessions here (put on hold when written), and its
+    history's completed tasks as completed runs."""
+    tasks: List[dict] = []
+    task_list = export.get("tasks") or {}
+    for item in task_list.get("queue", []):
+        function = str(item.get("function") or "")
+        label = str(item.get("name") or "")
+        where = f"queued task '{label}' ({function})"
+        method = _method_of(function, imported)
+        if method is None:
+            warnings.append(f"{where} has no method here; left out")
+            continue
+        if not item.get("entities"):
+            warnings.append(f"{where}: the task list does not name its sessions; left out")
+            continue
+        keys, missing = _session_keys(session, item["entities"])
+        if missing:
+            warnings.append(f"{where}: {', '.join(missing)} not in the session table; " +
+                            ("left out of it" if keys else "left out"))
+        if not keys:
+            continue
+        dev_preset = str(item.get("preset") or "")
+        options = item.get("options") or {}
+        preset = preset_names.get((method, dev_preset))
+        if function in imported:
+            values = dict(options)
+        elif method in DEV_OPTIONS:
+            values = _mapped_options(method, options)[0]
+            preset = preset or _dev_preset(method, dev_preset or "default")
+        else:
+            values = {}
+            preset = preset or _dev_preset(method, dev_preset or "default")
+            if options and not preset:
+                warnings.append(f"{where}: dev's options are not the method's here; it starts from the method's defaults")
+        task = {"method": method, "name": label, "entities": keys, "values": values}
+        if preset:
+            task["preset"] = preset
+        for field in ("createdAt", "comment"):
+            if item.get(field):
+                task[field] = item[field]
+        tasks.append(task)
+    runs: List[dict] = []
+    recorded = left = 0
+    for item in task_list.get("history", []):
+        method = _method_of(str(item.get("function") or ""), imported)
+        keys = _session_keys(session, item.get("entities", []))[0]
+        if str(item.get("status") or "").lower() == "completed" and method and keys and item.get("finishedAt"):
+            runs.extend({"method": method, "key": key, "finishedAt": item["finishedAt"]} for key in keys)
+            recorded += 1
+        else:
+            left += 1
+    if recorded or left:
+        warnings.append(f"task history: {recorded} completed task(s) recorded in the run journal; {left} left out "
+                        "(not completed, or of a method or session not here)")
+    return tasks, runs
+
+
+def _ordered_runs(runs: List[dict]) -> List[dict]:
+    """Runs once each, in the order they finished (those of the same time in the order given)."""
+    seen: set = set()
+    unique = []
+    for run in runs:
+        identity = (run["method"], json.dumps(run["key"]), run["finishedAt"])
+        if identity not in seen:
+            seen.add(identity)
+            unique.append(run)
+    return sorted(unique, key=lambda run: run["finishedAt"])
+
+
+def _settings(export: dict) -> dict:
+    """dev's app preferences (nansen.App's settings) that are app settings here, in the shape of settings.save:
+    AutosaveMetadataToDataFolders is tables.saveToDataFolders; RunTasksWhenQueued or RunTasksOnStartup is
+    queue.autoStart (the worker starts with the app, and takes tasks as they are queued)."""
+    settings = export.get("settings") if isinstance(export.get("settings"), dict) else {}
+    table = settings.get("MetadataTable") if isinstance(settings.get("MetadataTable"), dict) else {}
+    processor = settings.get("TaskProcessor") if isinstance(settings.get("TaskProcessor"), dict) else {}
+    out: Dict[str, Any] = {}
+    if isinstance(table.get("AutosaveMetadataToDataFolders"), bool):
+        out["tables"] = {"saveToDataFolders": table["AutosaveMetadataToDataFolders"]}
+    flags = [processor[k] for k in ("RunTasksWhenQueued", "RunTasksOnStartup") if isinstance(processor.get(k), bool)]
+    if flags:
+        out["queue"] = {"autoStart": any(flags)}
+    return out
 
 
 # -- data locations -------------------------------------------------------------------------
@@ -377,7 +749,7 @@ def matlab_index_to_slice(expression: str) -> Optional[str]:
 
 # -- data variables ---------------------------------------------------------------------------
 
-def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str]],
+def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str]], legacy_adapters: Dict[str, str],
                     warnings: List[str]) -> List[dict]:
     location_ids = {loc["displayName"]: loc["identifier"] for loc in dataset["dataLocations"]}
     layouts = {loc["identifier"]: loc["filesystemSource"]["entityLayout"] for loc in dataset["dataLocations"]}
@@ -397,7 +769,9 @@ def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str
             file_type = "." + file_type
         adapter_name = str(item.get("fileAdapter") or "")
         adapter = ADAPTERS_BY_NAME.get(adapter_name.lower(), "?")
-        if adapter is None:
+        if adapter == "?" and adapter_name.lower() != "imagestack" and adapter_name.lower() in legacy_adapters:
+            adapter = legacy_adapters[adapter_name.lower()]   # one of the project's own, imported (dev's code)
+        elif adapter is None:
             adapter = ADAPTERS_BY_TYPE.get(file_type.lower())
         elif adapter_name.lower() == "imagestack":
             adapter = STACK_ADAPTERS_BY_TYPE.get(file_type.lower(), "?")
@@ -487,6 +861,8 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
         seen: set = set()
         incomplete = 0
         identities: Dict[int, Tuple[Any, ...]] = {}  # row index -> identity, for the notes
+        progress = {item["row"]: item for item in table.get("progress", [])}   # dev's Progress column, by row
+        kept_progress: List[tuple] = []   # (index in rows, key, dev's progress) of the rows kept
         odd_sexes = 0
         for index, legacy_row in enumerate(table.get("rows", [])):
             row: Dict[str, Any] = {}
@@ -520,6 +896,8 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
                 warnings.append(f"table '{label}': {'/'.join(map(str, identity))} appears twice; kept the first")
                 continue
             seen.add(identity)
+            if index in progress:
+                kept_progress.append((len(rows), dict(zip(key_names, identity)), progress[index]))
             rows.append({k: v for k, v in row.items() if k in key_names or k in ("ignore", "description")
                          or k in renames.values() or k in subject.values()})
         if odd_sexes:
@@ -528,7 +906,8 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
             warnings.append(f"table '{label}': {incomplete} row(s) with no {' or '.join(key_names)}; left out")
         notes = _notes(table, identities, key_names, label, warnings)
         tables.append({"entityType": entity_type, "title": f"{entity_type.title()}s", "key": key,
-                       "fragments": fragment_ids, "rows": rows, "notes": notes})
+                       "fragments": fragment_ids, "rows": rows, "notes": notes,
+                       "progress": {"label": label, "rows": kept_progress}})
     for entity_type in declared:
         if entity_type not in done:  # a table to sync into, for entity types dev kept no table of
             tables.append({"entityType": entity_type, "title": f"{entity_type.title()}s",

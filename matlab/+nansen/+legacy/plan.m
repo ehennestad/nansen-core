@@ -3,20 +3,47 @@ function out = plan(export)
 %
 %   The export must be checked already (nansen.legacy.convert does that).
 %   plan has fields name, title, description, dataset, modules, fragments,
-%   tables, dataVariables, methods (the project's own session methods, as
-%   nansen.legacy.planSessionMethods plans them), pipelines and warnings;
-%   see nansen.legacy.convert.
+%   tables, dataVariables, fileAdapters (the project's own file adapters, as
+%   nansen.legacy.planFileAdapters plans them), methods (the project's own
+%   session methods, as nansen.legacy.planSessionMethods plans them),
+%   presets (method, name, description, values), preferredPresets,
+%   pipelines, tasks (method, name, entities, values and preset, createdAt
+%   and comment when there are), runs (method, key, finishedAt), settings
+%   and warnings; see nansen.legacy.convert.
     warnings = {};
     info = nansen.internal.getField(export, "project", struct());
     [dataset, levels, warnings] = buildDataset(export, warnings);
-    [variables, dataset, warnings] = buildDataVariables(export, dataset, levels, warnings);
+    [adapters, warnings] = buildFileAdapters(export, warnings);
+    byName = containers.Map("KeyType", "char", "ValueType", "char");   % dev's name of an adapter (lower case) -> its id
+    for i = 1:numel(adapters)
+        if strlength(adapters{i}.name) > 0 && ~isKey(byName, char(lower(adapters{i}.name)))
+            byName(char(lower(adapters{i}.name))) = adapters{i}.document.id;
+        end
+    end
+    [variables, dataset, warnings] = buildDataVariables(export, dataset, levels, byName, warnings);
     [fragments, tables, warnings] = buildTables(export, dataset, warnings);
     [methods_, warnings] = buildSessionMethods(export, warnings);
     imported = containers.Map("KeyType", "char", "ValueType", "char");   % dev's function name -> method id
     for i = 1:numel(methods_)
         imported(char(methods_{i}.function)) = methods_{i}.document.id;
     end
-    [pipelines, warnings] = buildPipelines(export, imported, warnings);
+    [presets, preferred, presetNames, presetWarnings] = buildPresets(export, imported, {});
+    [pipelines, pipelineIds, warnings] = buildPipelines(export, imported, presetNames, warnings);
+    warnings = [warnings, presetWarnings];
+    [tables, runs, warnings] = buildProgress(tables, pipelineIds, imported, warnings);
+    session = [];
+    for i = 1:numel(tables)
+        if string(tables{i}.entityType) == "session"
+            session = tables{i};
+        end
+    end
+    [tasks, done, warnings] = buildTaskList(export, session, imported, presetNames, warnings);
+    runs = orderedRuns([done, runs]);
+    for i = 1:numel(tables)
+        if isfield(tables{i}, "progress")
+            tables{i} = rmfield(tables{i}, "progress");
+        end
+    end
     if ~isempty(pipelines)   % sessions keep the pipeline they follow, and its progress, in core.pipeline
         for i = 1:numel(tables)
             if string(tables{i}.entityType) == "session" && ~ismember("core.pipeline", string(tables{i}.fragments))
@@ -38,18 +65,424 @@ function out = plan(export)
     if title == ""
         title = name;
     end
-    % the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or a pipeline runs its methods
+    % the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or a
+    % pipeline, preset, task or completed run is of one of its methods
     modules = "core";
     usesOphys = any(cellfun(@(v) startsWith(string(v.fileAdapter), "ophys."), variables));
     for i = 1:numel(pipelines)
         usesOphys = usesOphys || any(cellfun(@(step) startsWith(string(step.method), "ophys."), pipelines{i}.steps));
     end
+    usesOphys = usesOphys || any(cellfun(@(item) startsWith(string(item.method), "ophys."), [presets, tasks, runs]));
     if usesOphys
         modules(end + 1) = "ophys";
     end
     out = struct("name", name, "title", title, "description", textOf(info, "description"), ...
         "dataset", dataset, "modules", modules, "fragments", {fragments}, "tables", {tables}, "dataVariables", {variables}, ...
-        "methods", {methods_}, "pipelines", {pipelines}, "warnings", {warnings});
+        "fileAdapters", {adapters}, "methods", {methods_}, "presets", {presets}, "preferredPresets", {preferred}, ...
+        "pipelines", {pipelines}, "tasks", {tasks}, "runs", {runs}, "settings", settingsOf(export), "warnings", {warnings});
+end
+
+% -- file adapters, presets, task list and progress ---------------------------------------------
+
+function [adapters, warnings] = buildFileAdapters(export, warnings)
+    % The project's own file adapters (code/+<package>/+fileadapter), as file adapters that run dev's code in MATLAB
+    % (nansen.legacy.planFileAdapters)
+    items = listOf(nansen.internal.getField(export, "fileAdapters", {}));
+    sources = cell(1, numel(items));
+    for i = 1:numel(items)
+        sources{i} = struct("file", textOf(items{i}, "file"), "text", string(nansen.internal.getField(items{i}, "text", "")));
+    end
+    [adapters, skipped] = nansen.legacy.planFileAdapters(sources);
+    warnings = [warnings, skipped];
+end
+
+function method = methodOf(functionName, imported)
+    % The method here of a dev function ("" for none): one of the project's own session methods, imported, or the
+    % equivalent of one of dev's (by the end of its name, or the class whose options its presets are kept under)
+    method = "";
+    functionName = string(functionName);
+    optionClasses = ["nansen.wrapper.normcorre.Processor", "ophys.normcorre"; "nansen.wrapper.quicky.Processor", "ophys.quicky"];
+    if hasKey(imported, functionName)
+        method = string(imported(char(functionName)));
+    elseif ismember(functionName, optionClasses(:, 1))
+        method = optionClasses(optionClasses(:, 1) == functionName, 2);
+    else
+        parts = split(functionName, ".");
+        count = numel(parts);
+        key = lower(strjoin(parts(max(1, count - 1):count), "_"));
+        methods_ = devMethods();
+        if isvarname(char(key)) && isfield(methods_, key)
+            method = string(methods_.(key));
+        end
+    end
+end
+
+function tf = hasKey(map, key)
+    % isKey for text that may be empty, which a containers.Map does not take as a key
+    tf = strlength(string(key)) > 0 && isKey(map, char(key));
+end
+
+function [presets, preferred, names, warnings] = buildPresets(export, imported, warnings)
+    % The option presets users made in dev (OptionsManager's Custom entries), as presets of the method here: those of
+    % the project's own session methods as dev saved them, those of NoRMCorre and Quicky with dev's options mapped to
+    % the module method's (devOptions). Also the preferred presets (dev's DefaultOptionsName, when a user chose one)
+    % and each preset's name here by "k:<method>|<dev's name>". As Python's legacy._presets.
+    presets = {};
+    preferred = {};
+    names = containers.Map("KeyType", "char", "ValueType", "char");
+    used = containers.Map("KeyType", "char", "ValueType", "any");   % method -> the names given
+    for entry = listOf(nansen.internal.getField(export, "presets", {}))
+        item = entry{1};
+        functionName = textOf(item, "function");
+        listed = "";
+        listedNames = nansen.internal.asCellstr(nansen.internal.getField(item, "names", {}));
+        if ~isempty(listedNames)
+            listed = strjoin(string(listedNames), ", ");
+        end
+        method = methodOf(functionName, imported);
+        if method == ""
+            if listed ~= ""   % (an item with no names only says which preset dev runs the function with)
+                warnings{end + 1} = sprintf("option presets of %s (%s) are not carried over: %s has no method here", ...
+                    functionName, listed, functionName); %#ok<AGROW>
+            end
+            continue
+        end
+        legacy = hasKey(imported, functionName);
+        if ~legacy && ~ismember(method, ["ophys.normcorre", "ophys.quicky"])
+            if listed ~= ""
+                warnings{end + 1} = sprintf("option presets of %s (%s) are not carried over: dev's options of %s have no equivalent in %s", ...
+                    functionName, listed, functionName, method); %#ok<AGROW>
+            end
+            entries = {};
+        elseif ~isfield(item, "entries")
+            if listed ~= ""
+                warnings{end + 1} = sprintf("option presets of %s (%s) are not carried over: the export holds no values of them", ...
+                    functionName, listed); %#ok<AGROW>
+            end
+            entries = {};
+        else
+            entries = listOf(item.entries);
+        end
+        for e = 1:numel(entries)
+            devName = textOf(entries{e}, "name");
+            where = sprintf("option preset '%s' of %s", devName, functionName);
+            [name, used] = presetName(devName, method, used);
+            if lower(strtrim(devName)) == "default"
+                warnings{end + 1} = sprintf("%s: imported as '%s', since 'default' is the method's own defaults here", where, name); %#ok<AGROW>
+            end
+            skipped = nansen.internal.asCellstr(nansen.internal.getField(entries{e}, "skippedOptions", {}));
+            if ~isempty(skipped)
+                warnings{end + 1} = sprintf("%s: %s hold values with no JSON form; left out", where, strjoin(string(skipped), ", ")); %#ok<AGROW>
+            end
+            options = nansen.internal.getField(entries{e}, "options", struct());
+            if ~(isstruct(options) && isscalar(options))
+                options = struct();
+            end
+            if legacy
+                values = options;
+            else
+                [values, unmapped] = mappedOptions(method, options);
+                if ~isempty(unmapped)
+                    warnings{end + 1} = sprintf("%s: dev's options %s have no equivalent in %s; left out", ...
+                        where, strjoin(unmapped, ", "), method); %#ok<AGROW>
+                end
+            end
+            presets{end + 1} = struct("method", char(method), "name", char(name), ...
+                "description", char(textOf(entries{e}, "description")), "values", values); %#ok<AGROW>
+            names(char("k:" + method + "|" + devName)) = char(name);
+        end
+        default = textOf(item, "defaultName");
+        target = "";
+        if isKey(names, char("k:" + method + "|" + default))
+            target = string(names(char("k:" + method + "|" + default)));
+        elseif lower(default) ~= "default" && default ~= ""
+            target = devPreset(method, default);
+        end
+        if default ~= "" && target ~= ""   % the preset dev ran the method with when none was chosen
+            preferred = preferred(~cellfun(@(p) string(p.method) == method, preferred));
+            preferred{end + 1} = struct("method", char(method), "preset", char(target)); %#ok<AGROW>
+        end
+    end
+end
+
+function [name, used] = presetName(devName, method, used)
+    % A preset's name here: dev's, with characters other than letters, digits, _, . and - as _, and not 'default'
+    text = regexprep(char(strtrim(devName)), '[^A-Za-z0-9_.-]+', '_');
+    text = regexprep(text, '^[_.]+|[_.]+$', '');
+    if isempty(text)
+        text = 'preset';
+    end
+    if strcmpi(text, 'default')
+        text = [text, '_dev'];
+    end
+    taken = strings(1, 0);
+    if isKey(used, char(method))
+        taken = used(char(method));
+    end
+    name = string(text);
+    n = 2;
+    while ismember(name, taken)
+        name = string(text) + "_" + n;
+        n = n + 1;
+    end
+    used(char(method)) = [taken, name];
+end
+
+function mapping = devOptions(method)
+    % dev's options of NoRMCorre and Quicky (nansen.wrapper.normcorre.Options, flufinder.getDefaultOptions), by their
+    % path, and the module method's option of the same meaning ("": covered by another; numCols is patches as
+    % numRows is). As Python's legacy.DEV_OPTIONS.
+    if method == "ophys.normcorre"
+        mapping = ["Configuration.numRows", "patches"; "Configuration.numCols", ""; ...
+            "Configuration.patchOverlap", "overlap"; "Template.initialBatchSize", "initialBatchSize"; ...
+            "Template.updateTemplate", "updateTemplate"; "Template.binWidth", "binWidth"; ...
+            "Correction.maximumShift", "maxShift"; "Correction.maximumDeviation", "maxDeviation"; ...
+            "Correction.subpixelUpsampling", "upsampling"; "Correction.numIterations", "iterations"];
+    else
+        mapping = ["General.RoiDiameter", "roiDiameter"; "Preprocessing.BinningSize", "binSize"; ...
+            "Preprocessing.SmoothingSigma", "smoothingSigma"; "Detection.PrctileForBinarization", "binarizationPercentile"; ...
+            "Detection.NumObservationsRequired", "observationsRequired"; "Detection.MaxNumRois", "maxRois"; ...
+            "Detection.UseShapeDetection", "useShapeDetection"; "Detection.InnerRadius", "innerRadius"; ...
+            "Detection.OuterRadius", "outerRadius"];
+    end
+end
+
+function [values, unmapped] = mappedOptions(method, options)
+    % dev's options of NoRMCorre or Quicky (nested) as the module method's: each that devOptions maps, a row ([y, x, z]
+    % shifts and overlaps) as its first value; and the paths of those it does not map
+    [values, unmapped] = walkOptions(options, "", devOptions(method), struct(), strings(1, 0));
+end
+
+function [values, unmapped] = walkOptions(node, prefix, mapping, values, unmapped)
+    for key = reshape(string(fieldnames(node)), 1, [])
+        value = node.(key);
+        path = prefix + key;
+        at = find(mapping(:, 1) == path, 1);
+        if isstruct(value) && isscalar(value)
+            [values, unmapped] = walkOptions(value, path + ".", mapping, values, unmapped);
+        elseif isempty(at)
+            unmapped(end + 1) = path; %#ok<AGROW>
+        elseif mapping(at, 2) ~= ""
+            if iscell(value)
+                if isempty(value)
+                    value = [];
+                else
+                    value = value{1};
+                end
+            elseif (isnumeric(value) || islogical(value)) && numel(value) > 1
+                value = value(1);
+            end
+            if ~(isnumeric(value) && isempty(value))   % null, or an empty row
+                values.(char(mapping(at, 2))) = value;
+            end
+        end
+    end
+end
+
+function [tables, runs, warnings] = buildProgress(tables, pipelineIds, imported, warnings)
+    % dev's Progress column: each session's pipeline (when it was imported) in core.pipeline, and the pipeline tasks dev
+    % marked finished, with their date, as completed runs of their method
+    runs = {};
+    for t = 1:numel(tables)
+        if ~isfield(tables{t}, "progress") || string(tables{t}.entityType) ~= "session"   % dev's pipelines are of sessions
+            continue
+        end
+        progress = tables{t}.progress;
+        absent = 0;
+        undone = 0;
+        undated = 0;
+        for r = 1:numel(progress.rows)
+            entry = progress.rows{r};
+            pipeline = textOf(entry.item, "pipeline");
+            if isKey(pipelineIds, char("k:" + pipeline))
+                tables{t}.rows{entry.index}.pipeline = pipelineIds(char("k:" + pipeline));
+            elseif pipeline ~= ""
+                absent = absent + 1;
+            end
+            for task = listOf(nansen.internal.getField(entry.item, "tasks", {}))
+                method = methodOf(textOf(task{1}, "function"), imported);
+                finishedAt = textOf(task{1}, "finishedAt");
+                if method == ""
+                    undone = undone + 1;
+                elseif finishedAt == ""
+                    undated = undated + 1;
+                else
+                    runs{end + 1} = struct("method", char(method), "key", entry.key, "finishedAt", char(finishedAt)); %#ok<AGROW>
+                end
+            end
+        end
+        label = progress.label;
+        if absent
+            warnings{end + 1} = sprintf("table '%s': %d row(s) follow a dev pipeline that is not here; they get no pipeline", label, absent); %#ok<AGROW>
+        end
+        if undone
+            warnings{end + 1} = sprintf("table '%s': %d finished pipeline task(s) of a method not here; left out", label, undone); %#ok<AGROW>
+        end
+        if undated
+            warnings{end + 1} = sprintf("table '%s': %d finished pipeline task(s) with no date; left out", label, undated); %#ok<AGROW>
+        end
+    end
+end
+
+function [keys, missing] = sessionKeys(session, ids)
+    % The keys of the sessions of these dev session ids that the session table has, and the ids it has not
+    keys = {};
+    missing = strings(1, 0);
+    seen = strings(1, 0);
+    for id = reshape(string(ids), 1, [])
+        found = [];
+        if ~isempty(session)
+            for m = 1:numel(session.rows)
+                row = session.rows{m};
+                if isfield(row, "session_id") && isequal(string(row.session_id), id)
+                    found(end + 1) = m; %#ok<AGROW>
+                end
+            end
+        end
+        if numel(found) ~= 1
+            missing(end + 1) = id; %#ok<AGROW>
+            continue
+        end
+        key = struct();
+        for name = reshape(string(session.key(:, 1)), 1, [])
+            key.(name) = session.rows{found}.(name);
+        end
+        keyId = string(nansen.internal.runKeyId(key));
+        if ~ismember(keyId, seen)
+            seen(end + 1) = keyId; %#ok<AGROW>
+            keys{end + 1} = key; %#ok<AGROW>
+        end
+    end
+end
+
+function [tasks, runs, warnings] = buildTaskList(export, session, imported, presetNames, warnings)
+    % dev's task list: its queued tasks of a method here, on the sessions here (put on hold when written), and its
+    % history's completed tasks as completed runs
+    tasks = {};
+    runs = {};
+    taskList = nansen.internal.getField(export, "tasks", struct());
+    for entry = listOf(nansen.internal.getField(taskList, "queue", {}))
+        item = entry{1};
+        functionName = textOf(item, "function");
+        label = textOf(item, "name");
+        where = sprintf("queued task '%s' (%s)", label, functionName);
+        method = methodOf(functionName, imported);
+        if method == ""
+            warnings{end + 1} = sprintf("%s has no method here; left out", where); %#ok<AGROW>
+            continue
+        end
+        ids = string(nansen.internal.asCellstr(nansen.internal.getField(item, "entities", {})));
+        if isempty(ids)
+            warnings{end + 1} = sprintf("%s: the task list does not name its sessions; left out", where); %#ok<AGROW>
+            continue
+        end
+        [keys, missing] = sessionKeys(session, ids);
+        if ~isempty(missing)
+            tail = "left out";
+            if ~isempty(keys)
+                tail = "left out of it";
+            end
+            warnings{end + 1} = sprintf("%s: %s not in the session table; %s", where, strjoin(missing, ", "), tail); %#ok<AGROW>
+        end
+        if isempty(keys)
+            continue
+        end
+        devName = textOf(item, "preset");
+        options = nansen.internal.getField(item, "options", struct());
+        if ~(isstruct(options) && isscalar(options))
+            options = struct();
+        end
+        preset = "";
+        if isKey(presetNames, char("k:" + method + "|" + devName))
+            preset = string(presetNames(char("k:" + method + "|" + devName)));
+        end
+        if hasKey(imported, functionName)
+            values = options;
+        elseif ismember(method, ["ophys.normcorre", "ophys.quicky"])
+            values = mappedOptions(method, options);
+            if preset == ""
+                preset = devPreset(method, devName);
+            end
+        else
+            values = struct();
+            if preset == ""
+                preset = devPreset(method, devName);
+            end
+            if ~isempty(fieldnames(options)) && preset == ""
+                warnings{end + 1} = sprintf("%s: dev's options are not the method's here; it starts from the method's defaults", where); %#ok<AGROW>
+            end
+        end
+        task = struct("method", char(method), "name", char(label), "entities", {keys}, "values", values);
+        if preset ~= ""
+            task.preset = char(preset);
+        end
+        for field = ["createdAt", "comment"]
+            if textOf(item, field) ~= ""
+                task.(field) = char(textOf(item, field));
+            end
+        end
+        tasks{end + 1} = task; %#ok<AGROW>
+    end
+    recorded = 0;
+    left = 0;
+    for entry = listOf(nansen.internal.getField(taskList, "history", {}))
+        item = entry{1};
+        method = methodOf(textOf(item, "function"), imported);
+        keys = sessionKeys(session, string(nansen.internal.asCellstr(nansen.internal.getField(item, "entities", {}))));
+        finishedAt = textOf(item, "finishedAt");
+        if lower(textOf(item, "status")) == "completed" && method ~= "" && ~isempty(keys) && finishedAt ~= ""
+            for k = 1:numel(keys)
+                runs{end + 1} = struct("method", char(method), "key", keys{k}, "finishedAt", char(finishedAt)); %#ok<AGROW>
+            end
+            recorded = recorded + 1;
+        else
+            left = left + 1;
+        end
+    end
+    if recorded || left
+        warnings{end + 1} = sprintf("task history: %d completed task(s) recorded in the run journal; %d left out " + ...
+            "(not completed, or of a method or session not here)", recorded, left);
+    end
+end
+
+function runs = orderedRuns(runs)
+    % Runs once each, in the order they finished (those of the same time in the order given)
+    seen = strings(1, 0);
+    keep = true(1, numel(runs));
+    for i = 1:numel(runs)
+        identity = string(runs{i}.method) + char(30) + nansen.internal.runKeyId(runs{i}.key) + char(30) + runs{i}.finishedAt;
+        keep(i) = ~ismember(identity, seen);
+        seen(end + 1) = identity; %#ok<AGROW>
+    end
+    runs = runs(keep);
+    if ~isempty(runs)
+        [~, order] = sort(string(cellfun(@(r) r.finishedAt, runs, UniformOutput=false)));
+        runs = runs(order);
+    end
+end
+
+function settings = settingsOf(export)
+    % dev's app preferences (nansen.App's settings) that are app settings here, in the shape of settings.save:
+    % AutosaveMetadataToDataFolders is tables.saveToDataFolders; RunTasksWhenQueued or RunTasksOnStartup is
+    % queue.autoStart (the worker starts with the app, and takes tasks as they are queued)
+    settings = struct();
+    dev = nansen.internal.getField(export, "settings", struct());
+    table = nansen.internal.getField(dev, "MetadataTable", struct());
+    processor = nansen.internal.getField(dev, "TaskProcessor", struct());
+    value = nansen.internal.getField(table, "AutosaveMetadataToDataFolders", []);
+    if islogical(value) && isscalar(value)
+        settings.tables = struct("saveToDataFolders", value);
+    end
+    flags = false(1, 0);
+    for name = ["RunTasksWhenQueued", "RunTasksOnStartup"]
+        value = nansen.internal.getField(processor, name, []);
+        if islogical(value) && isscalar(value)
+            flags(end + 1) = value; %#ok<AGROW>
+        end
+    end
+    if ~isempty(flags)
+        settings.queue = struct("autoStart", any(flags));
+    end
 end
 
 % -- session methods, pipelines and presets ----------------------------------------------------
@@ -67,9 +500,9 @@ function [methods_, warnings] = buildSessionMethods(export, warnings)
     warnings = [warnings, skipped];
 end
 
-function [pipelines, warnings] = buildPipelines(export, imported, warnings)
-    % dev's pipelines of sessions, with the tasks that have a method here (one of dev's that has an equivalent, or
-    % one of the project's own session methods, imported), and their rules for new sessions
+function methods_ = devMethods()
+    % dev's session methods, by the end of their function name (lower case, _ for .), and the method that does the
+    % same here (Python's legacy.DEV_METHODS)
     methods_ = struct("motioncorrection_normcorre", "ophys.normcorre", "motioncorrection_flowreg", "ophys.flowreg", ...
         "autosegmentation_quicky", "ophys.quicky", "autosegmentation_suite2p", "ophys.suite2p", ...
         "autosegmentation_extract", "ophys.extract", "signalextraction_extractsignals", "ophys.extract_signals", ...
@@ -77,6 +510,14 @@ function [pipelines, warnings] = buildPipelines(export, imported, warnings)
         "signalextraction_computedff", "ophys.compute_dff", "deconvolution_caiman", "ophys.caiman_deconvolution", ...
         "imageprocessing_downsamplestack", "ophys.downsample", "imageprocessing_denoisestack", "ophys.deep_interpolation", ...
         "data_backup", "core.backup");
+end
+
+function [pipelines, pipelineIds, warnings] = buildPipelines(export, imported, presetNames, warnings)
+    % dev's pipelines of sessions, with the tasks that have a method here (one of dev's that has an equivalent, or
+    % one of the project's own session methods, imported), and their rules for new sessions; and each one's id by
+    % "k:<dev's name of it>"
+    methods_ = devMethods();
+    pipelineIds = containers.Map("KeyType", "char", "ValueType", "char");
     idColumns = struct("sessionID", "session_id", "SessionID", "session_id", "subjectID", "subject_id", "SubjectID", "subject_id");
     pipelines = {};
     ids = strings(0);
@@ -92,7 +533,7 @@ function [pipelines, warnings] = buildPipelines(export, imported, warnings)
             parts = split(functionName, ".");
             count = numel(parts);
             key = lower(strjoin(parts(max(1, count - 1):count), "_"));
-            if isKey(imported, char(functionName))
+            if hasKey(imported, functionName)
                 method = string(imported(char(functionName)));
             elseif isvarname(char(key)) && isfield(methods_, key)
                 method = string(methods_.(key));
@@ -107,7 +548,9 @@ function [pipelines, warnings] = buildPipelines(export, imported, warnings)
             preset = textOf(task, "preset");
             step = struct("method", char(method), "title", char(stepTitle));
             shipped = devPreset(method, preset);
-            if shipped ~= ""   % the module's preset of dev's values
+            if preset ~= "" && isKey(presetNames, char("k:" + method + "|" + preset))   % a preset a user made, imported
+                step.preset = presetNames(char("k:" + method + "|" + preset));
+            elseif shipped ~= ""   % the module's preset of dev's values
                 step.preset = char(shipped);
             elseif preset ~= "" && lower(preset) ~= "default"
                 warnings{end + 1} = sprintf("pipeline '%s': task '%s' used dev's option preset '%s', which is not carried over; the method's defaults are used", ...
@@ -150,12 +593,9 @@ function [pipelines, warnings] = buildPipelines(export, imported, warnings)
             document.assignWhen = rules;
         end
         pipelines{end + 1} = document; %#ok<AGROW>
-    end
-    presets = listOf(nansen.internal.getField(export, "presets", {}));
-    for i = 1:numel(presets)
-        names = string(nansen.internal.getField(presets{i}, "names", {}));
-        warnings{end + 1} = sprintf("option presets of %s (%s) are not carried over: dev's options are not the methods' here", ...
-            textOf(presets{i}, "function"), strjoin(names, ", ")); %#ok<AGROW>
+        if ~isKey(pipelineIds, char("k:" + label))
+            pipelineIds(char("k:" + label)) = document.id;
+        end
     end
 end
 
@@ -453,7 +893,7 @@ end
 
 % -- data variables ----------------------------------------------------------------------
 
-function [variables, dataset, warnings] = buildDataVariables(export, dataset, levels, warnings)
+function [variables, dataset, warnings] = buildDataVariables(export, dataset, levels, legacyAdapters, warnings)
     variables = {};
     names = strings(1, 0);
     displayNames = string(cellfun(@(l) l.displayName, dataset.dataLocations, UniformOutput=false));
@@ -514,6 +954,9 @@ function [variables, dataset, warnings] = buildDataVariables(export, dataset, le
                 end
             otherwise
                 adapter = "";
+                if hasKey(legacyAdapters, lower(adapterName))   % one of the project's own, imported (dev's code)
+                    adapter = string(legacyAdapters(char(lower(adapterName))));
+                end
         end
         if adapter == ""
             shown = adapterName;
@@ -673,6 +1116,9 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
         renamed = string(struct2cell(renames))';
         legacyRows = nansen.internal.asCellOfStructs(table.rows);
         identities = cell(1, numel(legacyRows));   % per row, its identity, for the notes
+        progressItems = listOf(nansen.internal.getField(table, "progress", {}));   % dev's Progress column
+        progressRows = cellfun(@(p) double(p.row), progressItems);
+        keptProgress = {};   % index in rows, key and dev's progress of the rows kept
         oddSexes = 0;
         for index = 1:numel(legacyRows)
             legacyRow = legacyRows{index};
@@ -726,6 +1172,14 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
                 continue
             end
             seen(end + 1) = identityText; %#ok<AGROW>
+            at = find(progressRows == index - 1, 1, "last");
+            if ~isempty(at)
+                progressKey = struct();
+                for k = 1:numel(keyNames)
+                    progressKey.(keyNames(k)) = char(identity(k));
+                end
+                keptProgress{end + 1} = struct("index", numel(rows) + 1, "key", progressKey, "item", progressItems{at}); %#ok<AGROW>
+            end
             keep = [keyNames, "ignore", "description", renamed, subjectNames];
             fields = string(fieldnames(row))';
             if any(~ismember(fields, keep))
@@ -744,7 +1198,8 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
         [notes, warnings] = notesOf(table, identities, keyNames, label, warnings);
         title = upper(extractBefore(entityType, 2)) + extractAfter(entityType, 1) + "s";
         tables{end + 1} = struct("entityType", char(entityType), "title", char(title), "key", {key}, ...
-            "fragments", {fragmentIds}, "rows", {rows}, "notes", {notes}); %#ok<AGROW>
+            "fragments", {fragmentIds}, "rows", {rows}, "notes", {notes}, ...
+            "progress", struct("label", label, "rows", {keptProgress})); %#ok<AGROW>
     end
     for entityType = declared(~ismember(declared, done))
         % a table to sync into, for entity types dev kept no table of

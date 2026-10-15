@@ -641,23 +641,26 @@ class Api:
         return self.project__info({})
 
     def legacy__import(self, params: dict) -> dict:
-        """A project from a NANSEN dev project; Python reads the JSON export that MATLAB writes."""
+        """A project from a NANSEN dev project; Python reads the JSON export that MATLAB writes. dev's app preferences
+        that are settings here are saved to the catalog's settings."""
         from .legacy import convert_legacy
 
         source = Path(params["source"])
         if source.is_dir():
-            exported = self._export_legacy(source)
+            exported = self._export_legacy(source, params.get("userFolder"))
         elif not source.is_file():
             raise NansenError("file-not-found", f"no file {source}")
         else:
             with open(source, encoding="utf-8") as f:
                 exported = json.load(f)
         report = convert_legacy(exported, params["path"])
+        if report["settings"] and self.catalog is not None:
+            self.catalog.save_settings(report["settings"])
         self._set_project(Project.open(params["path"]))
         self.emit("project", {"name": self.project.name})
-        return {"project": self.project__info({}), "warnings": report["warnings"]}
+        return {"project": self.project__info({}), "settings": report["settings"], "warnings": report["warnings"]}
 
-    def _export_legacy(self, folder: Path) -> dict:
+    def _export_legacy(self, folder: Path, user_folder: Optional[str] = None) -> dict:
         """A NANSEN dev project folder read by MATLAB (matlab -batch nansen.legacy.exportProject), as its JSON export:
         dev's .mat files are MATLAB objects that only MATLAB reads."""
         import subprocess
@@ -670,7 +673,8 @@ class Api:
                                                      "and import the JSON file")
         with tempfile.TemporaryDirectory() as scratch:
             out = Path(scratch) / "export.json"
-            script = self._matlab_script(f"nansen.legacy.exportProject({_matlab_text(folder)}, File={_matlab_text(out)});")
+            user = f", UserFolder={_matlab_text(user_folder)}" if user_folder else ""   # dev's preferences, if not the default
+            script = self._matlab_script(f"nansen.legacy.exportProject({_matlab_text(folder)}, File={_matlab_text(out)}{user});")
             done = subprocess.run([executable, "-batch", script], capture_output=True, text=True, stdin=subprocess.DEVNULL,
                                   timeout=LEGACY_EXPORT_SECONDS)
             if done.returncode != 0 or not out.is_file():

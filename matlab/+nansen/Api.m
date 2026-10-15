@@ -554,18 +554,27 @@ classdef Api < handle
 
         function result = apiLegacyImport(obj, params)
             % A project from a NANSEN dev project folder, or from the JSON export of one
+            % dev's app preferences that are settings here are saved to the catalog's settings
             source = string(nansen.Api.param(params, "source"));
             folder = string(nansen.Api.param(params, "path"));
             if isfolder(source)
-                report = nansen.legacy.importProject(source, folder);
+                userFolder = nansen.internal.getField(params, "userFolder", "");
+                if isempty(userFolder) || string(userFolder) == ""
+                    report = nansen.legacy.importProject(source, folder);
+                else
+                    report = nansen.legacy.importProject(source, folder, UserFolder=string(userFolder));
+                end
             elseif isfile(source)
                 report = nansen.legacy.convert(nansen.internal.readJson(source), folder);
             else
                 nansen.internal.throwError("file-not-found", "no file or folder %s", source)
             end
+            if ~isempty(fieldnames(report.settings)) && ~isempty(obj.Catalog)
+                obj.Catalog.saveSettings(report.settings);
+            end
             obj.setProject(nansen.Project.open(folder));
             obj.emit("project", struct("name", char(obj.Project.Name)));
-            result = struct("project", obj.apiProjectInfo(struct()), "warnings", {report.warnings});
+            result = struct("project", obj.apiProjectInfo(struct()), "settings", report.settings, "warnings", {report.warnings});
         end
 
         function result = apiProjectInfo(obj, ~)
