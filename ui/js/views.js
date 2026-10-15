@@ -897,19 +897,77 @@
           load();
         } } }, N.icon("trash"), "Clear finished"));
     }
+    // Queued tasks start in queue order: those given an order (by reordering) first, lowest first, then by creation
+    const queuePosition = (t) => [t.order === undefined ? 1 : 0, t.order || 0, t.createdAt, t.id];
+    const byQueuePosition = (a, b) => {
+      const x = queuePosition(a), y = queuePosition(b);
+      for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+      return 0;
+    };
     function render() {
       renderControls();
-      const ordered = [...tasks].reverse();
-      N.fill(listEl, ordered.length ? ordered.map(renderTask) :
-        h("div.empty", N.icon("tasks", 40), h("h3", "No tasks"), h("div", "Select entities in a table and run a method in the background.")));
+      const queued = tasks.filter((t) => t.status === "queued").sort(byQueuePosition);
+      const others = tasks.filter((t) => t.status !== "queued").reverse();
+      N.fill(listEl, tasks.length ? [
+        queued.length ? h("div.task-group", h("span", "Queue"), h("span.muted", `${queued.length} waiting · runs top to bottom`)) : null,
+        queued.map((task, i) => renderTask(task, queued, i)),
+        queued.length && others.length ? h("div.task-group", h("span", "Started and finished")) : null,
+        others.map((task) => renderTask(task)),
+      ] : h("div.empty", N.icon("tasks", 40), h("h3", "No tasks"), h("div", "Select entities in a table and run a method in the background.")));
       if (selectedId) showDetail(selectedId);
     }
-    function renderTask(task) {
+    async function move(queued, index, by) {
+      const ids = queued.map((t) => t.id);
+      const [moved] = ids.splice(index, 1);
+      ids.splice(index + by, 0, moved);
+      try { await app.client.request("tasks.reorder", { ids }); } catch (error) { N.showError(error, "Could not move the task"); }
+      load();
+    }
+    function editOptions(task) {
+      const method = (app.methods || []).find((m) => m.id === task.method.id);
+      if (!method) { N.toast("Unknown method", task.method.id, "error"); return; }
+      const form = N.schemaForm(method.options || {}, task.options.values || {});
+      const message = h("div.form-message.hidden");
+      N.dialog({
+        title: `Options of ${method.title}`,
+        content: h("div", { style: { padding: "16px 20px" } },
+          h("p.muted", { style: { marginTop: 0 } }, `For the queued task on ${task.entities.length} ${task.entities[0].entityType}(s). It runs with these when it starts.`),
+          form.el, message),
+        buttons: [
+          { label: "Cancel" },
+          { label: "Save", kind: "primary", onClick: async (close) => {
+            const problems = form.validate();
+            if (problems.length) { message.textContent = problems.join(" · "); message.classList.remove("hidden"); return; }
+            try {
+              await app.client.request("tasks.update", { id: task.id, options: form.getValue() });
+              close();
+              N.toast("Options changed", method.title, "success");
+              load();
+            } catch (error) {
+              message.textContent = (error.code ? `[${error.code}] ` : "") + (error.message || String(error));
+              message.classList.remove("hidden");
+            }
+          } },
+        ],
+      });
+    }
+    function renderTask(task, queued, index) {
       const pct = Math.round((task.progress || 0) * 100);
+      const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
+      const queueActions = queued ? [
+        h("button.btn.small.ghost.icon.move-up", { title: "Move up", disabled: index === 0, on: { click: stop(() => move(queued, index, -1)) } }, N.icon("arrow-up", 14)),
+        h("button.btn.small.ghost.icon.move-down", { title: "Move down", disabled: index === queued.length - 1, on: { click: stop(() => move(queued, index, 1)) } }, N.icon("arrow-down", 14)),
+        h("button.btn.small.ghost.icon.edit-options", { title: "Change the options", on: { click: stop(() => editOptions(task)) } }, N.icon("edit", 14)),
+        h("button.btn.small" + (task.onHold ? ".release" : ".hold"), { title: task.onHold ? "Let it start" : "Keep it from starting; it keeps its place",
+          on: { click: stop(async () => {
+            try { await app.client.request("tasks.hold", { id: task.id, hold: !task.onHold }); } catch (error) { N.showError(error); }
+            load();
+          }) } }, N.icon(task.onHold ? "play" : "pause", 14), task.onHold ? "Release" : "Hold"),
+      ] : null;
       const progressClass = task.status === "completed" ? ".done" : task.status === "failed" ? ".failed" : "";
       const el = h("div.task" + (task.id === selectedId ? ".selected" : ""), { dataset: { id: task.id }, on: { click: () => { selectedId = task.id; app.replace("#/tasks/" + task.id); render(); } } },
         h("div",
-          h("div.title", N.statusPill(task.status),
+          h("div.title", N.statusPill(task.status), task.onHold && task.status === "queued" ? h("span.pill.warn", "on hold") : null,
             task.pipeline ? [h("span.pill.accent.plain", `${task.pipeline.id} ${task.pipeline.step + 1}/${task.pipeline.steps}`), task.pipeline.title || app.methodTitle(task.method.id)] : app.methodTitle(task.method.id),
             h("span.muted", { style: { fontWeight: 400 } }, `· ${task.entities.length} ${task.entities[0].entityType}(s)`)),
           h("div.sub", [
@@ -918,7 +976,7 @@
             task.message && task.status === "running" ? task.message : null,
             task.error ? task.error.message : null,
           ].filter(Boolean).join(" · "))),
-        h("div.actions",
+        h("div.actions", queueActions,
           task.status === "queued" || task.status === "running" ? h("button.btn.small", { on: { click: (e) => { e.stopPropagation(); act("tasks.cancel", task); } } }, N.icon("stop", 14), "Cancel") : null,
           ["failed", "cancelled", "completed"].includes(task.status) ? h("button.btn.small", { on: { click: (e) => { e.stopPropagation(); act("tasks.retry", task); } } }, N.icon("retry", 14), "Retry") : null,
           task.status !== "running" ? h("button.btn.small.ghost.icon", { title: "Remove", on: { click: (e) => { e.stopPropagation(); act("tasks.remove", task); } } }, N.icon("trash", 14)) : null),
@@ -1130,7 +1188,7 @@
     const field = (label, input, help) => h("div.field", h("label.name", label), input, help ? h("div.help", help) : null);
     const name = h("input.input.variable-name", { value: v.name || "", disabled: !!existing, placeholder: "roi_signals" });
     const title = h("input.input.variable-title", { value: v.title || "" });
-    const entityType = select("variable-entity", types.map((t) => [t, t]), v.entityType || types[0]);
+    const entityType = select("variable-entity", types.map((t) => [t, t]), v.entityType || types[types.length - 1]);   // the innermost type usually has the files
     const location = h("select.input.variable-location");
     const pattern = h("select.input.variable-pattern");
     const subfolder = h("input.input.variable-subfolder", { value: v.subfolder || "", placeholder: "for example roi" });

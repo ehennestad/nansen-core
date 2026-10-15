@@ -404,7 +404,9 @@ fieldset.group legend { font-weight: 700; padding: 0 6px; }
 .task.selected { background: var(--accent-soft); }
 .task .title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .task .sub { color: var(--text-3); font-size: 12px; }
-.task .actions { display: flex; gap: 6px; align-items: center; }
+.task .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.task-group { display: flex; gap: 10px; align-items: baseline; padding: 10px 16px 6px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
+.task-group .muted { font-weight: 400; text-transform: none; letter-spacing: 0; }
 .progress { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; grid-column: 1 / -1; }
 .progress span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
 .progress.done span { background: var(--good); }

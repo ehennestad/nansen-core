@@ -551,3 +551,38 @@ def test_edit_the_dataset_config(empty_app, page):
     page.click(".dialog-foot button:has-text('Save')")
     page.wait_for_selector(".data-locations td:has-text('Processed data')")
     assert '"displayName": "Processed data"' in config.read_text()
+
+
+def test_hold_reorder_and_change_queued_tasks(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    rows = api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"]
+    submit = lambda i: api.handle({"id": 3, "method": "tasks.submit", "params": {
+        "methodId": "core.wait", "entityType": "session", "keys": [rows[i]["key"]],
+        "options": {"seconds": 0, "message": f"task {i}"}}})["result"]["id"]
+    ids = [submit(i) for i in range(3)]
+    queued = lambda: [t["id"] for t in sorted(api.handle({"id": 4, "method": "tasks.list", "params": {"status": "queued"}})["result"],
+                                              key=lambda t: (t.get("order") is None, t.get("order") or 0, t["createdAt"], t["id"]))]
+    page.goto(empty_app["server"].url + "#/tasks")
+    page.wait_for_selector(".task-group:has-text('Queue')")
+    listed = lambda: page.eval_on_selector_all(".task[data-id]", "els => els.map(e => e.dataset.id)")[:3]
+    assert listed() == ids
+
+    page.click(f".task[data-id='{ids[2]}'] .move-up")
+    wait_until(lambda: queued() == [ids[0], ids[2], ids[1]])
+    wait_until(lambda: listed() == [ids[0], ids[2], ids[1]])
+    assert page.locator(f".task[data-id='{ids[0]}'] .move-up").is_disabled()
+
+    page.click(f".task[data-id='{ids[0]}'] .hold")
+    page.wait_for_selector(f".task[data-id='{ids[0]}']:has-text('on hold')")
+    assert api.handle({"id": 5, "method": "tasks.get", "params": {"id": ids[0]}})["result"]["onHold"] is True
+
+    page.click(f".task[data-id='{ids[1]}'] .edit-options")
+    page.fill(".dialog .field:has-text('Message') input", "changed")
+    page.click(".dialog-foot button:has-text('Save')")
+    wait_until(lambda: api.handle({"id": 6, "method": "tasks.get", "params": {"id": ids[1]}})["result"]["options"]["values"]["message"] == "changed")
+
+    page.click(".hero button:has-text('Run next')")  # the held task is passed over
+    wait_until(lambda: api.handle({"id": 7, "method": "tasks.get", "params": {"id": ids[2]}})["result"]["status"] == "completed")
+    page.click(f".task[data-id='{ids[0]}'] .release")
+    page.wait_for_selector(f".task[data-id='{ids[0]}'] .hold")
