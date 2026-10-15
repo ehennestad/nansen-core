@@ -3071,6 +3071,154 @@
     },
     {
       "request": {
+        "method": "rois.update",
+        "id": 4001,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "cellType": [
+            {
+              "id": 1,
+              "cellType": "excitatory"
+            },
+            {
+              "id": 3,
+              "cellType": "axon"
+            }
+          ],
+          "link": [
+            [
+              1,
+              3
+            ]
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [],
+          "rois": [
+            {
+              "id": 1,
+              "classification": null,
+              "cellType": "excitatory",
+              "links": [
+                3
+              ]
+            },
+            {
+              "id": 2,
+              "classification": "rejected"
+            },
+            {
+              "id": 3,
+              "classification": null,
+              "cellType": "axon",
+              "links": [
+                1
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 4002,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "cellType": [
+            {
+              "id": 3,
+              "cellType": null
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [],
+          "rois": [
+            {
+              "id": 1,
+              "classification": null,
+              "cellType": "excitatory",
+              "links": [
+                3
+              ]
+            },
+            {
+              "id": 2,
+              "classification": "rejected"
+            },
+            {
+              "id": 3,
+              "classification": null,
+              "links": [
+                1
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 4003,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "link": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 4004,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "cellType": [
+            {
+              "id": 1,
+              "cellType": 7
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
         "method": "methods.run",
         "id": 41,
         "params": {

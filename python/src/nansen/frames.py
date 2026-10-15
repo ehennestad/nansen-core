@@ -204,9 +204,16 @@ def roi_outlines(value: Any) -> List[Dict[str, Any]]:
         pixels = roi.get("pixels", []) if isinstance(roi, dict) else []
         if pixels and not isinstance(pixels[0], list):
             pixels = [pixels]
-        out.append({"id": roi.get("id", number), "pixels": [[int(p[0]), int(p[1])] for p in pixels],
-                    "classification": roi.get("classification")})
+        outline = {"id": roi.get("id", number), "pixels": [[int(p[0]), int(p[1])] for p in pixels],
+                   "classification": roi.get("classification")}
+        for name in ("uid", "cellType", "links"):   # its identity, roimanager's cell type and links between ROIs, when there are
+            if isinstance(roi, dict) and roi.get(name):
+                outline[name] = roi[name]
+        out.append(outline)
     return out
+
+
+EXTRAS = ("uid", "cellType", "tags", "links")   # what an ROI may carry besides its pixels and classification
 
 
 CLASSES = ("accepted", "rejected", "unresolved")
@@ -214,7 +221,8 @@ CLASSES = ("accepted", "rejected", "unresolved")
 
 def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[list] = None,
                 add: Optional[list] = None, move: Optional[list] = None, merge: Optional[list] = None,
-                pixels: Optional[list] = None, restore: Optional[list] = None) -> Any:
+                pixels: Optional[list] = None, restore: Optional[list] = None, cell_type: Optional[list] = None,
+                link: Optional[list] = None) -> Any:
     """The ROI file with ROIs restored, classified, reshaped, moved, merged, removed and added, in that order;
     returns (document, ids of the added ROIs).
 
@@ -225,6 +233,11 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
     [[id, id, ...]]: the first ROI of each group takes the pixels of all of them (and keeps its id and
     classification), the others are removed. An added ROI is {pixels}; it gets the next free id. A changed or
     added ROI gets its area and center again, and pixels outside imageSize are left out.
+
+    cell_type is [{id, cellType}] (roimanager's excitatory, inhibitory or axon; any short text, or null for none). link
+    is [[id, id, ...]]: the first ROI is linked with each of the others (links go both ways, roimanager's connected
+    ROIs). A restored ROI has the uid, cell type, tags and links given (null for none), or else those its id had. A removed or
+    merged-away ROI is taken out of the others' links. Cell types and links are set after the classifications.
     """
     roi_outlines(value)  # checks the shape
     rois = [dict(roi, id=roi.get("id", number)) for number, roi in enumerate(value.get("rois", []), start=1)]
@@ -257,6 +270,11 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
             measure(roi, [(int(p[0]), int(p[1])) for p in item.get("pixels", []) if inside(p)])
             if item.get("classification") in CLASSES:
                 roi["classification"] = item["classification"]
+            before = by_id.get(roi_id, {})
+            for name in EXTRAS:   # given (null for none), or else as the ROI of that id has it
+                extra = item[name] if name in item else before.get(name)
+                if extra:
+                    roi[name] = extra
             rois.append(roi)
         by_id = {roi["id"]: roi for roi in rois}
     for change in classify or []:
@@ -268,6 +286,23 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
             roi["classification"] = label
         else:
             raise NansenError("invalid-params", f"an ROI is accepted, rejected or unresolved, not {label!r}")
+    for change in cell_type or []:
+        roi = find(change.get("id"))
+        label = change.get("cellType")
+        if label is None or label == "":
+            roi.pop("cellType", None)
+        elif isinstance(label, str) and len(label) <= 64:
+            roi["cellType"] = label
+        else:
+            raise NansenError("invalid-params", f"a cell type is a short text, not {label!r}")
+    for group in link or []:
+        if not isinstance(group, list) or len(group) < 2 or len(set(group)) != len(group):
+            raise NansenError("invalid-params", "a link is a list of two or more different ROI ids")
+        first = find(group[0])
+        for other_id in group[1:]:
+            other = find(other_id)
+            first["links"] = sorted(set(first.get("links", [])) | {other["id"]})
+            other["links"] = sorted(set(other.get("links", [])) | {first["id"]})
     for change in pixels or []:
         roi = find(change.get("id"))
         measure(roi, [(int(p[0]), int(p[1])) for p in change.get("pixels", []) if inside(p)])
@@ -289,6 +324,11 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
         find(roi_id)
     gone |= set(remove or [])
     rois = [roi for roi in rois if roi["id"] not in gone]
+    for roi in rois:   # links to ROIs that are gone go too
+        if roi.get("links") and gone & set(roi["links"]):
+            roi["links"] = [i for i in roi["links"] if i not in gone]
+            if not roi["links"]:
+                del roi["links"]
     next_id = max([int(i) for i in by_id] + [0]) + 1
     added = []
     for new in add or []:

@@ -33,7 +33,9 @@
       5,
       5
      ]
-    ]
+    ],
+    "uid": "a1",
+    "cellType": "neuron"
    },
    {
     "id": 2,
@@ -143,7 +145,8 @@
       7,
       16
      ]
-    ]
+    ],
+    "uid": "a2"
    },
    {
     "id": 3,
@@ -237,7 +240,8 @@
       16,
       15
      ]
-    ]
+    ],
+    "uid": "a3"
    }
   ]
  },
@@ -273,6 +277,11 @@
      ]
     ],
     "classification": "accepted",
+    "uid": "p1a",
+    "cellType": "excitatory",
+    "links": [
+     3
+    ],
     "plane": 1,
     "channel": 1
    },
@@ -302,6 +311,10 @@
      ]
     ],
     "classification": "rejected",
+    "uid": "p1b",
+    "tags": [
+     "edge"
+    ],
     "plane": 1,
     "channel": 1
    },
@@ -327,6 +340,10 @@
      ]
     ],
     "classification": "unresolved",
+    "uid": "p1c",
+    "links": [
+     1
+    ],
     "plane": 1,
     "channel": 1
    },
@@ -347,6 +364,7 @@
       21
      ]
     ],
+    "uid": "p2a",
     "plane": 2,
     "channel": 1
    }

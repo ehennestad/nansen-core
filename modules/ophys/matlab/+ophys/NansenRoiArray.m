@@ -26,21 +26,22 @@ classdef NansenRoiArray < nansen.FileAdapter
                 classes = contents.roiClassification;
             end
             if ~iscell(rois)
-                [imageSize, lists, labels] = ophys.NansenRoiArray.group(rois, classes);
-                data = ophys.internal.roiDocument(imageSize, lists, labels);
+                [imageSize, lists, labels, extras] = ophys.NansenRoiArray.group(rois, classes);
+                data = ophys.NansenRoiArray.link(ophys.internal.roiDocument(imageSize, lists, labels, [], extras), extras);
                 return
             end
             % dev's RoiGroup of several planes or channels (cells, planes x channels): every ROI, with its place
             imageSize = [];
             lists = {};
             labels = {};
+            extras = {};
             places = zeros(0, 2);
             for g = 1:numel(rois)
                 groupClasses = [];
                 if iscell(classes) && numel(classes) == numel(rois)
                     groupClasses = classes{g};
                 end
-                [groupSize, groupLists, groupLabels] = ophys.NansenRoiArray.group(rois{g}, groupClasses);
+                [groupSize, groupLists, groupLabels, groupExtras] = ophys.NansenRoiArray.group(rois{g}, groupClasses);
                 if isempty(imageSize)
                     imageSize = groupSize;
                 end
@@ -49,21 +50,31 @@ classdef NansenRoiArray < nansen.FileAdapter
                 channel = ophys.NansenRoiArray.number(contents, "ChannelNumber", g, numel(rois), channel);
                 lists = [lists, groupLists]; %#ok<AGROW>
                 labels = [labels, groupLabels]; %#ok<AGROW>
+                extras = [extras, groupExtras]; %#ok<AGROW>
                 places = [places; repmat([plane, channel], numel(groupLists), 1)]; %#ok<AGROW>
             end
             if isempty(imageSize)
                 imageSize = [0, 0];
             end
-            data = ophys.internal.roiDocument(imageSize, lists, labels, places);
+            data = ophys.NansenRoiArray.link(ophys.internal.roiDocument(imageSize, lists, labels, places, extras), extras);
         end
 
         function write(~, path, data)
             rois = ophys.internal.roiList(data);
             imageSize = double(reshape(nansen.internal.getField(data, "imageSize", [0, 0]), 1, []));
             placed = any(cellfun(@(r) isfield(r, "plane") || isfield(r, "channel"), rois));
+            % every ROI's uid (its own, or a new one), by id: links are written as the uids of the ROIs linked
+            ids = cellfun(@(r) double(nansen.internal.getField(r, "id", NaN)), rois);
+            uids = strings(1, numel(rois));
+            for k = 1:numel(rois)
+                uids(k) = string(nansen.internal.getField(rois{k}, "uid", ""));
+                if uids(k) == ""
+                    uids(k) = ophys.NansenRoiArray.uid();
+                end
+            end
             contents = struct("roiImages", {[]}, "roiStats", {[]});
             if ~placed
-                [contents.roiArray, contents.roiClassification] = ophys.NansenRoiArray.records(rois, imageSize);
+                [contents.roiArray, contents.roiClassification] = ophys.NansenRoiArray.records(rois, imageSize, ids, uids);
             else   % dev's RoiGroup: cells of planes x channels
                 planeOf = cellfun(@(r) double(nansen.internal.getField(r, "plane", 1)), rois);
                 channelOf = cellfun(@(r) double(nansen.internal.getField(r, "channel", 1)), rois);
@@ -76,7 +87,7 @@ classdef NansenRoiArray < nansen.FileAdapter
                 for p = 1:planes
                     for c = 1:channels
                         [contents.roiArray{p, c}, contents.roiClassification{p, c}] = ...
-                            ophys.NansenRoiArray.records(rois(planeOf == p & channelOf == c), imageSize);
+                            ophys.NansenRoiArray.records(rois(planeOf == p & channelOf == c), imageSize, ids, uids);
                         contents.PlaneNumber{p, c} = p;
                         contents.ChannelNumber{p, c} = c;
                     end
@@ -87,11 +98,13 @@ classdef NansenRoiArray < nansen.FileAdapter
     end
 
     methods (Static, Access = private)
-        function [imageSize, lists, labels] = group(rois, classes)
-            % One plane's ROIs as 0-based pixel lists and classifications, and their image size ([] when there are none)
+        function [imageSize, lists, labels, extras] = group(rois, classes)
+            % One plane's ROIs as 0-based pixel lists, classifications and what else they say (uid, cell type, tags, the
+            % uids they are connected with), and their image size ([] when there are none)
             imageSize = [];
             lists = {};
             labels = {};
+            extras = {};
             if isempty(rois)
                 return
             end
@@ -105,7 +118,12 @@ classdef NansenRoiArray < nansen.FileAdapter
             labels(codes == 3) = {"unresolved"};
             imageSize = double(rois(1).imagesize(:))';
             lists = cell(1, numel(rois));
+            extras = cell(1, numel(rois));
             for k = 1:numel(rois)
+                extras{k} = struct("uid", ophys.NansenRoiArray.textOf(rois(k), "uid"), ...
+                    "cellType", ophys.NansenRoiArray.textOf(rois(k), "celltype"), ...
+                    "tags", {ophys.NansenRoiArray.textsOf(rois(k), "tags")}, ...
+                    "connected", {ophys.NansenRoiArray.textsOf(rois(k), "connectedrois")});
                 coordinates = double(rois(k).coordinates);
                 switch string(rois(k).shape)
                     case "Circle"
@@ -137,8 +155,8 @@ classdef NansenRoiArray < nansen.FileAdapter
             end
         end
 
-        function [roiArray, codes] = records(rois, imageSize)
-            % dev's roiArray of Mask ROIs and its roiClassification
+        function [roiArray, codes] = records(rois, imageSize, ids, uids)
+            % dev's roiArray of Mask ROIs and its roiClassification; ids and uids are of every ROI of the file
             fields = ["uid", "shape", "coordinates", "pixelweights", "imagesize", "boundary", "area", "center", ...
                 "connectedrois", "group", "celltype", "structure", "layer", "tags", "enhancedImage"];
             roiArray = repmat(cell2struct(cell(numel(fields), 1), cellstr(fields), 1), 1, numel(rois));
@@ -146,7 +164,7 @@ classdef NansenRoiArray < nansen.FileAdapter
             for k = 1:numel(rois)
                 pixels = double(rois{k}.pixels);
                 coordinates = [pixels(:, 2) + 1, pixels(:, 1) + 1];   % 1-based x, y
-                roiArray(k).uid = ophys.NansenRoiArray.uid();
+                roiArray(k).uid = char(uids(ids == double(nansen.internal.getField(rois{k}, "id", NaN))));
                 roiArray(k).shape = 'Mask';
                 roiArray(k).coordinates = coordinates;
                 roiArray(k).pixelweights = [];
@@ -154,12 +172,23 @@ classdef NansenRoiArray < nansen.FileAdapter
                 roiArray(k).boundary = {[NaN, NaN]};
                 roiArray(k).area = size(pixels, 1);
                 roiArray(k).center = mean(coordinates, 1);
-                roiArray(k).connectedrois = cell(0);
+                linked = {};
+                links = nansen.internal.getField(rois{k}, "links", []);
+                if iscell(links)
+                    links = cell2mat(cellfun(@double, reshape(links, 1, []), UniformOutput=false));
+                end
+                for id = reshape(double(links), 1, [])
+                    if any(ids == id)
+                        linked{end + 1} = char(uids(ids == id)); %#ok<AGROW>
+                    end
+                end
+                roiArray(k).connectedrois = linked;
                 roiArray(k).group = [];
-                roiArray(k).celltype = '';
+                roiArray(k).celltype = char(string(nansen.internal.getField(rois{k}, "cellType", "")));
                 roiArray(k).structure = 'na';
                 roiArray(k).layer = '';
-                roiArray(k).tags = cell(0, 1);
+                tags = nansen.internal.getField(rois{k}, "tags", {});
+                roiArray(k).tags = reshape(cellstr(string(tags)), [], 1);
                 roiArray(k).enhancedImage = [];
                 switch string(nansen.internal.getField(rois{k}, "classification", ""))
                     case "accepted"
@@ -168,6 +197,40 @@ classdef NansenRoiArray < nansen.FileAdapter
                         codes(k) = 2;
                     case "unresolved"
                         codes(k) = 3;
+                end
+            end
+        end
+
+        function text = textOf(roi, name)
+            % A text field of a dev RoI, as char ('' when it has none)
+            text = '';
+            if isfield(roi, name) && (ischar(roi.(name)) || isstring(roi.(name)))
+                text = char(roi.(name));
+            end
+        end
+
+        function texts = textsOf(roi, name)
+            % A cell field of a dev RoI (tags, connectedrois) as a row cell of char; {} when empty
+            texts = {};
+            if isfield(roi, name) && iscell(roi.(name))
+                texts = cellfun(@char, reshape(roi.(name), 1, []), UniformOutput=false);
+                texts = texts(~cellfun(@isempty, texts));
+            end
+        end
+
+        function data = link(data, extras)
+            % links (ids) for dev's connectedrois (uids) of the ROIs read, in order
+            uids = cellfun(@(e) string(e.uid), extras);
+            for k = 1:numel(data.rois)
+                linked = [];
+                for u = string(extras{k}.connected)
+                    at = find(uids == u & uids ~= "", 1);
+                    if ~isempty(at)
+                        linked(end + 1) = data.rois{at}.id; %#ok<AGROW>
+                    end
+                end
+                if ~isempty(linked)
+                    data.rois{k}.links = num2cell(sort(linked));
                 end
             end
         end

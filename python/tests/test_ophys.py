@@ -270,6 +270,22 @@ def test_rois_with_places_are_edited_on_their_plane():
     assert restored["rois"][0]["classification"] == "accepted" and restored["rois"][0]["pixels"] == [[1, 1]]
 
 
+def test_rois_carry_cell_types_links_and_their_identity():
+    from nansen.frames import roi_outlines, update_rois
+    document = {"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]], "uid": "a-1", "tags": ["bright"]},
+                                                {"id": 2, "pixels": [[2, 2]]}, {"id": 3, "pixels": [[3, 3]]}]}
+    changed, _ = update_rois(document, cell_type=[{"id": 1, "cellType": "inhibitory"}], link=[[1, 2, 3]])
+    assert [r.get("links") for r in changed["rois"]] == [[2, 3], [1], [1]]
+    assert roi_outlines(changed)[0]["cellType"] == "inhibitory" and roi_outlines(changed)[0]["links"] == [2, 3]
+    gone, _ = update_rois(changed, remove=[3])   # a removed ROI is taken out of the links
+    assert [r.get("links") for r in gone["rois"]] == [[2], [1]]
+    # the viewer's undo restores outlines (id, pixels, classification): what else the ROIs had stays
+    back, _ = update_rois(gone, restore=[{"id": 1, "pixels": [[1, 1]]}, {"id": 2, "pixels": [[2, 2]]}])
+    assert back["rois"][0]["uid"] == "a-1" and back["rois"][0]["tags"] == ["bright"] and back["rois"][0]["cellType"] == "inhibitory"
+    with pytest.raises(NansenError):
+        update_rois(document, link=[[1, 1]])
+
+
 def test_update_rois_classifies_removes_and_adds():
     from nansen.frames import update_rois
     document = {"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}, {"id": 5, "pixels": [[2, 2], [2, 3]]}]}

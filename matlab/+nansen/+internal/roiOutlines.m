@@ -20,5 +20,19 @@ function out = roiOutlines(value)
         out{i} = struct("id", nansen.internal.getField(rois{i}, "id", i), ...
             "pixels", {num2cell(nansen.internal.roiPixels(rois{i}), 2)'}, ...
             "classification", nansen.internal.getField(rois{i}, "classification", []));
+        % its identity, roimanager's cell type and links between ROIs, when there are
+        if isfield(rois{i}, "uid") && ~isempty(rois{i}.uid)
+            out{i}.uid = char(rois{i}.uid);
+        end
+        if isfield(rois{i}, "cellType") && ~isempty(rois{i}.cellType)
+            out{i}.cellType = char(rois{i}.cellType);
+        end
+        if isfield(rois{i}, "links") && ~isempty(rois{i}.links)
+            links = rois{i}.links;
+            if iscell(links)
+                links = cell2mat(cellfun(@double, links(:)', UniformOutput=false));
+            end
+            out{i}.links = num2cell(reshape(double(links), 1, []));
+        end
     end
 end

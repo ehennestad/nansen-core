@@ -135,7 +135,7 @@
     let initial = options.select ?? null;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
-      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false };
+      zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false, links: false };
     const canvas = h("canvas.viewer-canvas");
     const overlay = h("canvas.viewer-overlay");
     const holder = h("div.viewer-holder", canvas, overlay);
@@ -304,6 +304,22 @@
         for (let x = step; x < last.width; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, last.height); }
         for (let y = step; y < last.height; y += step) { ctx.moveTo(0, y); ctx.lineTo(last.width, y); }
         ctx.stroke();
+      }
+      if (state.links && state.showRois && state.rois) {   // roimanager's ROI relations: a line between linked ROIs
+        const centre = (roi) => [roi.pixels.reduce((t, p) => t + p[1], 0) / roi.pixels.length + 0.5, roi.pixels.reduce((t, p) => t + p[0], 0) / roi.pixels.length + 0.5];
+        const byId = new Map(visible().map((r) => [r.id, r]));
+        ctx.strokeStyle = "rgba(255, 220, 80, 0.9)";
+        ctx.lineWidth = 1.5 * last.width / width;
+        let drawn = 0;
+        ctx.beginPath();
+        byId.forEach((roi) => (roi.links || []).forEach((other) => {
+          if (other <= roi.id || !byId.has(other) || !roi.pixels.length || !byId.get(other).pixels.length) return;
+          const [x1, y1] = centre(roi), [x2, y2] = centre(byId.get(other));
+          ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+          drawn++;
+        }));
+        ctx.stroke();
+        canvas.dataset.links = String(drawn);
       }
       if (state.labels && state.showRois && state.rois) {
         ctx.font = `${Math.max(6, 11 * last.width / width)}px system-ui, sans-serif`;
@@ -522,13 +538,14 @@
     const hide = h("input", { type: "checkbox", on: { change: () => { state.hideRejected = hide.checked; redraw(); renderList(); } } });
     // roimanager's display options: the ROIs' numbers on the image, and outlines in place of filled ROIs
     const labelToggle = h("input.viewer-roi-labels", { type: "checkbox", on: { change: () => { state.labels = labelToggle.checked; drawOverlay(); } } });
+    const linkToggle = h("input.viewer-roi-links", { type: "checkbox", on: { change: () => { state.links = linkToggle.checked; drawOverlay(); } } });
     const outlineToggle = h("input.viewer-roi-outlines", { type: "checkbox", on: { change: () => { state.outlines = outlineToggle.checked; redraw(); } } });
     const roiList = h("ul.viewer-roi-list");
     const roiPanel = h("div.viewer-roi-panel",
       h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
       h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, h("div.spacer"), radius),
       h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
-        h("label.viewer-display-option", outlineToggle, "Outlines")),
+        h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links")),
       roiList);
 
     // The selected ROI's signal under the image: the frame shown is marked, a click on the trace goes to that frame.
@@ -584,7 +601,9 @@
       N.fill(roiList, visible().map((roi) => h("li" + (state.selection.has(roi.id) ? ".selected" : ""), { dataset: { roi: roi.id },
         on: { click: (event) => select(roi.id, several(event)) } },
         h("span.swatch", { style: { background: roi.classification === "rejected" ? "rgb(200,60,60)" : `rgb(${roiColor(state.rois.indexOf(roi)).join(",")})` } }),
-        h("span.grow", `ROI ${roi.id}`), h("span.muted", `${roi.pixels.length} px`),
+        h("span.grow", `ROI ${roi.id}`, roi.cellType ? h("span.muted.roi-cell-type", ` · ${roi.cellType}`) : null,
+          roi.links && roi.links.length ? h("span.muted.roi-links", { title: `Linked with ${roi.links.map((i) => "ROI " + i).join(", ")}` }, ` ↔ ${roi.links.join(", ")}`) : null),
+        h("span.muted", `${roi.pixels.length} px`),
         roi.classification ? h("span.pill." + ({ accepted: "good", rejected: "bad" }[roi.classification] || "warn"), roi.classification) : null)));
       actions.forEach((b) => { b.disabled = state.selection.size === 0; });
       mergeButton.disabled = state.selection.size < 2;
@@ -613,7 +632,8 @@
       if (onSelect) onSelect();
     }
     /** The ROIs as they are, to restore (undo and redo). */
-    const snapshot = () => (state.rois || []).map((r) => ({ id: r.id, pixels: r.pixels, classification: r.classification || null }));
+    const snapshot = () => (state.rois || []).map((r) => ({ id: r.id, pixels: r.pixels, classification: r.classification || null,
+      cellType: r.cellType || null, links: r.links || null, ...(r.uid ? { uid: r.uid } : {}) }));
     // Edits run one after the other, so an undo or redo acts on what the edits before it left
     let queue = Promise.resolve();
     const enqueue = (task) => (queue = queue.then(task, task));
@@ -661,6 +681,18 @@
     }
     function classify(label) { if (state.selection.size) edit({ classify: selectedIds().map((id) => ({ id, classification: label })) }); }
     function remove() { if (state.selection.size) edit({ remove: selectedIds() }); }
+    // roimanager's cell types (Shift+E, I, X; again to clear) and links between ROIs (Shift+C: the selected one with the others)
+    function setCellType(type) {
+      if (!state.selection.size) return;
+      const ids = selectedIds();
+      const same = ids.every((id) => (state.rois.find((r) => r.id === id) || {}).cellType === type);
+      edit({ cellType: ids.map((id) => ({ id, cellType: same ? null : type })) });
+    }
+    function linkRois() {
+      if (state.selection.size < 2) return;
+      const first = state.selection.has(state.selected) ? state.selected : selectedIds()[0];
+      edit({ link: [[first, ...selectedIds().filter((id) => id !== first)]] });
+    }
     function merge() {
       if (state.selection.size < 2) return;
       const ids = selectedIds();
@@ -685,6 +717,10 @@
       else if (event.key === "q") classify("unresolved");
       else if (event.key === "u") classify(null);
       else if (event.key === "m") merge();
+      else if (event.key === "E") setCellType("excitatory");
+      else if (event.key === "I") setCellType("inhibitory");
+      else if (event.key === "X") setCellType("axon");
+      else if (event.key === "C") linkRois();
       else if (event.key === "Delete" || event.key === "Backspace") remove();
       else if (event.altKey && event.key.startsWith("Arrow")) {   // move the selected ROI a pixel
         if (state.selected === null) return;

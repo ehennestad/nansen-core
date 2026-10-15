@@ -1154,7 +1154,7 @@ class Api:
         document, added = update_rois_at(project.load(entity, params["variable"], cached=False), plane, channel,
                                          classify=params.get("classify"), remove=params.get("remove"), add=params.get("add"),
                                          move=params.get("move"), merge=params.get("merge"), pixels=params.get("pixels"),
-                                         restore=params.get("restore"))
+                                         restore=params.get("restore"), cell_type=params.get("cellType"), link=params.get("link"))
         project.save(entity, params["variable"], document)
         return {"rois": roi_outlines(rois_at(document, plane, channel)), "added": added}
 

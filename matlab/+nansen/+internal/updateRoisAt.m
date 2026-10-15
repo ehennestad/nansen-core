@@ -1,9 +1,15 @@
-function [document, added] = updateRoisAt(document, plane, channel, classify, remove, add, move, merge, pixelChanges, restore)
+function [document, added] = updateRoisAt(document, plane, channel, classify, remove, add, move, merge, pixelChanges, restore, cellTypes, links)
 %updateRoisAt updateRois on the ROIs of a plane and channel (from 1) of a file whose ROIs have places
 %
 %   A restore puts back that place's ROIs only, and added ROIs are put
 %   there. A file whose ROIs have no places is updated as by updateRois.
 %   As Python's nansen.frames.update_rois_at.
+    if nargin < 11
+        cellTypes = [];
+    end
+    if nargin < 12
+        links = [];
+    end
     rois = {};
     if isstruct(document) && isfield(document, "rois") && ~isempty(document.rois)
         rois = document.rois;
@@ -13,7 +19,7 @@ function [document, added] = updateRoisAt(document, plane, channel, classify, re
         rois = reshape(rois, 1, []);
     end
     if ~any(cellfun(@(r) isstruct(r) && (isfield(r, "plane") || isfield(r, "channel")), rois))
-        [document, added] = nansen.internal.updateRois(document, classify, remove, add, move, merge, pixelChanges, restore);
+        [document, added] = nansen.internal.updateRois(document, classify, remove, add, move, merge, pixelChanges, restore, cellTypes, links);
         return
     end
     places = zeros(0, 3);   % id, plane, channel
@@ -36,7 +42,7 @@ function [document, added] = updateRoisAt(document, plane, channel, classify, re
         end
         restore = [elsewhere, reshape(restore, 1, [])];
     end
-    [document, added] = nansen.internal.updateRois(document, classify, remove, add, move, merge, pixelChanges, restore);
+    [document, added] = nansen.internal.updateRois(document, classify, remove, add, move, merge, pixelChanges, restore, cellTypes, links);
     rois = document.rois;
     if isstruct(rois)
         rois = num2cell(rois);

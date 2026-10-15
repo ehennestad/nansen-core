@@ -1504,6 +1504,18 @@ def test_viewer_projections_and_roi_display_options(empty_app, page):
     wait_until(lambda: 0 < page.evaluate(colourful) < filled)
     page.click(".viewer-grid")
     assert "active" in page.get_attribute(".viewer-grid", "class")
+    page.click(".viewer-roi-list li[data-roi='1']")   # roimanager's cell types (Shift+E) and links (Shift+C)
+    page.keyboard.press("Shift+E")
+    page.wait_for_selector(".viewer-roi-list li[data-roi='1'] .roi-cell-type:has-text('excitatory')")
+    page.click(".viewer-roi-list li[data-roi='3']", modifiers=["Control"])
+    page.keyboard.press("Shift+C")
+    page.wait_for_selector(".viewer-roi-list li[data-roi='3'] .roi-links:has-text('1')")
+    page.check(".viewer-roi-links")
+    page.wait_for_selector(".viewer-canvas[data-links='1']")
+    page.click(".viewer-roi-list li[data-roi='1']")
+    page.keyboard.press("Control+Z")   # undo takes the link away again, the cell type stays
+    page.wait_for_selector(".viewer-roi-list li[data-roi='3']:not(:has(.roi-links))")
+    assert page.locator(".viewer-roi-list li[data-roi='1'] .roi-cell-type").count() == 1
     page.select_option(".viewer-mode", "frame")
     page.click(".viewer-roi-list li[data-roi='1']")   # its signal goes under the frames
     page.click(".viewer-export")

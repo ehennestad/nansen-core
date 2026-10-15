@@ -751,7 +751,9 @@ def roi_document(image_size, rois, places=None):
     (plane, channel), from 1."""
     height, width = int(image_size[0]), int(image_size[1])
     out = []
-    for number, (pixels, classification) in enumerate(rois, start=1):
+    for number, entry in enumerate(rois, start=1):
+        pixels, classification = entry[0], entry[1]
+        extras = entry[2] if len(entry) > 2 else {}
         kept = sorted({(int(r), int(c)) for r, c in pixels if 0 <= r < height and 0 <= c < width})
         rows = np.array([p[0] for p in kept], dtype=np.float64)
         columns = np.array([p[1] for p in kept], dtype=np.float64)
@@ -760,6 +762,9 @@ def roi_document(image_size, rois, places=None):
                "pixels": [[r, c] for r, c in kept]}
         if classification:
             roi["classification"] = classification
+        for name in ("uid", "cellType", "tags"):   # dev's RoI identity, cell type and tags, when it has them
+            if extras.get(name):
+                roi[name] = extras[name]
         if places is not None:
             roi["plane"], roi["channel"] = int(places[number - 1][0]), int(places[number - 1][1])
         out.append(roi)
@@ -837,7 +842,7 @@ class NansenRoiArray:
         planes, channels = data.get("PlaneNumber"), data.get("ChannelNumber")
         if not _groups(rois):
             size, out = self._group(rois, classes)
-            return roi_document(size if size is not None else [0, 0], out)
+            return _dev_links(roi_document(size if size is not None else [0, 0], out), out)
         # dev's RoiGroup of several planes or channels (a cell of ROI arrays, planes x channels): every ROI, with its place
         groups = np.asarray(rois, dtype=object).ravel(order="F") if not isinstance(rois, list) else rois
         class_groups = _cells(classes, len(groups))
@@ -851,7 +856,7 @@ class NansenRoiArray:
             channel = int(np.asarray(channel_numbers[k]).ravel()[0]) if np.size(channel_numbers[k]) else k // shape[0] + 1
             out += group_rois
             places += [(plane, channel)] * len(group_rois)
-        return roi_document(size if size is not None else [0, 0], out, places)
+        return _dev_links(roi_document(size if size is not None else [0, 0], out, places), out)
 
     @staticmethod
     def _group(rois, classes):
@@ -880,16 +885,18 @@ class NansenRoiArray:
                 if shape == "IMask" and weights.size == len(points):
                     points = points[weights > 0]
                 pixels = [(_round_away(y) - 1, _round_away(x) - 1) for x, y in points]
-            out.append((pixels, DEV_CLASSIFICATIONS.get(int(code))))
+            out.append((pixels, DEV_CLASSIFICATIONS.get(int(code)), _dev_extras(roi)))
         return size, out
 
     def write(self, path, data):
         from scipy.io import savemat
         height, width = (int(v) for v in data.get("imageSize", [0, 0]))
+        import uuid
         rois = data.get("rois", [])
+        uids = {roi.get("id", k + 1): roi.get("uid") or str(uuid.uuid4()) for k, roi in enumerate(rois)}   # links are by uid
         contents = {"roiImages": np.zeros((0, 0)), "roiStats": np.zeros((0, 0))}
         if not any("plane" in roi or "channel" in roi for roi in rois):
-            contents["roiArray"], contents["roiClassification"] = self._records(rois, height, width)
+            contents["roiArray"], contents["roiClassification"] = self._records(rois, height, width, uids)
         else:   # dev's RoiGroup: cells of planes x channels
             planes = max(int(roi.get("plane", 1)) for roi in rois)
             channels = max(int(roi.get("channel", 1)) for roi in rois)
@@ -898,15 +905,14 @@ class NansenRoiArray:
             for p in range(planes):
                 for c in range(channels):
                     group = [roi for roi in rois if int(roi.get("plane", 1)) == p + 1 and int(roi.get("channel", 1)) == c + 1]
-                    cells["roiArray"][p, c], cells["roiClassification"][p, c] = self._records(group, height, width)
+                    cells["roiArray"][p, c], cells["roiClassification"][p, c] = self._records(group, height, width, uids)
                     cells["PlaneNumber"][p, c], cells["ChannelNumber"][p, c] = float(p + 1), float(c + 1)
             contents.update(cells)
         savemat(str(path), contents)
 
     @staticmethod
-    def _records(rois, height, width):
-        """dev's roiArray of Mask ROIs and its roiClassification."""
-        import uuid
+    def _records(rois, height, width, uids):
+        """dev's roiArray of Mask ROIs and its roiClassification; uids maps every ROI's id to its uid."""
         records = np.empty((1, len(rois)), dtype=[(f, "O") for f in DEV_ROI_FIELDS])
         codes = np.zeros((len(rois), 1))
         for k, roi in enumerate(rois):
@@ -914,11 +920,37 @@ class NansenRoiArray:
             coordinates = np.stack([pixels[:, 1] + 1, pixels[:, 0] + 1], axis=1)   # 1-based x, y
             boundary = np.empty((1, 1), dtype=object)
             boundary[0, 0] = np.array([[np.nan, np.nan]])
-            records[0, k] = (str(uuid.uuid4()), "Mask", coordinates, np.zeros((0, 0)), np.array([height, width], dtype=float),
+            linked = [uids[i] for i in roi.get("links", []) if i in uids]
+            connected = np.empty((1, len(linked)) if linked else (0, 0), dtype=object)
+            for i, uid in enumerate(linked):
+                connected.flat[i] = uid
+            tags = np.empty((len(roi.get("tags", [])), 1), dtype=object)
+            for i, tag in enumerate(roi.get("tags", [])):
+                tags.flat[i] = tag
+            records[0, k] = (uids[roi.get("id", k + 1)], "Mask", coordinates, np.zeros((0, 0)), np.array([height, width], dtype=float),
                              boundary, float(len(pixels)), coordinates.mean(axis=0) if len(pixels) else np.zeros((0, 0)),
-                             np.empty((0, 0), dtype=object), np.zeros((0, 0)), "", "na", "", np.empty((0, 1), dtype=object), np.zeros((0, 0)))
+                             connected, np.zeros((0, 0)), roi.get("cellType", ""), "na", "", tags, np.zeros((0, 0)))
             codes[k, 0] = {"accepted": 1, "rejected": 2, "unresolved": 3}.get(roi.get("classification"), 0)
         return records, codes
+
+
+def _dev_extras(roi):
+    """What a dev RoI says besides its pixels: uid, cell type, tags and the uids it is connected with."""
+    text = lambda v: v.decode() if isinstance(v, bytes) else str(v) if isinstance(v, str) else ""
+    items = lambda v: [text(x) for x in np.asarray(v, dtype=object).ravel() if text(x)] if v is not None and np.size(v) and not isinstance(v, str) \
+        else ([v] if isinstance(v, str) and v else [])
+    return {"uid": text(roi.get("uid")), "cellType": text(roi.get("celltype")),
+            "tags": items(roi.get("tags")), "connected": items(roi.get("connectedrois"))}
+
+
+def _dev_links(document, entries):
+    """The document with links (ids) for dev's connectedrois (uids) of the ROIs read, in order."""
+    ids = {roi.get("uid"): roi["id"] for roi in document["rois"] if roi.get("uid")}
+    for roi, entry in zip(document["rois"], entries):
+        linked = sorted(ids[u] for u in (entry[2] if len(entry) > 2 else {}).get("connected", []) if u in ids)
+        if linked:
+            roi["links"] = linked
+    return document
 
 
 def _plain(value):

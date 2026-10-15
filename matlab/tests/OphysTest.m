@@ -206,6 +206,23 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(restored.rois{1}.classification, 'accepted');
         end
 
+        function roisCarryCellTypesLinksAndTheirIdentity(testCase)
+            document = jsondecode(['{"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]], "uid": "a-1", "tags": ["bright"]}, ' ...
+                '{"id": 2, "pixels": [[2, 2]]}, {"id": 3, "pixels": [[3, 3]]}]}']);
+            changed = nansen.internal.updateRois(document, [], [], [], [], [], [], missing, struct("id", 1, "cellType", "inhibitory"), {[1, 2, 3]});
+            changed = jsondecode(jsonencode(changed));   % as the file has it
+            testCase.verifyEqual(changed.rois{1}.links', [2, 3]);
+            testCase.verifyEqual(changed.rois{2}.links, 1);
+            outlines = nansen.internal.roiOutlines(changed);
+            testCase.verifyEqual(string(outlines{1}.cellType), "inhibitory");
+            gone = jsondecode(jsonencode(nansen.internal.updateRois(changed, [], 3, [])));   % a removed ROI leaves the links
+            testCase.verifyEqual(gone.rois{1}.links, 2);
+            restored = nansen.internal.updateRois(gone, [], [], [], [], [], [], {struct("id", 1, "pixels", [1, 1]), struct("id", 2, "pixels", [2, 2])});
+            testCase.verifyEqual(string(restored.rois{1}.uid), "a-1");
+            testCase.verifyEqual(string(restored.rois{1}.cellType), "inhibitory");
+            testCase.verifyError(@() nansen.internal.updateRois(document, [], [], [], [], [], [], missing, [], {[1, 1]}), "nansen:InvalidParams");
+        end
+
         function updatesRois(testCase)
             document = jsondecode('{"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}, {"id": 5, "pixels": [[2, 2], [2, 3]]}]}');
             [changed, added] = nansen.internal.updateRois(document, struct("id", 5, "classification", "rejected"), 1, ...

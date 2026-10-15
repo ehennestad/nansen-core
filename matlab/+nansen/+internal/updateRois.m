@@ -1,4 +1,4 @@
-function [document, added] = updateRois(document, classify, remove, add, move, merge, pixelChanges, restore)
+function [document, added] = updateRois(document, classify, remove, add, move, merge, pixelChanges, restore, cellTypes, links)
 %updateRois The ROI file with ROIs restored, classified, reshaped, moved, merged, removed and added, as Python's nansen.frames.update_rois
 %
 %   restore (missing when not given) is a list of id, pixels and
@@ -27,6 +27,12 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
     if nargin < 8
         restore = missing;
     end
+    if nargin < 9
+        cellTypes = [];
+    end
+    if nargin < 10
+        links = [];
+    end
     nansen.internal.roiOutlines(document);   % checks the shape
     rois = {};
     if isfield(document, "rois") && ~isempty(document.rois)
@@ -47,6 +53,8 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
         size_ = reshape(double(document.imageSize), 1, []);
     end
     if ~isa(restore, "missing")
+        before = rois;   % a restored ROI keeps the uid, cell type, tags and links given, or else those its id had
+        beforeIds = ids;
         items = cellOf(restore);
         rois = cell(1, numel(items));
         ids = zeros(1, numel(items));
@@ -59,6 +67,16 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
             label = nansen.internal.getField(items{i}, "classification", []);   % null decodes as []
             if ~isempty(label) && any(string(label) == ["accepted", "rejected", "unresolved"])
                 rois{i}.classification = char(label);
+            end
+            old = find(beforeIds == double(id), 1);
+            for name = ["uid", "cellType", "tags", "links"]
+                if isfield(items{i}, name)   % given (null for none), or else as the ROI of that id has it
+                    if ~isempty(items{i}.(name))
+                        rois{i}.(name) = items{i}.(name);
+                    end
+                elseif ~isempty(old) && isfield(before{old}, name) && ~isempty(before{old}.(name))
+                    rois{i}.(name) = before{old}.(name);
+                end
             end
             ids(i) = double(id);
         end
@@ -75,6 +93,38 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
             rois{match}.classification = char(label);
         else
             nansen.internal.throwError("invalid-params", "an ROI is accepted, rejected or unresolved, not '%s'", string(label))
+        end
+    end
+    for change = cellOf(cellTypes)
+        match = find_(ids, nansen.internal.getField(change{1}, "id", NaN));
+        label = nansen.internal.getField(change{1}, "cellType", []);
+        if isempty(label) || (isstring(label) && label == "")
+            if isfield(rois{match}, "cellType")
+                rois{match} = rmfield(rois{match}, "cellType");
+            end
+        elseif (ischar(label) || isstring(label)) && strlength(string(label)) <= 64
+            rois{match}.cellType = char(label);
+        else
+            nansen.internal.throwError("invalid-params", "a cell type is a short text")
+        end
+    end
+    if isnumeric(links) && ~isempty(links)
+        if isvector(links)
+            links = {links(:)'};   % one group: jsondecode may give it as a row or a column
+        else
+            links = num2cell(links, 2);   % groups of equal size, decoded as a matrix
+        end
+    end
+    for g = 1:numel(links)
+        group = double(links{g}(:))';
+        if numel(group) < 2 || numel(unique(group)) ~= numel(group)
+            nansen.internal.throwError("invalid-params", "a link is a list of two or more different ROI ids")
+        end
+        first = find_(ids, group(1));
+        for other = group(2:end)
+            match = find_(ids, other);
+            rois{first}.links = union(linksOf(rois{first}), ids(match));
+            rois{match}.links = union(linksOf(rois{match}), ids(first));
         end
     end
     for change = cellOf(pixelChanges)
@@ -112,6 +162,16 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
         find_(ids, id);
     end
     rois = rois(~ismember(ids, [gone, remove]));
+    for i = 1:numel(rois)   % links to ROIs that are gone go too
+        if isfield(rois{i}, "links")
+            kept = setdiff(linksOf(rois{i}), [gone, remove]);
+            if isempty(kept)
+                rois{i} = rmfield(rois{i}, "links");
+            else
+                rois{i}.links = kept;
+            end
+        end
+    end
     nextId = max([ids, 0]) + 1;
     added = {};
     if iscell(add)
@@ -128,10 +188,25 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
     end
     for i = 1:numel(rois)
         rois{i}.pixels = num2cell(rois{i}.pixels, 2)';
+        if isfield(rois{i}, "links")
+            rois{i}.links = num2cell(reshape(linksOf(rois{i}), 1, []));   % a list, also of one
+        end
     end
     document.rois = rois;
     if ~isempty(size_)
         document.imageSize = size_;
+    end
+end
+
+function list = linksOf(roi)
+    % The ids an ROI is linked with, as a sorted row (a JSON list decodes as an array, or a cell)
+    list = zeros(1, 0);
+    if isfield(roi, "links") && ~isempty(roi.links)
+        list = roi.links;
+        if iscell(list)
+            list = cell2mat(cellfun(@double, list(:)', UniformOutput=false));
+        end
+        list = sort(double(reshape(list, 1, [])));
     end
 end
 
