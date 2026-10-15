@@ -632,3 +632,18 @@ def test_send_the_selection_to_the_workspace(empty_app, page):
     page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
     page.wait_for_selector(".toast:has-text('2 session(s) in chosen')")
     assert len(namespace["chosen"]) == 2
+
+
+def test_start_a_method_from_the_data_page(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/data")
+    page.click(".methods-card .new-method")
+    page.fill(".dialog .field:has-text('Id') input", "count_frames")
+    page.fill(".dialog .field:has-text('Title') input", "Count frames")
+    page.click(".dialog-foot button:has-text('Create')")
+    page.wait_for_selector(".methods-card li:has-text('Count frames')")
+    assert (empty_app["folder"] / "demo" / "python" / "count_frames.py").is_file()
+    assert (empty_app["folder"] / "demo" / "matlab" / "count_frames.m").is_file()
+    method = next(m for m in api.handle({"id": 2, "method": "methods.list"})["result"] if m["id"] == "count_frames")
+    assert method["entityType"] == "session"

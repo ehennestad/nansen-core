@@ -1,0 +1,14 @@
+function result = __ID__(__ARG__, options, context)
+%__ID__ __TITLE__: a method of this project
+%
+%   __DESCRIPTION__
+%
+%   __ARG_HELP_M__
+%   options holds the values of the options declared in methods/__ID__.method.nansen.json.
+%   context.Project is the project; context.log(text), context.progress(fraction, text) and
+%   context.checkCancelled() report back to the task queue.
+%
+%   NANSEN made this file as a starting point; change it as you need.
+    context.log("__TITLE__: nothing done yet");
+    result = struct();
+end

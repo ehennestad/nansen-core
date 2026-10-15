@@ -629,6 +629,108 @@ classdef Project < handle
             end
         end
 
+        function method = createMethod(obj, methodId, options)
+            %createMethod Start a method of the project: its document in methods/ and, for each language,
+            %   a file to fill in (python/<id>.py with run(), matlab/<id>.m), from the templates that ship with NANSEN
+            arguments
+                obj
+                methodId (1,1) string
+                options.Title (1,1) string = ""
+                options.EntityType (1,1) string = "*"
+                options.Description (1,1) string = ""
+                options.BatchMode (1,1) string = "serial"
+                options.Languages (1,:) string = ["python", "matlab"]
+            end
+            if isempty(regexp(methodId, "^[a-z][a-z0-9_]*$", "once"))
+                nansen.internal.throwError("invalid-params", "a project method's id is a lower-case letter, then letters, digits or _")
+            end
+            if options.EntityType ~= "*"
+                obj.entityType(options.EntityType);
+            end
+            if ~ismember(options.BatchMode, ["serial", "batch"])
+                nansen.internal.throwError("invalid-params", "batchMode is serial or batch")
+            end
+            languages = unique(options.Languages, "stable");
+            if isempty(languages) || ~all(ismember(languages, ["python", "matlab"]))
+                nansen.internal.throwError("invalid-params", "languages are python and/or matlab")
+            end
+            title = strjoin(split(strtrim(options.Title))', " ");
+            if title == ""
+                title = methodId;
+            end
+            description = strjoin(split(strtrim(options.Description))', " ");
+            documentPath = string(fullfile(obj.Folder, "methods", methodId + ".method.nansen.json"));
+            paths = documentPath;
+            templates = "";
+            if ismember("python", languages)
+                paths(end + 1) = string(fullfile(obj.Folder, "python", methodId + ".py"));
+                templates(end + 1) = "method.py.template";
+            end
+            if ismember("matlab", languages)
+                paths(end + 1) = string(fullfile(obj.Folder, "matlab", methodId + ".m"));
+                templates(end + 1) = "method.m.template";
+            end
+            existing = paths(isfile(paths));
+            if ~isempty(existing) || ismember(methodId, [obj.entityMethods().Id])
+                if isempty(existing)
+                    what = "a method '" + methodId + "'";
+                else
+                    what = strjoin(erase(replace(existing, "\", "/"), replace(string(obj.Folder), "\", "/") + "/"), ", ");
+                end
+                nansen.internal.throwError("method-exists", "the project already has %s", what)
+            end
+            implementations = struct();
+            if ismember("python", languages)
+                implementations.python = char(methodId + ":run");
+            end
+            if ismember("matlab", languages)
+                implementations.matlab = char(methodId);
+            end
+            entry = nansen.internal.schemaEntry("nansen.method");
+            document = struct("schemaType", 'nansen.method', "schemaVersion", char(entry.version), "id", char(methodId), ...
+                "version", '0.1.0', "title", char(title), "entityType", char(options.EntityType), ...
+                "batchMode", char(options.BatchMode), "implementations", implementations, ...
+                "options", struct("type", 'object', "properties", struct()));
+            if description ~= ""
+                document.description = char(description);
+            end
+            nansen.checkDocument(document, ExpectedType="nansen.method");
+            batch = options.BatchMode == "batch";
+            if batch
+                argument = "entities";
+                help = "entities are the entities it runs on, all at once (each with .key, .values, .locations, .load(name)).";
+                helpM = "entities is a cell row of the entities it runs on, all at once (each with .Key, .values(), .locations(), .load(name)).";
+            else
+                argument = "entity";
+                help = "entity is the entity it runs on: entity.key, entity.values, entity.locations, entity.load(name).";
+                helpM = "entity is the entity it runs on: entity.Key, entity.values(), entity.locations(), entity.load(name).";
+            end
+            if description == ""
+                shownDescription = title;
+            else
+                shownDescription = description;
+            end
+            tokens = ["__ID__", "__TITLE__", "__DESCRIPTION__", "__ARG_HELP_M__", "__ARG_HELP__", "__ARG__"];
+            values = [methodId, replace(title, """", "'"), shownDescription, helpM, help, argument];
+            for i = 1:numel(paths)
+                folder = fileparts(paths(i));
+                if ~isfolder(folder)
+                    mkdir(folder);
+                end
+                if templates(i) == ""
+                    nansen.internal.writeJson(paths(i), document)
+                    continue
+                end
+                text = string(nansen.internal.readText(fullfile(nansen.internal.repoRoot(), "templates", templates(i))));
+                for k = 1:numel(tokens)
+                    text = replace(text, tokens(k), values(k));
+                end
+                nansen.internal.writeText(paths(i), text);
+            end
+            rehash   % a new file in a folder already on the path is seen at once
+            method = obj.method(methodId);
+        end
+
         function method = method(obj, methodId)
             for candidate = obj.entityMethods()
                 if candidate.Id == string(methodId)

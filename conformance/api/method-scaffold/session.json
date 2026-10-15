@@ -1,0 +1,209 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 2,
+        "params": {
+          "id": "count_frames",
+          "title": "Count  frames",
+          "entityType": "session",
+          "description": "Counts the frames."
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "count_frames",
+          "version": "0.1.0",
+          "title": "Count frames",
+          "entityType": "session",
+          "description": "Counts the frames.",
+          "batchMode": "serial",
+          "languages": [
+            "matlab",
+            "python"
+          ],
+          "module": "project",
+          "files": [
+            "methods/count_frames.method.nansen.json",
+            "matlab/count_frames.m",
+            "python/count_frames.py"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.list",
+        "id": 3,
+        "params": {
+          "entityType": "subject"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "core.file_stats"
+          },
+          {
+            "id": "core.export_keys"
+          },
+          {
+            "id": "core.wait"
+          },
+          {
+            "id": "core.backup"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 4,
+        "params": {
+          "methodId": "count_frames",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {}
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 5,
+        "params": {
+          "path": "python"
+        }
+      },
+      "expect": {
+        "result": {
+          "entries": [
+            {
+              "name": "count_frames.py",
+              "isFolder": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 6,
+        "params": {
+          "id": "count_frames"
+        }
+      },
+      "expect": {
+        "error": "method-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 7,
+        "params": {
+          "id": "core.extra"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 8,
+        "params": {
+          "id": "Count"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 9,
+        "params": {
+          "id": "probe_check",
+          "entityType": "probe"
+        }
+      },
+      "expect": {
+        "error": "unknown-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 10,
+        "params": {
+          "id": "summarize",
+          "batchMode": "batch",
+          "languages": [
+            "python"
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "summarize",
+          "title": "summarize",
+          "entityType": "*",
+          "batchMode": "batch",
+          "languages": [
+            "python"
+          ],
+          "files": [
+            "methods/summarize.method.nansen.json",
+            "python/summarize.py"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 11,
+        "params": {
+          "id": "other",
+          "languages": [
+            "julia"
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    }
+  ]
+}

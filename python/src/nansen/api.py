@@ -623,6 +623,16 @@ class Api:
         project = self._require_project()
         return [m.summary() for m in project.methods(params.get("entityType"))]
 
+    def methods__create(self, params: dict) -> dict:
+        """Start a project method from the templates: its document, and a file to fill in per language."""
+        method = self._require_project().create_method(
+            params["id"], params.get("title", ""), params.get("entityType", "*"), params.get("description", ""),
+            params.get("batchMode", "serial"), params.get("languages", ["python", "matlab"]))
+        self.emit("project", {"name": self.project.name})
+        files = [f"methods/{method.id}.method.nansen.json"] + [
+            f"{language}/{method.id}.{'py' if language == 'python' else 'm'}" for language in method.languages]
+        return dict(method.summary(), files=files)
+
     def presets__list(self, params: dict) -> list:
         return self._require_project().presets(params["methodId"])
 

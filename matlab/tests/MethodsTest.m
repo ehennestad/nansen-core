@@ -62,6 +62,24 @@ classdef MethodsTest < matlab.unittest.TestCase
             testCase.verifyError(@() project.run("core.backup", entities(1)), "nansen:InvalidOptions");   % no destination
         end
 
+        function aMethodStartedFromTheTemplatesRuns(testCase)
+            project = testCase.Project;
+            method = project.createMethod("count_frames", Title="Count frames", EntityType="session", Description="Counts the frames.");
+            testCase.verifyEqual(method.Languages, ["matlab", "python"]);
+            code = string(nansen.internal.readText(fullfile(project.Folder, "matlab", "count_frames.m")));
+            testCase.verifyTrue(startsWith(code, "function result = count_frames(entity, options, context)"));
+            testCase.verifyTrue(isfile(fullfile(project.Folder, "python", "count_frames.py")));
+            entities = project.entities("session");
+            results = project.run("count_frames", entities(1));
+            testCase.verifyEqual(results{1}, struct());
+            testCase.verifyError(@() project.createMethod("count_frames"), "nansen:MethodExists");
+            testCase.verifyError(@() project.createMethod("Count"), "nansen:InvalidParams");
+            batch = project.createMethod("summarize", BatchMode="batch", Languages="matlab");
+            testCase.verifyEqual(batch.Languages, "matlab");
+            testCase.verifyTrue(contains(string(nansen.internal.readText(fullfile(project.Folder, "matlab", "summarize.m"))), ...
+                "function result = summarize(entities, options, context)"));
+        end
+
         function defaultOptionsAndValidation(testCase)
             method = testCase.Project.method("core.wait");
             defaults = method.defaultOptions();

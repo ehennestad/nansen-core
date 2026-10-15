@@ -14,6 +14,17 @@ _PACKAGE_DIR = Path(__file__).resolve().parent
 _BUILT_IN_CANDIDATES = [_PACKAGE_DIR / "builtin_modules", _PACKAGE_DIR.parent.parent.parent / "modules"]
 
 
+_TEMPLATE_CANDIDATES = [_PACKAGE_DIR / "templates", _PACKAGE_DIR.parent.parent.parent / "templates"]
+
+
+def template_text(name: str) -> str:
+    """A template that ships with NANSEN (templates/<name>), as text."""
+    for folder in _TEMPLATE_CANDIDATES:
+        if (folder / name).is_file():
+            return (folder / name).read_text(encoding="utf-8")
+    raise FileNotFoundError(f"NANSEN template {name} not found")
+
+
 def built_in_modules_dir() -> Optional[Path]:
     for candidate in _BUILT_IN_CANDIDATES:
         if candidate.is_dir():

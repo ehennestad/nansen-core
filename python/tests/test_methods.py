@@ -163,3 +163,20 @@ def test_built_in_option_schemas_stay_within_the_matlab_validator():
     for folder in sorted(built_in_modules_dir().iterdir()):
         for method in Module.read(folder).methods():
             assert keywords(method.options_schema, set()) <= MATLAB_KEYWORDS, method.id
+
+
+def test_a_method_started_from_the_templates_runs_and_is_reloaded_when_edited(project):
+    method = project.create_method("count_frames", "Count frames", "session", "Counts the frames.")
+    assert method.languages == ["matlab", "python"]
+    code = project.folder / "python" / "count_frames.py"
+    assert (project.folder / "matlab" / "count_frames.m").read_text().startswith("function result = count_frames(entity, options, context)")
+    assert project.run("count_frames", sessions(project)[:1]) == [{}]
+    code.write_text(code.read_text().replace("return {}", "return {'frames': 42}  # edited"))
+    assert project.run("count_frames", sessions(project)[:1]) == [{"frames": 42}]
+    assert not (project.folder / "python" / "__pycache__").exists()
+    with pytest.raises(NansenError) as error:
+        project.create_method("count_frames", "Again")
+    assert error.value.code == "method-exists"
+    batch = project.create_method("summarize", "", batch_mode="batch", languages=["python"])
+    assert (batch.title, batch.batch_mode, batch.languages) == ("summarize", "batch", ["python"])
+    assert "def run(entities, options, context):" in (project.folder / "python" / "summarize.py").read_text()

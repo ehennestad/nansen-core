@@ -99,6 +99,7 @@ Events flow from the core to the frontend:
 | `modules.remove` | `id` | `project.info`; `module-in-use` while a fragment, data variable or project pipeline of the project uses the module |
 | `data.status` | `entityType`, `key` | `[{name, dataLocation, fileAdapter, files}]` |
 | `methods.list` | `entityType?` | Method summaries, including the options schema |
+| `methods.create` | `id` (a lower-case letter, then letters, digits or `_`), `title?`, `entityType?` (default `*`), `description?`, `batchMode?` (`serial` or `batch`), `languages?` (default both) | The new project method's summary, plus `files`: its document in `methods/` and a file to fill in per language (`python/<id>.py` with `run`, `matlab/<id>.m`), made from the templates in `templates/`. `method-exists` if the id or a file is taken |
 | `methods.run` | `methodId`, `entityType`, `keys?`, `options?`, `preset?` | `{results}`, run in the foreground |
 | `presets.list` / `presets.save` / `presets.delete` | `methodId`, `name`, `values`, `description?` | The method's presets, each with its `source`: `default` (the schema's defaults, always first), `project` (saved in the project; only these can be deleted), or `module` (shipped by the module named in `module`, unless the project has one of the same name) |
 | `pipelines.list` | `entityType?` | Pipeline documents, each step with its method's title, and `source`: `project` or `module` |

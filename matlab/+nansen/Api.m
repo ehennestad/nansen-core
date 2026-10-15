@@ -40,7 +40,7 @@ classdef Api < handle
                 "project.setDataset", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
-                "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
+                "methods.list", "methods.create", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
             for name = names
@@ -714,6 +714,28 @@ classdef Api < handle
             project = obj.requireProject();
             methods = project.entityMethods(string(nansen.internal.getField(params, "entityType", "")));
             result = arrayfun(@(m) m.summary(), methods, UniformOutput=false);
+        end
+
+        function result = apiMethodsCreate(obj, params)
+            % Start a project method from the templates: its document, and a file to fill in per language
+            project = obj.requireProject();
+            languages = string(nansen.internal.asCellstr(nansen.internal.getField(params, "languages", {'python', 'matlab'})));
+            method = project.createMethod(string(nansen.Api.param(params, "id")), ...
+                Title=string(nansen.internal.getField(params, "title", "")), ...
+                EntityType=string(nansen.internal.getField(params, "entityType", "*")), ...
+                Description=string(nansen.internal.getField(params, "description", "")), ...
+                BatchMode=string(nansen.internal.getField(params, "batchMode", "serial")), Languages=languages);
+            obj.emit("project", struct("name", char(project.Name)));
+            result = method.summary();
+            files = {char("methods/" + method.Id + ".method.nansen.json")};
+            for language = method.Languages
+                extension = "m";
+                if language == "python"
+                    extension = "py";
+                end
+                files{end + 1} = char(language + "/" + method.Id + "." + extension); %#ok<AGROW>
+            end
+            result.files = files;
         end
 
         function result = apiMethodsRun(obj, params)

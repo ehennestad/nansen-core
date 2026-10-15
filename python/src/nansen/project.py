@@ -463,6 +463,63 @@ class Project:
                 found.setdefault(method.id, method)
         return [m for m in found.values() if entity_type is None or m.applies_to(entity_type)]
 
+    def create_method(self, method_id: str, title: str, entity_type: str = "*", description: str = "",
+                      batch_mode: str = "serial", languages: Sequence[str] = ("python", "matlab")) -> Method:
+        """Start a method of the project: its document in methods/ and, for each language, a file to fill in
+        (python/<id>.py with run(), matlab/<id>.m), from the templates that ship with NANSEN."""
+        from .modules import template_text
+
+        if not re.match(r"^[a-z][a-z0-9_]*$", method_id or ""):
+            raise NansenError("invalid-params", "a project method's id is a lower-case letter, then letters, digits or _")
+        if entity_type != "*":
+            self.entity_type(entity_type)
+        if batch_mode not in ("serial", "batch"):
+            raise NansenError("invalid-params", "batchMode is serial or batch")
+        languages = list(dict.fromkeys(languages))
+        if not languages or any(language not in ("python", "matlab") for language in languages):
+            raise NansenError("invalid-params", "languages are python and/or matlab")
+        title = " ".join(str(title).split()) or method_id
+        description = " ".join(str(description).split())
+        files = {self.folder / "methods" / f"{method_id}.method.nansen.json": None}
+        if "python" in languages:
+            files[self.folder / "python" / f"{method_id}.py"] = "method.py.template"
+        if "matlab" in languages:
+            files[self.folder / "matlab" / f"{method_id}.m"] = "method.m.template"
+        existing = [str(p.relative_to(self.folder)) for p in files if p.exists()]
+        if existing or any(m.id == method_id for m in self.methods()):
+            raise NansenError("method-exists", f"the project already has {', '.join(existing) or 'a method ' + repr(method_id)}")
+        document = {"schemaType": "nansen.method", "schemaVersion": current_version("nansen.method"), "id": method_id,
+                    "version": "0.1.0", "title": title, "entityType": entity_type, "batchMode": batch_mode,
+                    "implementations": {}, "options": {"type": "object", "properties": {}}}
+        if description:
+            document["description"] = description
+        if "python" in languages:
+            document["implementations"]["python"] = f"{method_id}:run"
+        if "matlab" in languages:
+            document["implementations"]["matlab"] = method_id
+        check_document(document, "nansen.method")
+        batch = batch_mode == "batch"
+        replacements = {
+            "__ID__": method_id, "__TITLE__": title.replace('"', "'"),
+            "__DESCRIPTION__": description or title,
+            "__ARG__": "entities" if batch else "entity",
+            "__ARG_HELP__": ("entities are the entities it runs on, all at once" if batch else "entity is the entity it runs on")
+            + (" (each with .key, .values, .locations, .load(name))." if batch else ": entity.key, entity.values, entity.locations, entity.load(name)."),
+            "__ARG_HELP_M__": ("entities is a cell row of the entities it runs on, all at once" if batch else "entity is the entity it runs on")
+            + (" (each with .Key, .values(), .locations(), .load(name))." if batch else ": entity.Key, entity.values(), entity.locations(), entity.load(name)."),
+        }
+        for path, template in files.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if template is None:
+                write_json(path, document)
+                continue
+            text = template_text(template)
+            for token, value in replacements.items():
+                text = text.replace(token, value)
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+        return self.method(method_id)
+
     def method(self, method_id: str) -> Method:
         for method in self.methods():
             if method.id == method_id:

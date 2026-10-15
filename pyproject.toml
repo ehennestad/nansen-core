@@ -35,9 +35,10 @@ packages = ["python/src/nansen"]
 "schema" = "nansen/schemas"
 "modules" = "nansen/builtin_modules"
 "ui" = "nansen/ui"
+"templates" = "nansen/templates"
 
 [tool.hatch.build.targets.sdist]
-include = ["python", "schema", "modules", "ui", "conformance", "docs", "README.md", "LICENSE", "CHANGELOG.md"]
+include = ["python", "schema", "modules", "ui", "templates", "conformance", "docs", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["python/tests"]

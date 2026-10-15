@@ -1,0 +1,13 @@
+"""__TITLE__: a method of this project. NANSEN made this file as a starting point; change it as you need."""
+
+
+def run(__ARG__, options, context):
+    """__DESCRIPTION__
+
+    __ARG_HELP__
+    options holds the values of the options declared in methods/__ID__.method.nansen.json.
+    context.project is the project; context.log(text), context.progress(fraction, text) and
+    context.check_cancelled() report back to the task queue.
+    """
+    context.log("__TITLE__: nothing done yet")
+    return {}

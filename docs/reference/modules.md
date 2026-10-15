@@ -81,6 +81,8 @@ The context gives the project, `log`, `progress(fraction, message)` and cancella
 
 Run a method now with `project.run(methodId, entities, Options=…, Preset=…)` / `project.run(method_id, entities, options=…, preset=…)`, or queue it as a task (below).
 
+A project's own methods are documents in `methods/`, with code in `python/` and `matlab/`. Start one with `methods.create` (or `project.createMethod` / `project.create_method`, or the Methods card on the Data page): it writes the document and, per language, a file with an empty function to fill in, from `templates/`. Python code is imported again when its file changes, so an edited method runs without a restart, and no `__pycache__` is written next to it.
+
 **Presets** are named option sets saved in `options/<methodId>/<name>.options.nansen.json` (`nansen.options`). Use `savePreset` / `save_preset`, `presets` and `deletePreset` / `delete_preset`, or the run dialog. A module can ship presets too, listed under `presets` in `module.nansen.json`; they come after the project's own, and a project preset of the same name is used instead. Only the project's presets can be deleted. The `default` preset is always the method's schema defaults.
 
 ## Columns with choices

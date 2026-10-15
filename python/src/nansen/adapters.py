@@ -168,10 +168,20 @@ def _import_from(root: Path, module_name: str):
     if not path.is_file():
         raise FileNotFoundError(f"{path} does not exist")
     private = "nansen_plugins._" + hashlib.sha1(str(path.resolve()).encode()).hexdigest()[:12] + "." + module_name
-    if private in sys.modules:
-        return sys.modules[private]
+    # Imported again when the file changes, so an edited method is used without a restart; and compiled
+    # here, so no __pycache__ is written into the project or module folder.
+    info = path.stat()
+    signature = (info.st_mtime_ns, info.st_size)
+    module = sys.modules.get(private)
+    if module is not None and getattr(module, "__nansen_signature__", None) == signature:
+        return module
     spec = importlib.util.spec_from_file_location(private, path)
     module = importlib.util.module_from_spec(spec)
+    module.__nansen_signature__ = signature
     sys.modules[private] = module
-    spec.loader.exec_module(module)
+    try:
+        exec(compile(path.read_bytes(), str(path), "exec"), module.__dict__)
+    except BaseException:
+        sys.modules.pop(private, None)
+        raise
     return module

@@ -1,0 +1,4 @@
+{
+  "description": "Starting a project method from the templates: the method document and a file per language are written, the method is listed and runs as it is (it returns nothing yet), and an id that is taken, prefixed or not lower case, an unknown entity type or language are refused.",
+  "steps": 11
+}

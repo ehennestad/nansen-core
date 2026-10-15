@@ -1139,7 +1139,8 @@
           h("div.card", h("div.card-head", N.icon("columns"), h("h3", "Fragments")),
             h("ul.list", fragments.map((f) => h("li", h("div.grow", h("div.title", f.title, f.computed ? h("span.pill.accent", { style: { marginLeft: "8px" } }, "computed") : null),
               h("div.sub", `${f.id} ${f.version} · ${f.columns.map((c) => c.name).join(", ")}`)))))),
-          h("div.card", h("div.card-head", N.icon("zap"), h("h3", "Methods")),
+          h("div.card.methods-card", h("div.card-head", N.icon("zap"), h("h3", "Methods"), h("div.spacer"),
+            h("button.btn.small.new-method", { on: { click: () => newMethodDialog(app) } }, N.icon("plus", 14), "New method")),
             h("ul.list", methods.map((m) => h("li", h("div.grow", h("div.title", m.title), h("div.sub", `${m.id} · ${m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)))))))));
   };
 
@@ -1302,6 +1303,35 @@
       ],
     });
     loadOptions(true);
+  }
+
+  /* Start a project method: its document and a file per language to fill in. */
+  function newMethodDialog(app) {
+    const types = app.project.entityTypes.map((t) => t.name);
+    formDialog({
+      title: "New method",
+      intro: "NANSEN writes the method's document into methods/ and an empty function for each language, in the project's python/ and matlab/ folders. Fill in the function, and add options to the document; the method is then in the run dialog.",
+      label: "Create",
+      required: ["id"],
+      schema: { type: "object", properties: {
+        id: { type: "string", title: "Id", description: "A lower-case letter, then letters, digits or _; also the file and function name", pattern: "^[a-z][a-z0-9_]*$" },
+        title: { type: "string", title: "Title" },
+        entityType: { type: "string", title: "Runs on", enum: ["*", ...types], default: types[types.length - 1] || "*" },
+        batchMode: { type: "string", title: "Runs", enum: ["serial", "batch"], default: "serial", description: "serial: once per entity; batch: once with all of them" },
+        python: { type: "boolean", title: "Python", default: true },
+        matlab: { type: "boolean", title: "MATLAB", default: true },
+        description: { type: "string", title: "Description" },
+      } },
+      submit: async (values) => {
+        const languages = ["python", "matlab"].filter((l) => values[l]);
+        if (!languages.length) throw new Error("Choose Python, MATLAB or both");
+        const result = await app.client.request("methods.create", { id: values.id, title: values.title || "",
+          entityType: values.entityType, batchMode: values.batchMode, description: values.description || "", languages });
+        await app.reloadProject();
+        app.render();
+        N.toast("Method created", result.files.join(" · "), "success", 7000);
+      },
+    });
   }
 
   /* The DSM config as text. DSM checks it before it is written, so a config it refuses is never kept. */

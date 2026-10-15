@@ -105,6 +105,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `module-mismatch` | The folder of a listed module holds a different module |
 | `module-in-use` | A module cannot be removed while the project uses its fragments, file adapters or methods |
 | `unknown-method` | No method has that id |
+| `method-exists` | The project has a method of that id, or a file a new method would be written to |
 | `method-unavailable` | The method has no implementation in this language |
 | `wrong-entity-type` | The method runs on another entity type |
 | `invalid-options` | Options or a preset do not fit the method's options schema |
