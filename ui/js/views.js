@@ -1353,6 +1353,15 @@
           h("span.dot." + (p.available ? "good" : "bad")),
           h("div.grow", h("div.title", p.title || p.name), h("div.sub.mono", p.path)),
           h("span.muted", p.lastOpened ? N.fmt.ago(p.lastOpened) : ""),
+          p.available ? null : h("button.btn.small.locate-project", { title: "The folder is gone: say where the project is now", on: { click: async () => {
+            const newPath = await N.prompt(`Where is ${p.title || p.name} now?`, "Project folder", p.path);
+            if (!newPath || newPath === p.path) return;
+            try {
+              await app.client.request("catalog.relocate", { path: p.path, newPath });
+              N.toast("Project found", newPath, "success");
+              N.views.projects(app, content);
+            } catch (error) { N.showError(error, "Could not use that folder"); }
+          } } }, N.icon("search", 14), "Locate…"),
           h("button.btn.small" + (p.available ? ".primary" : ""), { disabled: !p.available, on: { click: () => open(p.path) } }, "Open"),
           h("button.btn.small.ghost.icon", { title: "Forget", on: { click: async () => { await app.client.request("catalog.remove", { path: p.path }).catch(N.showError); N.views.projects(app, content); } } }, N.icon("x", 14))))) :
           h("div.empty", N.icon("folder", 40), h("h3", "No projects yet"), h("div", "Create one above, or open a project folder.")))));

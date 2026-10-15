@@ -164,6 +164,26 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyFalse(api.StartQueue);   % a plain Api never starts a worker; nansen.App sets it from the setting
         end
 
+        function aMovedProjectIsLocatedAgain(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));
+            call = @(method, params) api.handle(struct("id", 1, "method", method, "params", params));
+            call("project.create", struct("path", fullfile(fixture.Folder, "pilot"), "name", "Pilot"));
+            call("project.create", struct("path", fullfile(fixture.Folder, "other"), "name", "Other"));
+            delete(api);
+            api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));
+            call = @(method, params) api.handle(struct("id", 1, "method", method, "params", params));
+            movefile(fullfile(fixture.Folder, "pilot"), fullfile(fixture.Folder, "moved"));
+            projects = call("catalog.list", struct()).result;
+            entry = projects{cellfun(@(p) string(p.name) == "Pilot", projects)};
+            testCase.verifyFalse(entry.available);
+            response = call("catalog.relocate", struct("path", entry.path, "newPath", fullfile(fixture.Folder, "other")));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+            projects = call("catalog.relocate", struct("path", entry.path, "newPath", fullfile(fixture.Folder, "moved"))).result;
+            moved = projects{cellfun(@(p) string(p.name) == "Pilot", projects)};
+            testCase.verifyTrue(moved.available);
+        end
+
         function catalogListsTheLastOpenedFirstWithinOneSecond(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));

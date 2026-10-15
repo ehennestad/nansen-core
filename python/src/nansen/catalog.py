@@ -79,6 +79,29 @@ class Catalog:
         self._write(document)
         return entry
 
+    def relocate(self, path: PathLike, new_path: PathLike) -> dict:
+        """Point an entry at the folder its project was moved to; the project there must have the entry's name."""
+        from .documents import read_document
+
+        document = self._read()
+        path = str(Path(path).resolve())
+        entry = next((p for p in document["projects"] if p["path"] == path), None)
+        if entry is None:
+            raise NansenError("unknown-project", f"{path} is not in the catalog")
+        new_path = str(Path(new_path).expanduser().resolve())
+        project_file = Path(new_path) / "project.nansen.json"
+        if not project_file.is_file():
+            raise NansenError("file-not-found", f"{new_path} holds no project.nansen.json")
+        found = read_document(project_file, "nansen.project")
+        if found["name"] != entry["name"]:
+            raise NansenError("invalid-params", f"{new_path} holds project {found['name']!r}, not {entry['name']!r}")
+        document["projects"] = [p for p in document["projects"] if p["path"] != new_path]
+        for p in document["projects"]:
+            if p["path"] == path:
+                p["path"] = new_path
+        self._write(document)
+        return next(p for p in document["projects"] if p["path"] == new_path)
+
     def remove(self, path: PathLike) -> None:
         document = self._read()
         path = str(Path(path).resolve())

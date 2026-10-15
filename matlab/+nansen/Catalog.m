@@ -91,6 +91,34 @@ classdef Catalog
             obj.write(document)
         end
 
+        function entry = relocate(obj, path, newPath)
+            %relocate Point an entry at the folder its project was moved to; the project there must have the entry's name
+            document = obj.read();
+            path = nansen.Catalog.absolute(path);
+            entries = nansen.internal.asCellOfStructs(document.projects);
+            index = find(cellfun(@(p) string(p.path) == path, entries), 1);
+            if isempty(index)
+                nansen.internal.throwError("unknown-project", "%s is not in the catalog", path)
+            end
+            newPath = nansen.Catalog.absolute(newPath);
+            projectFile = fullfile(newPath, "project.nansen.json");
+            if ~isfile(projectFile)
+                nansen.internal.throwError("file-not-found", "%s holds no project.nansen.json", newPath)
+            end
+            found = nansen.readDocument(projectFile, ExpectedType="nansen.project");
+            if string(found.name) ~= string(entries{index}.name)
+                nansen.internal.throwError("invalid-params", "%s holds project '%s', not '%s'", newPath, found.name, entries{index}.name)
+            end
+            entries{index}.path = char(newPath);
+            keep = true(1, numel(entries));
+            for i = 1:numel(entries)
+                keep(i) = i == index || string(entries{i}.path) ~= newPath;
+            end
+            entry = entries{index};
+            document.projects = entries(keep);
+            obj.write(document)
+        end
+
         function remove(obj, path)
             document = obj.read();
             path = nansen.Catalog.absolute(path);

@@ -214,6 +214,13 @@ class Api:
             raise NansenError("no-catalog", "this app has no project catalog to keep settings in")
         return self.catalog.save_settings(params["settings"])
 
+    def catalog__relocate(self, params: dict) -> list:
+        """A project was moved: point its entry at the new folder."""
+        if self.catalog is None:
+            raise NansenError("no-catalog", "this app has no project catalog")
+        self.catalog.relocate(params["path"], params["newPath"])
+        return self.catalog.projects()
+
     def catalog__remove(self, params: dict) -> list:
         if self.catalog is None:
             raise NansenError("no-catalog", "this app has no project catalog")

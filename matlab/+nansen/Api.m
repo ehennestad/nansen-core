@@ -39,7 +39,7 @@ classdef Api < handle
             end
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
-            names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
+            names = ["app.info", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "data.send", "modules.list", "modules.add", "modules.remove", ...
@@ -175,6 +175,15 @@ classdef Api < handle
                 nansen.internal.throwError("no-catalog", "this app has no project catalog to keep settings in")
             end
             result = obj.Catalog.saveSettings(nansen.Api.param(params, "settings"));
+        end
+
+        function result = apiCatalogRelocate(obj, params)
+            % A project was moved: point its entry at the new folder
+            if isempty(obj.Catalog)
+                nansen.internal.throwError("no-catalog", "this app has no project catalog")
+            end
+            obj.Catalog.relocate(string(nansen.Api.param(params, "path")), string(nansen.Api.param(params, "newPath")));
+            result = obj.Catalog.projects();
         end
 
         function result = apiCatalogRemove(obj, params)

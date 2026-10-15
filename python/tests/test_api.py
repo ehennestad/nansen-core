@@ -273,3 +273,23 @@ def test_the_worker_starts_as_the_settings_say(tmp_path):
     finally:
         server.shutdown()
         server.api.close()
+
+
+def test_a_moved_project_is_located_again(tmp_path):
+    import shutil
+
+    catalog = Catalog(tmp_path / "catalog.json")
+    api = Api(catalog=catalog, start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    call("project.create", path=str(tmp_path / "pilot"), name="Pilot")
+    call("project.create", path=str(tmp_path / "other"), name="Other")
+    api.close()
+    shutil.move(str(tmp_path / "pilot"), str(tmp_path / "moved"))
+    entry = next(p for p in call("catalog.list")["result"] if p["name"] == "Pilot")
+    assert entry["available"] is False
+    assert call("catalog.relocate", path=entry["path"], newPath=str(tmp_path / "other"))["error"]["code"] == "invalid-params"
+    assert call("catalog.relocate", path=entry["path"], newPath=str(tmp_path / "nowhere"))["error"]["code"] == "file-not-found"
+    projects = call("catalog.relocate", path=entry["path"], newPath=str(tmp_path / "moved"))["result"]
+    moved = next(p for p in projects if p["name"] == "Pilot")
+    assert moved["available"] is True and moved["path"] == str((tmp_path / "moved").resolve())
+    assert call("catalog.relocate", path=entry["path"], newPath=str(tmp_path / "moved"))["error"]["code"] == "unknown-project"
