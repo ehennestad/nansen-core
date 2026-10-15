@@ -187,6 +187,131 @@
       "expect": {
         "error": "file-not-found"
       }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 15,
+        "params": {
+          "path": "tables"
+        }
+      },
+      "expect": {
+        "result": {
+          "exists": true,
+          "isFolder": true,
+          "truncated": false,
+          "entries": [
+            {
+              "name": "session.csv",
+              "isFolder": false
+            },
+            {
+              "name": "session.table.nansen.json",
+              "isFolder": false
+            },
+            {
+              "name": "subject.csv",
+              "isFolder": false
+            },
+            {
+              "name": "subject.table.nansen.json",
+              "isFolder": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 16,
+        "params": {
+          "path": "fragments/.."
+        }
+      },
+      "expect": {
+        "result": {
+          "entries": [
+            {
+              "name": "fragments",
+              "isFolder": true,
+              "size": null
+            },
+            {
+              "name": "tables",
+              "isFolder": true
+            },
+            {
+              "name": "dataset.dsm.json",
+              "isFolder": false
+            },
+            {
+              "name": "project.nansen.json",
+              "isFolder": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 17,
+        "params": {
+          "path": "tables",
+          "limit": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "truncated": true,
+          "entries": [
+            {
+              "name": "session.csv"
+            },
+            {
+              "name": "session.table.nansen.json"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 18,
+        "params": {
+          "path": "tables/session.csv"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 19,
+        "params": {
+          "path": "no/such/folder"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 20,
+        "params": {
+          "path": "../outside"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
     }
   ]
 }

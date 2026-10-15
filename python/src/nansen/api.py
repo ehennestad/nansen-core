@@ -45,6 +45,8 @@ def open_in_file_browser(folder: Path) -> None:
             raise NansenError("cannot-open", f"could not open {folder}: {error}") from None
 
 
+FILES_LIST_LIMIT = 500  # entries files.list gives at most, unless asked for more
+
 class Api:
     def __init__(self, catalog: Optional[Catalog] = None, project: Optional[Project] = None,
                  executor: str = "thread", start_queue: bool = True):
@@ -419,6 +421,28 @@ class Api:
         if path != base and base not in path.parents:
             raise NansenError("invalid-params", f"{relative!r} is outside {base}")
         return {"path": str(path), "exists": path.exists(), "isFolder": path.is_dir()}
+
+    def files__list(self, params: dict) -> dict:
+        """What a folder holds, as files.resolve finds it: folders first, then files, each by name."""
+        import datetime as dt
+
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        if not resolved["isFolder"]:
+            raise NansenError("invalid-params", f"{resolved['path']} is not a folder")
+        limit = int(params.get("limit", FILES_LIST_LIMIT))
+        entries = []
+        for path in Path(resolved["path"]).iterdir():
+            try:
+                info = path.stat()
+            except OSError:
+                continue  # gone, or a broken link
+            folder = path.is_dir()
+            entries.append({"name": path.name, "isFolder": folder, "size": None if folder else info.st_size,
+                            "modified": dt.datetime.fromtimestamp(info.st_mtime).isoformat(timespec="seconds")})
+        entries.sort(key=lambda e: (not e["isFolder"], e["name"]))
+        return dict(resolved, entries=entries[:limit], truncated=len(entries) > limit)
 
     def files__reveal(self, params: dict) -> dict:
         resolved = self.files__resolve(params)

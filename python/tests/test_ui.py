@@ -586,3 +586,32 @@ def test_hold_reorder_and_change_queued_tasks(empty_app, page):
     wait_until(lambda: api.handle({"id": 7, "method": "tasks.get", "params": {"id": ids[2]}})["result"]["status"] == "completed")
     page.click(f".task[data-id='{ids[0]}'] .release")
     page.wait_for_selector(f".task[data-id='{ids[0]}'] .hold")
+
+
+def test_browse_an_entitys_files(empty_app, page):
+    api = empty_app["api"]
+    from pathlib import Path
+
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    first = api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"][0]
+    detail = api.handle({"id": 3, "method": "entities.get", "params": {"entityType": "session", "key": first["key"]}})["result"]
+    processed = next(loc for loc in detail["locations"] if loc["dataLocationIdentifier"] == "processed")
+    folder = Path(api.handle({"id": 4, "method": "files.resolve", "params": {
+        "dataLocation": "processed", "path": processed["paths"][0]}})["result"]["path"])
+    (folder / "roi").mkdir()
+    (folder / "roi" / "masks.json").write_text("[]")
+
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open .path-list .browse")
+    tree = ".drawer .loc:has(.loc-head:has-text('processed'))"
+    page.locator(f"{tree} .path-list .browse").first.click()
+    page.wait_for_selector(f"{tree} ul.file-tree > li[data-name]")
+    names = page.eval_on_selector_all(f"{tree} .path-list > ul.file-tree > li[data-name]", "els => els.map(e => e.dataset.name)")
+    assert names[0] == "roi" and len(names) > 1  # folders first
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
+    page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='masks.json']")
+    assert "2 B" in page.locator(f"{tree} li[data-name='masks.json'] .size").inner_text()
+    page.locator(f"{tree} .path-list .browse").first.click()  # closes it again
+    page.wait_for_selector(f"{tree} ul.file-tree", state="detached")

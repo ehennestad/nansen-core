@@ -342,6 +342,18 @@ dl.props dd { margin: 0; word-break: break-word; }
 .path-list li { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; padding: 4px 4px 4px 8px; background: var(--surface-3); border-radius: 6px; margin: 4px 0; }
 .path-list .path-text { flex: 1; min-width: 0; word-break: break-all; }
 .path-actions { display: inline-flex; gap: 2px; flex: none; }
+.path-list li.file-tree-host { display: block; }
+ul.file-tree { list-style: none; margin: 0 0 6px 10px; padding: 2px 0 2px 10px; border-left: 1px solid var(--border); font-size: 12.5px; }
+.path-list ul.file-tree { background: none; }
+ul.file-tree > li { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 6px; min-height: 26px; background: none; font-family: inherit; margin: 0; }
+ul.file-tree > li:hover { background: var(--surface-3); }
+ul.file-tree .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.file-tree .size { font-size: 11.5px; flex: none; }
+ul.file-tree .path-actions { opacity: 0; }
+ul.file-tree > li:hover .path-actions { opacity: 1; }
+.tree-toggle { all: unset; cursor: pointer; display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.tree-toggle svg:first-child { transform: rotate(-90deg); transition: transform .15s; flex: none; }
+li.open > .tree-toggle svg:first-child { transform: none; }
 .hero .path { display: flex; align-items: center; gap: 6px; }
 .loc { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
 .loc-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }

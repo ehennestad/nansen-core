@@ -38,7 +38,7 @@ classdef Api < handle
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -447,6 +447,39 @@ classdef Api < handle
             end
             native = replace(path, "/", filesep);
             result = struct("path", char(native), "exists", isfile(native) || isfolder(native), "isFolder", isfolder(native));
+        end
+
+        function result = apiFilesList(obj, params)
+            % What a folder holds, as files.resolve finds it: folders first, then files, each by name
+            result = obj.apiFilesResolve(params);
+            if ~result.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", result.path)
+            end
+            if ~result.isFolder
+                nansen.internal.throwError("invalid-params", "%s is not a folder", result.path)
+            end
+            limit = double(nansen.internal.getField(params, "limit", 500));
+            listing = dir(result.path);
+            listing = listing(~ismember({listing.name}, {'.', '..'}));
+            keys = strings(1, numel(listing));
+            for i = 1:numel(listing)
+                keys(i) = string(double(~listing(i).isdir)) + "/" + string(listing(i).name);   % folders first, then by name
+            end
+            [~, order] = sort(keys);
+            listing = listing(order);
+            entries = cell(1, min(numel(listing), limit));
+            for i = 1:numel(entries)
+                item = listing(i);
+                bytes = item.bytes;
+                if item.isdir
+                    bytes = NaN;   % null
+                end
+                modified = datetime(item.datenum, ConvertFrom="datenum", Format="yyyy-MM-dd'T'HH:mm:ss");
+                entries{i} = struct("name", item.name, "isFolder", logical(item.isdir), "size", bytes, ...
+                    "modified", char(modified));
+            end
+            result.entries = entries;
+            result.truncated = numel(listing) > limit;
         end
 
         function result = apiFilesReveal(obj, params)

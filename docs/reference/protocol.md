@@ -75,6 +75,7 @@ Events flow from the core to the frontend:
 | `entities.add` | `entityType`, `key`, `values?` | The new row |
 | `entities.remove` | `entityType`, `key` | `{removed}` |
 | `files.resolve` | `path` (relative; "" for the folder itself), `dataLocation?`, `rootStoragePath?` | `{path, exists, isFolder}`: the absolute path inside the project folder, or inside the location's root. `invalid-params` for an absolute path or one that leads out with `..` |
+| `files.list` | `path`, `dataLocation?`, `rootStoragePath?`, `limit?` (default 500) | As `files.resolve`, plus `entries[{name, isFolder, size, modified}]` (folders first, then files, each by name; `size` is null for a folder) and `truncated`. `file-not-found` if there is nothing there, `invalid-params` if it is a file |
 | `files.reveal` | as `files.resolve` | The same, after showing the folder (a file's folder) in the system's file browser; `file-not-found` if it does not exist |
 | `views.list` | `entityType` | The entity type's saved views: `[{name, description?, keys?, filters?, hiddenColumns?, search?}]` |
 | `views.save` | `entityType`, `view` | The view, added or put in place of the one of the same name. A filter is `{column, op}` with `op` `in` (`values`), `range` (`min`, `max`), `is` (`value`), `contains` (`text`), `empty` or `notEmpty` |

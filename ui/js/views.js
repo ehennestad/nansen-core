@@ -466,10 +466,42 @@
             N.toast("Path copied", resolved.path, "success");
           } catch (error) { N.showError(error, "Could not copy the path"); }
         } } }, N.icon("copy", 13)));
+      // A folder's contents, read when it is opened; folders open in place
+      const tree = (p) => {
+        const el = h("ul.file-tree", h("li.muted", "Reading…"));
+        app.client.request("files.list", where(p)).then((listing) => {
+          N.fill(el, listing.entries.length ? listing.entries.map((entry) => {
+            const child = p ? `${p}/${entry.name}` : entry.name;
+            if (!entry.isFolder) {
+              return h("li.file-entry", { dataset: { name: entry.name } }, N.icon("file", 13), h("span.name", entry.name),
+                h("span.muted.size", N.fmt.bytes(entry.size)), pathActions(child));
+            }
+            let open = null;
+            const row = h("li.folder-entry", { dataset: { name: entry.name } },
+              h("button.tree-toggle", { title: "Open", on: { click: () => {
+                if (open) { open.remove(); open = null; row.classList.remove("open"); return; }
+                open = tree(child);
+                row.after(open);
+                row.classList.add("open");
+              } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", entry.name)), pathActions(child));
+            return row;
+          }) : h("li.muted", "Empty folder"), listing.truncated ? h("li.muted", `Only the first ${listing.entries.length} are shown`) : null);
+        }).catch((error) => N.fill(el, h("li.muted", error.code === "file-not-found" ? "Not there on this computer" : (error.message || String(error)))));
+        return el;
+      };
+      const browse = (p, li) => h("button.btn.ghost.icon.small.browse", { title: "Show the files", on: { click: () => {
+        const shown = li().nextElementSibling;
+        if (shown && shown.classList.contains("file-tree")) { shown.remove(); return; }
+        li().after(tree(p));
+      } } }, N.icon("list", 13));
       return h("div.loc",
         h("div.loc-head", N.icon("folder", 14), loc.dataLocationIdentifier, h("span.muted", { style: { fontWeight: 400 } }, "· " + loc.rootStoragePathIdentifier),
           loc.isComplete === false ? h("span.pill.warn", "incomplete") : null),
-        h("ul.path-list", (loc.paths || []).map((p) => h("li", h("span.path-text", p), pathActions(p)))),
+        h("ul.path-list", (loc.paths || []).map((p) => {
+          let li = null;
+          li = h("li", h("span.path-text", p), browse(p, () => li), pathActions(p));
+          return li;
+        })),
         files.length ? h("dl.props", { style: { marginTop: "8px" } }, files.map(([name, paths]) => [h("dt", name),
           h("dd", paths.length ? paths.map((p) => h("div.mono", { style: { fontSize: "12px" } }, p.split("/").pop())) : h("span.muted", "none"))])) : null);
     });
