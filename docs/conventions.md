@@ -101,7 +101,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `adapter-unavailable` | The file adapter needs a package that is not installed (for example SciPy for `mat`) |
 | `dependency-missing` | The method needs a package or toolbox that is not installed (for example suite2p for `ophys.suite2p`) |
 | `unknown-addon` | No module of the project declares an add-on of that id |
-| `install-failed` | An add-on could not be installed or removed (the message says why, or how to install it) |
+| `install-failed` | An add-on or a shared project could not be installed or removed (the message says why, or how to install it) |
 | `invalid-data` | A data file is not in the format its file adapter reads |
 | `data-not-found` | The entity has no file for the data variable |
 | `no-file-name` | The data variable has no `fileName`, so it cannot be written |
@@ -126,4 +126,5 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `no-catalog` | The app was started without a project catalog |
 | `no-workspace` | The app was not opened from a workspace that entities can be sent to |
 | `unknown-project` | The project is not in the catalog |
-| `folder-not-empty` | A new project, demo or import needs an empty folder |
+| `folder-not-empty` | A new project, demo, import or installed project needs an empty folder |
+| `not-a-project` | A repository installed as a project holds no `project.nansen.json` |
