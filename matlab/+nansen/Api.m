@@ -613,10 +613,10 @@ classdef Api < handle
             end
             modules = nansen.Module.available(project.Folder);
             ids = string(cellfun(@(m) char(m.Id), modules, UniformOutput=false));
-            for module = project.modules()   % a listed module at its own path
-                if ~ismember(module{1}.Id, ids)
-                    modules{end + 1} = module{1}; %#ok<AGROW>
-                    ids(end + 1) = module{1}.Id; %#ok<AGROW>
+            for module = project.modules()   % a listed module at its own path (a row of nansen.Module)
+                if ~ismember(module.Id, ids)
+                    modules{end + 1} = module; %#ok<AGROW>
+                    ids(end + 1) = module.Id; %#ok<AGROW>
                 end
             end
             result = cell(1, numel(modules));
