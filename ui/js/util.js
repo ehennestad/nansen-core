@@ -87,6 +87,7 @@
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     crosshair: '<circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/>',
+    ruler: '<path d="M3 17 17 3l4 4L7 21z"/><path d="m7 13 2 2M10 10l2 2M13 7l2 2"/>',
     circle: '<circle cx="12" cy="12" r="8"/>',
     merge: '<path d="M7 4v4a5 5 0 0 0 5 5 5 5 0 0 1 5 5v2M17 4v4a5 5 0 0 1-5 5"/>',
     grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/>',

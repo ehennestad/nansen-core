@@ -1523,6 +1523,17 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     box = page.locator(".viewer-canvas").bounding_box()
     at = lambda row, column: (box["x"] + box["width"] * column / 32, box["y"] + box["height"] * row / 32)
 
+    # the ruler: a line dragged across the image, its length in pixels and angle
+    page.click(".viewer-measure")
+    page.mouse.move(*at(4, 2))
+    page.mouse.down()
+    page.mouse.move(*at(4, 12), steps=4)
+    page.mouse.up()
+    wait_until(lambda: abs(float(page.locator(".viewer-measurement").get_attribute("data-length") or 0) - 10) < 0.2)
+    assert page.locator(".viewer-measurement").inner_text().endswith(" px · 0°")
+    page.click(".viewer-measure")   # off: the line goes
+    wait_until(lambda: page.locator(".viewer-measurement").inner_text() == "")
+
     # a polygon: three corners, closed by clicking the first again
     page.click(".viewer-polygon")
     for corner in [(26, 2), (26, 8), (31, 5), (26, 2)]:

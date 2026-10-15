@@ -140,6 +140,9 @@
       if (select.options.length !== count) N.fill(select, Array.from({ length: count }, (_, i) => h("option", { value: i, selected: i === value }, `${label} ${i + 1}`)));
       select.style.display = count > 1 ? "" : "none";
     };
+    // the ruler: drag across the image to measure a distance, as dev's imviewer measurement tool
+    const measureButton = h("button.btn.ghost.icon.small.viewer-measure", { title: "Measure a distance: drag across the image", on: { click: () => setTool(state.tool === "measure" ? null : "measure") } }, N.icon("ruler", 14));
+    const measurement = h("span.viewer-measurement.mono", "");
     const exportButton = h("button.btn.ghost.icon.small.viewer-export", { title: "Export", on: { click: () => exportMenu() } }, N.icon("download", 14));
     const zoomLabel = h("button.btn.ghost.small.viewer-zoom.mono", { title: "Fit the image (double-click it)", style: { display: "none" }, on: { click: () => zoomTo(1) } }, "");
     const status = h("div.viewer-status.muted", "Loading…");
@@ -223,6 +226,18 @@
         ctx.fillStyle = "rgba(255, 210, 60, 0.55)";
         drag.roi.pixels.forEach(([y, x]) => ctx.fillRect(x + drag.dx, y + drag.dy, 1, 1));
       }
+      const line = drag && drag.kind === "measure" ? drag : state.measure;
+      if (line) {
+        ctx.strokeStyle = "rgba(80, 220, 255, 0.95)";
+        ctx.fillStyle = "rgba(80, 220, 255, 0.95)";
+        ctx.lineWidth = 2 * last.width / width;
+        ctx.beginPath();
+        ctx.moveTo(line.from[0], line.from[1]);
+        ctx.lineTo(line.to[0], line.to[1]);
+        ctx.stroke();
+        const dot = 4 * last.width / width;
+        [line.from, line.to].forEach(([x, y]) => ctx.fillRect(x - dot / 2, y - dot / 2, dot, dot));
+      }
       if (state.selection.size > 1 && state.showRois && state.rois) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
         state.rois.filter((r) => state.selection.has(r.id)).forEach((roi) => edge(roi).forEach(([y, x]) => ctx.fillRect(x, y, 1, 1)));
@@ -245,6 +260,8 @@
       const roi = roiAt(Math.floor(py), Math.floor(px));
       if (state.tool === "draw") {
         if (state.rois) state.drag = { kind: "draw", points: [[px, py]] };
+      } else if (state.tool === "measure") {
+        state.drag = { kind: "measure", from: [px, py], to: [px, py] };
       } else if (state.tool) {
         return;   // circle and detect act on the click
       } else if (roi && roi.id === state.selected && !several(event)) {
@@ -257,9 +274,10 @@
     const onMove = (event) => {
       const drag = state.drag;
       if (!drag || !last) return;
-      if (drag.kind === "draw") {
+      if (drag.kind === "draw" || drag.kind === "measure") {
         const [py, px] = pointAt(event);
-        drag.points.push([Math.min(last.width, Math.max(0, px)), Math.min(last.height, Math.max(0, py))]);
+        const point = [Math.min(last.width, Math.max(0, px)), Math.min(last.height, Math.max(0, py))];
+        if (drag.kind === "draw") drag.points.push(point); else { drag.to = point; showMeasurement(drag); }
       } else if (drag.kind === "move") {
         const [y, x] = pixelAt(event);
         drag.dy = y - drag.from[0];
@@ -279,7 +297,11 @@
       state.drag = null;
       stage.classList.remove("panning");
       drawOverlay();
-      if (drag.kind === "draw") {
+      if (drag.kind === "measure") {
+        state.measure = { from: drag.from, to: drag.to };
+        showMeasurement(state.measure);
+        drawOverlay();
+      } else if (drag.kind === "draw") {
         const pixels = N.polygonPixels(drag.points, last.height, last.width);
         if (pixels.length) edit({ add: [{ pixels }] });
         else status.textContent = "Draw around the cell: the ROI is the pixels inside the line";
@@ -293,6 +315,13 @@
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    /** The length of a measured line in pixels (image coordinates), and its angle from the rows. */
+    function showMeasurement(line) {
+      const dx = line.to[0] - line.from[0], dy = line.to[1] - line.from[1];
+      const angle = Math.round(Math.atan2(-dy, dx) * 180 / Math.PI);
+      measurement.textContent = `${Math.hypot(dx, dy).toFixed(1)} px · ${angle}°`;
+      measurement.dataset.length = String(Math.hypot(dx, dy));
+    }
     canvas.addEventListener("click", (event) => {
       if (!last || !state.rois || state.tool !== "polygon") return;
       const [py, px] = pointAt(event);
@@ -360,8 +389,10 @@
       state.polygon = [];
       drawOverlay();
       tools.forEach((b) => b.classList.toggle("active", b.dataset.tool === name));
+      measureButton.classList.toggle("active", name === "measure");
+      if (name !== "measure") { state.measure = null; measurement.textContent = ""; }
       canvas.classList.toggle("adding", name === "circle" || name === "detect");
-      canvas.classList.toggle("drawing", name === "draw" || name === "polygon");
+      canvas.classList.toggle("drawing", name === "draw" || name === "polygon" || name === "measure");
     }
     // Find ROIs: run a segmentation method on this entity from here (dev's roimanager autosegmentation), then show its ROIs
     const findButton = h("button.btn.ghost.icon.small.viewer-find-rois", { title: "Find ROIs with a segmentation method", on: { click: () => findRois() } }, N.icon("zap", 13));
@@ -769,7 +800,7 @@
       h("div.viewer-bar",
         playButton, slider, frameLabel, mode, channelPick, planePick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, exportButton),
+        colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel));

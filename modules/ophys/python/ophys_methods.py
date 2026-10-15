@@ -1190,7 +1190,8 @@ def cnmf(entity, options, context):
         "gSig": [radius, radius], "merge_thr": float(options["mergeThreshold"]), "method_init": "greedy_roi",
         "ssub": 1, "tsub": 1})
     context.log(f"{_name(entity)}: running CNMF on {frames} frames")
-    model = caiman_cnmf.CNMF(n_processes=1, params=parameters, dview=None).fit(images)
+    model = caiman_cnmf.CNMF(n_processes=1, params=parameters, dview=None)
+    model.fit(images)   # returns the model in some versions of CaImAn, None in others
     estimates = model.estimates
     footprints = estimates.A.tocsc()
     rois, kept = [], []
