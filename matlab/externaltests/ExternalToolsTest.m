@@ -64,20 +64,19 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
         end
 
         function [stack, centers] = separateCells()
-            %separateCells 128 x 128 x 600 frames: 12 cells (radius 5) on a 3 x 4 grid, 28 px apart, with
-            %calcium transients on a smooth background
+            %separateCells 128 x 128 x 1000 frames: 12 cells on a 3 x 4 grid, 28 px apart, shaped and active
+            %as in EXTRACT's own simulator (Gaussian profiles, an event per 50 frames at 8 x the noise)
             rng(2);
             sz = 128;
-            frames = 600;
+            frames = 1000;
             [xx, yy] = meshgrid(1:sz, 1:sz);
             stack = repmat(300 + 50 * (xx + yy) / sz, 1, 1, frames);
             [cy, cx] = ndgrid([36, 64, 92], [22, 50, 78, 106]);
             centers = [cy(:), cx(:)] + randi([-2, 2], 12, 2);
             for i = 1:size(centers, 1)
-                spikes = (rand(1, frames) < 0.03) * 600;
-                trace = filter(1, [1, -exp(-1 / 8)], spikes);
-                mask = (yy - centers(i, 1)) .^ 2 + (xx - centers(i, 2)) .^ 2 <= 25;
-                stack = stack + mask .* reshape(trace, 1, 1, []);
+                trace = 80 * filter(1, [1, -exp(-1 / 10)], double(rand(1, frames) < 0.02));
+                shape = exp(-((yy - centers(i, 1)) .^ 2 + (xx - centers(i, 2)) .^ 2) / (2 * 2.5 ^ 2));
+                stack = stack + shape .* reshape(trace, 1, 1, []);
             end
             stack = uint16(max(0, stack + 10 * randn(size(stack))));
         end
@@ -111,8 +110,8 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
         end
 
         function extractFindsTheCells(testCase)
-            % EXTRACT gets a recording of its own: separate cells on a smooth background (on the shared one,
-            % with overlapping cells on a fine texture, it finds about half of them)
+            % EXTRACT gets a recording of its own, like its simulator's: on the shared one's flat, very bright
+            % disks it fits rings around the cells and keeps noise
             [stack, centers] = ExternalToolsTest.separateCells();
             testCase.Project.save(testCase.Session, "TwoPhotonSeries_Corrected", stack);
             testCase.Centers = centers;
@@ -125,7 +124,7 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             for i = 1:size(testCase.Centers, 1)
                 matched = matched + any(vecnorm(centersFound - testCase.Centers(i, :), 2, 2) <= 4);
             end
-            testCase.verifyGreaterThanOrEqual(matched, 8, sprintf("EXTRACT's centres (row, column):%s\ntrue centres:%s", ...
+            testCase.verifyGreaterThanOrEqual(matched, 10, sprintf("EXTRACT's centres (row, column):%s\ntrue centres:%s", ...
                 sprintf(" (%.1f, %.1f)", centersFound.'), sprintf(" (%d, %d)", testCase.Centers.')));
             testCase.verifySize(testCase.Project.load(testCase.Session, "RoiSignals_MeanF", Cached=false), [size(stack, 3), numel(rois)]);
         end
