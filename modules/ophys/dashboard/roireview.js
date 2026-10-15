@@ -2,7 +2,8 @@
  *
  * As dev's classifyMultiSessionRois (with roiclassifier): ophys.align_sessions copies a reference session's
  * ROIs to the others with the same ids, and this page shows each id's crop of every session's FOV image,
- * so an ROI that drifted or vanished is rejected everywhere with one key.
+ * so an ROI that drifted or vanished is rejected everywhere with one key. A double-click on a crop opens that session
+ * in the viewer with the ROI selected, to move, reshape or redraw it there (dev's multi-session editRois).
  */
 "use strict";
 const { h } = N;
@@ -113,9 +114,17 @@ N.registerPage({
           h("td.rr-id", `ROI ${id}`, classificationOf(id) ? [" ", h("span.pill." + (classificationOf(id) === "accepted" ? "good" : "bad"), classificationOf(id))] : null),
           state.sessions.map((s) => {
             const roi = s.rois.find((r) => r.id === id);
-            return h("td", roi ? crop(s.frame, roi, 8) : h("div.rr-missing", "none"));
+            // a double-click edits the ROI in that session's viewer (dev's multi-session editRois); the review reads
+            // the sessions again when the viewer closes
+            return h("td", { title: roi ? "Double-click to edit it in this session" : "", on: { dblclick: () => editIn(s, id) } },
+              roi ? crop(s.frame, roi, 8) : h("div.rr-missing", "none"));
           })))))
         : h("div.empty", h("p.muted", "No session has both variables yet.")));
+    }
+
+    function editIn(session, id) {
+      N.views.stackViewer(app, session.entityType, session.key, state.imageVariable, [state.roiVariable], [],
+        { select: id, mode: "mean", onClose: () => load() });
     }
 
     // An ROI's classification: the one all sessions agree on, or none

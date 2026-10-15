@@ -1434,6 +1434,16 @@ def test_review_rois_across_sessions(empty_app, page):
     for key in (s1, s3):
         document = api.project.load(api.project.entity("session", key), "RoiArray", cached=False)
         assert [r.get("classification") for r in document["rois"]] == [None, "rejected", None]
+    # edit one session's ROI from the review: its viewer opens with the ROI selected
+    load = lambda key: api.project.load(api.project.entity("session", key), "RoiArray", cached=False)["rois"]
+    before = {tuple(k.values()): sorted(map(tuple, load(k)[0]["pixels"])) for k in (s1, s3)}
+    page.locator(".rr-table tr[data-roi='1'] td").nth(2).dblclick()   # ROI 1 in s3
+    page.wait_for_selector(".viewer-dialog .viewer-roi-list li[data-roi='1'].selected")
+    page.keyboard.press("Alt+ArrowDown")
+    wait_until(lambda: sorted(map(tuple, load(s3)[0]["pixels"])) == [(r + 1, c) for r, c in before[("m1", "s3")]])
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+    page.wait_for_selector(".rr-table tbody tr")
+    assert sorted(map(tuple, load(s1)[0]["pixels"])) == before[("m1", "s1")]   # the other session's is as it was
 
 
 def test_install_and_remove_add_ons_from_the_settings_page(empty_app, page, monkeypatch):

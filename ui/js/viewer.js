@@ -109,9 +109,11 @@
 
   /**
    * Open the viewer on a variable of an entity. roiVariables are the entity's variables that hold ROIs, and
-   * signalVariables its signals, shown for the selected ROI.
+   * signalVariables its signals, shown for the selected ROI. options.select is an ROI to select once the ROIs are
+   * read, and options.mode the image to start on ("mean", ...); options.onClose is called when the viewer closes.
    */
-  N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = []) {
+  N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = [], options = {}) {
+    let initial = options.select ?? null;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
       zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [] };
@@ -757,6 +759,11 @@
       try {
         const frame = await app.client.request("data.frame", params);
         if (frame.rois) state.rois = frame.rois;
+        if (initial !== null && state.rois && state.rois.some((r) => r.id === initial)) {
+          const id = initial;
+          initial = null;
+          setTimeout(() => select(id), 0);
+        }
         const resized = !last || last.width !== frame.width || last.height !== frame.height;
         last = frame;
         fillPick(channelPick, frame.channels || 1, "Channel", state.channel);
@@ -805,6 +812,7 @@
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel));
     const dialog = N.dialog({ title: `${variable} · ${N.fmt.key(key)}`, content, onClose: () => {
+      if (options.onClose) options.onClose();
       state.playing = false;
       resizing.disconnect();
       document.removeEventListener("keydown", onKey, true);
@@ -812,6 +820,7 @@
       window.removeEventListener("mouseup", onUp);
     } });
     dialog.el.classList.add("viewer-dialog");
+    if (options.mode) { state.mode = options.mode; mode.value = options.mode; }
     show();
     return dialog;
   };
