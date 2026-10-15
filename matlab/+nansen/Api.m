@@ -40,7 +40,7 @@ classdef Api < handle
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
-                "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
+                "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "data.send", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
@@ -283,6 +283,64 @@ classdef Api < handle
             project = obj.requireProject();
             result = project.excludeFromScan(string(nansen.Api.param(params, "dataLocation")), string(nansen.Api.param(params, "path")));
             obj.reopen(project);
+        end
+
+        function result = apiDatasetTest(obj, params)
+            % What a scan with a candidate DSM config (its text) would find, without keeping anything
+            result = obj.requireProject().testDatasetText(string(nansen.Api.param(params, "text")));
+        end
+
+        function result = apiDatasetSample(obj, params)
+            % Example names at each folder level under a folder: up to limit names per level, from up to limit folders above
+            path = string(nansen.Api.param(params, "path"));
+            if startsWith(path, "~")
+                path = fullfile(char(java.lang.System.getProperty("user.home")), extractAfter(path, 1));
+            end
+            if ~startsWith(path, ["/", "\"]) && isempty(regexp(path, "^[A-Za-z]:", "once"))
+                if isempty(obj.Project)
+                    nansen.internal.throwError("invalid-params", "a relative path needs an open project")
+                end
+                path = fullfile(obj.Project.Folder, path);
+            end
+            path = string(path);
+            if ~isfolder(path)
+                nansen.internal.throwError("file-not-found", "%s is not a folder", path)
+            end
+            depth = double(nansen.internal.getField(params, "depth", 4));
+            limit = double(nansen.internal.getField(params, "limit", 8));
+            levels = {};
+            folders = path;
+            for d = 1:depth
+                names = strings(1, 0);
+                files = 0;
+                nextFolders = strings(1, 0);
+                for f = folders(1:min(limit, numel(folders)))
+                    listing = dir(f);
+                    listing = listing(~ismember({listing.name}, {'.', '..'}));
+                    [~, order] = sort(string({listing.name}));
+                    listing = listing(order);
+                    for k = 1:numel(listing)
+                        if listing(k).isdir
+                            nextFolders(end + 1) = string(fullfile(f, listing(k).name)); %#ok<AGROW>
+                            if ~ismember(string(listing(k).name), names)
+                                names(end + 1) = string(listing(k).name); %#ok<AGROW>
+                            end
+                        else
+                            files = files + 1;
+                        end
+                    end
+                end
+                if isempty(names) && files == 0
+                    break
+                end
+                levels{end + 1} = struct("folders", {cellstr(names(1:min(limit, end)))}, ...
+                    "moreFolders", max(0, numel(names) - limit), "files", files); %#ok<AGROW>
+                folders = nextFolders;
+                if isempty(folders)
+                    break
+                end
+            end
+            result = struct("path", char(path), "levels", {levels});
         end
 
         function result = apiDatasetGet(obj, ~)
@@ -1380,8 +1438,11 @@ classdef Api < handle
 
         function configure(project, params)
             source = string(nansen.internal.getField(params, "datasetSource", ""));
+            text = string(nansen.internal.getField(params, "datasetText", ""));
             if source ~= ""
                 project.setDataset(source);
+            elseif text ~= ""
+                project.setDatasetText(text);
             end
             for module = string(nansen.internal.asCellstr(nansen.internal.getField(params, "modules", {})))
                 project.addModule(module);

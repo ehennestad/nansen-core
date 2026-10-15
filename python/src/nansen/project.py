@@ -329,6 +329,62 @@ class Project:
             raise
         return dataset
 
+    def _parse_dataset_text(self, text: str) -> dict:
+        """A DSM config from its text, as DSM accepts it (dataset-invalid otherwise)."""
+        import dsm
+
+        try:
+            document = json.loads(text)
+        except ValueError as error:
+            raise NansenError("dataset-invalid", f"not valid JSON: {error}") from None
+        if not isinstance(document, dict):
+            raise NansenError("dataset-invalid", "a DSM config is a JSON object")
+        try:
+            dsm.validate_config(document)
+        except dsm.ConfigError as error:
+            raise NansenError("dataset-invalid", str(error)) from None
+        return document
+
+    def set_dataset_text(self, text: str) -> Dataset:
+        """Give a project without a dataset this DSM config, written as dataset.dsm.json as given."""
+        if "dataset" in self.document:
+            raise NansenError("dataset-exists", f"project {self.name!r} already has a dataset")
+        self._parse_dataset_text(text)
+        target = self.folder / "dataset.dsm.json"
+        with open(target, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        self.document["dataset"] = "dataset.dsm.json"
+        self._dataset = None
+        try:
+            dataset = self.require_dataset()
+        except NansenError:
+            del self.document["dataset"]
+            target.unlink()
+            raise
+        self._check_and_save()
+        return dataset
+
+    def test_dataset_text(self, text: str, examples: int = 5) -> Dict[str, Any]:
+        """What a scan with this DSM config would find, without keeping it: counts and examples per entity type,
+        and what it would not match. Relative roots are read from the project folder."""
+        import dsm
+
+        document = self._parse_dataset_text(text)
+        config = dsm.Config(document, source=str(self.folder / "dataset.dsm.json"))
+        dataset = Dataset(config, self.folder, self.environment)
+        scan = dataset.scan()
+        records: Dict[str, int] = {}
+        found: Dict[str, List[dict]] = {}
+        for record in scan.records:
+            records[record["entityType"]] = records.get(record["entityType"], 0) + 1
+            if len(found.setdefault(record["entityType"], [])) < examples:
+                found[record["entityType"]].append(dataset.record_key(record))
+        unmatched = sorted((u for u in scan.unmatched if u.get("reason") != "excluded"),
+                           key=lambda u: (u.get("dataLocationIdentifier") or "", u.get("path") or ""))
+        return {"records": records, "examples": found, "roots": scan.roots, "unmatched": len(unmatched),
+                "unmatchedExamples": [{"dataLocation": u.get("dataLocationIdentifier"), "path": u.get("path", ""),
+                                       "reason": u.get("reason", "")} for u in unmatched[:10]]}
+
     def set_root(self, data_location: str, path: str, environment: Optional[str] = None,
                  root_storage_path: Optional[str] = None) -> Dataset:
         """Say where a data location is: a given root, or the location in this machine's environment or another.

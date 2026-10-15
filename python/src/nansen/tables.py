@@ -171,6 +171,7 @@ class EntityTable:
             new_revision = self.spec.revision + 1
         else:
             new_revision = self.spec.revision
+        path.parent.mkdir(parents=True, exist_ok=True)  # a project file written by hand may have no tables/ yet
         csv_path = path.parent / self.spec.csv_name
         csv_tmp = csv_path.with_name(csv_path.name + ".tmp")
         sidecar_tmp = path.with_name(path.name + ".tmp")

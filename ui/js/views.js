@@ -44,7 +44,9 @@
     })) : h("div.card-body.setup",
       h("p", "This project has no dataset yet. A dataset config (", h("span.mono", "dataset.dsm.json"),
         ") says where the data is and how subjects and sessions are named, so NANSEN can find them."),
-      h("button.btn.primary", { on: { click: () => datasetDialog(app) } }, N.icon("plus"), "Set up the dataset"));
+      h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
+        h("button.btn.primary.describe-data", { on: { click: () => N.datasetWizard(app) } }, N.icon("compass"), "Describe the data folders"),
+        h("button.btn", { on: { click: () => datasetDialog(app) } }, N.icon("plus"), "Use an existing dataset config")));
 
     const recent = tasks.slice(-6).reverse();
     const taskList = recent.length ? h("ul.list", recent.map((task) => h("li", { style: { cursor: "pointer" }, on: { click: () => app.go("#/tasks") } },

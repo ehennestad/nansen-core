@@ -1,0 +1,11 @@
+{
+  "schemaType": "nansen.project",
+  "schemaVersion": "0.1.0",
+  "name": "Study",
+  "entityTypes": [],
+  "modules": [
+    {
+      "id": "core"
+    }
+  ]
+}

@@ -246,6 +246,9 @@ classdef EntityTable < handle
             if sidecarPath == ""
                 error("nansen:EntityTable:NoPath", "No path given and the table was not read from a file")
             end
+            if ~isfolder(fileparts(sidecarPath))
+                mkdir(fileparts(sidecarPath));   % a project file written by hand may have no tables/ yet
+            end
             newRevision = obj.Revision;
             if isfile(sidecarPath)
                 onDisk = nansen.internal.readJson(sidecarPath);

@@ -1,0 +1,4 @@
+{
+  "description": "What the dashboard's dataset wizard relies on: example folder names per level of a data folder, a dry scan with a candidate DSM config (counts, examples and what it would not match, nothing kept), and giving a project without a dataset that config as text, which is kept byte for byte.",
+  "steps": 12
+}

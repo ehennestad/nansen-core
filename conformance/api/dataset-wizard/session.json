@@ -1,0 +1,251 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "Study",
+          "dataset": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.sample",
+        "id": 2,
+        "params": {
+          "path": "data",
+          "depth": 4,
+          "limit": 8
+        }
+      },
+      "expect": {
+        "result": {
+          "levels": [
+            {
+              "folders": [
+                "notes",
+                "sub-m1",
+                "sub-m2"
+              ],
+              "moreFolders": 0,
+              "files": 0
+            },
+            {
+              "folders": [
+                "ses-1",
+                "ses-2"
+              ],
+              "moreFolders": 0,
+              "files": 1
+            },
+            {
+              "folders": [],
+              "moreFolders": 0,
+              "files": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.sample",
+        "id": 3,
+        "params": {
+          "path": "data",
+          "limit": 1
+        }
+      },
+      "expect": {
+        "result": {
+          "levels": [
+            {
+              "folders": [
+                "notes"
+              ],
+              "moreFolders": 2,
+              "files": 0
+            },
+            {
+              "folders": [],
+              "files": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.sample",
+        "id": 4,
+        "params": {
+          "path": "no/such/folder"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.test",
+        "id": 5,
+        "params": {
+          "text": "{\n  \"schemaVersion\": \"0.1.0\",\n  \"entityTypes\": [\n    {\n      \"name\": \"subject\",\n      \"identifierRef\": \"subject_id\",\n      \"isPrimary\": true\n    },\n    {\n      \"name\": \"session\",\n      \"identifierRef\": \"session_id\"\n    }\n  ],\n  \"metadataDefinitions\": {\n    \"subject_id\": {\n      \"name\": \"subject_id\",\n      \"title\": \"Subject Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"subject\"\n    },\n    \"session_id\": {\n      \"name\": \"session_id\",\n      \"title\": \"Session Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"session\"\n    }\n  },\n  \"dataLocations\": [\n    {\n      \"identifier\": \"raw\",\n      \"displayName\": \"Raw data\",\n      \"dataCategory\": \"raw\",\n      \"access\": \"read\",\n      \"sourceType\": \"filesystem\",\n      \"filesystemSource\": {\n        \"rootStoragePaths\": [\n          {\n            \"identifier\": \"local\",\n            \"path\": \"data\"\n          }\n        ],\n        \"entityLayout\": [\n          {\n            \"name\": \"subjects\",\n            \"entityType\": \"subject\",\n            \"matchPattern\": \"^sub\\\\-.+?$\"\n          },\n          {\n            \"name\": \"sessions\",\n            \"entityType\": \"session\",\n            \"matchPattern\": \"^ses\\\\-.+?$\"\n          }\n        ],\n        \"metadataMapping\": [\n          {\n            \"metadataRef\": \"subject_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^sub\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 0\n            }\n          },\n          {\n            \"metadataRef\": \"session_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^ses\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 1\n            }\n          }\n        ]\n      }\n    }\n  ],\n  \"entityRelationships\": [\n    {\n      \"sourceEntity\": \"subject\",\n      \"targetEntity\": \"session\",\n      \"relationType\": \"oneToMany\",\n      \"relationName\": \"hasSessions\"\n    }\n  ]\n}\n"
+        }
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 2,
+            "session": 3
+          },
+          "examples": {
+            "subject": [
+              {
+                "subject_id": "m1"
+              },
+              {
+                "subject_id": "m2"
+              }
+            ],
+            "session": [
+              {
+                "subject_id": "m1",
+                "session_id": "1"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "2"
+              },
+              {
+                "subject_id": "m2",
+                "session_id": "1"
+              }
+            ]
+          },
+          "unmatched": 1,
+          "unmatchedExamples": [
+            {
+              "dataLocation": "raw",
+              "path": "notes/"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.test",
+        "id": 6,
+        "params": {
+          "text": "{\n  \"schemaVersion\": \"0.1.0\",\n  \"entityTypes\": [\n    {\n      \"name\": \"subject\",\n      \"identifierRef\": \"subject_id\",\n      \"isPrimary\": true\n    },\n    {\n      \"name\": \"session\",\n      \"identifierRef\": \"session_id\"\n    }\n  ],\n  \"metadataDefinitions\": {\n    \"subject_id\": {\n      \"name\": \"subject_id\",\n      \"title\": \"Subject Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"subject\"\n    },\n    \"session_id\": {\n      \"name\": \"session_id\",\n      \"title\": \"Session Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"session\"\n    }\n  },\n  \"dataLocations\": [\n    {\n      \"identifier\": \"raw\",\n      \"displayName\": \"Raw data\",\n      \"access\": \"read\",\n      \"sourceType\": \"filesystem\",\n      \"filesystemSource\": {\n        \"rootStoragePaths\": [\n          {\n            \"identifier\": \"local\",\n            \"path\": \"data\"\n          }\n        ],\n        \"entityLayout\": [\n          {\n            \"name\": \"subjects\",\n            \"entityType\": \"subject\",\n            \"matchPattern\": \"^sub\\\\-.+?$\"\n          },\n          {\n            \"name\": \"sessions\",\n            \"entityType\": \"session\",\n            \"matchPattern\": \"^ses\\\\-.+?$\"\n          }\n        ],\n        \"metadataMapping\": [\n          {\n            \"metadataRef\": \"subject_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^sub\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 0\n            }\n          },\n          {\n            \"metadataRef\": \"session_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^ses\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 1\n            }\n          }\n        ]\n      }\n    }\n  ],\n  \"entityRelationships\": [\n    {\n      \"sourceEntity\": \"subject\",\n      \"targetEntity\": \"session\",\n      \"relationType\": \"oneToMany\",\n      \"relationName\": \"hasSessions\"\n    }\n  ]\n}\n"
+        }
+      },
+      "expect": {
+        "error": "dataset-invalid"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.test",
+        "id": 7,
+        "params": {
+          "text": "{"
+        }
+      },
+      "expect": {
+        "error": "dataset-invalid"
+      }
+    },
+    {
+      "request": {
+        "method": "project.info",
+        "id": 8,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "dataset": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.setDataset",
+        "id": 9,
+        "params": {
+          "datasetText": "{\n  \"schemaVersion\": \"0.1.0\",\n  \"entityTypes\": [\n    {\n      \"name\": \"subject\",\n      \"identifierRef\": \"subject_id\",\n      \"isPrimary\": true\n    },\n    {\n      \"name\": \"session\",\n      \"identifierRef\": \"session_id\"\n    }\n  ],\n  \"metadataDefinitions\": {\n    \"subject_id\": {\n      \"name\": \"subject_id\",\n      \"title\": \"Subject Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"subject\"\n    },\n    \"session_id\": {\n      \"name\": \"session_id\",\n      \"title\": \"Session Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"session\"\n    }\n  },\n  \"dataLocations\": [\n    {\n      \"identifier\": \"raw\",\n      \"displayName\": \"Raw data\",\n      \"dataCategory\": \"raw\",\n      \"access\": \"read\",\n      \"sourceType\": \"filesystem\",\n      \"filesystemSource\": {\n        \"rootStoragePaths\": [\n          {\n            \"identifier\": \"local\",\n            \"path\": \"data\"\n          }\n        ],\n        \"entityLayout\": [\n          {\n            \"name\": \"subjects\",\n            \"entityType\": \"subject\",\n            \"matchPattern\": \"^sub\\\\-.+?$\"\n          },\n          {\n            \"name\": \"sessions\",\n            \"entityType\": \"session\",\n            \"matchPattern\": \"^ses\\\\-.+?$\"\n          }\n        ],\n        \"metadataMapping\": [\n          {\n            \"metadataRef\": \"subject_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^sub\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 0\n            }\n          },\n          {\n            \"metadataRef\": \"session_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^ses\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 1\n            }\n          }\n        ]\n      }\n    }\n  ],\n  \"entityRelationships\": [\n    {\n      \"sourceEntity\": \"subject\",\n      \"targetEntity\": \"session\",\n      \"relationType\": \"oneToMany\",\n      \"relationName\": \"hasSessions\"\n    }\n  ]\n}\n",
+          "entityTypes": true
+        }
+      },
+      "expect": {
+        "result": {
+          "entityTypes": [
+            {
+              "name": "subject"
+            },
+            {
+              "name": "session"
+            }
+          ],
+          "dataset": {
+            "locations": [
+              {
+                "id": "raw"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 10,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 2,
+            "session": 3
+          },
+          "unmatched": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.setDataset",
+        "id": 11,
+        "params": {
+          "datasetText": "{\n  \"schemaVersion\": \"0.1.0\",\n  \"entityTypes\": [\n    {\n      \"name\": \"subject\",\n      \"identifierRef\": \"subject_id\",\n      \"isPrimary\": true\n    },\n    {\n      \"name\": \"session\",\n      \"identifierRef\": \"session_id\"\n    }\n  ],\n  \"metadataDefinitions\": {\n    \"subject_id\": {\n      \"name\": \"subject_id\",\n      \"title\": \"Subject Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"subject\"\n    },\n    \"session_id\": {\n      \"name\": \"session_id\",\n      \"title\": \"Session Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"session\"\n    }\n  },\n  \"dataLocations\": [\n    {\n      \"identifier\": \"raw\",\n      \"displayName\": \"Raw data\",\n      \"dataCategory\": \"raw\",\n      \"access\": \"read\",\n      \"sourceType\": \"filesystem\",\n      \"filesystemSource\": {\n        \"rootStoragePaths\": [\n          {\n            \"identifier\": \"local\",\n            \"path\": \"data\"\n          }\n        ],\n        \"entityLayout\": [\n          {\n            \"name\": \"subjects\",\n            \"entityType\": \"subject\",\n            \"matchPattern\": \"^sub\\\\-.+?$\"\n          },\n          {\n            \"name\": \"sessions\",\n            \"entityType\": \"session\",\n            \"matchPattern\": \"^ses\\\\-.+?$\"\n          }\n        ],\n        \"metadataMapping\": [\n          {\n            \"metadataRef\": \"subject_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^sub\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 0\n            }\n          },\n          {\n            \"metadataRef\": \"session_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^ses\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 1\n            }\n          }\n        ]\n      }\n    }\n  ],\n  \"entityRelationships\": [\n    {\n      \"sourceEntity\": \"subject\",\n      \"targetEntity\": \"session\",\n      \"relationType\": \"oneToMany\",\n      \"relationName\": \"hasSessions\"\n    }\n  ]\n}\n"
+        }
+      },
+      "expect": {
+        "error": "dataset-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.get",
+        "id": 12,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "path": "dataset.dsm.json",
+          "text": "{\n  \"schemaVersion\": \"0.1.0\",\n  \"entityTypes\": [\n    {\n      \"name\": \"subject\",\n      \"identifierRef\": \"subject_id\",\n      \"isPrimary\": true\n    },\n    {\n      \"name\": \"session\",\n      \"identifierRef\": \"session_id\"\n    }\n  ],\n  \"metadataDefinitions\": {\n    \"subject_id\": {\n      \"name\": \"subject_id\",\n      \"title\": \"Subject Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"subject\"\n    },\n    \"session_id\": {\n      \"name\": \"session_id\",\n      \"title\": \"Session Id\",\n      \"dataType\": \"string\",\n      \"ofEntity\": \"session\"\n    }\n  },\n  \"dataLocations\": [\n    {\n      \"identifier\": \"raw\",\n      \"displayName\": \"Raw data\",\n      \"dataCategory\": \"raw\",\n      \"access\": \"read\",\n      \"sourceType\": \"filesystem\",\n      \"filesystemSource\": {\n        \"rootStoragePaths\": [\n          {\n            \"identifier\": \"local\",\n            \"path\": \"data\"\n          }\n        ],\n        \"entityLayout\": [\n          {\n            \"name\": \"subjects\",\n            \"entityType\": \"subject\",\n            \"matchPattern\": \"^sub\\\\-.+?$\"\n          },\n          {\n            \"name\": \"sessions\",\n            \"entityType\": \"session\",\n            \"matchPattern\": \"^ses\\\\-.+?$\"\n          }\n        ],\n        \"metadataMapping\": [\n          {\n            \"metadataRef\": \"subject_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^sub\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 0\n            }\n          },\n          {\n            \"metadataRef\": \"session_id\",\n            \"extraction\": {\n              \"method\": \"regex\",\n              \"pattern\": \"^ses\\\\-(.+?)$\",\n              \"entityLayoutLevel\": 1\n            }\n          }\n        ]\n      }\n    }\n  ],\n  \"entityRelationships\": [\n    {\n      \"sourceEntity\": \"subject\",\n      \"targetEntity\": \"session\",\n      \"relationType\": \"oneToMany\",\n      \"relationName\": \"hasSessions\"\n    }\n  ]\n}\n"
+        }
+      }
+    }
+  ]
+}

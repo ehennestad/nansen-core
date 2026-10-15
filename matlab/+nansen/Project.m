@@ -321,6 +321,94 @@ classdef Project < handle
             result = struct("dataLocation", char(dataLocation), "level", char(levelName), "pattern", char(pattern));
         end
 
+        function document = parseDatasetText(~, text)
+            %parseDatasetText A DSM config from its text, as DSM accepts it (dataset-invalid otherwise)
+            try
+                document = jsondecode(char(text));
+            catch err
+                nansen.internal.throwError("dataset-invalid", "not valid JSON: %s", err.message)
+            end
+            if ~isstruct(document) || ~isscalar(document)
+                nansen.internal.throwError("dataset-invalid", "a DSM config is a JSON object")
+            end
+            try
+                dsm.validateConfig(document);
+            catch err
+                if isa(err, "dsm.ConfigError")
+                    nansen.internal.throwError("dataset-invalid", "%s", err.message)
+                end
+                rethrow(err)
+            end
+        end
+
+        function dataset = setDatasetText(obj, text)
+            %setDatasetText Give a project without a dataset this DSM config, written as dataset.dsm.json as given
+            if isfield(obj.Document, "dataset")
+                nansen.internal.throwError("dataset-exists", "project '%s' already has a dataset", obj.Name)
+            end
+            obj.parseDatasetText(text);
+            target = fullfile(obj.Folder, "dataset.dsm.json");
+            nansen.internal.writeText(target, string(text));
+            document = obj.Document;
+            document.dataset = 'dataset.dsm.json';
+            previous = obj.Document;
+            obj.Document = document;
+            obj.DatasetCache = [];
+            try
+                dataset = obj.requireDataset();
+            catch err
+                obj.Document = previous;
+                obj.DatasetCache = [];
+                delete(target);
+                rethrow(err)
+            end
+            obj.writeDocument(document);
+        end
+
+        function result = testDatasetText(obj, text, examples)
+            %testDatasetText What a scan with this DSM config would find, without keeping it
+            %
+            %   Counts and examples per entity type, and what it would not match.
+            %   Relative roots are read from the project folder.
+            arguments
+                obj
+                text
+                examples (1,1) double = 5
+            end
+            document = obj.parseDatasetText(text);
+            config = dsm.Config(document, string(fullfile(obj.Folder, "dataset.dsm.json")));
+            dataset = nansen.Dataset(config, obj.Folder, obj.Environment);
+            scan = dataset.scan([]);
+            records = struct();
+            found = struct();
+            for i = 1:numel(scan.Records)
+                record = scan.Records{i};
+                type = string(record.entityType);
+                records.(type) = nansen.internal.getField(records, type, 0) + 1;
+                shown = nansen.internal.getField(found, type, {});
+                if numel(shown) < examples
+                    shown{end + 1} = dataset.recordKey(record); %#ok<AGROW>
+                end
+                found.(type) = shown;
+            end
+            unmatched = nansen.Api.unmatchedOf(scan);
+            keys = strings(1, numel(unmatched));
+            for i = 1:numel(unmatched)
+                keys(i) = string(nansen.internal.getField(unmatched{i}, "dataLocationIdentifier", "")) + char(0) + ...
+                    string(nansen.internal.getField(unmatched{i}, "path", ""));
+            end
+            [~, order] = sort(keys);
+            unmatched = unmatched(order);
+            shown = cell(1, min(10, numel(unmatched)));
+            for i = 1:numel(shown)
+                u = unmatched{i};
+                shown{i} = struct("dataLocation", char(nansen.internal.getField(u, "dataLocationIdentifier", "")), ...
+                    "path", char(nansen.internal.getField(u, "path", "")), "reason", char(nansen.internal.getField(u, "reason", "")));
+            end
+            result = struct("records", records, "examples", found, "roots", {scan.Roots}, ...
+                "unmatched", numel(unmatched), "unmatchedExamples", {shown});
+        end
+
         function text = datasetText(obj)
             %datasetText The DSM config as written, so it can be edited with its formatting
             obj.requireDataset();

@@ -250,6 +250,8 @@ class Api:
     def _configure(self, project: Project, params: dict) -> None:
         if params.get("datasetSource"):
             project.set_dataset(params["datasetSource"])
+        elif params.get("datasetText"):
+            project.set_dataset_text(params["datasetText"])
         for module in params.get("modules", []):
             project.add_module(module)
         if params.get("entityTypes"):
@@ -257,6 +259,45 @@ class Api:
             added = project.add_dataset_entity_types(["core.notes"] if core else [])
             if core and "subject" in added:  # as dev's subject table: date of birth, sex, species
                 project.attach_fragment("subject", "core.subject")
+
+    def dataset__test(self, params: dict) -> dict:
+        """What a scan with a candidate DSM config (its text) would find, without keeping anything."""
+        return self._require_project().test_dataset_text(params["text"])
+
+    def dataset__sample(self, params: dict) -> dict:
+        """Example names at each folder level under a folder, for describing its layout: up to limit
+        names per level, taken from up to limit folders of the level above."""
+        project = self.project
+        path = Path(str(params["path"])).expanduser()
+        if not path.is_absolute():
+            if project is None:
+                raise NansenError("invalid-params", "a relative path needs an open project")
+            path = project.folder / path
+        if not path.is_dir():
+            raise NansenError("file-not-found", f"{path} is not a folder")
+        depth, limit = int(params.get("depth", 4)), int(params.get("limit", 8))
+        levels, folders = [], [path]
+        for _ in range(depth):
+            names, files, next_folders = [], 0, []
+            for folder in folders[:limit]:
+                try:
+                    children = sorted(folder.iterdir(), key=lambda p: p.name)
+                except OSError:
+                    continue
+                for child in children:
+                    if child.is_dir():
+                        next_folders.append(child)
+                        if child.name not in names:
+                            names.append(child.name)
+                    else:
+                        files += 1
+            if not names and not files:
+                break
+            levels.append({"folders": names[:limit], "moreFolders": max(0, len(names) - limit), "files": files})
+            folders = next_folders
+            if not folders:
+                break
+        return {"path": str(path), "levels": levels}
 
     def dataset__setRoot(self, params: dict) -> dict:
         """Where a data location is on this machine (or in the given environment)."""
