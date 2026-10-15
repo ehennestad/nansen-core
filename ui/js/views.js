@@ -4,6 +4,46 @@
   const N = window.N;
   const { h } = N;
 
+  // The groups, datasets and links of an HDF5 file (NWB, MATLAB v7.3), as files.inspect gives them; groups open in place
+  function hdf5Tree(app, where) {
+    const el = h("ul.file-tree.hdf5-tree", h("li.muted", "Reading…"));
+    app.client.request("files.inspect", where).then((layout) => {
+      const children = new Map();
+      for (const item of layout.items) {
+        if (item.path === "/") continue;
+        const parent = item.path.slice(0, item.path.lastIndexOf("/")) || "/";
+        if (!children.has(parent)) children.set(parent, []);
+        children.get(parent).push(item);
+      }
+      const describe = (item) => Object.entries(item.attributes || {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+      const items = (path) => (children.get(path) || []).map((item) => {
+          const tag = item.neurodataType ? h("span.pill.plain", item.neurodataType) : null;
+          if (item.kind === "link") {
+            return h("li.hdf5-link", { dataset: { path: item.path } }, N.icon("link", 13), h("span.name", item.name), h("span.muted.size", `→ ${item.target}`));
+          }
+          if (item.kind === "dataset") {
+            const shape = item.shape.length ? item.shape.join(" × ") : "scalar";
+            return h("li.hdf5-dataset", { dataset: { path: item.path }, title: describe(item) }, N.icon("file", 13), h("span.name", item.name), tag,
+              h("span.muted.size", "value" in item ? String(item.value) : `${shape} · ${item.dataType}`));
+          }
+          let open = null;
+          const row = h("li.folder-entry.hdf5-group", { dataset: { path: item.path }, title: describe(item) },
+            h("button.tree-toggle", { title: "Open", on: { click: () => {
+              if (open) { open.remove(); open = null; row.classList.remove("open"); return; }
+              open = level(item.path);
+              row.after(open);
+              row.classList.add("open");
+            } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", item.name), tag));
+          return row;
+        });
+      const level = (path) => h("ul.file-tree.hdf5-level", items(path));
+      const root = layout.items.find((item) => item.path === "/") || {};
+      N.fill(el, h("li.muted.hdf5-summary", root.neurodataType ? `${root.neurodataType}${root.attributes.nwb_version ? " " + root.attributes.nwb_version : ""}` : "HDF5 file",
+        layout.truncated ? ` · only the first ${layout.items.length} items are shown` : ""), items("/"));
+    }).catch((error) => N.fill(el, h("li.muted", error.code === "unsupported-file" ? "Not an HDF5 file (only MATLAB v7.3 .mat files are)" : (error.message || String(error)))));
+    return el;
+  }
+
   /* ------------------------------------------------------------------ overview */
   N.views = {};
 
@@ -607,6 +647,13 @@
             if (!entry.isFolder) {
               return h("li.file-entry", { dataset: { name: entry.name } }, N.icon("file", 13), h("span.name", entry.name),
                 h("span.muted.size", N.fmt.bytes(entry.size)),
+                /\.(nwb|h5|hdf5|he5|mat)$/i.test(entry.name) ? h("button.btn.ghost.icon.small.inspect-file", { title: "Show what the file holds",
+                  on: { click: (event) => {
+                    const li = event.currentTarget.closest("li");
+                    const shown = li.nextElementSibling;
+                    if (shown && shown.classList.contains("hdf5-tree")) { shown.remove(); return; }
+                    li.after(hdf5Tree(app, where(child)));
+                  } } }, N.icon("database", 13)) : null,
                 h("button.btn.ghost.icon.small.open-file", { title: "Open in its app", on: { click: () => app.client.request("files.open", where(child))
                   .catch((error) => N.showError(error, "Could not open the file")) } }, N.icon("eye", 13)),
                 pathActions(child));

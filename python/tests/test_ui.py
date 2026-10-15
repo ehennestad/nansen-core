@@ -667,6 +667,10 @@ def test_browse_an_entitys_files(empty_app, page):
         "dataLocation": "processed", "path": processed["paths"][0]}})["result"]["path"])
     (folder / "roi").mkdir()
     (folder / "roi" / "masks.json").write_text("[]")
+    import shutil
+    nwb = Path(__file__).resolve().parents[2] / "conformance/api/files/project/data/recording.nwb"
+    shutil.copy(nwb, folder / "roi" / "recording.nwb")
+    (folder / "roi" / "old.mat").write_bytes(b"MATLAB 5.0 MAT-file" + bytes(200))
 
     page.goto(empty_app["server"].url + "#/entities/session")
     page.wait_for_selector(".grid-table tbody td.key")
@@ -680,6 +684,19 @@ def test_browse_an_entitys_files(empty_app, page):
     page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
     page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='masks.json']")
     assert "2 B" in page.locator(f"{tree} li[data-name='masks.json'] .size").inner_text()
+    # an NWB file shows its groups and datasets in place
+    page.click(f"{tree} li[data-name='recording.nwb'] .inspect-file")
+    page.wait_for_selector(f"{tree} .hdf5-summary:has-text('NWBFile 2.7.0')")
+    page.click(f"{tree} li.hdf5-group[data-path='/acquisition'] .tree-toggle")
+    page.wait_for_selector(f"{tree} li.hdf5-group[data-path='/acquisition/TwoPhotonSeries'] .pill:has-text('TwoPhotonSeries')")
+    page.click(f"{tree} li.hdf5-group[data-path='/acquisition/TwoPhotonSeries'] .tree-toggle")
+    assert page.locator(f"{tree} li.hdf5-dataset[data-path='/acquisition/TwoPhotonSeries/data'] .size").inner_text() == "4 × 3 × 5 · uint16"
+    assert "ImagingPlane" in page.locator(f"{tree} li.hdf5-link[data-path='/acquisition/TwoPhotonSeries/imaging_plane']").inner_text()
+    assert page.locator(f"{tree} li.hdf5-dataset[data-path='/session_description'] .size").inner_text() == "Two-photon imaging"
+    page.click(f"{tree} li[data-name='recording.nwb'] .inspect-file")  # closes it
+    page.wait_for_selector(f"{tree} .hdf5-tree", state="detached")
+    page.click(f"{tree} li[data-name='old.mat'] .inspect-file")
+    page.wait_for_selector(f"{tree} .hdf5-tree li:has-text('Not an HDF5 file')")
     page.locator(f"{tree} .path-list .browse").first.click()  # closes it again
     page.wait_for_selector(f"{tree} ul.file-tree", state="detached")
 

@@ -73,6 +73,7 @@ def open_in_file_browser(folder: Path) -> None:
 
 
 FILES_LIST_LIMIT = 500  # entries files.list gives at most, unless asked for more
+FILES_INSPECT_LIMIT = 2000  # groups, datasets and links files.inspect gives at most
 
 def _frame_rate(params: dict, entity: Any) -> Optional[float]:
     """data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive number."""
@@ -704,6 +705,17 @@ class Api:
                             "modified": dt.datetime.fromtimestamp(info.st_mtime).isoformat(timespec="seconds")})
         entries.sort(key=lambda e: (not e["isFolder"], e["name"]))
         return dict(resolved, entries=entries[:limit], truncated=len(entries) > limit)
+
+    def files__inspect(self, params: dict) -> dict:
+        """The groups, datasets and links of an HDF5 file (NWB, MATLAB v7.3, .h5), as files.resolve finds it."""
+        from .hdf5 import inspect
+
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        if resolved["isFolder"]:
+            raise NansenError("invalid-params", f"{resolved['path']} is a folder; files.list shows folders")
+        return dict(resolved, **inspect(Path(resolved["path"]), int(params.get("limit", FILES_INSPECT_LIMIT))))
 
     def files__open(self, params: dict) -> dict:
         """Open a file in its default app, as files.resolve finds it."""

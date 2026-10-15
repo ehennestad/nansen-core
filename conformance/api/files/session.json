@@ -234,6 +234,11 @@
         "result": {
           "entries": [
             {
+              "name": "data",
+              "isFolder": true,
+              "size": null
+            },
+            {
               "name": "fragments",
               "isFolder": true,
               "size": null
@@ -343,6 +348,240 @@
         "id": 23,
         "params": {
           "path": "../outside.txt"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.inspect",
+        "id": 24,
+        "params": {
+          "path": "data/recording.nwb"
+        }
+      },
+      "expect": {
+        "result": {
+          "exists": true,
+          "isFolder": false,
+          "format": "hdf5",
+          "items": [
+            {
+              "path": "/",
+              "name": "/",
+              "neurodataType": "NWBFile",
+              "kind": "group",
+              "attributes": {
+                "namespace": "core",
+                "neurodata_type": "NWBFile",
+                "nwb_version": "2.7.0"
+              }
+            },
+            {
+              "path": "/acquisition",
+              "name": "acquisition",
+              "kind": "group",
+              "attributes": {}
+            },
+            {
+              "path": "/acquisition/TwoPhotonSeries",
+              "name": "TwoPhotonSeries",
+              "neurodataType": "TwoPhotonSeries",
+              "kind": "group",
+              "attributes": {
+                "description": "raw frames",
+                "neurodata_type": "TwoPhotonSeries"
+              }
+            },
+            {
+              "path": "/acquisition/TwoPhotonSeries/data",
+              "name": "data",
+              "kind": "dataset",
+              "shape": [
+                4,
+                3,
+                5
+              ],
+              "dataType": "uint16",
+              "attributes": {
+                "conversion": 1.0,
+                "unit": "n.a."
+              }
+            },
+            {
+              "path": "/acquisition/TwoPhotonSeries/imaging_plane",
+              "name": "imaging_plane",
+              "kind": "link",
+              "target": "/general/optophysiology/ImagingPlane"
+            },
+            {
+              "path": "/acquisition/TwoPhotonSeries/timestamps",
+              "name": "timestamps",
+              "kind": "dataset",
+              "shape": [
+                4
+              ],
+              "dataType": "float64",
+              "attributes": {}
+            },
+            {
+              "path": "/general",
+              "name": "general",
+              "kind": "group",
+              "attributes": {}
+            },
+            {
+              "path": "/general/optophysiology",
+              "name": "optophysiology",
+              "kind": "group",
+              "attributes": {}
+            },
+            {
+              "path": "/general/optophysiology/ImagingPlane",
+              "name": "ImagingPlane",
+              "neurodataType": "ImagingPlane",
+              "kind": "group",
+              "attributes": {
+                "neurodata_type": "ImagingPlane"
+              }
+            },
+            {
+              "path": "/general/optophysiology/ImagingPlane/excitation_lambda",
+              "name": "excitation_lambda",
+              "kind": "dataset",
+              "shape": [],
+              "dataType": "float32",
+              "value": 920.0,
+              "attributes": {}
+            },
+            {
+              "path": "/identifier",
+              "name": "identifier",
+              "kind": "dataset",
+              "shape": [],
+              "dataType": "string",
+              "value": "m1-s1",
+              "attributes": {}
+            },
+            {
+              "path": "/processing",
+              "name": "processing",
+              "kind": "group",
+              "attributes": {}
+            },
+            {
+              "path": "/processing/ophys",
+              "name": "ophys",
+              "kind": "group",
+              "attributes": {}
+            },
+            {
+              "path": "/processing/ophys/Fluorescence",
+              "name": "Fluorescence",
+              "kind": "group",
+              "attributes": {}
+            },
+            {
+              "path": "/processing/ophys/Fluorescence/RoiResponseSeries",
+              "name": "RoiResponseSeries",
+              "kind": "group",
+              "attributes": {}
+            },
+            {
+              "path": "/processing/ophys/Fluorescence/RoiResponseSeries/data",
+              "name": "data",
+              "kind": "dataset",
+              "shape": [
+                4,
+                2
+              ],
+              "dataType": "float64",
+              "attributes": {}
+            },
+            {
+              "path": "/session_description",
+              "name": "session_description",
+              "kind": "dataset",
+              "shape": [],
+              "dataType": "string",
+              "value": "Two-photon imaging",
+              "attributes": {}
+            }
+          ],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.inspect",
+        "id": 25,
+        "params": {
+          "path": "data/recording.nwb",
+          "limit": 3
+        }
+      },
+      "expect": {
+        "result": {
+          "truncated": true,
+          "items": [
+            {
+              "path": "/"
+            },
+            {
+              "path": "/acquisition"
+            },
+            {
+              "path": "/acquisition/TwoPhotonSeries"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.inspect",
+        "id": 26,
+        "params": {
+          "path": "tables/session.csv"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
+      }
+    },
+    {
+      "request": {
+        "method": "files.inspect",
+        "id": 27,
+        "params": {
+          "path": "data"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.inspect",
+        "id": 28,
+        "params": {
+          "path": "data/missing.nwb"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "files.inspect",
+        "id": 29,
+        "params": {
+          "path": "../outside.nwb"
         }
       },
       "expect": {

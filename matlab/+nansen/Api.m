@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
@@ -690,6 +690,21 @@ classdef Api < handle
             end
             result.entries = entries;
             result.truncated = numel(listing) > limit;
+        end
+
+        function result = apiFilesInspect(obj, params)
+            % The groups, datasets and links of an HDF5 file (NWB, MATLAB v7.3, .h5), as files.resolve finds it
+            result = obj.apiFilesResolve(params);
+            if ~result.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", result.path)
+            end
+            if result.isFolder
+                nansen.internal.throwError("invalid-params", "%s is a folder; files.list shows folders", result.path)
+            end
+            layout = nansen.internal.inspectHdf5(result.path, double(nansen.internal.getField(params, "limit", 2000)));
+            result.format = layout.format;
+            result.items = layout.items;
+            result.truncated = layout.truncated;
         end
 
         function result = apiFilesOpen(obj, params)
