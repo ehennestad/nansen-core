@@ -120,9 +120,55 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyError(@() adapter.write(path, int64(stack)), "nansen:InvalidParams");
         end
 
+        function oasisGivesWhatPythonGives(testCase)
+            [c, s] = ophys.internal.oasisAr1([0, 1, 0.5, 0.2, 2, 1, 0.4, -0.3], 0.8, 0.1);
+            testCase.verifyEqual(c', [0, 0.721701795472, 0.577361436378, 0.461889149102, 1.212244954459, ...
+                0.969795963567, 0.775836770854, 0.620669416683], AbsTol=1e-11);
+            testCase.verifyEqual(s', [0, 0.7217017954723, 0, 0, 0.8427336351768, 0, 0, 0], AbsTol=1e-11);
+            testCase.verifyEqual(ophys.internal.noiseLevel([1; 2; 4]), 1.5 / (0.6745 * sqrt(2)), AbsTol=1e-15);
+            testCase.verifyTrue(isnan(ophys.internal.noiseLevel([1; NaN; 4])));
+        end
+
+        function smoothingKeepsAConstant(testCase)
+            flat = 7 * ones(4, 5, 6);
+            testCase.verifyEqual(ophys.internal.gaussianAlong(flat, 3, 1.5), flat, AbsTol=1e-12);
+            testCase.verifyEqual(ophys.internal.gaussianAlong(flat, 1, 2), flat, AbsTol=1e-12);
+        end
+
+        function readsScanImageChannelsPlanesAndRois(testCase)
+            text = "SI.hChannels.channelSave = [1;2]" + newline + "scanimage.SI.hStackManager.numSlices = 3" + newline + "SI.hRoiManager.mroiEnable = true";
+            testCase.verifyEqual(ophys.ScanImageTiff.siNumbers(text, "hChannels.channelSave"), [1, 2]);
+            testCase.verifyEqual(ophys.ScanImageTiff.siNumbers(text, "hStackManager.numSlices"), 3);
+            testCase.verifyEqual(ophys.ScanImageTiff.siNumbers(text, "hRoiManager.mroiEnable"), 1);
+            testCase.verifyEmpty(ophys.ScanImageTiff.siNumbers(text, "hFastZ.enable"));
+            folder = fullfile(nansen.internal.repoRoot(), "conformance", "api", "ophys", "project", "data", "raw", "sub-m1");
+            data = ophys.ScanImageTiff().read(fullfile(folder, "ses-s4", "rec_00001.tif"));
+            testCase.verifyEqual(size(data), [16, 64, 2, 2, 3]);
+            testCase.verifyFalse(any(data == 9999, "all"));   % no flyback lines
+            testCase.verifyError(@() ophys.ScanImageTiff().read(fullfile(folder, "ses-s2", "rec.tif")), "nansen:InvalidData");
+        end
+
+        function updatesRois(testCase)
+            document = jsondecode('{"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}, {"id": 5, "pixels": [[2, 2], [2, 3]]}]}');
+            [changed, added] = nansen.internal.updateRois(document, struct("id", 5, "classification", "rejected"), 1, ...
+                struct("pixels", [3, 3; 3, 4; 11, 0]));
+            testCase.verifyEqual(added, {6});
+            testCase.verifyEqual(cellfun(@(r) r.id, changed.rois), [5, 6]);
+            testCase.verifyEqual(changed.rois{1}.classification, 'rejected');
+            testCase.verifyEqual(changed.rois{2}.center, [3, 3.5]);
+            text = jsonencode(changed);
+            testCase.verifyTrue(contains(text, """pixels"":[[3,3],[3,4]]"), text);
+            testCase.verifyError(@() nansen.internal.updateRois(document, [], 7, []), "nansen:InvalidParams");
+            testCase.verifyError(@() nansen.internal.updateRois(document, struct("id", 1, "classification", "maybe"), [], []), "nansen:InvalidParams");
+            testCase.verifyError(@() nansen.internal.updateRois(document, [], [], struct("pixels", [20, 20])), "nansen:InvalidParams");
+        end
+
         function wrappersSayWhatIsMissing(testCase)
             if exist("normcorre", "file") ~= 2
                 testCase.verifyError(@() ophys.normcorre(struct(), struct(), []), "nansen:DependencyMissing");
+            end
+            for name = ["extract", "flowreg", "caimanDeconvolution"]
+                testCase.verifyError(@() feval("ophys." + name, struct(), struct(), []), "nansen:DependencyMissing", name);
             end
             if ~exist("imviewer", "file")
                 testCase.verifyError(@() ophys.openInImviewer(struct(), struct(), []), "nansen:DependencyMissing");

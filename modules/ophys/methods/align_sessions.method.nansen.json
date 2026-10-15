@@ -1,0 +1,44 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.align_sessions",
+  "version": "1.0.0",
+  "title": "Align sessions and copy ROIs",
+  "category": "Two-photon/ROI registration",
+  "entityType": "*",
+  "description": "Aligns each selected entity's FOV image to the first one's by phase correlation (whole pixels), and saves the first entity's ROIs, moved by that shift, as each other entity's ROIs. Rejected ROIs are left out, and pixels moved outside the image are dropped. Stacks are averaged over frames.",
+  "batchMode": "batch",
+  "implementations": {
+    "python": "ophys_methods:align_sessions",
+    "matlab": "ophys.alignSessions"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "image": {
+        "type": "string",
+        "default": "FovAverageProjection",
+        "title": "FOV image",
+        "description": "Variable that holds each entity's FOV image (or a stack, which is averaged)."
+      },
+      "rois": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "ROIs",
+        "description": "Variable that holds the first entity's ROIs."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "Copied ROIs",
+        "description": "Variable the moved ROIs are saved to, for every entity but the first."
+      },
+      "maxShift": {
+        "type": "integer",
+        "default": 30,
+        "minimum": 0,
+        "title": "Largest shift (px)"
+      }
+    }
+  }
+}

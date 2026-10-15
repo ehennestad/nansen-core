@@ -6,7 +6,7 @@
   "title": "Extract signals",
   "category": "Two-photon/Signal extraction",
   "entityType": "*",
-  "description": "The average of each ROI's pixels in every frame (frames x ROIs), and of a ring of surrounding pixels outside every ROI, for neuropil correction. The ring starts neuropilGap pixels from the ROI and is neuropilWidth pixels wide (square distance).",
+  "description": "The average of each ROI's pixels in every frame (frames x ROIs, in the order of the ROI file, without rejected ROIs), and of a ring of surrounding pixels outside every ROI, for neuropil correction. The ring starts neuropilGap pixels from the ROI and is neuropilWidth pixels wide (square distance).",
   "implementations": {
     "python": "ophys_methods:extract_signals",
     "matlab": "ophys.extractSignals"
@@ -49,6 +49,12 @@
         "default": 3,
         "minimum": 1,
         "title": "Neuropil ring width (px)"
+      },
+      "includeRejected": {
+        "type": "boolean",
+        "default": false,
+        "title": "Include rejected ROIs",
+        "description": "ROIs classified as rejected (in the viewer) are left out unless this is on"
       }
     }
   }

@@ -39,16 +39,22 @@ The built-in **`ophys`** module brings over the core of dev's two-photon workflo
 | `ophys.motion_correction` | Rigid motion correction: each frame is aligned to a reference by the whole-pixel shift of largest phase correlation (smoothed as suite2p does), within `maxShift`. The reference is the average of the first `referenceFrames` frames, then of the aligned frames. Saves the aligned stack and the shifts (frames x 2). Preset `thorough` for large or slow drift |
 | `ophys.image_stats` | Frames, size, mean and maximum intensity (the computed `ophys.image_stats` columns), and the average and maximum projections |
 | `ophys.detect_rois` | ROIs as 4-connected areas of pixels whose average correlation with their 8 neighbours reaches `threshold`, of `minSize` to `maxSize` pixels, away from a `border`. ROI files are JSON: `imageSize` and `rois[{id, area, center, pixels}]`, with 0-based `[row, column]` pixels |
-| `ophys.extract_signals` | The mean of each ROI's pixels per frame (frames x ROIs), and of a ring of neuropil around it, outside every ROI |
+| `ophys.extract_signals` | The mean of each ROI's pixels per frame (frames x ROIs, rejected ROIs left out), and of a ring of neuropil around it, outside every ROI |
 | `ophys.compute_dff` | ΔF/F = (F - F0) / F0, with F the signal less `neuropilFactor` times the neuropil, and F0 a percentile of F over the whole trace or a window of frames |
 | `ophys.downsample` | Mean or maximum over bins of frames and of pixels |
+| `ophys.deconvolve` | Spikes and denoised calcium by OASIS for an AR(1) model, natively: the exact optimum of 1/2 |c - y|² + λ Σ s with s ≥ 0, g from `tauDecay` and the frame rate (`frameRate`, or the entity's `frame_rate`), λ = `sparsity` times the trace's noise |
+| `ophys.denoise` | Gaussian smoothing in space and time, renormalised at the edges (dev used DeepInterpolation, which needs a trained network) |
+| `ophys.align_sessions` | Batch: aligns the selected entities' FOV images to the first one's and copies its ROIs, moved, to the others (dev's migrateRoisToFovs) |
+| `ophys.caiman_deconvolution` | CaImAn's constrained foopsi (Python) or deconvolveCa (MATLAB), when installed |
+| `ophys.extract` | MATLAB: cells and traces by EXTRACT, when it is on the path |
+| `ophys.flowreg` | MATLAB: non-rigid motion correction by Flow-Registration, when it is on the path |
 | `ophys.suite2p` | Python: runs suite2p, when it is installed, and saves its cells and signals in the same variables |
 | `ophys.normcorre` | MATLAB: rigid or piecewise rigid motion correction with NoRMCorre, when it is on the path |
 | `ophys.open_in_imviewer` | MATLAB, run by hand: opens a stack in dev's imviewer, when it is on the path |
 
-A method that needs a package that is not installed fails with `dependency-missing`. The file adapters are `ophys.sciscan_raw` (a SciScan `.raw` file and its `.ini` file, as written by the microscope: big-endian, one channel after the other in each frame) and `ophys.tiff_stack` (multi-page TIFF). The fragments are `ophys.imaging` (field of view, depth, indicator and frame rate, typed in) and `ophys.image_stats` (computed). The pipeline `ophys.preprocess` runs motion correction, image statistics, ROI detection, signal extraction and ΔF/F.
+A method that needs a package that is not installed fails with `dependency-missing`. The file adapters are `ophys.sciscan_raw` (a SciScan `.raw` file and its `.ini` file, as written by the microscope: big-endian, one channel after the other in each frame), `ophys.tiff_stack` (multi-page TIFF) and `ophys.scanimage_tiff` (ScanImage TIFF files, read only: channels and planes from the metadata, and multi-ROI recordings with their ROIs side by side, without flyback lines; height x width x channels x planes x frames when there is more than one plane). The fragments are `ophys.imaging` (field of view, depth, indicator and frame rate, typed in) and `ophys.image_stats` (computed). The pipeline `ophys.preprocess` runs motion correction, image statistics, ROI detection, signal extraction, ΔF/F and deconvolution.
 
-In the dashboard, an entity's image variables (data type `Image` or `ImageStack`, or arrays without a data type) have a View button in its drawer: frames one by one or played, the average or maximum over frames, contrast limits, and the ROIs of a variable of data type `RoiArray` drawn over them.
+In the dashboard, an entity's image variables (data type `Image` or `ImageStack`, or arrays without a data type) have a View button in its drawer: frames one by one or played, the average or maximum over frames, contrast limits, and the ROIs of a variable of data type `RoiArray` drawn over them. ROIs are curated there, as in dev's roimanager and roiclassifier: select one in the image or the list, accept (a), reject (r), clear (u) or delete it, or add a round one by clicking (`rois.update`). `ophys.extract_signals` and `ophys.align_sessions` leave rejected ROIs out.
 
 ## Methods
 

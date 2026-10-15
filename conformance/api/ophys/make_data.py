@@ -49,7 +49,7 @@ def scene(seed):
         aligned[HEIGHT - max(0, dy):, :, t] = 0
         aligned[:, :max(0, -dx), t] = 0
         aligned[:, WIDTH - max(0, dx):, t] = 0
-    return recording.astype(np.uint16), aligned, shifts, disks
+    return recording.astype(np.uint16), aligned, shifts, disks, movie
 
 
 def write_sciscan(path, stack):
@@ -79,6 +79,55 @@ def frame_bytes(image, limits=None):
     return {"low": float(low), "high": float(high), "pixels": base64.b64encode(scaled.tobytes()).decode("ascii")}
 
 
+def deconvolution_truth(trace, g, lam):
+    """The deconvolution's optimum, found by a general bounded optimiser (not OASIS)."""
+    from scipy.optimize import minimize
+    T = len(trace)
+    K = np.array([[g ** (t - k) if t >= k else 0.0 for k in range(T)] for t in range(T)])
+    objective = lambda s: 0.5 * np.sum((K @ s - trace) ** 2) + lam * np.sum(s)
+    gradient = lambda s: K.T @ (K @ s - trace) + lam
+    result = minimize(objective, np.full(T, 0.1), jac=gradient, bounds=[(0, None)] * T, method="L-BFGS-B",
+                      options={"ftol": 1e-16, "gtol": 1e-12, "maxiter": 50000, "maxfun": 50000})
+    return K @ result.x, result.x
+
+
+def smooth_naive(data, axis, sigma):
+    """Gaussian smoothing along an axis, weights renormalised where the window leaves the data, one sample at a time."""
+    radius = int(math.ceil(3 * sigma))
+    moved = np.moveaxis(data, axis, -1)
+    out = np.zeros_like(moved)
+    n = moved.shape[-1]
+    for i in range(n):
+        offsets = [k for k in range(-radius, radius + 1) if 0 <= i + k < n]
+        weights = np.array([math.exp(-k * k / (2 * sigma * sigma)) for k in offsets])
+        out[..., i] = sum(w * moved[..., i + k] for w, k in zip(weights, offsets)) / weights.sum()
+    return np.moveaxis(out, -1, axis)
+
+
+def write_scanimage(path, rng):
+    """A multi-ROI ScanImage file: 2 ROIs of 16 x 32 one above the other with 4 flyback lines, 2 channels,
+    2 planes, 3 volumes; returns the stack as the reader gives it (16 x 64 x channels x planes x volumes)."""
+    import tifffile
+    strips = rng.integers(0, 4000, size=(2, 16, 32, 2, 2, 3)).astype(np.uint16)  # roi, y, x, channel, plane, volume
+    pages = []
+    for volume in range(3):
+        for plane in range(2):
+            for channel in range(2):
+                page = np.full((36, 32), 9999, dtype=np.uint16)  # flyback lines
+                page[:16] = strips[0, :, :, channel, plane, volume]
+                page[20:] = strips[1, :, :, channel, plane, volume]
+                pages.append(page)
+    software = "SI.VERSION_MAJOR = 2020\nSI.hChannels.channelSave = [1;2]\nSI.hStackManager.numSlices = 2\nSI.hRoiManager.mroiEnable = true\n"
+    artist = json.dumps({"RoiGroups": {"imagingRoiGroup": {"rois": [
+        {"name": "A", "scanfields": {"pixelResolutionXY": [32, 16]}},
+        {"name": "B", "scanfields": {"pixelResolutionXY": [32, 16]}}]}}})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # the tags go on the first page, which is where the readers look
+    tifffile.imwrite(path, np.stack(pages), photometric="minisblack", software=software,
+                     extratags=[(315, "s", 0, artist, False)], metadata=None)
+    return np.concatenate([strips[0], strips[1]], axis=1)
+
+
 def percentile(values, p):
     ordered = np.sort(values)
     position = (len(ordered) - 1) * p / 100
@@ -88,13 +137,18 @@ def percentile(values, p):
 
 
 def main():
-    recording, aligned, shifts, disks = scene(1)
+    recording, aligned, shifts, disks, movie = scene(1)
     write_sciscan(HERE / "project/data/raw/sub-m1/ses-s1/rec.raw", recording)
-    second, _, _, _ = scene(2)
+    second = scene(2)[0]
     import tifffile
     tif = HERE / "project/data/raw/sub-m1/ses-s2/rec.tif"
     tif.parent.mkdir(parents=True, exist_ok=True)
     tifffile.imwrite(tif, np.moveaxis(second, 2, 0), photometric="minisblack")
+
+    # session 3: the scene of session 1, displaced as a whole by (2, -3), without motion within the recording
+    whole = movie[PAD - 2:PAD - 2 + HEIGHT, PAD + 3:PAD + 3 + WIDTH, :]
+    write_sciscan(HERE / "project/data/raw/sub-m1/ses-s3/rec.raw", whole.astype(np.uint16))
+    scanimage = write_scanimage(HERE / "project/data/raw/sub-m1/ses-s4/rec_00001.tif", np.random.default_rng(4))
 
     union = np.any(disks, axis=0)
     signals = np.stack([aligned[d].mean(axis=0) for d in disks], axis=1)
@@ -125,6 +179,27 @@ def main():
     expected["maxProjection"] = {"frame": None, **frame_bytes(aligned.max(axis=2)),
                                  "rois": [{"id": n + 1, "pixels": [[int(y), int(x)] for y, x in zip(*np.nonzero(d))]}
                                           for n, d in enumerate(disks)]}
+    g = math.exp(-1.0 / (0.5 * 30))
+    noise, spike_sum, max_calcium = [], [], []
+    for i in range(len(disks)):
+        ordered = np.sort(np.abs(np.diff(dff[:, i])))
+        n = len(ordered)
+        sigma = (ordered[n // 2] if n % 2 else (ordered[n // 2 - 1] + ordered[n // 2]) / 2) / (0.6745 * math.sqrt(2))
+        calcium, spikes = deconvolution_truth(dff[:, i], g, sigma)
+        noise.append(round_to(sigma, 4))
+        spike_sum.append(round_to(spikes.sum(), 3))
+        max_calcium.append(round_to(calcium.max(), 3))
+    expected["deconvolve"] = {"rois": len(disks), "frames": FRAMES, "noise": noise, "spikeSum": spike_sum, "maxCalcium": max_calcium}
+    smoothed = aligned
+    for axis in (0, 1, 2):
+        smoothed = smooth_naive(smoothed, axis, 1.0)
+    expected["denoise"] = {"frames": FRAMES, "height": HEIGHT, "width": WIDTH,
+                           "meanIntensity": round_to(smoothed.astype(np.float32).astype(float).mean(), 4)}
+    expected["migrated"] = [{"id": n + 1, "pixels": [[int(y) + 2, int(x) - 3] for y, x in zip(*np.nonzero(d))]}
+                            for n, d in enumerate(disks)]
+    expected["keptSignals"] = {"rois": 2, "ids": [1, 3], "meanSignal": [expected["signals"]["meanSignal"][i] for i in (0, 2)]}
+    expected["scanimage"] = {"height": 16, "width": 64, "frames": 3, "frame": 2,
+                             **frame_bytes(scanimage[:, :, 1, 1, 2].astype(float))}
     print(json.dumps(expected, indent=1))
 
 

@@ -10,10 +10,16 @@
     "fragments/imaging.fragment.nansen.json"
   ],
   "methods": [
+    "methods/align_sessions.method.nansen.json",
+    "methods/caiman_deconvolution.method.nansen.json",
     "methods/compute_dff.method.nansen.json",
+    "methods/deconvolve.method.nansen.json",
+    "methods/denoise.method.nansen.json",
     "methods/detect_rois.method.nansen.json",
     "methods/downsample.method.nansen.json",
+    "methods/extract.method.nansen.json",
     "methods/extract_signals.method.nansen.json",
+    "methods/flowreg.method.nansen.json",
     "methods/image_stats.method.nansen.json",
     "methods/motion_correction.method.nansen.json",
     "methods/normcorre.method.nansen.json",
@@ -22,6 +28,7 @@
     "methods/suite2p.method.nansen.json"
   ],
   "fileAdapters": [
+    "adapters/scanimage_tiff.fileAdapter.nansen.json",
     "adapters/sciscan_raw.fileAdapter.nansen.json",
     "adapters/tiff_stack.fileAdapter.nansen.json"
   ],

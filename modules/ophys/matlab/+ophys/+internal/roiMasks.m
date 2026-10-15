@@ -7,20 +7,10 @@ function masks = roiMasks(document, height, width)
                 size_(1), size_(2), height, width)
         end
     end
-    rois = {};
-    if isfield(document, "rois") && ~isempty(document.rois)
-        rois = document.rois;
-        if isstruct(rois)
-            rois = num2cell(rois);
-        end
-    end
+    rois = ophys.internal.roiList(document);
     masks = cell(1, numel(rois));
     for i = 1:numel(rois)
         pixels = rois{i}.pixels;
-        if iscell(pixels)
-            pixels = cell2mat(cellfun(@(p) reshape(double(p), 1, 2), pixels(:), UniformOutput=false));
-        end
-        pixels = reshape(double(pixels), [], 2);
         mask = false(height, width);
         mask(sub2ind([height, width], pixels(:, 1) + 1, pixels(:, 2) + 1)) = true;
         masks{i} = mask;

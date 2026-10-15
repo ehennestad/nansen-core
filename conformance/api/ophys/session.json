@@ -29,7 +29,7 @@
         "result": {
           "records": {
             "subject": 1,
-            "session": 2
+            "session": 4
           },
           "unmatched": 0
         }
@@ -57,6 +57,14 @@
               {
                 "subject_id": "m1",
                 "session_id": "s2"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "s3"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "s4"
               }
             ]
           }
@@ -102,7 +110,10 @@
               "RoiArray",
               "RoiSignals_MeanF",
               "RoiSignals_NeuropilF",
-              "RoiSignals_Dff"
+              "RoiSignals_Dff",
+              "RoiSignals_Deconvolved",
+              "RoiSignals_Denoised",
+              "TwoPhotonSeries_Denoised"
             ],
             "existing": [],
             "fragments": [
@@ -329,6 +340,24 @@
               "values": {
                 "n_frames": null
               }
+            },
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s3"
+              },
+              "values": {
+                "n_frames": null
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s4"
+              },
+              "values": {
+                "n_frames": null
+              }
             }
           ]
         }
@@ -481,7 +510,7 @@
         "result": {
           "records": {
             "subject": 1,
-            "session": 2
+            "session": 4
           }
         }
       }
@@ -529,6 +558,16 @@
             ]
           },
           {
+            "name": "RoiSignals_Deconvolved",
+            "dataLocation": "processed",
+            "files": []
+          },
+          {
+            "name": "RoiSignals_Denoised",
+            "dataLocation": "processed",
+            "files": []
+          },
+          {
             "name": "RoiSignals_Dff",
             "dataLocation": "processed",
             "files": [
@@ -555,6 +594,11 @@
             "files": [
               "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/two_photon_series_corrected.npy"
             ]
+          },
+          {
+            "name": "TwoPhotonSeries_Denoised",
+            "dataLocation": "processed",
+            "files": []
           },
           {
             "name": "TwoPhotonSeries_Downsampled",
@@ -884,8 +928,1048 @@
     },
     {
       "request": {
-        "method": "tools.run",
+        "method": "methods.run",
         "id": 26,
+        "params": {
+          "methodId": "ophys.deconvolve",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "frameRate": 30,
+            "tauDecay": 0.5
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 40,
+              "noise": [
+                3.3309,
+                1.8056,
+                2.4238
+              ],
+              "spikeSum": [
+                9.378,
+                6.121,
+                6.247
+              ],
+              "maxCalcium": [
+                4.688,
+                3.06,
+                3.96
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 27,
+        "params": {
+          "methodId": "ophys.deconvolve",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 28,
+        "params": {
+          "methodId": "ophys.denoise",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 40,
+              "height": 32,
+              "width": 32,
+              "meanIntensity": 181.7364
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 29,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s3"
+            }
+          ],
+          "options": {
+            "referenceFrames": 1
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 40,
+              "maxShift": 0,
+              "meanShift": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 30,
+        "params": {
+          "methodId": "ophys.align_sessions",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            },
+            {
+              "subject_id": "m1",
+              "session_id": "s3"
+            }
+          ],
+          "options": {
+            "image": "TwoPhotonSeries_Corrected"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "reference": {
+                "subject_id": "m1",
+                "session_id": "s1"
+              },
+              "shifts": [
+                {
+                  "key": {
+                    "subject_id": "m1",
+                    "session_id": "s1"
+                  },
+                  "shift": [
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "key": {
+                    "subject_id": "m1",
+                    "session_id": "s3"
+                  },
+                  "shift": [
+                    2,
+                    -3
+                  ]
+                }
+              ],
+              "migrated": 1,
+              "rois": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 31,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s3"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "max",
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  10,
+                  9
+                ],
+                [
+                  11,
+                  8
+                ],
+                [
+                  11,
+                  9
+                ],
+                [
+                  11,
+                  10
+                ],
+                [
+                  12,
+                  7
+                ],
+                [
+                  12,
+                  8
+                ],
+                [
+                  12,
+                  9
+                ],
+                [
+                  12,
+                  10
+                ],
+                [
+                  12,
+                  11
+                ],
+                [
+                  13,
+                  8
+                ],
+                [
+                  13,
+                  9
+                ],
+                [
+                  13,
+                  10
+                ],
+                [
+                  14,
+                  9
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  14,
+                  20
+                ],
+                [
+                  15,
+                  19
+                ],
+                [
+                  15,
+                  20
+                ],
+                [
+                  15,
+                  21
+                ],
+                [
+                  16,
+                  18
+                ],
+                [
+                  16,
+                  19
+                ],
+                [
+                  16,
+                  20
+                ],
+                [
+                  16,
+                  21
+                ],
+                [
+                  16,
+                  22
+                ],
+                [
+                  17,
+                  19
+                ],
+                [
+                  17,
+                  20
+                ],
+                [
+                  17,
+                  21
+                ],
+                [
+                  18,
+                  20
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  22,
+                  6
+                ],
+                [
+                  23,
+                  5
+                ],
+                [
+                  23,
+                  6
+                ],
+                [
+                  23,
+                  7
+                ],
+                [
+                  24,
+                  4
+                ],
+                [
+                  24,
+                  5
+                ],
+                [
+                  24,
+                  6
+                ],
+                [
+                  24,
+                  7
+                ],
+                [
+                  24,
+                  8
+                ],
+                [
+                  25,
+                  5
+                ],
+                [
+                  25,
+                  6
+                ],
+                [
+                  25,
+                  7
+                ],
+                [
+                  26,
+                  6
+                ]
+              ],
+              "classification": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 32,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "classify": [
+            {
+              "id": 2,
+              "classification": "rejected"
+            },
+            {
+              "id": 1,
+              "classification": "accepted"
+            }
+          ],
+          "add": [
+            {
+              "pixels": [
+                [
+                  5,
+                  6
+                ],
+                [
+                  5,
+                  5
+                ],
+                [
+                  40,
+                  40
+                ],
+                [
+                  5,
+                  5
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [
+            4
+          ],
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": "accepted"
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": "rejected"
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ]
+              ],
+              "classification": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 33,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "remove": [
+            4
+          ],
+          "classify": [
+            {
+              "id": 1,
+              "classification": null
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [],
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ],
+              "classification": "rejected"
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ],
+              "classification": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 34,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "classify": [
+            {
+              "id": 9,
+              "classification": "rejected"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 35,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "classify": [
+            {
+              "id": 1,
+              "classification": "maybe"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 36,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "add": [
+            {
+              "pixels": [
+                [
+                  99,
+                  99
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 37,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 2,
+              "ids": [
+                1,
+                3
+              ],
+              "meanSignal": [
+                354.3,
+                352.0442
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 38,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "TwoPhotonSeries_ScanImage",
+            "entityType": "session",
+            "dataLocation": "raw",
+            "filePattern": "scanimage",
+            "fileAdapter": "ophys.scanimage_tiff"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhotonSeries_ScanImage"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 39,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s4"
+          },
+          "variable": "TwoPhotonSeries_ScanImage",
+          "channel": 1,
+          "plane": 1,
+          "frame": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 16,
+          "width": 64,
+          "frames": 3,
+          "frame": 2,
+          "low": 2.0,
+          "high": 3983.0,
+          "pixels": "YHruIjnuxfaJbs8Us4A6fSW90OaY+MqJwBGhe6l9TCBBDVU2c7HoJbjawNLMrtKveVv09S5C9TLeiRgwpeFGzOQ583hftkHX0YuvxeXXrYjCEnnH2oqAAW/SgZnlUQGaeJzeZym9QdBR2QbgYIjSFDmRZ+EJjaEQgQGK0jtKVEbov7tSM7bDQ+11hOd1mRuIVbmPUDBqhP0h3MZ4+WT/N5urGrpIGHZcrtyRLD0OkFSXmnnGSmUeYWi1PgV49eHXxNAB1WibCuG0cCqEd6/QK47Xth/PEfWfXD1dRjWx9Sj6VPNKWIAqfZuS18UgrrrzgJirEeog1F9DsJqjkCO16EAg5BJM8d05z9XS0oiREa0Yy0NrZDICYNbg8pn0mt05BvvG5v8frowxog8C61lOHPEg+1AM7fDJiFIIRzuuXWoAZAazYd04Wmc6AR+C0CGYkfeAdpUvfyftJXVKgpTFWDPgGThg0nLDmQYvzPjWqmSZHbQuSyc7mYoQPQOqri1fFH1NkE7AOLDjSS9SSBXaZ5yQCPvo0HReHzrfFMJulEYU3gaKlzpZa0zZS/gMGSf458c1aKUyH3ONCKiLjYVAGUZKYlOp4rvRH07MIlOPQepj5PqkXjfJ+GvuXnqGG6jjUsRBeR86B9XdjU9OSBh/ms39bldO+M7g5ZQvIT1EMDS4QH0CDzPwKGE0bvp5/+CkC+TecYvKoNlr/p61YoR3c0J6Q/BTlvniLqYg7JyQKeR3oSO2DaZaxLzhxRDGRLhSy8YuzCQDF/lWTdJEqsrOf1dZBA+p9B01hM5Z4ALNzY0v+jebD4OmzrgsRSPJUSwgBaq4j572T0U2hGGUdGGpEqeodV+aKkEgj/XHIfddcdZEFdVPGM86kTS8Klw5nCTsjWr3yq8kS8D/+DT/SsHYaHjJGgECdZjyRhpniCJ5LFHolPDCFVOZtgHQGH0qvp/5KXg2/raAprufvufIoYJKRzCp+8mlt9zlSL9VEyrvxcyvEqusbTVTLgucAsPE01SORyNUXWPe9ZfZ0uGVDooBkbEeNMOZ20gZXzzCz1htzUl/ti678GHWwKQYyoOnftO7phgm0pWioTnuhZSnd4u4cUyp5ffiuyScD+9z16T0WdyDDi/o8ZDv6+3M3x3mEWRxSW+tKGmIYJv0MXmXzfEKTBWWxQTm2mMp9Yl/NwexIaYrME0zRZne+5UU53GpusS4Z/sFhfoRdhnCggazkTp9nMdmmSbCTDITX385q2prrGBI+HVX2YcJE/Lp+vztyp2F9O/gwLmcUmFcM8dGb0RpVmmPKx+b4MaXPEPoL7Gi/gotCHBmA+MimSln1pT7ogWPww7KX9PLSg24ONkeby70Xw=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 40,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s4"
+          },
+          "variable": "TwoPhotonSeries_ScanImage",
+          "plane": 2
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 41,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "plane": 1
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 42,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s4"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_ScanImage",
+            "averageOutput": "",
+            "maximumOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-data"
+      }
+    },
+    {
+      "request": {
+        "method": "tools.run",
+        "id": 43,
         "params": {
           "methodId": "ophys.setup_variables",
           "options": {
@@ -907,7 +1991,10 @@
               "RoiArray",
               "RoiSignals_MeanF",
               "RoiSignals_NeuropilF",
-              "RoiSignals_Dff"
+              "RoiSignals_Dff",
+              "RoiSignals_Deconvolved",
+              "RoiSignals_Denoised",
+              "TwoPhotonSeries_Denoised"
             ],
             "fragments": []
           }

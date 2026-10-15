@@ -102,6 +102,77 @@ class TiffStack:
         tifffile.imwrite(str(path), np.moveaxis(data, 2, 0), photometric="minisblack")
 
 
+class ScanImageTiff:
+    """A ScanImage TIFF file: frames of every saved channel, plane after plane, volume after volume.
+
+    The channels (SI.hChannels.channelSave) and planes (SI.hStackManager.numSlices) are read from the
+    first page's Software tag, or its ImageDescription for older versions. Reads height x width x frames,
+    height x width x channels x frames with more than one channel, and height x width x channels x planes x
+    frames with more than one plane. A multi-ROI recording (SI.hRoiManager.mroiEnable) has its ROIs one above
+    the other on each page, with flyback lines between them, and their sizes in the Artist tag: the ROIs are
+    put side by side, padded with 0 at the bottom to the tallest. Pages after the last whole volume are left out.
+    """
+
+    def read(self, path):
+        tifffile = _tifffile()
+        with tifffile.TiffFile(str(path)) as tif:
+            first = tif.pages[0]
+            text = "\n".join(str(first.tags[name].value) for name in ("Software", "ImageDescription") if name in first.tags)
+            artist = str(first.tags["Artist"].value) if "Artist" in first.tags else ""
+            pages = np.stack([page.asarray() for page in tif.pages], axis=0)
+        if "SI." not in text:
+            raise NansenError("invalid-data", f"{path} is not a ScanImage TIFF file (no SI. metadata)")
+        channels = len(si_numbers(text, "hChannels.channelSave")) or 1
+        planes = int((si_numbers(text, "hStackManager.actualNumSlices") or si_numbers(text, "hStackManager.numSlices") or [1])[0])
+        volumes = pages.shape[0] // (channels * planes)
+        height, width = pages.shape[1:3]
+        data = pages[:volumes * channels * planes].reshape(volumes, planes, channels, height, width).transpose(3, 4, 2, 1, 0)
+        if (si_numbers(text, "hRoiManager.mroiEnable") or [0])[0] and artist:
+            data = mroi_mosaic(data, artist, path)
+        if planes == 1:
+            data = data[:, :, :, 0, :]
+            if channels == 1:
+                data = data[:, :, 0, :]
+        return np.ascontiguousarray(data)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "ScanImage files are written by ScanImage; save a stack with npy or ophys.tiff_stack")
+
+
+def si_numbers(text, name):
+    """The numbers of the SI.<name> = value line of ScanImage metadata (true is 1, false 0); [] if there is none."""
+    match = re.search(r"(?:^|\n)\s*(?:scanimage\.)?SI\." + re.escape(name) + r"\s*=\s*([^\n]*)", text)
+    if not match:
+        return []
+    value = match.group(1).replace("true", "1").replace("false", "0")
+    return [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", value)]
+
+
+def mroi_mosaic(data, artist, path):
+    """The ROIs of a multi-ROI recording side by side: ROI k is rows sum(h_1..h_(k-1)) + k-1 flyback gaps on."""
+    import json
+
+    try:
+        rois = json.loads(artist)["RoiGroups"]["imagingRoiGroup"]["rois"]
+    except (ValueError, KeyError, TypeError):
+        raise NansenError("invalid-data", f"{path} has no multi-ROI layout in its Artist tag") from None
+    rois = rois if isinstance(rois, list) else [rois]
+    sizes = []
+    for roi in rois:
+        field = roi["scanfields"][0] if isinstance(roi["scanfields"], list) else roi["scanfields"]
+        sizes.append([int(v) for v in field["pixelResolutionXY"]])  # [width, height]
+    height = data.shape[0]
+    gap = (height - sum(h for _, h in sizes)) // (len(sizes) - 1) if len(sizes) > 1 else 0
+    out = np.zeros((max(h for _, h in sizes), sum(min(w, data.shape[1]) for w, _ in sizes)) + data.shape[2:], dtype=data.dtype)
+    top, left = 0, 0
+    for w, h in sizes:
+        w = min(w, data.shape[1])
+        out[:h, left:left + w] = data[top:top + h, :w]
+        top += h + gap
+        left += w
+    return out
+
+
 def _tifffile():
     try:
         import tifffile

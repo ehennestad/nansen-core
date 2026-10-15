@@ -1,0 +1,50 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.extract",
+  "version": "1.0.0",
+  "title": "Detect cells (EXTRACT)",
+  "category": "Two-photon/Segmentation",
+  "entityType": "*",
+  "description": "Runs EXTRACT (extractor, with get_defaults) on the stack, when it is on the MATLAB path, and saves its cells as ROIs (pixels above threshold times each cell's largest spatial weight) and its traces as signals.",
+  "implementations": {
+    "matlab": "ophys.extract"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "rois": {
+        "type": "string",
+        "default": "RoiArray",
+        "title": "ROIs",
+        "description": "Variable the cells are saved to as ROIs."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiSignals_MeanF",
+        "title": "Signals",
+        "description": "Variable the result is saved to."
+      },
+      "cellRadius": {
+        "type": "integer",
+        "default": 6,
+        "minimum": 1,
+        "title": "Cell radius (px)"
+      },
+      "threshold": {
+        "type": "number",
+        "default": 0.2,
+        "exclusiveMinimum": 0,
+        "maximum": 1,
+        "title": "Mask threshold",
+        "description": "Share of a cell's largest spatial weight a pixel needs to be part of its ROI"
+      }
+    }
+  }
+}

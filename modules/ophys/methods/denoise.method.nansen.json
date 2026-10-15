@@ -1,0 +1,43 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.denoise",
+  "version": "1.0.0",
+  "title": "Denoise stack",
+  "category": "Two-photon/Image processing",
+  "entityType": "*",
+  "description": "Gaussian smoothing of the stack in space and in time (sigma in pixels and frames, cut at 3 sigma), with the weights that fall inside the stack renormalised at its edges. Saved as single precision. Unlike dev's DeepInterpolation, it needs no trained network.",
+  "implementations": {
+    "python": "ophys_methods:denoise",
+    "matlab": "ophys.denoise"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Denoised",
+        "title": "Denoised stack",
+        "description": "Variable the result is saved to."
+      },
+      "spatialSigma": {
+        "type": "number",
+        "default": 1,
+        "minimum": 0,
+        "title": "Spatial sigma (px)"
+      },
+      "temporalSigma": {
+        "type": "number",
+        "default": 1,
+        "minimum": 0,
+        "title": "Temporal sigma (frames)"
+      }
+    }
+  }
+}

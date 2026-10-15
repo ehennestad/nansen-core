@@ -2,7 +2,16 @@ function result = extractSignals(entity, options, context)
 %extractSignals Average of each ROI's pixels per frame (frames x ROIs), and of a ring of neuropil around it outside every ROI
     stack = ophys.internal.loadStack(context, entity, options.stack);
     [height, width, frames] = size(stack);
-    masks = ophys.internal.roiMasks(context.Project.load(entity, options.rois), height, width);
+    document = context.Project.load(entity, options.rois);
+    rois = ophys.internal.roiList(document);
+    keep = cellfun(@(r) options.includeRejected || ~strcmp(string(nansen.internal.getField(r, "classification", "")), "rejected"), rois);
+    rois = rois(keep);
+    ids = cell(1, numel(rois));
+    for i = 1:numel(rois)
+        ids{i} = nansen.internal.getField(rois{i}, "id", i);
+    end
+    document.rois = rois;
+    masks = ophys.internal.roiMasks(document, height, width);
     flat = reshape(stack, height * width, frames);
     count = numel(masks);
     signals = nan(frames, count);
@@ -24,7 +33,7 @@ function result = extractSignals(entity, options, context)
     ophys.internal.saveIf(context, entity, options.output, signals);
     ophys.internal.saveIf(context, entity, options.neuropilOutput, neuropil);
     context.log("%s: signals of %d ROIs in %d frames", ophys.internal.entityName(entity), count, frames);
-    result = struct("rois", count, "frames", frames, ...
+    result = struct("rois", count, "frames", frames, "ids", {ids}, ...
         "meanSignal", {num2cell(ophys.internal.roundTo(mean(signals, 1), 4))}, ...
         "meanNeuropil", {num2cell(ophys.internal.roundTo(mean(neuropil, 1), 4))});
 end

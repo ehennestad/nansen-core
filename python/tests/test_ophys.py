@@ -133,3 +133,69 @@ def test_suite2p_says_what_is_missing():
     with pytest.raises(NansenError) as error:
         ophys["suite2p"](None, {}, None)
     assert error.value.code == "dependency-missing"
+
+
+def test_oasis_reaches_the_optimum_of_the_deconvolution_problem():
+    optimize = pytest.importorskip("scipy.optimize")
+    rng = np.random.default_rng(5)
+    g, frames = 0.9, 50
+    K = np.array([[g ** (t - k) if t >= k else 0.0 for k in range(frames)] for t in range(frames)])
+    for lam in (0.0, 0.2):
+        y = K @ ((rng.random(frames) < 0.1) * rng.random(frames) * 2) + rng.normal(0, 0.2, frames) - 0.2
+        calcium, spikes = ophys["oasis_ar1"](y, g, lam)
+        assert (spikes >= -1e-12).all() and calcium[0] >= 0
+        objective = lambda s: 0.5 * np.sum((K @ s - y) ** 2) + lam * np.sum(s)
+        best = optimize.minimize(objective, np.full(frames, 0.1), jac=lambda s: K.T @ (K @ s - y) + lam,
+                                 bounds=[(0, None)] * frames, method="L-BFGS-B", options={"ftol": 1e-16, "gtol": 1e-12})
+        assert objective(spikes) <= best.fun + 1e-9
+        assert np.abs(K @ best.x - calcium).max() < 1e-5
+
+
+def test_noise_level_and_median():
+    assert ophys["_median"](np.array([3.0, 1.0, 2.0])) == 2.0
+    assert ophys["_median"](np.array([4.0, 1.0, 2.0, 3.0])) == 2.5
+    assert np.isnan(ophys["noise_level"](np.array([1.0, np.nan, 2.0])))
+
+
+def test_gaussian_smoothing_renormalises_at_the_edges():
+    flat = np.full((4, 5, 6), 7.0)
+    assert np.allclose(ophys["gaussian_along"](flat, 2, 1.5), 7.0)  # a constant stays constant, edges too
+    step = np.zeros((1, 1, 9))
+    step[0, 0, 4] = 1.0
+    smoothed = ophys["gaussian_along"](step, 2, 1.0)[0, 0]
+    assert smoothed[4] == smoothed.max() and np.isclose(smoothed[3], smoothed[5]) and smoothed[0] == 0
+
+
+def test_scanimage_metadata_numbers():
+    numbers = load_object("ophys_adapters:si_numbers", PYTHON)
+    text = "SI.hChannels.channelSave = [1;2]\nscanimage.SI.hStackManager.numSlices = 3\nSI.hRoiManager.mroiEnable = true"
+    assert numbers(text, "hChannels.channelSave") == [1, 2]
+    assert numbers(text, "hStackManager.numSlices") == [3]
+    assert numbers(text, "hRoiManager.mroiEnable") == [1]
+    assert numbers(text, "hFastZ.enable") == []
+
+
+def test_scanimage_reads_channels_planes_and_rois():
+    folder = Path(__file__).resolve().parents[2] / "conformance" / "api" / "ophys" / "project" / "data" / "raw" / "sub-m1"
+    data = adapter("ScanImageTiff").read(folder / "ses-s4" / "rec_00001.tif")
+    assert data.shape == (16, 64, 2, 2, 3) and not (data == 9999).any()  # no flyback lines
+    with pytest.raises(NansenError) as error:
+        adapter("ScanImageTiff").read(folder / "ses-s2" / "rec.tif")
+    assert error.value.code == "invalid-data"
+
+
+def test_update_rois_classifies_removes_and_adds():
+    from nansen.frames import update_rois
+    document = {"imageSize": [10, 10], "rois": [{"id": 1, "pixels": [[1, 1]]}, {"id": 5, "pixels": [[2, 2], [2, 3]]}]}
+    changed, added = update_rois(document, classify=[{"id": 5, "classification": "rejected"}], remove=[1],
+                                 add=[{"pixels": [[3, 3], [3, 4], [11, 0]]}])
+    assert added == [6]
+    assert [r["id"] for r in changed["rois"]] == [5, 6]
+    assert changed["rois"][0]["classification"] == "rejected"
+    assert changed["rois"][1] == {"id": 6, "area": 2, "center": [3.0, 3.5], "pixels": [[3, 3], [3, 4]]}
+    assert document["rois"][1].get("classification") is None  # the original is left alone
+    for bad in ({"classify": [{"id": 2, "classification": "rejected"}]}, {"remove": [7]},
+                {"classify": [{"id": 1, "classification": "maybe"}]}, {"add": [{"pixels": [[20, 20]]}]}):
+        with pytest.raises(NansenError) as error:
+            update_rois(document, **bad)
+        assert error.value.code == "invalid-params"

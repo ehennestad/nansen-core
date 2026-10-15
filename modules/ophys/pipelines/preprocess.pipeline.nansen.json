@@ -4,7 +4,7 @@
   "id": "ophys.preprocess",
   "version": "1.0.0",
   "title": "Two-photon preprocessing",
-  "description": "Correct motion, compute image statistics, detect ROIs, extract their signals and compute ΔF/F.",
+  "description": "Correct motion, compute image statistics, detect ROIs, extract their signals, compute ΔF/F and deconvolve.",
   "entityType": "*",
   "steps": [
     {
@@ -26,6 +26,10 @@
     {
       "method": "ophys.compute_dff",
       "title": "Compute ΔF/F"
+    },
+    {
+      "method": "ophys.deconvolve",
+      "title": "Deconvolve"
     }
   ]
 }

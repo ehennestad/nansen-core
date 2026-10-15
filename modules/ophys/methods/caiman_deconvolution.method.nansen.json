@@ -1,0 +1,46 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.caiman_deconvolution",
+  "version": "1.0.0",
+  "title": "Deconvolve (CaImAn)",
+  "category": "Two-photon/Signal extraction",
+  "entityType": "*",
+  "description": "Spikes and denoised calcium of each trace by CaImAn's constrained foopsi, when CaImAn is installed (Python) or on the path (MATLAB, deconvolveCa).",
+  "implementations": {
+    "python": "ophys_methods:caiman_deconvolution",
+    "matlab": "ophys.caimanDeconvolution"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "signals": {
+        "type": "string",
+        "default": "RoiSignals_Dff",
+        "title": "Traces",
+        "description": "Variable that holds the traces (frames x ROIs)."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiSignals_Deconvolved",
+        "title": "Spikes",
+        "description": "Variable the result is saved to."
+      },
+      "denoisedOutput": {
+        "type": "string",
+        "default": "RoiSignals_Denoised",
+        "title": "Denoised calcium",
+        "description": "Variable the denoised calcium is saved to. Leave empty to not save it."
+      },
+      "order": {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ],
+        "default": 1,
+        "title": "Autoregressive order"
+      }
+    }
+  }
+}

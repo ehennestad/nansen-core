@@ -23,7 +23,7 @@ from .dataset import Dataset
 from .documents import check_document
 from .entities import Entity
 from .errors import NansenError
-from .frames import image_frame, roi_outlines
+from .frames import image_frame, roi_outlines, update_rois
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -773,10 +773,19 @@ class Api:
         if limits is not None and (not isinstance(limits, list) or len(limits) != 2):
             raise NansenError("invalid-params", "limits is [low, high]")
         result = image_frame(project.load(entity, params["variable"]), int(params.get("frame", 0)),
-                             int(params.get("channel", 0)), params.get("projection"), limits)
+                             int(params.get("channel", 0)), params.get("projection"), limits, int(params.get("plane", 0)))
         if params.get("rois"):
             result["rois"] = roi_outlines(project.load(entity, params["rois"]))
         return result
+
+    def rois__update(self, params: dict) -> dict:
+        """Classify, remove and add ROIs in an ROI variable of an entity, and save it."""
+        project = self._require_project()
+        entity = self._entity(params)
+        document, added = update_rois(project.load(entity, params["variable"], cached=False), params.get("classify"),
+                                      params.get("remove"), params.get("add"))
+        project.save(entity, params["variable"], document)
+        return {"rois": roi_outlines(document), "added": added}
 
     def methods__list(self, params: dict) -> list:
         project = self._require_project()

@@ -1,0 +1,57 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.deconvolve",
+  "version": "1.0.0",
+  "title": "Deconvolve (OASIS)",
+  "category": "Two-photon/Signal extraction",
+  "entityType": "*",
+  "description": "Spikes and denoised calcium of each ΔF/F trace by OASIS for an AR(1) model (Friedrich et al. 2017), natively in both languages: c minimises 1/2 |c - y|^2 + lambda * sum(s) with spikes s_t = c_t - g c_(t-1) >= 0, g = exp(-1 / (tauDecay * frameRate)) and lambda = sparsity times the trace's noise, median(|diff(y)|) / (0.6745 * sqrt(2)).",
+  "implementations": {
+    "python": "ophys_methods:deconvolve",
+    "matlab": "ophys.deconvolve"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "signals": {
+        "type": "string",
+        "default": "RoiSignals_Dff",
+        "title": "Traces",
+        "description": "Variable that holds the traces (frames x ROIs), usually ΔF/F."
+      },
+      "output": {
+        "type": "string",
+        "default": "RoiSignals_Deconvolved",
+        "title": "Spikes",
+        "description": "Variable the result is saved to."
+      },
+      "denoisedOutput": {
+        "type": "string",
+        "default": "RoiSignals_Denoised",
+        "title": "Denoised calcium",
+        "description": "Variable the denoised calcium is saved to. Leave empty to not save it."
+      },
+      "frameRate": {
+        "type": "number",
+        "default": 0,
+        "minimum": 0,
+        "title": "Frame rate (Hz)",
+        "description": "0 for the entity's frame_rate column"
+      },
+      "tauDecay": {
+        "type": "number",
+        "default": 0.55,
+        "exclusiveMinimum": 0,
+        "title": "Decay time constant (s)"
+      },
+      "sparsity": {
+        "type": "number",
+        "default": 1,
+        "minimum": 0,
+        "title": "Sparsity",
+        "description": "The ℓ1 penalty on spikes, in units of the trace's noise"
+      }
+    }
+  }
+}

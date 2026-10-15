@@ -1,0 +1,52 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.flowreg",
+  "version": "1.0.0",
+  "title": "Correct motion (Flow-Registration)",
+  "category": "Two-photon/Motion correction",
+  "entityType": "*",
+  "description": "Non-rigid motion correction by optical flow with the Flow-Registration toolbox (OF_options and compensate_recording), when it is on the MATLAB path. Saves the aligned stack.",
+  "implementations": {
+    "matlab": "ophys.flowreg"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Original",
+        "title": "Stack",
+        "description": "Variable that holds the image stack (height x width x frames)."
+      },
+      "output": {
+        "type": "string",
+        "default": "TwoPhotonSeries_Corrected",
+        "title": "Aligned stack",
+        "description": "Variable the result is saved to."
+      },
+      "alpha": {
+        "type": "number",
+        "default": 4,
+        "exclusiveMinimum": 0,
+        "title": "Smoothness (alpha)"
+      },
+      "quality": {
+        "type": "string",
+        "enum": [
+          "fast",
+          "balanced",
+          "quality"
+        ],
+        "default": "balanced",
+        "title": "Quality"
+      },
+      "referenceFrames": {
+        "type": "integer",
+        "default": 50,
+        "minimum": 1,
+        "title": "Frames in the reference"
+      }
+    }
+  }
+}

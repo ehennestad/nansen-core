@@ -1,0 +1,17 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.scanimage_tiff",
+  "version": "1.0.0",
+  "title": "ScanImage TIFF",
+  "description": "A TIFF file written by ScanImage: the channels and planes are read from its metadata, giving height x width x frames, x channels x frames, or x channels x planes x frames. A multi-ROI recording has its ROIs put side by side (padded at the bottom to the tallest), without the flyback lines between them. Read only. Python needs tifffile.",
+  "extensions": [
+    ".tif",
+    ".tiff"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:ScanImageTiff",
+    "matlab": "ophys.ScanImageTiff"
+  }
+}

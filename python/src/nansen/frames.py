@@ -14,8 +14,9 @@ from .errors import NansenError
 
 
 def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optional[str] = None,
-                limits: Optional[List[float]] = None) -> Dict[str, Any]:
-    """A frame of a height x width (x frames) or height x width x channels x frames array, as 8-bit values.
+                limits: Optional[List[float]] = None, plane: int = 0) -> Dict[str, Any]:
+    """A frame of a height x width (x frames), height x width x channels x frames or height x width x channels x
+    planes x frames array, as 8-bit values.
 
     Values from low to high are scaled to 0..255 as floor((v - low) / (high - low) * 255 + 0.5), cut at
     both ends; NaN is 0. low and high are the limits given, or else the smallest and largest finite value
@@ -26,8 +27,14 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
     except ImportError:
         raise NansenError("adapter-unavailable", 'viewing arrays needs NumPy: pip install "nansen-core[npy]"') from None
     array = np.asarray(data)
-    if array.dtype.kind not in "biuf" or not 2 <= array.ndim <= 4:
+    if array.dtype.kind not in "biuf" or not 2 <= array.ndim <= 5:
         raise NansenError("invalid-data", "the data is not an image or a stack of images")
+    if array.ndim == 5:
+        if not 0 <= plane < array.shape[3]:
+            raise NansenError("invalid-params", f"there are {array.shape[3]} planes; plane {plane} is not one")
+        array = array[:, :, :, plane, :]
+    elif plane != 0:
+        raise NansenError("invalid-params", f"there is 1 plane; plane {plane} is not one")
     if array.ndim == 4:
         if not 0 <= channel < array.shape[2]:
             raise NansenError("invalid-params", f"there are {array.shape[2]} channels; channel {channel} is not one")
@@ -68,8 +75,58 @@ def roi_outlines(value: Any) -> List[Dict[str, Any]]:
         pixels = roi.get("pixels", []) if isinstance(roi, dict) else []
         if pixels and not isinstance(pixels[0], list):
             pixels = [pixels]
-        out.append({"id": roi.get("id", number), "pixels": [[int(p[0]), int(p[1])] for p in pixels]})
+        out.append({"id": roi.get("id", number), "pixels": [[int(p[0]), int(p[1])] for p in pixels],
+                    "classification": roi.get("classification")})
     return out
+
+
+CLASSES = ("accepted", "rejected")
+
+
+def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[list] = None,
+                add: Optional[list] = None) -> Any:
+    """The ROI file with ROIs classified, removed and added; returns (document, ids of the added ROIs).
+
+    classify is [{id, classification}] with classification accepted, rejected or null (none). An added ROI is
+    {pixels}; it gets the next free id, its area and its center, and pixels outside imageSize are left out.
+    """
+    roi_outlines(value)  # checks the shape
+    rois = [dict(roi, id=roi.get("id", number)) for number, roi in enumerate(value.get("rois", []), start=1)]
+    by_id = {roi["id"]: roi for roi in rois}
+    for change in classify or []:
+        roi = by_id.get(change.get("id"))
+        if roi is None:
+            raise NansenError("invalid-params", f"there is no ROI {change.get('id')!r}")
+        label = change.get("classification")
+        if label is None:
+            roi.pop("classification", None)
+        elif label in CLASSES:
+            roi["classification"] = label
+        else:
+            raise NansenError("invalid-params", f"an ROI is accepted or rejected, not {label!r}")
+    for roi_id in remove or []:
+        if roi_id not in by_id:
+            raise NansenError("invalid-params", f"there is no ROI {roi_id!r}")
+    rois = [roi for roi in rois if roi["id"] not in set(remove or [])]
+    size = value.get("imageSize")
+    next_id = max([int(i) for i in by_id] + [0]) + 1
+    added = []
+    for new in add or []:
+        pixels = sorted({(int(p[0]), int(p[1])) for p in new.get("pixels", [])
+                         if size is None or (0 <= p[0] < size[0] and 0 <= p[1] < size[1])})
+        if not pixels:
+            raise NansenError("invalid-params", "an added ROI needs pixels inside the image")
+        rows = sum(p[0] for p in pixels) / len(pixels)
+        columns = sum(p[1] for p in pixels) / len(pixels)
+        rois.append({"id": next_id, "area": len(pixels), "center": [_round2(rows), _round2(columns)],
+                     "pixels": [list(p) for p in pixels]})
+        added.append(next_id)
+        next_id += 1
+    return dict(value, rois=rois), added
+
+
+def _round2(value: float) -> float:
+    return math.floor(value * 100 + 0.5) / 100
 
 
 def _number(value: float):

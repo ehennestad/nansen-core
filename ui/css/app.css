@@ -523,7 +523,7 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .grid-table thead th.drop { box-shadow: inset 2px 0 0 var(--accent); }
 
 /* Stack viewer */
-.dialog.viewer-dialog { width: 920px; }
+.dialog.viewer-dialog { width: 1080px; }
 .viewer { display: flex; flex-direction: column; }
 .viewer-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .viewer-slider { flex: 1; min-width: 140px; accent-color: var(--accent); }
@@ -531,7 +531,21 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .viewer-bar .input { width: auto; padding-top: 5px; padding-bottom: 5px; }
 .viewer-bar input.input[type=number] { width: 90px; }
 .viewer-bar label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
-.viewer-stage { background: #0b0d12; display: flex; align-items: center; justify-content: center; padding: 12px; min-height: 320px; }
+.viewer-main { display: flex; min-height: 320px; }
+.viewer-stage { background: #0b0d12; display: flex; align-items: center; justify-content: center; padding: 12px; flex: 1; min-width: 0; }
+.viewer-canvas.adding { cursor: copy; }
+.viewer-roi-panel { width: 240px; border-left: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface-2); }
+.viewer-roi-actions { display: flex; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid var(--border); }
+.viewer-roi-actions .spacer { flex: 1; }
+.viewer-roi-actions .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+.viewer-radius.input { width: 52px; padding: 4px 6px; }
+.viewer-hide { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 10px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.viewer-roi-list { list-style: none; margin: 0; padding: 4px; overflow: auto; max-height: 52vh; flex: 1; }
+.viewer-roi-list li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.viewer-roi-list li:hover { background: var(--hover, rgba(127,127,127,.12)); }
+.viewer-roi-list li.selected { background: var(--accent-soft); }
+.viewer-roi-list .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.viewer-roi-list .grow { flex: 1; }
 .viewer-canvas { image-rendering: pixelated; width: min(640px, 100%); max-height: 62vh; object-fit: contain; aspect-ratio: auto; cursor: crosshair; border-radius: 4px; }
 .viewer-foot { display: flex; align-items: center; gap: 10px; padding: 8px 16px; font-size: 12px; border-top: 1px solid var(--border); }
 .viewer-foot .spacer { flex: 1; }

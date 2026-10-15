@@ -983,4 +983,20 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     page.click(".viewer-play")
     wait_until(lambda: page.locator(".viewer-frame").inner_text() not in ("10 / 40", "11 / 40"))
     page.click(".viewer-play")
+
+    # curate: reject ROI 2 with its key, add one by clicking, delete it again
+    page.click(".viewer-roi-list li[data-roi='2']")
+    page.keyboard.press("r")
+    page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('rejected')")
+    page.click(".viewer-add")
+    box = page.locator(".viewer-canvas").bounding_box()
+    page.mouse.click(box["x"] + box["width"] * 5.5 / 32, box["y"] + box["height"] * 26.5 / 32)
+    page.wait_for_selector(".viewer-roi-list li[data-roi='4'].selected")
+    page.click(".viewer-add")
+    page.click(".roi-delete")
+    wait_until(lambda: page.locator(".viewer-roi-list li").count() == 3)
+    page.locator(".viewer-hide input").check()
+    wait_until(lambda: page.locator(".viewer-roi-list li").count() == 2)
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+    document = api.project.load(api.project.entity("session", s1[0]), "RoiArray", cached=False)
+    assert [(r["id"], r.get("classification")) for r in document["rois"]] == [(1, None), (2, "rejected"), (3, None)]

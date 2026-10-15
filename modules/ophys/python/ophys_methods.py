@@ -177,7 +177,9 @@ def extract_signals(entity, options, context):
     """Average of each ROI's pixels per frame, and of a ring of neuropil around it outside every ROI."""
     stack = _load_stack(entity, options["stack"], context)
     height, width, frames = stack.shape
-    masks = roi_masks(context.project.load(entity, options["rois"]), height, width)
+    document = context.project.load(entity, options["rois"])
+    kept = [roi for roi in document.get("rois", []) if options["includeRejected"] or roi.get("classification") != "rejected"]
+    masks = roi_masks(dict(document, rois=kept), height, width)
     flat = stack.reshape(height * width, frames)
     signals = np.full((frames, len(masks)), np.nan)
     neuropil = np.full((frames, len(masks)), np.nan)
@@ -194,7 +196,7 @@ def extract_signals(entity, options, context):
     _save(entity, options["output"], signals, context)
     _save(entity, options["neuropilOutput"], neuropil, context)
     context.log(f"{_name(entity)}: signals of {len(masks)} ROIs in {frames} frames")
-    return {"rois": len(masks), "frames": frames,
+    return {"rois": len(masks), "frames": frames, "ids": [roi.get("id", n + 1) for n, roi in enumerate(kept)],
             "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
             "meanNeuropil": [round_to(v, 4) for v in neuropil.mean(axis=0)]}
 
@@ -311,6 +313,178 @@ def downsample(entity, options, context):
             "meanIntensity": round_to(out.astype(np.float64).mean(), 4)}
 
 
+def deconvolve(entity, options, context):
+    """Spikes and denoised calcium of each trace by OASIS for an AR(1) model (Friedrich et al. 2017)."""
+    traces = _as_traces(context.project.load(entity, options["signals"]))
+    rate = options["frameRate"] or entity.get("frame_rate")
+    if not rate:
+        raise NansenError("invalid-options", "give frameRate, or fill in the entity's frame_rate")
+    g = math.exp(-1.0 / (options["tauDecay"] * float(rate)))
+    frames, rois = traces.shape
+    spikes = np.full(traces.shape, np.nan)
+    calcium = np.full(traces.shape, np.nan)
+    noise = []
+    for i in range(rois):
+        context.check_cancelled()
+        trace = traces[:, i]
+        sigma = noise_level(trace)
+        noise.append(sigma)
+        if frames and not np.isnan(trace).any():
+            calcium[:, i], spikes[:, i] = oasis_ar1(trace, g, options["sparsity"] * sigma)
+        context.progress((i + 1) / max(rois, 1), f"ROI {i + 1}/{rois}")
+    _save(entity, options["output"], spikes, context)
+    _save(entity, options["denoisedOutput"], calcium, context)
+    context.log(f"{_name(entity)}: deconvolved {rois} traces, decay factor {g:.4f} per frame")
+    return {"rois": rois, "frames": frames, "noise": [round_to(v, 4) for v in noise],
+            "spikeSum": [round_to(np.sum(spikes[:, i]), 3) for i in range(rois)],
+            "maxCalcium": [round_to(np.max(calcium[:, i]) if frames else np.nan, 3) for i in range(rois)]}
+
+
+def noise_level(trace):
+    """The noise of a trace from its frame-to-frame differences: median(|diff|) / (0.6745 * sqrt(2)); NaN if any value is."""
+    if len(trace) < 2 or np.isnan(trace).any():
+        return float("nan")
+    return _median(np.abs(np.diff(trace))) / (0.6745 * math.sqrt(2))
+
+
+def _median(values):
+    ordered = np.sort(values)
+    n = len(ordered)
+    return float(ordered[n // 2]) if n % 2 else float((ordered[n // 2 - 1] + ordered[n // 2]) / 2)
+
+
+def oasis_ar1(y, g, lam):
+    """Denoised calcium c and spikes s minimising 1/2 |c - y|^2 + lam * sum(s), s_t = c_t - g c_(t-1) >= 0, c_0 = s_0 >= 0.
+
+    Pools of frames share one exponential decay; a pool whose start would need a negative spike is merged
+    with the one before (pool adjacent violators). Powers of g are products, as MATLAB computes them.
+    """
+    frames = len(y)
+    powers = np.cumprod(np.concatenate([[1.0], np.full(2 * frames, g)]))
+    target = np.asarray(y, dtype=np.float64) - lam * (1 - g)
+    target[-1] = y[-1] - lam
+    values, weights, starts, lengths = [], [], [], []
+    for t in range(frames):
+        values.append(float(target[t]))
+        weights.append(1.0)
+        starts.append(t)
+        lengths.append(1)
+        while len(values) > 1:
+            previous = values[-2] if len(values) > 2 else max(values[-2], 0.0)  # c_0 >= 0
+            if values[-1] >= powers[lengths[-2]] * previous:
+                break
+            span = lengths[-2]
+            weight = weights[-2] + weights[-1] * powers[2 * span]
+            values[-2] = (values[-2] * weights[-2] + values[-1] * weights[-1] * powers[span]) / weight
+            weights[-2] = weight
+            lengths[-2] = span + lengths[-1]
+            del values[-1], weights[-1], starts[-1], lengths[-1]
+    calcium = np.zeros(frames)
+    for value, start, length in zip(values, starts, lengths):
+        calcium[start:start + length] = max(value, 0.0) * powers[:length]
+    spikes = calcium.copy()
+    spikes[1:] = calcium[1:] - g * calcium[:-1]
+    return calcium, spikes
+
+
+def caiman_deconvolution(entity, options, context):
+    """Spikes and denoised calcium of each trace by CaImAn's constrained foopsi."""
+    try:
+        from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
+    except ImportError as error:
+        raise NansenError("dependency-missing", f"ophys.caiman_deconvolution needs CaImAn ({error}): see https://github.com/flatironinstitute/CaImAn") from None
+    traces = _as_traces(context.project.load(entity, options["signals"]))
+    frames, rois = traces.shape
+    spikes = np.full(traces.shape, np.nan)
+    calcium = np.full(traces.shape, np.nan)
+    for i in range(rois):
+        context.check_cancelled()
+        if not np.isnan(traces[:, i]).any():
+            c, _, _, _, _, s, _ = constrained_foopsi(traces[:, i], p=options["order"])
+            calcium[:, i], spikes[:, i] = c, s
+        context.progress((i + 1) / max(rois, 1), f"ROI {i + 1}/{rois}")
+    _save(entity, options["output"], spikes, context)
+    _save(entity, options["denoisedOutput"], calcium, context)
+    return {"rois": rois, "frames": frames}
+
+
+def denoise(entity, options, context):
+    """Gaussian smoothing in space and in time, with the weights renormalised at the edges."""
+    stack = _load_stack(entity, options["stack"], context)
+    out = stack.astype(np.float64)
+    for axis, sigma in ((0, options["spatialSigma"]), (1, options["spatialSigma"]), (2, options["temporalSigma"])):
+        context.check_cancelled()
+        out = gaussian_along(out, axis, sigma)
+    out = out.astype(np.float32)
+    _save(entity, options["output"], out, context)
+    height, width, frames = out.shape
+    context.log(f"{_name(entity)}: smoothed {frames} frames")
+    return {"frames": frames, "height": height, "width": width, "meanIntensity": round_to(out.astype(np.float64).mean(), 4)}
+
+
+def gaussian_along(data, axis, sigma):
+    """data smoothed along one axis by a Gaussian of sigma samples, cut at 3 sigma; at the ends the weights that
+    fall inside are renormalised. Offsets are added from -radius to radius, as in MATLAB."""
+    if sigma <= 0 or data.shape[axis] < 2:
+        return data
+    radius = int(math.ceil(3 * sigma))
+    size = data.shape[axis]
+    total = np.zeros_like(data)
+    norm = np.zeros(size)
+    for offset in range(-radius, radius + 1):
+        weight = math.exp(-offset * offset / (2 * sigma * sigma))
+        here = slice(max(0, -offset), min(size, size - offset))
+        there = slice(max(0, offset), min(size, size + offset))
+        index_here = [slice(None)] * data.ndim
+        index_there = [slice(None)] * data.ndim
+        index_here[axis], index_there[axis] = here, there
+        total[tuple(index_here)] += weight * data[tuple(index_there)]
+        norm[here] += weight
+    shape = [1] * data.ndim
+    shape[axis] = size
+    return total / norm.reshape(shape)
+
+
+def align_sessions(entities, options, context):
+    """Align each entity's FOV image to the first entity's, and copy the first entity's ROIs, moved, to the others."""
+    if not entities:
+        raise NansenError("no-entities", "no entities to align")
+    reference_image = _image(context.project.load(entities[0], options["image"]))
+    height, width = reference_image.shape
+    reference_fft = np.conj(np.fft.fft2(reference_image)) * _smoothing(height, width)
+    document = context.project.load(entities[0], options["rois"])
+    rois = [roi for roi in document.get("rois", []) if roi.get("classification") != "rejected"]
+    shifts, migrated = [], 0
+    for number, entity in enumerate(entities):
+        context.check_cancelled()
+        image = _image(context.project.load(entity, options["image"]))
+        if image.shape != (height, width):
+            raise NansenError("invalid-data", f"{_name(entity)}: the image is {image.shape}, the reference {(height, width)}")
+        dy, dx = (int(v) for v in estimate_shifts(image[:, :, None], reference_fft, options["maxShift"])[0])
+        shifts.append({"key": entity.key, "shift": [dy, dx]})
+        if number > 0:
+            moved = []
+            for roi in rois:
+                pixels = [(int(y) + dy, int(x) + dx) for y, x in np.asarray(roi["pixels"]).reshape(-1, 2)]
+                pixels = sorted(p for p in pixels if 0 <= p[0] < height and 0 <= p[1] < width)
+                if pixels:
+                    moved.append(_roi(roi.get("id", len(moved) + 1), pixels))
+            context.project.save(entity, options["output"], {"imageSize": [height, width], "rois": moved})
+            migrated += 1
+        context.progress((number + 1) / len(entities), _name(entity))
+    context.log(f"aligned {len(entities)} entities to {_name(entities[0])}")
+    return {"reference": entities[0].key, "shifts": shifts, "migrated": migrated, "rois": len(rois)}
+
+
+def _image(data):
+    image = np.asarray(data, dtype=np.float64)
+    if image.ndim == 3:
+        image = image.mean(axis=2)
+    if image.ndim != 2:
+        raise NansenError("invalid-data", f"an image is height x width (or a stack to average), not {image.shape}")
+    return image
+
+
 VARIABLES = [
     ("TwoPhotonSeries_Corrected", "Motion-corrected stack", "two_photon_series_corrected.npy", "npy", "ImageStack"),
     ("TwoPhotonSeries_Downsampled", "Downsampled stack", "two_photon_series_downsampled.npy", "npy", "ImageStack"),
@@ -321,6 +495,9 @@ VARIABLES = [
     ("RoiSignals_MeanF", "ROI signals", "roi_signals_mean_f.npy", "npy", "RoiSignals"),
     ("RoiSignals_NeuropilF", "Neuropil signals", "roi_signals_neuropil_f.npy", "npy", "RoiSignals"),
     ("RoiSignals_Dff", "ROI ΔF/F", "roi_signals_dff.npy", "npy", "RoiSignals"),
+    ("RoiSignals_Deconvolved", "Deconvolved spikes", "roi_signals_deconvolved.npy", "npy", "RoiSignals"),
+    ("RoiSignals_Denoised", "Denoised calcium", "roi_signals_denoised.npy", "npy", "RoiSignals"),
+    ("TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack"),
 ]
 
 

@@ -1,15 +1,27 @@
-function result = imageFrame(data, frame, channel, projection, limits)
+function result = imageFrame(data, frame, channel, projection, limits, plane)
 %imageFrame A frame of an image or stack, as 8-bit values for the dashboard's viewer
 %
-%   data is height x width (x frames), or height x width x channels x
-%   frames. frame and channel are 0-based; projection is "", "mean" or
+%   data is height x width (x frames), height x width x channels x frames,
+%   or height x width x channels x planes x frames. frame, channel and
+%   plane are 0-based; projection is "", "mean" or
 %   "max"; limits is [] or [low, high]. Values from low to high are scaled
 %   to 0..255 as floor((v - low) / (high - low) * 255 + 0.5), cut at both
 %   ends; NaN is 0. low and high are the limits given, or else the smallest
 %   and largest finite value of the frame. pixels is base64 of the bytes,
 %   row after row. Python's nansen.frames.image_frame gives the same bytes.
-    if ~(isnumeric(data) || islogical(data)) || ~isreal(data) || ndims(data) > 4
+    if nargin < 6
+        plane = 0;
+    end
+    if ~(isnumeric(data) || islogical(data)) || ~isreal(data) || ndims(data) > 5
         nansen.internal.throwError("invalid-data", "the data is not an image or a stack of images")
+    end
+    if ndims(data) == 5
+        if plane < 0 || plane >= size(data, 4)
+            nansen.internal.throwError("invalid-params", "there are %d planes; plane %d is not one", size(data, 4), plane)
+        end
+        data = reshape(data(:, :, :, plane + 1, :), size(data, 1), size(data, 2), size(data, 3), []);
+    elseif plane ~= 0
+        nansen.internal.throwError("invalid-params", "there is 1 plane; plane %d is not one", plane)
     end
     if ndims(data) == 4
         if channel < 0 || channel >= size(data, 3)
