@@ -57,7 +57,11 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
     end
     gone = [];
     if isnumeric(merge) && ~isempty(merge)
-        merge = num2cell(merge, 2);   % one group, decoded as a matrix
+        if isvector(merge)
+            merge = {merge(:)'};   % one group: jsondecode may give it as a row or a column
+        else
+            merge = num2cell(merge, 2);   % groups of equal size, decoded as a matrix
+        end
     end
     for g = 1:numel(merge)
         group = double(merge{g}(:))';
