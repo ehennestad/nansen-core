@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PVScan version="5.4.64.200" date="1/1/2026" notes="">
+  <Sequence type="TSeries Timed Element" cycle="1" time="10:00:00.000">
+    <Frame relativeTime="0.000" index="1" parameterSet="CurrentSettings">
+      <File channel="1" channelName="Ch1" page="1" filename="TSeries-001_Cycle00001_Ch1_000001.ome.tif" />
+      <File channel="2" channelName="Ch2" page="1" filename="TSeries-001_Cycle00001_Ch2_000001.ome.tif" />
+    </Frame>
+    <Frame relativeTime="0.033" index="2" parameterSet="CurrentSettings">
+      <File channel="1" channelName="Ch1" page="1" filename="TSeries-001_Cycle00001_Ch1_000002.ome.tif" />
+      <File channel="2" channelName="Ch2" page="1" filename="TSeries-001_Cycle00001_Ch2_000002.ome.tif" />
+    </Frame>
+    <Frame relativeTime="0.066" index="3" parameterSet="CurrentSettings">
+      <File channel="1" channelName="Ch1" page="1" filename="TSeries-001_Cycle00001_Ch1_000003.ome.tif" />
+      <File channel="2" channelName="Ch2" page="1" filename="TSeries-001_Cycle00001_Ch2_000003.ome.tif" />
+    </Frame>
+    <Frame relativeTime="0.099" index="4" parameterSet="CurrentSettings">
+      <File channel="1" channelName="Ch1" page="1" filename="TSeries-001_Cycle00001_Ch1_000004.ome.tif" />
+      <File channel="2" channelName="Ch2" page="1" filename="TSeries-001_Cycle00001_Ch2_000004.ome.tif" />
+    </Frame>
+    <Frame relativeTime="0.132" index="5" parameterSet="CurrentSettings">
+      <File channel="1" channelName="Ch1" page="1" filename="TSeries-001_Cycle00001_Ch1_000005.ome.tif" />
+      <File channel="2" channelName="Ch2" page="1" filename="TSeries-001_Cycle00001_Ch2_000005.ome.tif" />
+    </Frame>
+  </Sequence>
+</PVScan>

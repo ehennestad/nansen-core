@@ -369,8 +369,16 @@ def test_a_column_with_choices_reset_and_removed(empty_app, page):
 
     index = [c["name"] for c in listed()["columns"]].index("quality")
     cell = page.locator(".grid-table tbody tr[data-id]").first.locator("td").nth(index + 2)  # after select and status
-    cell.click()
-    page.select_option(".grid-table td.editing select", "poor")
+    wait_until(lambda: cell.inner_text() == "unknown")   # the table reloaded with the new column's default
+    def choose(value):
+        # a render begun just before the click may still replace the table: click again until the choice is made
+        try:
+            cell.click()
+            page.select_option(".grid-table td.editing select", value, timeout=2000)
+            return True
+        except Exception:
+            return False
+    wait_until(lambda: choose("poor"))
     wait_until(lambda: listed()["rows"][0]["values"]["quality"] == "poor")
 
     page.hover(".grid-table th:has-text('quality')")
@@ -813,6 +821,23 @@ def test_a_narrow_window_has_the_sidebar_behind_a_menu(app, page):
     page.click(".nav a:has-text('Sessions')")
     page.wait_for_selector(".grid-table tbody td.key")
     assert not page.locator(".shell.nav-open").count()   # going somewhere closes it
+
+
+def test_an_edit_survives_a_reload_of_the_table(app, page):
+    open_sessions(app, page)
+    index = page.evaluate("Array.from(document.querySelectorAll('.grid-table thead th')).findIndex((th) => th.textContent.trim().startsWith('Description'))")
+    cell = page.locator(".grid-table tbody tr[data-id]").nth(1).locator("td").nth(index)
+    cell.click()
+    page.wait_for_selector(".grid-table td.editing input")
+    page.keyboard.type("typed while the table reloads")
+    app["api"].handle({"id": 1, "method": "project.sync", "params": {}})   # an entities event: the table reloads
+    page.evaluate("N.app.render()")   # and a page render, as a project event makes
+    time.sleep(0.5)
+    assert page.locator(".grid-table td.editing input").input_value() == "typed while the table reloads"
+    page.keyboard.press("Enter")
+    wait_until(lambda: "typed while the table reloads" in page.locator(".grid-table tbody").inner_text())
+    rows = app["api"].handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"]
+    assert sum(r["values"].get("description") == "typed while the table reloads" for r in rows) == 1
 
 
 def test_edit_a_column(empty_app, page):

@@ -226,3 +226,306 @@ def _tifffile():
     except ImportError:
         raise NansenError("adapter-unavailable", 'TIFF stacks need tifffile: pip install "nansen-core[ophys]"') from None
     return tifffile
+
+
+# --- ROI files of other tools, read as the module's ROI document ---------------------------------------------------------
+#
+# Each reads (read-only) as {imageSize, rois: [{id, area, center, pixels, classification?}]}: ids in file order from 1,
+# 0-based [row, column] pixels in row-major order, pixels outside the image left out, center the mean row and
+# column rounded to 2 decimals. MATLAB's adapters of the same names read the same.
+
+def roi_document(image_size, rois):
+    """The ROI document of a list of (pixels, classification) in file order."""
+    height, width = int(image_size[0]), int(image_size[1])
+    out = []
+    for number, (pixels, classification) in enumerate(rois, start=1):
+        kept = sorted({(int(r), int(c)) for r, c in pixels if 0 <= r < height and 0 <= c < width})
+        rows = np.array([p[0] for p in kept], dtype=np.float64)
+        columns = np.array([p[1] for p in kept], dtype=np.float64)
+        roi = {"id": number, "area": len(kept),
+               "center": [_round2(rows.mean()) if kept else None, _round2(columns.mean()) if kept else None],
+               "pixels": [[r, c] for r, c in kept]}
+        if classification:
+            roi["classification"] = classification
+        out.append(roi)
+    return {"imageSize": [height, width], "rois": out}
+
+
+def _round2(value):
+    return float(np.floor(value * 100 + 0.5) / 100)
+
+
+def _round_away(value):
+    """Half away from zero, as MATLAB's round."""
+    return int(np.copysign(np.floor(abs(value) + 0.5), value))
+
+
+def in_polygon(xs, ys, px, py):
+    """Even-odd rule: is the point (px, py) inside the polygon of vertices (xs, ys)?"""
+    inside = False
+    j = len(xs) - 1
+    for i in range(len(xs)):
+        if (ys[i] > py) != (ys[j] > py) and px < (xs[j] - xs[i]) * (py - ys[i]) / (ys[j] - ys[i]) + xs[i]:
+            inside = not inside
+        j = i
+    return inside
+
+
+def weights_pixels(weights, threshold=0.2):
+    """The 8-connected area around a spatial footprint's peak of pixels weighing at least threshold x the peak's,
+    as ophys.extract keeps EXTRACT's cells. The first peak in row-major order, when several are equal."""
+    weights = np.asarray(weights, dtype=np.float64)
+    if not weights.size or weights.max() <= 0:
+        return []
+    peak = np.unravel_index(int(np.argmax(weights)), weights.shape)
+    above = weights >= threshold * weights[peak]
+    area, todo = {peak}, [peak]
+    while todo:
+        r, c = todo.pop()
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                n = (r + dr, c + dc)
+                if 0 <= n[0] < weights.shape[0] and 0 <= n[1] < weights.shape[1] and above[n] and n not in area:
+                    area.add(n)
+                    todo.append(n)
+    return list(area)
+
+
+def _mat(path):
+    from nansen.adapters import MatAdapter
+    return MatAdapter().read(Path(path))
+
+
+class NansenRoiArray:
+    """dev's ROI file (.mat): a struct array roiArray (or RoiArray, roi_arr) of RoI properties, as dev's
+    roimanager saves it. Mask ROIs are their pixels, given as 1-based x (column), y (row); Circle ROIs are x, y and a
+    radius, made into pixels as dev's RoI does; Polygon ROIs are the pixels whose centre is inside, by the even-odd rule."""
+
+    extensions = [".mat"]
+
+    def read(self, path):
+        data = _mat(path)
+        name = next((n for n in ("roiArray", "RoiArray", "roi_arr") if n in data), None)
+        if name is None:
+            raise NansenError("invalid-data", f"{path} has no roiArray")
+        rois = data[name]
+        rois = [rois] if isinstance(rois, dict) else list(rois)
+        if not rois:
+            return {"imageSize": [0, 0], "rois": []}
+        size = np.asarray(rois[0]["imagesize"], dtype=float).ravel()
+        out = []
+        for roi in rois:
+            shape = str(roi["shape"])
+            coordinates = np.asarray(roi["coordinates"], dtype=np.float64)
+            if shape == "Circle":
+                pixels = _circle_pixels(*coordinates.ravel()[:3])
+            elif shape == "Polygon":
+                points = coordinates.reshape(-1, 2)
+                pixels = [(r, c) for r in range(int(size[0])) for c in range(int(size[1]))
+                          if in_polygon(points[:, 0], points[:, 1], c + 1, r + 1)]
+            else:   # Mask, IMask, Donut: 1-based x, y of each pixel
+                points = coordinates.reshape(-1, coordinates.shape[-1] if coordinates.ndim == 2 else 2)[:, :2]
+                pixels = [(_round_away(y) - 1, _round_away(x) - 1) for x, y in points]
+            out.append((pixels, None))
+        return roi_document(size, out)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "dev's ROI files are read here; ROIs are saved as JSON")
+
+
+def _circle_pixels(x, y, r):
+    """dev's RoI.getPixelIdxList for a circle: a local disk offset by the centre's fraction, placed at the centre."""
+    steps = [-r + k for k in range(int(np.floor(2 * r + 1e-9)) + 1)]
+    a = [s - (x % 1) for s in steps]   # meshgrid's x: along columns
+    b = [s - (y % 1) for s in steps]   # meshgrid's y: along rows
+    local = [(i + 1, j + 1) for j in range(len(a)) for i in range(len(b)) if a[j] ** 2 + b[i] ** 2 < r ** 2]  # find(): column-major
+    if not local:
+        return []
+    x0 = np.mean([i for i, _ in local])
+    y0 = np.mean([j for _, j in local])
+    # dev names the row index X and the column index Y, and indexes the image with (Y, X)
+    return [(_round_away(j + y - y0) - 1, _round_away(i + x - x0) - 1) for i, j in local]
+
+
+class Suite2pRois:
+    """suite2p's Fall.mat: stat (each cell's 0-based ypix and xpix), iscell (what suite2p's classifier keeps)
+    and ops (Ly, Lx). Cells the classifier leaves out are classified rejected."""
+
+    extensions = [".mat"]
+
+    def read(self, path):
+        data = _mat(path)
+        if "stat" not in data or "ops" not in data:
+            raise NansenError("invalid-data", f"{path} is not suite2p's Fall.mat (no stat or ops)")
+        stat = data["stat"]
+        stat = [stat] if isinstance(stat, dict) else list(stat)
+        iscell = np.atleast_2d(np.asarray(data.get("iscell", np.ones((len(stat), 1))), dtype=float))
+        ops = data["ops"]
+        rois = []
+        for k, cell in enumerate(stat):
+            ys = np.atleast_1d(np.asarray(cell["ypix"])).ravel()
+            xs = np.atleast_1d(np.asarray(cell["xpix"])).ravel()
+            kept = iscell[k, 0] if k < iscell.shape[0] else 1
+            rois.append((list(zip(ys, xs)), None if kept else "rejected"))
+        return roi_document([ops["Ly"], ops["Lx"]], rois)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "suite2p's files are written by suite2p; ROIs are saved as JSON")
+
+
+class CaimanRois:
+    """CaImAn's HDF5 results: estimates/A (the spatial components, a sparse pixels x components matrix with the
+    pixels in Fortran order) and dims. Each component's ROI is the area around its peak, as weights_pixels (needs h5py)."""
+
+    extensions = [".hdf5", ".h5"]
+
+    def read(self, path):
+        h5py = _h5py()
+        with h5py.File(str(path), "r") as f:
+            if "estimates/A/data" not in f or "dims" not in f:
+                raise NansenError("invalid-data", f"{path} has no estimates/A and dims of CaImAn's results")
+            group = f["estimates/A"]
+            data, indices, indptr = group["data"][()], group["indices"][()], group["indptr"][()]
+            dims = [int(d) for d in np.ravel(f["dims"][()])[:2]]
+        rois = []
+        for k in range(len(indptr) - 1):
+            image = np.zeros(dims[0] * dims[1])
+            image[indices[indptr[k]:indptr[k + 1]]] = data[indptr[k]:indptr[k + 1]]
+            rois.append((weights_pixels(image.reshape(dims, order="F")), None))
+        return roi_document(dims, rois)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "CaImAn's files are written by CaImAn; ROIs are saved as JSON")
+
+
+class ExtractRois:
+    """EXTRACT's output saved in a .mat file: output.spatial_weights (height x width x cells). Each cell's ROI is
+    the area around its peak, as weights_pixels."""
+
+    extensions = [".mat"]
+
+    def read(self, path):
+        data = _mat(path)
+        output = data.get("output")
+        if not isinstance(output, dict) or "spatial_weights" not in output:
+            raise NansenError("invalid-data", f"{path} has no output.spatial_weights of EXTRACT")
+        weights = np.asarray(output["spatial_weights"], dtype=np.float64)
+        if weights.ndim == 2:
+            weights = weights[:, :, None]
+        return roi_document(weights.shape[:2], [(weights_pixels(weights[:, :, k]), None) for k in range(weights.shape[2])])
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "EXTRACT's files are written by EXTRACT; ROIs are saved as JSON")
+
+
+# --- more stacks --------------------------------------------------------------------------------------------------------
+
+class PrairieTSeries:
+    """A Bruker (Prairie View) T-series: the XML file, which lists a TIFF file (and page) per frame and channel.
+    Reads height x width x frames, or height x width x channels x frames with more than one channel, a frame at
+    a time from its files."""
+
+    extensions = [".xml"]
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import join, natural_order
+        return join([self._open_one(Path(p)) for p in natural_order(paths)])
+
+    def _open_one(self, path):
+        from nansen.stacks import Stack
+        text = path.read_text(encoding="utf-8", errors="replace")
+        frames = []
+        for body in re.findall(r"<Frame\b[^>]*>(.*?)</Frame>", text, flags=re.S):
+            files = {}
+            for tag in re.findall(r"<File\b[^>]*>", body):
+                attributes = dict(re.findall(r'(\w+)="([^"]*)"', tag))
+                if "channel" in attributes and "filename" in attributes:
+                    files[int(attributes["channel"])] = (attributes["filename"], int(attributes.get("page", "1")))
+            if files:
+                frames.append(files)
+        if not frames:
+            raise NansenError("invalid-data", f"{path} lists no frames (not a Prairie View T-series)")
+        channels = sorted(frames[0])
+        if any(sorted(f) != channels for f in frames):
+            raise NansenError("invalid-data", f"{path}: the frames do not all have channels {channels}")
+        tifffile = _tifffile()
+
+        def page(name, number):
+            with tifffile.TiffFile(str(path.parent / name)) as tif:
+                return tif.pages[number - 1].asarray()
+
+        first = page(*frames[0][channels[0]])
+
+        def read(start, stop):
+            out = np.empty(first.shape + (len(channels), stop - start), dtype=first.dtype)
+            for t in range(start, stop):
+                for c, channel in enumerate(channels):
+                    out[:, :, c, t - start] = page(*frames[t][channel])
+            return out[:, :, 0, :] if len(channels) == 1 else out
+
+        shape = first.shape + ((len(channels),) if len(channels) > 1 else ()) + (len(frames),)
+        return Stack(shape, first.dtype, read)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "Prairie View files are written by the microscope; save a stack with npy or ophys.tiff_stack")
+
+
+class Hdf5Stack:
+    """A stack in an HDF5 file: the dataset data (or mov, or the only one of 3 dimensions), frames x height x width as
+    h5py shows it (C order), as suite2p, CaImAn and DeepInterpolation write them. Read as height x width x frames, a
+    chunk at a time; written as data (needs h5py)."""
+
+    extensions = [".h5", ".hdf5"]
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import join, natural_order
+        return join([self._open_one(Path(p)) for p in natural_order(paths)])
+
+    def _open_one(self, path):
+        from nansen.stacks import Stack
+        h5py = _h5py()
+        with h5py.File(str(path), "r") as f:
+            name = _dataset(f, path)
+            frames, height, width = f[name].shape
+            dtype = f[name].dtype
+
+        def read(start, stop):
+            with h5py.File(str(path), "r") as f:
+                return np.moveaxis(f[name][start:stop], 0, 2)
+
+        return Stack((height, width, frames), dtype, read)
+
+    def write(self, path, data):
+        h5py = _h5py()
+        data = np.asarray(data)
+        if data.ndim == 2:
+            data = data[:, :, None]
+        if data.ndim != 3:
+            raise NansenError("invalid-params", "an HDF5 stack is height x width x frames")
+        with h5py.File(str(path), "w") as f:
+            f["data"] = np.moveaxis(data, 2, 0)
+
+
+def _dataset(f, path):
+    for name in ("data", "mov", "mov_data"):
+        if name in f and len(f[name].shape) == 3:
+            return name
+    found = []
+    f.visititems(lambda name, item: found.append(name) if hasattr(item, "shape") and len(item.shape) == 3 else None)
+    if len(found) != 1:
+        raise NansenError("invalid-data", f"{path} has no dataset data, and {len(found)} of 3 dimensions")
+    return found[0]
+
+
+def _h5py():
+    try:
+        import h5py
+    except ImportError:
+        raise NansenError("adapter-unavailable", 'HDF5 files need h5py: pip install "nansen-core[hdf5]"') from None
+    return h5py

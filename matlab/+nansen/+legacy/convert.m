@@ -35,7 +35,9 @@ function report = convert(export, folder)
     nansen.internal.writeJson(fullfile(folder, "dataset.dsm.json"), plan.dataset)
     project = nansen.Project.create(folder, plan.name, Title=plan.title, Dataset="dataset.dsm.json", ...
         Description=plan.description);
-    project.addModule("core");
+    for module = plan.modules
+        project.addModule(module);
+    end
     for i = 1:numel(plan.fragments)
         project.addFragment(plan.fragments{i});
     end

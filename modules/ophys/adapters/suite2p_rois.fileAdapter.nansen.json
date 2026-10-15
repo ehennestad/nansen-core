@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.suite2p_rois",
+  "version": "1.0.0",
+  "title": "suite2p cells",
+  "description": "suite2p's Fall.mat: each cell's pixels (stat ypix and xpix), the image size (ops Ly and Lx), and cells suite2p's classifier leaves out (iscell 0) classified rejected. Read as the module's ROI document (imageSize and rois of id, area, center and 0-based [row, column] pixels), so the ROIs can be viewed, curated and have their signals extracted. Read only.",
+  "extensions": [
+    ".mat"
+  ],
+  "dataType": "RoiArray",
+  "implementations": {
+    "python": "ophys_adapters:Suite2pRois",
+    "matlab": "ophys.Suite2pRois"
+  }
+}

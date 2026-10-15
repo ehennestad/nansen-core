@@ -262,7 +262,6 @@
             "data location 'Processed', Session ID: read by the function RatNav.datalocation.getSessionID; register an extractor named 'getSessionID'",
             "data location 'Processed', Experiment Date: combines several folder levels, which has no DSM rule; left out",
             "data location 'Scratch': no root path, left out",
-            "variable 'MotionCorrected': no built-in file adapter for 'ImageStack' .tif files; left out",
             "table 'Sessions': column 'DataLocation' holds values with no table type; left out",
             "table 'Sessions': column 'Progress' holds values with no table type; left out",
             "table 'Sessions': m110/m110-001 appears twice; kept the first",
@@ -508,6 +507,21 @@
           {
             "id": "core.pipeline",
             "computed": false
+          },
+          {
+            "id": "ophys.cranial_window"
+          },
+          {
+            "id": "ophys.fov_position"
+          },
+          {
+            "id": "ophys.fov_region"
+          },
+          {
+            "id": "ophys.image_stats"
+          },
+          {
+            "id": "ophys.imaging"
           }
         ]
       }

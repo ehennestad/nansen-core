@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.extract_rois",
+  "version": "1.0.0",
+  "title": "EXTRACT cells",
+  "description": "EXTRACT's output saved in a .mat file: each cell's spatial weights (output.spatial_weights) as the connected area around its peak of pixels weighing at least 0.2 of the peak, as ophys.extract keeps them. Read as the module's ROI document (imageSize and rois of id, area, center and 0-based [row, column] pixels), so the ROIs can be viewed, curated and have their signals extracted. Read only.",
+  "extensions": [
+    ".mat"
+  ],
+  "dataType": "RoiArray",
+  "implementations": {
+    "python": "ophys_adapters:ExtractRois",
+    "matlab": "ophys.ExtractRois"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.hdf5_stack",
+  "version": "1.0.0",
+  "title": "HDF5 stack",
+  "description": "A stack in an HDF5 file: the dataset data (or mov, or the only one of 3 dimensions), frames x height x width as h5py shows it, as suite2p, CaImAn and DeepInterpolation write them. Read a chunk at a time; written as data. Python needs h5py.",
+  "extensions": [
+    ".h5",
+    ".hdf5"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:Hdf5Stack",
+    "matlab": "ophys.Hdf5Stack"
+  }
+}

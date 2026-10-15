@@ -14,7 +14,8 @@ What maps over:
 - the master MetaTables of sessions and subjects become entity tables. ``Ignore`` and ``Description``
   go to ``core.notes``; other columns go to a ``legacy.<entityType>`` fragment in the project. An entity
   type the dataset has but dev kept no table of gets an empty table with ``core.notes``;
-- file path settings become data variables, when their file adapter has a built-in equivalent;
+- file path settings become data variables, when their file adapter has an equivalent: built in, or in the ophys
+  module for dev's ROI files (RoiArray) and image stacks (ImageStack of TIFF, SciScan raw, HDF5 or npy files);
 - the notes of a ``Notebook`` column go into the entity type's notebook, in the order they were written.
 
 Whatever cannot be mapped is left out and named in the report's ``warnings``.
@@ -45,7 +46,11 @@ NOTE_TYPES = {"informal": "informal", "important": "important", "todo": "todo", 
 # Columns the dev tables filled from the folder names; the DSM attributes hold them now.
 DERIVED = {"session": {"Date": "session_date", "Time": "session_time"}}
 ADAPTERS_BY_TYPE = {".mat": "mat", ".json": "json", ".txt": "text"}
-ADAPTERS_BY_NAME = {"default": None, "": None, "matfile": "mat", "mat": "mat", "json": "json", "text": "text"}
+ADAPTERS_BY_NAME = {"default": None, "": None, "matfile": "mat", "mat": "mat", "json": "json", "text": "text",
+                    "roiarray": "ophys.nansen_roi_array"}
+# dev's ImageStack adapter read stacks of many file types; the ophys module's adapters read these
+STACK_ADAPTERS_BY_TYPE = {".tif": "ophys.tiff_stack", ".tiff": "ophys.tiff_stack", ".raw": "ophys.sciscan_raw",
+                          ".h5": "ophys.hdf5_stack", ".hdf5": "ophys.hdf5_stack", ".npy": "npy"}
 
 
 def convert_legacy(export: dict, folder: PathLike) -> dict:
@@ -59,7 +64,8 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
     write_json(folder / "dataset.dsm.json", plan["dataset"])
     project = Project.create(folder, plan["name"], plan["title"], dataset="dataset.dsm.json",
                              description=plan["description"] or None)
-    project.add_module("core")
+    for module in plan["modules"]:
+        project.add_module(module)
     for fragment in plan["fragments"]:
         project.add_fragment(fragment)
     rows: Dict[str, int] = {}
@@ -94,8 +100,10 @@ def plan_legacy(export: dict) -> dict:
     variables = _data_variables(export, dataset, levels, warnings)
     fragments, tables = _tables(export, dataset, warnings)
     name = _identifier(info.get("shortName") or info.get("name") or "imported", "p", sep="_", lower=False)
+    # the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks)
+    modules = ["core"] + (["ophys"] if any(v["fileAdapter"].startswith("ophys.") for v in variables) else [])
     return {"name": name, "title": info.get("name") or name, "description": info.get("description") or "",
-            "dataset": dataset, "fragments": fragments, "tables": tables, "dataVariables": variables,
+            "dataset": dataset, "modules": modules, "fragments": fragments, "tables": tables, "dataVariables": variables,
             "warnings": warnings}
 
 
@@ -295,6 +303,8 @@ def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str
         adapter = ADAPTERS_BY_NAME.get(adapter_name.lower(), "?")
         if adapter is None:
             adapter = ADAPTERS_BY_TYPE.get(file_type.lower())
+        elif adapter_name.lower() == "imagestack":
+            adapter = STACK_ADAPTERS_BY_TYPE.get(file_type.lower(), "?")
         if adapter in (None, "?"):
             warnings.append(f"variable '{legacy_name}': no built-in file adapter for "
                             f"'{adapter_name or 'Default'}' {file_type} files; left out")

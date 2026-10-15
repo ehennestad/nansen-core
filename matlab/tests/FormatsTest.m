@@ -1,0 +1,87 @@
+classdef FormatsTest < matlab.unittest.TestCase
+%FormatsTest The ophys module's readers of other tools' files, on the files conformance/files/ophys/make_formats.py writes
+%
+%   Each must read as expected.json says, as Python's test_formats.py checks
+%   for the Python readers.
+
+    properties
+        Files string
+        Expected struct
+    end
+
+    methods (TestClassSetup)
+        function setUp(testCase)
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture( ...
+                fullfile(nansen.internal.repoRoot(), "modules", "ophys", "matlab")));
+            testCase.Files = fullfile(nansen.internal.repoRoot(), "conformance", "files", "ophys");
+            testCase.Expected = jsondecode(fileread(fullfile(testCase.Files, "expected.json")));
+        end
+    end
+
+    methods (Test)
+        function readsDevRois(testCase)   % Mask, Circle and Polygon ROIs of dev's roimanager
+            testCase.verifyDocument(ophys.NansenRoiArray().read(fullfile(testCase.Files, "rois_nansen.mat")), testCase.Expected.nansen);
+        end
+
+        function readsSuite2pCells(testCase)   % those suite2p left out rejected
+            testCase.verifyDocument(ophys.Suite2pRois().read(fullfile(testCase.Files, "Fall.mat")), testCase.Expected.suite2p);
+        end
+
+        function readsCaimanComponents(testCase)
+            testCase.verifyDocument(ophys.CaimanRois().read(fullfile(testCase.Files, "caiman.hdf5")), testCase.Expected.caiman);
+        end
+
+        function readsExtractCells(testCase)
+            testCase.verifyDocument(ophys.ExtractRois().read(fullfile(testCase.Files, "extract.mat")), testCase.Expected.extract);
+        end
+
+        function readsAPrairieTSeriesAFrameAtATime(testCase)
+            stack = ophys.PrairieTSeries().open(fullfile(testCase.Files, "tseries", "TSeries-001.xml"));
+            expected = testCase.Expected.prairie;
+            testCase.verifyEqual(size(stack), expected.size');
+            at = expected.pixel.at' + 1;
+            volume = stack.frames(at(4), at(4));
+            testCase.verifyEqual(double(volume(at(1), at(2), at(3))), expected.pixel.value);
+            frame = stack.frames(3, 3);
+            testCase.verifyEqual(double(frame(:, :, 2)), expected.channel2frame3);
+            testCase.verifyEqual(sum(double(stack.all()), "all"), expected.sum);
+        end
+
+        function readsAndWritesHdf5Stacks(testCase)
+            stack = ophys.Hdf5Stack().open(fullfile(testCase.Files, "stack.h5"));
+            expected = testCase.Expected.hdf5;
+            testCase.verifyEqual(size(stack), expected.size');
+            at = expected.pixel.at' + 1;
+            frame = stack.frames(at(3), at(3));
+            testCase.verifyEqual(double(frame(at(1), at(2))), expected.pixel.value);
+            frame = stack.frames(7, 7);
+            testCase.verifyEqual(double(frame(3, :))', expected.frame6row2);
+            folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
+            data = uint16(reshape(0:59, 3, 4, 5));
+            ophys.Hdf5Stack().write(fullfile(folder, "out.h5"), data);
+            testCase.verifyEqual(ophys.Hdf5Stack().read(fullfile(folder, "out.h5")), data);
+        end
+
+        function loadsTheVersion73File(testCase)   % made by h5py as MATLAB makes them; Python reads it too
+            data = load(fullfile(testCase.Files, "v73.mat"));
+            expected = testCase.Expected.mat73;
+            testCase.verifyEqual(data.matrix, expected.matrix);
+            testCase.verifyEqual(string(data.name), string(expected.name));
+            testCase.verifyEqual(data.flags, expected.flags');
+            testCase.verifyEqual(data.info.rate, expected.rate);
+        end
+
+        function refusesOtherFiles(testCase)
+            testCase.verifyError(@() ophys.Suite2pRois().read(fullfile(testCase.Files, "extract.mat")), "nansen:InvalidData");
+            testCase.verifyError(@() ophys.ExtractRois().read(fullfile(testCase.Files, "Fall.mat")), "nansen:InvalidData");
+            testCase.verifyError(@() ophys.NansenRoiArray().read(fullfile(testCase.Files, "Fall.mat")), "nansen:InvalidData");
+        end
+    end
+
+    methods (Access = private)
+        function verifyDocument(testCase, actual, expected)
+            % compared as JSON: the document as the API would send it
+            testCase.verifyEqual(jsondecode(jsonencode(actual)), expected);
+        end
+    end
+end

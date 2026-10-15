@@ -252,6 +252,13 @@
       if (!this.contentEl) return;
       const [, name, ...rest] = (location.hash || "#/overview").split("/");
       const arg = rest.join("/") || null;
+      // A table being edited is drawn anew once the edit ends, unless the page changes
+      const grid = this.currentGrid;
+      if (grid && grid.editing && document.body.contains(grid.el) && this.route &&
+          this.route.name === (name || "overview") && this.route.arg === arg) {
+        grid.onEditEnd = () => this.render();
+        return;
+      }
       this.route = { name: name || "overview", arg };
       this.reloadEntities = null;
       clearTimeout(this.entitiesTimer);

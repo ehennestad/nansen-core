@@ -51,13 +51,17 @@ class TextAdapter:
 
 
 class MatAdapter:
-    """A MATLAB .mat file (v5/v7) as a dict of variables. Needs scipy."""
+    """A MATLAB .mat file as a dict of variables. Needs scipy; v7.3 files (HDF5, which MATLAB writes for
+    data of 2 GB or more) need h5py too."""
 
     extensions = [".mat"]
 
     def read(self, path: Path) -> Dict[str, Any]:
         io = _optional("scipy.io", "mat")
-        data = io.loadmat(str(path), squeeze_me=True, simplify_cells=True)
+        try:
+            data = io.loadmat(str(path), squeeze_me=True, simplify_cells=True)
+        except NotImplementedError:   # scipy's word for a v7.3 file
+            return read_mat73(path)
         return {k: v for k, v in data.items() if not k.startswith("__")}
 
     def write(self, path: Path, data: Any) -> None:
@@ -92,6 +96,36 @@ class NpyAdapter:
         from .stacks import StackWriter
         target = numpy.lib.format.open_memmap(str(path), mode="w+", dtype=numpy.dtype(dtype), shape=tuple(shape), fortran_order=True)
         return StackWriter(shape, dtype, target=target)
+
+
+def read_mat73(path: Path) -> Dict[str, Any]:
+    """A v7.3 .mat file's variables, read with h5py as scipy reads older files (squeezed, cells simplified):
+    numeric and logical arrays (MATLAB's column-major order turned back), text, structs as dicts, and cell
+    arrays as lists."""
+    h5py = _optional("h5py", "mat (v7.3)")
+    numpy = _optional("numpy", "mat (v7.3)")
+
+    def value(f, item):
+        if isinstance(item, h5py.Group):   # a struct
+            return {name: value(f, item[name]) for name in item if not name.startswith("#")}
+        kind = item.attrs.get("MATLAB_class", b"double")
+        kind = kind.decode() if isinstance(kind, bytes) else str(kind)
+        if item.attrs.get("MATLAB_empty", 0):
+            return "" if kind == "char" else numpy.array([])
+        array = numpy.asarray(item[()]).T   # HDF5 holds MATLAB's arrays with their dimensions reversed
+        if array.dtype == object:   # references: a cell array, or a field of a struct array
+            cells = [value(f, f[ref]) for ref in array.T.ravel()]   # in MATLAB's (column-major) order
+            return cells[0] if len(cells) == 1 else cells
+        if kind == "char":
+            rows = ["".join(chr(int(c)) for c in row) for row in numpy.atleast_2d(array)]
+            return rows[0] if len(rows) == 1 else rows
+        if kind == "logical":
+            array = array.astype(bool)
+        array = numpy.squeeze(array)
+        return array.item() if array.ndim == 0 else array
+
+    with h5py.File(str(path), "r") as f:
+        return {name: value(f, f[name]) for name in f if not name.startswith("#")}
 
 
 def _optional(module: str, adapter: str):

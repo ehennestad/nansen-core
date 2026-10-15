@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.prairie_tseries",
+  "version": "1.0.0",
+  "title": "Bruker (Prairie View) T-series",
+  "description": "A T-series of Bruker's Prairie View: its XML file, which lists a TIFF file (and page) per frame and channel. Height x width x frames, or x channels x frames with more than one channel, read a frame at a time. Read only. Python needs tifffile.",
+  "extensions": [
+    ".xml"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:PrairieTSeries",
+    "matlab": "ophys.PrairieTSeries"
+  }
+}

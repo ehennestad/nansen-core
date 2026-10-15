@@ -1,0 +1,17 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.caiman_rois",
+  "version": "1.0.0",
+  "title": "CaImAn components",
+  "description": "CaImAn's results in HDF5: each spatial component (estimates/A) as the connected area around its peak of pixels weighing at least 0.2 of the peak. Python needs h5py. Read as the module's ROI document (imageSize and rois of id, area, center and 0-based [row, column] pixels), so the ROIs can be viewed, curated and have their signals extracted. Read only.",
+  "extensions": [
+    ".hdf5",
+    ".h5"
+  ],
+  "dataType": "RoiArray",
+  "implementations": {
+    "python": "ophys_adapters:CaimanRois",
+    "matlab": "ophys.CaimanRois"
+  }
+}

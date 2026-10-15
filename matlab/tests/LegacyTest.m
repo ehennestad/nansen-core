@@ -136,8 +136,9 @@ classdef LegacyTest < matlab.unittest.TestCase
             target = fullfile(testCase.Folder, "imported");
             report = nansen.legacy.importProject(testCase.Legacy, target);
             testCase.verifyEqual(report.rows, struct("subject", 0, "session", 2));
-            testCase.verifyEqual(string(report.dataVariables), ["SessionConfig", "RoiArray"]);
-            testCase.verifyTrue(any(contains(string(report.warnings), "'MotionCorrected'")));
+            % MotionCorrected, an ImageStack of .tif files, is kept through the ophys module's TIFF adapter
+            testCase.verifyEqual(string(report.dataVariables), ["SessionConfig", "RoiArray", "MotionCorrected"]);
+            testCase.verifyFalse(any(contains(string(report.warnings), "'MotionCorrected'")));
             testCase.verifyTrue(any(contains(string(report.warnings), "1 row(s) with no subject_id or session_id")));
             testCase.verifyEqual(report.notes, struct("session", 2));
             testCase.verifyTrue(any(contains(string(report.warnings), "1 note(s) on rows that were left out")));

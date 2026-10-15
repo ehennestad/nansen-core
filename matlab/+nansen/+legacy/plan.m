@@ -2,7 +2,7 @@ function out = plan(export)
 %plan Work out every document of the project made from a legacy export, without writing anything
 %
 %   The export must be checked already (nansen.legacy.convert does that).
-%   plan has fields name, title, description, dataset, fragments,
+%   plan has fields name, title, description, dataset, modules, fragments,
 %   tables, dataVariables and warnings; see nansen.legacy.convert.
     warnings = {};
     info = nansen.internal.getField(export, "project", struct());
@@ -23,8 +23,13 @@ function out = plan(export)
     if title == ""
         title = name;
     end
+    % the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks)
+    modules = "core";
+    if any(cellfun(@(v) startsWith(string(v.fileAdapter), "ophys."), variables))
+        modules(end + 1) = "ophys";
+    end
     out = struct("name", name, "title", title, "description", textOf(info, "description"), ...
-        "dataset", dataset, "fragments", {fragments}, "tables", {tables}, "dataVariables", {variables}, ...
+        "dataset", dataset, "modules", modules, "fragments", {fragments}, "tables", {tables}, "dataVariables", {variables}, ...
         "warnings", {warnings});
 end
 
@@ -328,6 +333,21 @@ function [variables, dataset, warnings] = buildDataVariables(export, dataset, le
                 adapter = "json";
             case "text"
                 adapter = "text";
+            case "roiarray"   % dev's ROI files: read by the ophys module
+                adapter = "ophys.nansen_roi_array";
+            case "imagestack"   % dev's stacks of many file types: those the ophys module reads
+                switch lower(fileType)
+                    case {".tif", ".tiff"}
+                        adapter = "ophys.tiff_stack";
+                    case ".raw"
+                        adapter = "ophys.sciscan_raw";
+                    case {".h5", ".hdf5"}
+                        adapter = "ophys.hdf5_stack";
+                    case ".npy"
+                        adapter = "npy";
+                    otherwise
+                        adapter = "";
+                end
             otherwise
                 adapter = "";
         end

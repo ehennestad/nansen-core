@@ -64,6 +64,9 @@
     }
 
     setData(data) {
+      // A reload while a cell is being edited (a task finished, a scan) waits for the edit to end, so it is not lost
+      if (this.editing && this.data && this.data.entityType === data.entityType) { this.pendingData = data; return; }
+      this.pendingData = null;
       const sameType = this.data && this.data.entityType === data.entityType;
       this.data = data;
       this.byId = new Map(data.rows.map((r) => [N.keyId(r.key), r]));
@@ -258,6 +261,7 @@
 
     renderBody(force = false) {
       if (!this.data) return;
+      if (this.editing) return;   // the edit's own end renders the rows again
       const height = this.el.clientHeight || 600;
       const top = this.el.scrollTop;
       const first = Math.max(0, Math.floor(top / ROW) - 10);
@@ -357,6 +361,7 @@
       if (column.dataType === "datetime") input.placeholder = "YYYY-MM-DDTHH:MM:SS";
       N.clear(td);
       td.classList.add("editing");
+      this.editing = true;
       td.appendChild(input);
       input.focus();
       input.select && input.select();
@@ -364,11 +369,11 @@
       const finish = (save) => {
         if (finished) return;
         finished = true;
-        if (!save) { this.renderBody(true); return; }
+        this.editing = false;
         let next = input.value;
         if (next === "") next = null;
         else if (column.dataType === "integer" || column.dataType === "number") next = Number(next);
-        if (next === value || (next === null && (value === null || value === undefined))) { this.renderBody(true); return; }
+        if (!save || next === value || (next === null && (value === null || value === undefined))) { this.afterEdit(); return; }
         this.commit(row, column, next, td);
       };
       input.addEventListener("keydown", (e) => {
@@ -385,11 +390,20 @@
       try {
         const updated = await this.onEdit(row, column, value);
         if (updated) Object.assign(row, updated);
+        const pending = this.pendingData && this.pendingData.rows.find((r) => N.keyId(r.key) === N.keyId(row.key));
+        if (pending) Object.assign(pending, updated || { values: { ...pending.values, [column.name]: value } });   // read before the edit
       } catch (error) {
         row.values[column.name] = previous;
         N.showError(error, `Could not save ${column.title || column.name}`);
       }
-      this.renderBody(true);
+      this.afterEdit();
+    }
+
+    /** After an edit: the data a reload brought meanwhile, or the rows as they are. */
+    afterEdit() {
+      if (this.onEditEnd) { const next = this.onEditEnd; this.onEditEnd = null; this.pendingData = null; next(); return; }   // the page is drawn anew
+      if (this.pendingData) this.setData(this.pendingData);
+      else this.renderBody(true);
     }
 
     toggleRow(row, range) {

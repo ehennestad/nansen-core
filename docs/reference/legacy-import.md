@@ -49,7 +49,7 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 
 **Variables → data variables.**
 
-- Each variable becomes a data variable of sessions in its location, when its file adapter has a built-in equivalent. `Default` maps by file type (`.mat`, `.json`, `.txt`), and `MatFile`, `Json` and `Text` map to the adapter of the same name. Variables of other adapters, such as `ImageStack`, are left out. They can be added once a module provides the adapter.
+- Each variable becomes a data variable of sessions in its location, when its file adapter has an equivalent. `Default` maps by file type (`.mat`, `.json`, `.txt`), and `MatFile`, `Json` and `Text` map to the adapter of the same name. dev's ROI files (`RoiArray`) map to the ophys module's `ophys.nansen_roi_array`, and `ImageStack` by file type to `ophys.tiff_stack` (`.tif`), `ophys.sciscan_raw` (`.raw`), `ophys.hdf5_stack` (`.h5`) or `npy`; the project then lists the ophys module. Variables of other adapters are left out, named in the warnings.
 - The file name follows dev's: `{session_id}_<expression><file type>`. Without an expression, the variable name is used in snake case.
 - A variable without a subfolder also gets a DSM file pattern on the session level. Existing files are then found by the end of their name, as dev did.
 - Internal variables are left out.

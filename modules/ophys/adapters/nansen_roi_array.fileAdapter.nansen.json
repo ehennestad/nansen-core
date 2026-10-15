@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.nansen_roi_array",
+  "version": "1.0.0",
+  "title": "NANSEN dev ROIs",
+  "description": "An ROI file of NANSEN dev (.mat with a struct array roiArray, as dev's roimanager saves it): Mask ROIs are their pixels, Circle ROIs a disk as dev's RoI makes it, and Polygon ROIs the pixels whose centre is inside. Read as the module's ROI document (imageSize and rois of id, area, center and 0-based [row, column] pixels), so the ROIs can be viewed, curated and have their signals extracted. Read only.",
+  "extensions": [
+    ".mat"
+  ],
+  "dataType": "RoiArray",
+  "implementations": {
+    "python": "ophys_adapters:NansenRoiArray",
+    "matlab": "ophys.NansenRoiArray"
+  }
+}

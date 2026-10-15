@@ -36,8 +36,14 @@
     "methods/suite2p.method.nansen.json"
   ],
   "fileAdapters": [
+    "adapters/caiman_rois.fileAdapter.nansen.json",
+    "adapters/extract_rois.fileAdapter.nansen.json",
+    "adapters/hdf5_stack.fileAdapter.nansen.json",
+    "adapters/nansen_roi_array.fileAdapter.nansen.json",
+    "adapters/prairie_tseries.fileAdapter.nansen.json",
     "adapters/scanimage_tiff.fileAdapter.nansen.json",
     "adapters/sciscan_raw.fileAdapter.nansen.json",
+    "adapters/suite2p_rois.fileAdapter.nansen.json",
     "adapters/tiff_stack.fileAdapter.nansen.json"
   ],
   "pipelines": [
