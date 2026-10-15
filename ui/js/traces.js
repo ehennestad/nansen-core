@@ -42,6 +42,8 @@
     let hover = null;
     let events = [];   // [{start, stop, label}]: drawn as patches over every panel (dev's signal viewer's events)
     let marking = false;   // a drag marks an event (onMark) instead of zooming
+    let stacked = false;   // dev's signal viewer's Stack Signals Vertically: each column in a band of its own, on its own scale
+    let legend = false;    // and its Show Legend: each column's colour and name
     const pad = { left: 56, right: 12, top: 8, bottom: 22 };
     canvas.style.height = `${height + pad.bottom}px`;   // one panel's room before the first draw, so nothing moves when it comes
 
@@ -83,7 +85,8 @@
         trace.columns.forEach((c) => c.values.forEach((v) => { if (v !== null) { low = Math.min(low, v); high = Math.max(high, v); } }));
         if (!Number.isFinite(low)) { low = 0; high = 1; }
         if (high === low) { high += 1; low -= 1; }
-        const yOf = (v) => bottom - (v - low) / (high - low) * (bottom - top);
+        let yOf = (v) => bottom - (v - low) / (high - low) * (bottom - top);
+        const bands = stacked && trace.columns.length > 1 ? trace.columns.length : 1;
         ctx.strokeStyle = grid;
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -91,11 +94,24 @@
         ctx.stroke();
         ctx.fillStyle = text;
         ctx.textAlign = "right";
-        ctx.fillText(N.fmt.number(high), pad.left - 6, top + 9);
-        ctx.fillText(N.fmt.number(low), pad.left - 6, bottom);
+        if (bands === 1) {
+          ctx.fillText(N.fmt.number(high), pad.left - 6, top + 9);
+          ctx.fillText(N.fmt.number(low), pad.left - 6, bottom);
+        }
         ctx.textAlign = "left";
         ctx.fillText(trace.variable, pad.left + 6, top + 10);
         trace.columns.forEach((c, k) => {
+          if (bands > 1) {   // this column's band, scaled to its own range, its name on the left
+            const band = (bottom - top - 12) / bands, bandTop = top + 12 + k * band, bandBottom = bandTop + band - 2;
+            let lo = Infinity, hi = -Infinity;
+            c.values.forEach((v) => { if (v !== null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+            if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
+            if (hi === lo) { hi += 1; lo -= 1; }
+            yOf = (v) => bandBottom - (v - lo) / (hi - lo) * (bandBottom - bandTop);
+            ctx.fillStyle = N.traceColor(k);
+            ctx.textAlign = "right";
+            ctx.fillText(labels[k] || `${c.column + 1}`, pad.left - 6, (bandTop + bandBottom) / 2 + 4);
+          }
           ctx.strokeStyle = N.traceColor(k);
           ctx.lineWidth = 1.25;
           ctx.beginPath();
@@ -108,7 +124,27 @@
           });
           ctx.stroke();
         });
+        if (legend && trace.columns.length) {   // the columns' colours and names, at the top right
+          ctx.textAlign = "left";
+          const names = trace.columns.map((c, k) => labels[k] || `column ${c.column + 1}`);
+          const widest = Math.max(...names.map((n) => ctx.measureText(n).width));
+          const x = width - pad.right - widest - 24;
+          names.forEach((name, k) => {
+            const y = top + 8 + k * 14;
+            ctx.fillStyle = css("--surface", "#ffffff");
+            ctx.globalAlpha = 0.85;
+            ctx.fillRect(x - 4, y - 9, widest + 28, 14);
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = N.traceColor(k);
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(x, y - 3); ctx.lineTo(x + 14, y - 3); ctx.stroke();
+            ctx.fillStyle = css("--text-2", "#475467");
+            ctx.fillText(name, x + 18, y);
+          });
+        }
       });
+      canvas.dataset.stacked = String(stacked);
+      canvas.dataset.legend = String(legend);
       // the time axis: seconds when the frame rate is known, else frames
       ctx.fillStyle = text;
       ctx.textAlign = "center";
@@ -198,6 +234,8 @@
       cursor(frame) { cursorFrame = frame; draw(); },
       events(list) { events = list || []; draw(); },
       mark(on) { marking = on; canvas.classList.toggle("marking", on); },
+      stack(on) { stacked = on; draw(); },
+      showLegend(on) { legend = on; draw(); },
       redraw: draw,
     };
   };
@@ -326,7 +364,10 @@
     };
     document.addEventListener("keydown", onKey);
     const content = h("div.traces",
-      h("div.trace-bar", h("span.muted", "Signals"), pickers, h("div.spacer"), markButton, status),
+      h("div.trace-bar", h("span.muted", "Signals"), pickers, h("div.spacer"),
+        h("label.trace-option", h("input.trace-stack", { type: "checkbox", on: { change: (e) => plot.stack(e.target.checked) } }), "Stack"),
+        h("label.trace-option", h("input.trace-legend", { type: "checkbox", on: { change: (e) => plot.showLegend(e.target.checked) } }), "Legend"),
+        markButton, status),
       h("div.trace-main", h("div.trace-side", h("div.trace-hint.muted", "Click an ROI; Ctrl-click to add more. ↑ and ↓ move."), list),
         h("div.trace-stage", plot.el, eventList)));
     const dialog = N.dialog({ title: `Signals · ${N.fmt.key(key)}`, content, onClose: () => document.removeEventListener("keydown", onKey) });

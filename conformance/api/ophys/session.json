@@ -1622,6 +1622,112 @@
     {
       "request": {
         "method": "data.frame",
+        "id": 2630,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "bin": {
+            "size": 5
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "binned": [
+            0,
+            5
+          ],
+          "frame": 0,
+          "pixels": "TlttcG5fYlxMSD8+KjhQVV1bb2JcU1daTU5TZmFOOS9gXmpobmJfUUNBPkdGWmdvgH16VktLUFdZUE1DRkpMSGdaWkpWUE9GSUpFSUlqbW5zZ1c/QkRQVWlaRC5ATVc8amJiS1FPSklEUFBgcHh0WmFMQzI/TU5VZltOMkdUYFBbT0s7T2FfWVFLU2NzZ15KQjY+TFhmYVxkUlNEUU1IMkJASVRka2BXT2Blbm5ZTTc1OlJdW2ZfWEhEV19qYEs+WUBEYHB0YExHRGRia19jW09SX2BZXVhYUlRMSUFJPkFfUlVkXkI6OUVWbm9hXWRcW1hcVFNVV1tQWExZQkk/RmpnbW5WLyoiNURjZbJyfnNwV1NLXVpRUVJPNC8lPkVTZ2VgRzkmMThGV0iCiJRYSj82REhZWE1KQ0YyKig+SVRbV08wKjE6QzQ9so+VmKRNQz1RT0tGQTw3LiMfM1FXWGhHIQcqUGBQLUNDjnCERz8rMEA2IycxLiMfJBchNE1QYjwjGS1BOjpXTWFyx2JfUzoyMTI7R0hLMSAwJTcxRUc7GSA6T1g7NidAUlpCSz4/HhgUMFBua0EwDy0oNy07SDMdLT45RD9OSzVeKzAyGxACBRw4h+x3WWVQUkJRRTpCJC9BUlNYU0E8KiscGBkEAAAgQIby5sBMYExZTVJWQERcWkhOSlJJQEYzKQ0HFyEvM0B83trU4ctqcnxqTEInQWFnZGhdTDkpOD5DMiszR1lbX2CN/f/KSlFhgXtaPSY7dl5ORUVVVkxEQU5RU2xxe29zZ16S5Y19aUxbaVk/MFB2ZGdfWlZiX1xTWWRgeGtlXnB0amZxeXZyVVlVWk9HRIZkVk9NXGddUF1RZV14YWpkfIF0c3uDdmtIREtjZ2Zbc25bWkxARElucGZiVVRKTGBugnNqZ3NrbV9pY1lJSUBaZ0hHQztxR0ZdZHlYaFlhY215eIGHiXRhV2Zza2FVTEdUPT01c4SIam54fnVqVktcZ4SHfXp+hHdsZmNWSUJKYFtLR4qNlX2DYV91aWJeYmZxb35pdXaHfHVnYmNpaGRiVFBANnmjnlhNaHNtTUpHXHZ2f2VpYHp2aU1MTVJNW3FlX0A8MY1aU1NaUGBmZ1xLVEJkVmJQXFtXUl1WUzk7WVNONCwyO0hWZlpNYG1tV0tUR2Jed15ZQjo1Qks9KS1FPjwlKDpFSlhnaGN4hnVXOTw3WFpnYltLNTtJT0A5QDdBLSMsVFRKNFxzhn1yX1xeY05NVWJyc21TRTpFR1VOM0EzNj9QSjIZNWGIjYNmXEtKQUNRUF5XZllWRU9YXlw/QkBKRkk8NiEqP1JXX11lUEc8RFtMVkRNQ0E3RkNLTw=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 2631,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 20,
+          "bin": {
+            "size": 4,
+            "method": "max"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "binned": [
+            18,
+            23
+          ],
+          "frame": 20,
+          "pixels": "KC0yLCQhIB4pJyMpHx4lKSwyLSglHi0mHCUsPB8ZIiAmKiYnKCMmKy8lJCoYIyspKiUkHSciIyMlKSQwJiMbHx8fKi0oIigoIigqKyMqLTc6OCUoJyUmJyMlIioiLCYsJyYwJiUrLTMkLCQlKispNC0tMjI1JionKycqJiMsGhcsOTgqKzEqHh8pLS8vMzIxJSQsIyMpKScpKiIpIisfGDFFPjIrMiIcGBsiLSksMC00MTMmJSIhJSgmKyksICAXNzgxMDInJR8gxCkvLDQrMy4yJyEmIyMiKCIpJigqJxpAMjEsJiokGqqfuizVLC8rNC8tKSglJioiHCAQFyMmKTkpKycaFRa0qrDE7bDJKDElIhwhIR4pICsjKhIXGCcrMCoyHx4OGCijntfL49TlNC4jFh4jHCYgKrQpDh4ZHCUwKxwPEhcYHxbd1trt/zEvIxoVJSYqHyGyo50RGSAsHCsdIBQaGR4SFCfLytozISEaGx0lEh0loKKSppQpKjYzJgsRFicoJiUpHhjcHiUWGAAWExgVJzEqq6izHyomKzkgHiQzLBwYJhofKDYwLSUXGCIsLyUtJBofsTwuODIhLx4aMEM0JScgIhckLS8oMiUhKyonIT4vJC8gLzgzOSUaJjM1Q0gqKywjHyIlLCkmLigxJSh0Ly8vPS41LDguJh4wQTM1OCgpIyIsLyEvLygwMDMncl9bNDswKyojLCgeLURFRywoIxwjLSwwYBwsKzcuNGBiTmZTMDM5NiojHiIqRUc5KCgeJSEkH2xrcDAvMysvL2xpcTw4My04MDUwJigyOSkqHy8tMRdpb2liYi8mKzw4NG49MTU5LS8wMDMmJyQiJDIuMS0rUVGCh340KigpMDcwOjgyOjQxMi0uJyYkKyorNDBES1FXUUeAMisoIy0wOzw5Ni8tMTMwNicrIi0qMSYjLh9BP2dvZRgjJS0fMDUvLzg7Ky4vMjQqJSQrKTAyMSgjG8FMVWg3IikjMC00NjAvOjctLiwuKSYlJCMjMzIrIx7MzNBNMTMzNi8uQUA8OTIpLTEyLSshLDIrISEjLSIeys7MwsgxQz8wLDNDREA1LywoMDAzKCcjKR8mHyEgEREV3+fdIihERENBPy8uMTssLR4uMCYwMSojJyUcJSIlGRQd3yYoIB8vQkFEQSobKiMrGSIkLTAsJSQhJSQjIycbGiYhKScsGBpER0ArIh4cMCwrKyIqIy4mISQhJRslKhskKCMaIjItNDYrISInIyArKC8xJisqOi0iGBQYISEcISYrKRIZL0Q+LSYeLC0rKys6OTAxLR4wLCskKR0aGyQmKRgVCBEdQ0NAKio6MCopMEVANS85LikrIiUnJA=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 2632,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 39,
+          "bin": {
+            "size": 5
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "binned": [
+            35,
+            40
+          ],
+          "frame": 39,
+          "pixels": "ZnN3hoB+eVVaTl1iY31bfnZ+X1B0c3hrbl1IaHWASENqcFp7jId7Y1VMW3ZxgVuHg4dkVnFzcnRzYE1QaG5LTWVxZniCa2hQTlZoi3N5Tn9weVxZX1tXcXdxYmB5Y19MXG5vf39lZVlTYnGWfopygW1pY1plX2qFfHlsYF5LV2BdbnqDb11dbGh1fYRhbmZyX15uaHtvdoF4dntwaFZTW2huiYNnW1tmYnR4yGuKfIdkZW5yg3Z/fHFlXVJWWWRwg4SQcExTX3FtcKibl3h1imVwbX9+dm9kbVZbQU9UXVuMlIFXSFVVQU2+vbS2442XcHVmcm1lbWJjSE44UF9kUYaFW01Va1gzRFOtpKx8tIBkYVhWVFdpUEwxNCI8TVM+fmc2OVdbSSw+nYfUcaOPjjhDPUtNYLtQNCQvLU5SWDpgRC86al5RJ22Ql1uQgYF1WjZDV1Wzkn0LHikzVU9SQWE6JCFMTFqJho+Qg0dpXlYJNTFX2aZ4knpBNUFXSkw3SEJUUV9GOk5wcYNGTSltGBg4S5181nidNE4+Q2dUVUJbQFI7SztBTEh4ORk+KDYWByZ0mHeRznhmcEo5UUhZUltWb1xnVTlMTmI7FCwiKQ8AKla255U9b2p+dU5SPFpkZVZeX3JuWltVOjYOQTZBKCFBXcnsxl59co2OXUsyXX9xcnyNfnNOSE9BVypWRlNDSHTJ0cDMs3Jql6aEXSs7a3Nke4t8dF9MaDNkVYx5iG92iYDX1v+NhFttl4qASVRvgWh9gnxyYoiJdndjjn2Ff4afhYTWsZ2Wc3qUfW1JQWeMc3F7dW3df4pvkluYgoiBi5mDg5a1p5Nya4mBjXZmeJZ1YmlWqq3bn4CGbm1caYCKrJ+Ti6Sinop+gXZzbF2EhXdcb5qdl5nTU554fVR1g5yVnHiQm6ufk4SIiI6KaWxrYUtjNK2lrFhsnoh1YWR5lqCvjY6ZqquYeXdufnNtXmViT14+VKZWU1GRn517ineLcpN4ioufr52Jf36NZV1OZF5cTUZhb2BnV3GTjI5+bH+DlYeFgoWdknNwa3tSZ1tfUEpDTGl7YmBeaXqZnZNedlqHgIB4coVqZHeAf0pUVGFRRkhiamZKX2lucYN7iGWJYntpcnR1gmVTYGpxSUtJUzktOVRkSjpDcYmUjYCDZnZVZGVqin2DVUdPY3VWVTtJJTY6YVZWQE5xlJN9aWltb2BjalR6d4JhTkVBUUtgSVUyRkZRSk0/N1J9mIFzX1hXd3aDWGxpfWZZU0pQR2BDYU5QST06TEJFTG1xgWRbTU1zcH9LWFJpYVxaUEAvQUl5c2E7JiY2NjpIVlpnYGhoaYlrgmBuXVRNRVNQTDNDSA=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 2633,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 10,
+          "bin": {
+            "size": 1
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
         "id": 2620,
         "params": {
           "entityType": "session",

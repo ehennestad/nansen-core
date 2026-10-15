@@ -1,4 +1,4 @@
-function result = imageFrame(data, frame, channel, projection, limits, plane, filter)
+function result = imageFrame(data, frame, channel, projection, limits, plane, filter, bin)
 %imageFrame A frame of an image or stack, as 8-bit values for the dashboard's viewer
 %
 %   data is height x width (x frames), height x width x channels x frames,
@@ -12,12 +12,18 @@ function result = imageFrame(data, frame, channel, projection, limits, plane, fi
 %   ends; NaN is 0. low and high are the limits given, or else the smallest
 %   and largest finite value of the frame. pixels is base64 of the bytes,
 %   row after row. Python's nansen.frames.image_frame gives the same bytes.
+%   bin (struct size, method, or []): instead of the frame, the mean or max
+%   of the frames around it (imviewer's binning), as binned [first, stop) from 0.
     if nargin < 6
         plane = 0;
     end
     if nargin < 7
         filter = "";
     end
+    if nargin < 8
+        bin = [];
+    end
+    binned = [];
     [stack, channels, planes] = nansen.internal.pickChannel(data, channel, plane);
     [height, width, frames] = size(stack);
     chunk = 100;   % frames read at a time for a projection
@@ -82,7 +88,18 @@ function result = imageFrame(data, frame, channel, projection, limits, plane, fi
             if frame < 0 || frame >= frames || frame ~= round(frame)
                 nansen.internal.throwError("invalid-params", "there are %d frames; frame %d is not one", frames, frame)
             end
-            image = double(stack.frames(frame + 1, frame + 1));
+            if isempty(bin)
+                image = double(stack.frames(frame + 1, frame + 1));
+            else   % imviewer's binning: the mean or max of the frames around the frame
+                [first, stop] = movingWindow(frame, bin.size, frames);
+                part = double(stack.frames(first + 1, stop));
+                if string(bin.method) == "max"
+                    image = max(part, [], 3);
+                else
+                    image = sum(part, 3) / (stop - first);
+                end
+                binned = [first, stop];
+            end
         otherwise
             nansen.internal.throwError("invalid-params", "projection is mean, max, min, std, correlation, globalCorrelation or peakTime, not '%s'", projection)
     end
@@ -118,5 +135,24 @@ function result = imageFrame(data, frame, channel, projection, limits, plane, fi
             bright = uint8(min(max(values, 0), 255));
         end
         result.brightness = matlab.net.base64encode(reshape(bright.', 1, []));
+    end
+    if ~isempty(binned)
+        result.binned = binned;
+    end
+end
+
+function [first, stop] = movingWindow(frame, size, frames)
+    % The frames binned around frame (from 0; [first, stop)), as dev's getMovingWindowFrameIndices and Python's moving_window
+    number = frame + 1;
+    half = ceil(size / 2);
+    if number <= half
+        first = 0;
+        stop = min(frames, size);
+    elseif frames - number < half
+        first = max(frames - size + 1, 1) - 1;
+        stop = frames;
+    else
+        first = number - floor(size / 2) - 1;
+        stop = number + floor(size / 2);
     end
 end

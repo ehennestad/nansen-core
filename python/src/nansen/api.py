@@ -91,6 +91,18 @@ def _frame_rate(params: dict, entity: Any) -> Optional[float]:
     return float(rate)
 
 
+def _bin_of(params: dict) -> Optional[dict]:
+    """data.frame's bin: {size (2 or more frames), method: mean or max}, or None."""
+    value = params.get("bin")
+    if value is None:
+        return None
+    size = value.get("size") if isinstance(value, dict) else None
+    if isinstance(size, bool) or not isinstance(size, (int, float)) or size != int(size) or size < 2 \
+            or value.get("method", "mean") not in ("mean", "max"):
+        raise NansenError("invalid-params", "bin is {size: 2 or more frames, method: mean or max}")
+    return {"size": int(size), "method": value.get("method", "mean")}
+
+
 def _flag(params: dict, name: str) -> bool:
     """A true-or-false parameter, false when not given."""
     value = params.get(name, False)
@@ -942,7 +954,7 @@ class Api:
             raise NansenError("invalid-params", "limits is [low, high]")
         stack, adapter, candidates = project.open_file_stack(Path(resolved["path"]), params.get("adapter"))
         result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
-                             int(params.get("plane", 0)), params.get("filter"))
+                             int(params.get("plane", 0)), params.get("filter"), _bin_of(params))
         return dict(result, metadata=dict(stack.metadata), adapter=adapter, adapters=candidates, name=Path(resolved["path"]).name)
 
     def files__open(self, params: dict) -> dict:
@@ -1143,7 +1155,7 @@ class Api:
             raise NansenError("invalid-params", "limits is [low, high]")
         stack = project.open_stack(entity, params["variable"])
         result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
-                             int(params.get("plane", 0)), params.get("filter"))
+                             int(params.get("plane", 0)), params.get("filter"), _bin_of(params))
         result["metadata"] = dict(stack.metadata)
         if params.get("rois"):   # those of the plane and channel shown, when they have places; none before the first is saved
             result["rois"] = roi_outlines(rois_at(self._rois_of(project, entity, params["rois"]), int(params.get("plane", 0)) + 1,

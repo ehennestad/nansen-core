@@ -148,6 +148,10 @@
       h("option", { value: "min" }, "Minimum"), h("option", { value: "std" }, "Standard deviation"), h("option", { value: "correlation" }, "Local correlation"),
       h("option", { value: "globalCorrelation" }, "Global correlation"),
       h("option", { value: "peakTime" }, "Time of peak (colour)"));
+    // imviewer's binning (Shift+B): the mean or max of the frames around the one shown, as it browses noisy frames
+    const binPick = h("select.input.viewer-bin", { title: "Binning: the mean or maximum of the frames around this one (Shift+B)",
+      on: { change: () => { state.bin = binPick.value; show(); } } },
+      h("option", { value: "" }, "No binning"), [5, 10, 20, 50].map((n) => [h("option", { value: `mean:${n}` }, `Mean of ${n}`), h("option", { value: `max:${n}` }, `Max of ${n}`)]));
     // imviewer's 2-D filters, applied to the frame or projection shown
     const filterPick = h("select.input.viewer-filter", { title: "Filter", on: { change: () => { state.filter = filterPick.value; show(); } } },
       h("option", { value: "" }, "No filter"), h("option", { value: "smooth" }, "Smooth"), h("option", { value: "gradient" }, "Gradient"));
@@ -273,6 +277,14 @@
         drag.points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
         ctx.stroke();
       }
+      if (drag && drag.kind === "box") {   // the rectangle being dragged out to select ROIs
+        ctx.strokeStyle = "rgba(90, 170, 255, 0.95)";
+        ctx.fillStyle = "rgba(90, 170, 255, 0.15)";
+        ctx.lineWidth = 1.5 * last.width / width;
+        const [x0, y0] = drag.from, [x1, y1] = drag.to;
+        ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+        ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+      }
       if (state.tool === "polygon" && state.polygon.length) {
         ctx.strokeStyle = "rgba(255, 210, 60, 0.95)";
         ctx.fillStyle = "rgba(255, 210, 60, 0.95)";
@@ -365,6 +377,8 @@
         state.drag = { kind: "measure", from: [px, py], to: [px, py] };
       } else if (state.tool) {
         return;   // circle and detect act on the click
+      } else if (event.shiftKey && state.rois) {   // roimanager's multi-select: the ROIs inside a rectangle dragged out
+        state.drag = { kind: "box", from: [px, py], to: [px, py], add: event.ctrlKey || event.metaKey };
       } else if (roi && roi.id === state.selected && !several(event)) {
         state.drag = { kind: "move", roi, from: [Math.floor(py), Math.floor(px)], dy: 0, dx: 0 };
       } else {
@@ -375,10 +389,12 @@
     const onMove = (event) => {
       const drag = state.drag;
       if (!drag || !last) return;
-      if (drag.kind === "draw" || drag.kind === "measure") {
+      if (drag.kind === "draw" || drag.kind === "measure" || drag.kind === "box") {
         const [py, px] = pointAt(event);
         const point = [Math.min(last.width, Math.max(0, px)), Math.min(last.height, Math.max(0, py))];
-        if (drag.kind === "draw") drag.points.push(point); else { drag.to = point; showMeasurement(drag); }
+        if (drag.kind === "draw") drag.points.push(point);
+        else if (drag.kind === "box") drag.to = point;
+        else { drag.to = point; showMeasurement(drag); }
       } else if (drag.kind === "move") {
         const [y, x] = pixelAt(event);
         drag.dy = y - drag.from[0];
@@ -398,7 +414,26 @@
       state.drag = null;
       stage.classList.remove("panning");
       drawOverlay();
-      if (drag.kind === "measure") {
+      if (drag.kind === "box" && (Math.abs(drag.to[0] - drag.from[0]) >= 1 || Math.abs(drag.to[1] - drag.from[1]) >= 1)) {
+        // every ROI shown whose centre is inside, added to the selection with Ctrl too
+        const [x0, x1] = [Math.min(drag.from[0], drag.to[0]), Math.max(drag.from[0], drag.to[0])];
+        const [y0, y1] = [Math.min(drag.from[1], drag.to[1]), Math.max(drag.from[1], drag.to[1])];
+        const inside = visible().filter((r) => {
+          if (!r.pixels.length) return false;
+          const cy = r.pixels.reduce((t, p) => t + p[0], 0) / r.pixels.length + 0.5, cx = r.pixels.reduce((t, p) => t + p[1], 0) / r.pixels.length + 0.5;
+          return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
+        }).map((r) => r.id);
+        state.selection = new Set([...(drag.add ? state.selection : []), ...inside]);
+        state.selected = inside.length ? inside[0] : (state.selection.size ? [...state.selection][0] : null);
+        redraw();
+        renderList();
+        showSignal();
+        status.textContent = `${inside.length} ROI${inside.length === 1 ? "" : "s"} in the rectangle`;
+      } else if (drag.kind === "box") {
+        const [y, x] = pixelAt(event);
+        const roi = roiAt(y, x);
+        select(roi ? roi.id : null, true);   // a Shift-click without a drag adds to the selection, as before
+      } else if (drag.kind === "measure") {
         state.measure = { from: drag.from, to: drag.to };
         showMeasurement(state.measure);
         drawOverlay();
@@ -713,6 +748,14 @@
       edit({ merge: [ids] });
     }
     function onKey(event) {
+      if (event.key === "B" && !event.ctrlKey && !event.metaKey && state.mode === "frame" && document.body.contains(canvas)
+          && !["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) {   // imviewer's binning toggle
+        state.binLast = state.bin || state.binLast || "mean:10";
+        state.bin = state.bin ? "" : state.binLast;
+        binPick.value = state.bin;
+        show();
+        return;
+      }
       if (event.target.tagName === "INPUT" || event.target.tagName === "SELECT" || !state.rois || !document.body.contains(canvas)) return;
       if (onSelect) return;   // the gallery has the keys
       const order = visible().map((r) => r.id);
@@ -1007,6 +1050,7 @@
       if (options.file && state.adapter) params.adapter = state.adapter;
       if (state.filter) params.filter = state.filter;
       if (state.mode === "frame") params.frame = state.frame; else params.projection = state.mode;
+      if (state.mode === "frame" && state.bin) params.bin = { method: state.bin.split(":")[0], size: Number(state.bin.split(":")[1]) };
       if (!state.auto) params.limits = [state.low, state.high];
       if (state.showRois && state.roiVariable && !state.rois) params.rois = state.roiVariable;
       try {
@@ -1031,7 +1075,9 @@
         slider.disabled = state.mode !== "frame" || frame.frames < 2;
         playButton.disabled = slider.disabled;
         if (state.auto) { state.low = frame.low; state.high = frame.high; low.value = String(frame.low); high.value = String(frame.high); }
-        frameLabel.textContent = state.mode === "frame" ? `${state.frame + 1} / ${frame.frames}` : `${frame.frames} frames`;
+        frameLabel.textContent = state.mode === "frame" ? `${state.frame + 1} / ${frame.frames}` + (frame.binned ? ` (${frame.binned[0] + 1}–${frame.binned[1]})` : "")
+          : `${frame.frames} frames`;
+        binPick.disabled = state.mode !== "frame";
         showTime();
         paint(canvas, frame, state.rois, state.showRois, state.selection, state.hideRejected, state.colormap, state.outlines);
         if (resized) layout(); else { drawOverlay(); drawScalebar(); }
@@ -1066,7 +1112,7 @@
       h("div.viewer-bar",
         playButton, slider, frameLabel, timeLabel, mode, channelPick, planePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, scaleButton,
+        binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, measurement, measureButton, scaleButton,
         exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,

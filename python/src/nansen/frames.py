@@ -14,7 +14,8 @@ from .errors import NansenError
 
 
 def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optional[str] = None,
-                limits: Optional[List[float]] = None, plane: int = 0, filter: Optional[str] = None) -> Dict[str, Any]:
+                limits: Optional[List[float]] = None, plane: int = 0, filter: Optional[str] = None,
+                bin: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """A frame of a height x width (x frames), height x width x channels x frames or height x width x channels x
     planes x frames array or stack (nansen.stacks.Stack, read a chunk of frames at a time), as 8-bit values.
 
@@ -61,6 +62,13 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
         image, frame = local_correlation(stack), None
     elif projection == "globalCorrelation":
         image, frame = global_correlation(stack), None
+    elif projection is None and bin:   # imviewer's binning: the mean or max of the frames around the frame
+        if not 0 <= frame < frames:
+            raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
+        first, stop = moving_window(frame, int(bin["size"]), frames)
+        chunk = stack.frames(first, stop).astype(np.float64)
+        image = chunk.sum(axis=2) / (stop - first) if bin.get("method", "mean") == "mean" else chunk.max(axis=2)
+        binned = [first, stop]
     elif projection is None:
         if not 0 <= frame < frames:
             raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
@@ -82,6 +90,8 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
     result = {"height": height, "width": width, "frames": frames, "channels": channels, "planes": planes, "frame": frame,
               "low": _number(low), "high": _number(high),
               "pixels": base64.b64encode(scaled.tobytes()).decode("ascii")}
+    if projection is None and bin:
+        result["binned"] = binned
     if projection == "peakTime":   # the peaks, as 8-bit values from the smallest to the largest
         finite = peak[np.isfinite(peak)]
         bottom, top = (float(finite.min()), float(finite.max())) if finite.size else (0.0, 0.0)
@@ -93,6 +103,17 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
 
 
 CHUNK = 100   # frames read at a time for a projection
+
+
+def moving_window(frame: int, size: int, frames: int):
+    """The frames binned around frame (0-based; [first, stop)), as dev's getMovingWindowFrameIndices: size frames from
+    the first or to the last near the ends, else frame - size // 2 to frame + size // 2 (so an even size takes one more)."""
+    number, half = frame + 1, -(-size // 2)
+    if number <= half:
+        return 0, min(frames, size)
+    if frames - number < half:
+        return max(frames - size + 1, 1) - 1, frames
+    return number - size // 2 - 1, number + size // 2
 
 
 def filter_image(image: Any, name: str) -> Any:

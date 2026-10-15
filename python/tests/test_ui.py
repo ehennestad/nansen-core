@@ -1513,6 +1513,9 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     wait_until(lambda: page.locator(".trace-roi-list li.selected").count() == 2)
     page.click(".trace-variable:has-text('RoiSignals_MeanF') input")   # a second panel
     wait_until(lambda: page.evaluate("document.querySelector('.traces-dialog .trace-canvas').style.height") == f"{2 * 150 + 22}px")
+    page.check(".trace-stack")   # the signal viewer's Stack Signals Vertically and Show Legend
+    page.check(".trace-legend")
+    page.wait_for_selector(".traces-dialog .trace-canvas[data-stacked='true'][data-legend='true']")
     page.click(".trace-roi-list li[data-column='0']")   # one ROI again; then the arrow keys move
     wait_until(lambda: page.locator(".trace-roi-list li.selected").all_inner_texts() == ["ROI 1"])
     page.keyboard.press("ArrowDown")
@@ -1680,6 +1683,19 @@ def test_viewer_projections_and_roi_display_options(empty_app, page):
     wait_until(lambda: page.evaluate(pixels) != plain)
     page.select_option(".viewer-filter", "")
     wait_until(lambda: page.evaluate(pixels) == plain)
+    page.select_option(".viewer-mode", "frame")   # imviewer's binning: the mean of the frames around this one
+    page.wait_for_selector(".viewer-frame:text-is('1 / 40')")
+    one = page.evaluate(pixels)
+    page.evaluate("document.activeElement.blur()")   # the key is the viewer's, not the select's
+    page.keyboard.press("Shift+B")
+    page.wait_for_selector(".viewer-frame:text-is('1 / 40 (1–10)')")
+    assert page.locator(".viewer-bin").input_value() == "mean:10" and page.evaluate(pixels) != one
+    page.select_option(".viewer-bin", "max:5")
+    page.wait_for_selector(".viewer-frame:text-is('1 / 40 (1–5)')")
+    page.evaluate("document.activeElement.blur()")
+    page.keyboard.press("Shift+B")
+    page.wait_for_selector(".viewer-frame:text-is('1 / 40')")
+    page.select_option(".viewer-mode", "min")
     page.check(".viewer-rois")
     page.check(".viewer-roi-labels")   # roimanager's numbers on the ROIs
     page.wait_for_selector(".viewer-canvas[data-labels='3']")
@@ -1688,6 +1704,15 @@ def test_viewer_projections_and_roi_display_options(empty_app, page):
     wait_until(lambda: 0 < page.evaluate(colourful) < filled)
     page.click(".viewer-grid")
     assert "active" in page.get_attribute(".viewer-grid", "class")
+    box = page.locator(".viewer-canvas").bounding_box()   # roimanager's multi-select: Shift and drag a rectangle
+    page.keyboard.down("Shift")
+    page.mouse.move(box["x"] + 2, box["y"] + 2)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] - 2, box["y"] + box["height"] - 2, steps=4)
+    page.mouse.up()
+    page.keyboard.up("Shift")
+    page.wait_for_selector(".viewer-status:has-text('3 ROIs in the rectangle')")
+    assert page.locator(".viewer-roi-list li.selected").count() == 3
     page.click(".viewer-roi-list li[data-roi='1']")   # roimanager's cell types (Shift+E) and links (Shift+C)
     page.keyboard.press("Shift+E")
     page.wait_for_selector(".viewer-roi-list li[data-roi='1'] .roi-cell-type:has-text('excitatory')")

@@ -623,7 +623,7 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .traces { display: flex; flex-direction: column; }
 .trace-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; font-size: 13px; }
 .trace-bar .spacer { flex: 1; }
-.trace-variable { display: inline-flex; align-items: center; gap: 5px; }
+.trace-variable, .trace-option { display: inline-flex; align-items: center; gap: 5px; }
 .trace-status { font-size: 12px; }
 .trace-main { display: flex; min-height: 340px; }
 .trace-side { width: 200px; border-right: 1px solid var(--border); background: var(--surface-2); display: flex; flex-direction: column; }

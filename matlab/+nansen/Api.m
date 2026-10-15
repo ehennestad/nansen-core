@@ -971,7 +971,8 @@ classdef Api < handle
             result = nansen.internal.imageFrame(stack, ...
                 double(nansen.internal.getField(params, "frame", 0)), double(nansen.internal.getField(params, "channel", 0)), ...
                 string(nansen.internal.getField(params, "projection", "")), double(limits), ...
-                double(nansen.internal.getField(params, "plane", 0)), string(nansen.internal.getField(params, "filter", "")));
+                double(nansen.internal.getField(params, "plane", 0)), string(nansen.internal.getField(params, "filter", "")), ...
+                nansen.Api.binOf(params));
             result.metadata = stack.Metadata;
             result.adapter = char(adapterId);
             result.adapters = cellstr(candidates);
@@ -1361,7 +1362,8 @@ classdef Api < handle
             result = nansen.internal.imageFrame(stack, ...
                 double(nansen.internal.getField(params, "frame", 0)), double(nansen.internal.getField(params, "channel", 0)), ...
                 string(nansen.internal.getField(params, "projection", "")), double(limits), ...
-                double(nansen.internal.getField(params, "plane", 0)), string(nansen.internal.getField(params, "filter", "")));
+                double(nansen.internal.getField(params, "plane", 0)), string(nansen.internal.getField(params, "filter", "")), ...
+                nansen.Api.binOf(params));
             result.metadata = stack.Metadata;
             rois = string(nansen.internal.getField(params, "rois", ""));
             if rois ~= ""   % those of the plane and channel shown, when they have places; none before the first is saved
@@ -2304,6 +2306,20 @@ classdef Api < handle
                     project.attachFragment("subject", "core.subject");
                 end
             end
+        end
+
+        function value = binOf(params)
+            % data.frame's bin: struct size (2 or more frames), method (mean or max), or []
+            value = [];
+            if ~isfield(params, "bin") || isempty(params.bin)
+                return
+            end
+            size_ = nansen.internal.getField(params.bin, "size", []);
+            method = string(nansen.internal.getField(params.bin, "method", "mean"));
+            if ~(isnumeric(size_) && isscalar(size_) && size_ == round(size_) && size_ >= 2) || ~ismember(method, ["mean", "max"])
+                nansen.internal.throwError("invalid-params", "bin is {size: 2 or more frames, method: mean or max}")
+            end
+            value = struct("size", double(size_), "method", method);
         end
 
         function value = roisOf(project, entity, name, cached)
