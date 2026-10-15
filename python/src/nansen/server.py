@@ -129,6 +129,26 @@ def serve(api: Api, host: str = "127.0.0.1", port: int = 0) -> AppServer:
     return server
 
 
+def open_app(project=None, namespace: Optional[dict] = None, catalog=None, port: int = 0,
+             open_browser: bool = True) -> AppServer:
+    """Open the dashboard from Python, for example in a notebook, without blocking it.
+
+    With namespace (such as globals()), "Send to workspace" in the dashboard puts the selected entities
+    there. Returns the server; call shutdown() on it to stop.
+    """
+    from .catalog import Catalog, default_catalog_path
+    from .project import Project
+
+    if project is not None and not isinstance(project, Project):
+        project = Project.open(project)
+    api = Api(catalog=catalog if catalog is not None else Catalog(default_catalog_path()), project=project)
+    api.workspace = namespace
+    server = serve(api, port=port)
+    if open_browser:
+        webbrowser.open(server.url)
+    return server
+
+
 def run_app(api: Api, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> None:
     """Serve until interrupted."""
     server = AppServer(api, (host, port))

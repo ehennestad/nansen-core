@@ -20,6 +20,7 @@ classdef Api < handle
     properties
         % Opens a folder in the system's file browser; tests put their own here
         OpenFolder function_handle = @nansen.Api.openInFileBrowser
+        SendToWorkspace function_handle = @nansen.Api.assignInBase   % (name, value): where workspace.send puts entities
     end
 
     properties (Access = private)
@@ -35,7 +36,7 @@ classdef Api < handle
             end
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
-            names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
+            names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
@@ -136,7 +137,19 @@ classdef Api < handle
     methods
         function result = apiAppInfo(obj, ~)
             result = struct("name", 'nansen', "language", 'matlab', "version", '0.1.0', ...
-                "protocolVersion", char(nansen.Api.ProtocolVersion), "methods", {cellstr(obj.methodNames())});
+                "protocolVersion", char(nansen.Api.ProtocolVersion), "methods", {cellstr(obj.methodNames())}, ...
+                "workspace", true);
+        end
+
+        function result = apiWorkspaceSend(obj, params)
+            % Put the entities into the base workspace, as a cell row of nansen.Entity named name
+            name = string(nansen.internal.getField(params, "name", "entities"));
+            if ~isscalar(name) || ~isvarname(name)
+                nansen.internal.throwError("invalid-params", "'%s' is not a variable name", strjoin(name, " "))
+            end
+            entities = obj.entities(params);
+            obj.SendToWorkspace(name, entities);
+            result = struct("name", char(name), "count", numel(entities));
         end
 
         function result = apiCatalogList(obj, ~)
@@ -1039,6 +1052,10 @@ classdef Api < handle
     end
 
     methods (Static)
+        function assignInBase(name, value)
+            assignin("base", name, value);
+        end
+
         function openInFileBrowser(folder)
             %openInFileBrowser Show a folder in Finder, Explorer or the desktop's file manager
             if ispc

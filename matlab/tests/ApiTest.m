@@ -91,6 +91,29 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyNotEmpty(rows);
         end
 
+        function entitiesAreSentToTheWorkspace(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            api = nansen.Api(Project=project);
+            api.SendToWorkspace = @(name, value) assignin("base", "nansenApiTestSent", {name, value});
+            testCase.addTeardown(@() evalin("base", "clear nansenApiTestSent"));
+            info = api.handle(struct("id", 1, "method", "app.info")).result;
+            testCase.verifyTrue(info.workspace);
+            rows = api.handle(struct("id", 2, "method", "entities.list", "params", struct("entityType", "session"))).result.rows;
+            rows = nansen.internal.asCellOfStructs(rows);
+            keys = {rows{1}.key, rows{2}.key};
+            result = api.handle(struct("id", 3, "method", "workspace.send", "params", ...
+                struct("entityType", "session", "keys", {keys}, "name", "picked"))).result;
+            testCase.verifyEqual(string(result.name), "picked");
+            testCase.verifyEqual(result.count, 2);
+            sentValue = evalin("base", "nansenApiTestSent");
+            testCase.verifyEqual(string(sentValue{1}), "picked");
+            testCase.verifyClass(sentValue{2}{1}, "nansen.Entity");
+            testCase.verifyEqual(numel(sentValue{2}), 2);
+            response = api.handle(struct("id", 4, "method", "workspace.send", "params", struct("entityType", "session", "name", "not valid")));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+        end
+
         function catalogListsTheLastOpenedFirstWithinOneSecond(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));

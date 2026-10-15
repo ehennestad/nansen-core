@@ -344,8 +344,19 @@
         } } }, N.icon("copy", 14), "Copy keys"),
         h("button.btn.small", { on: { click: (e) => pipelineMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("layers", 14), "Pipeline"),
         h("button.btn.small", { on: { click: (e) => addToViewMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("list", 14), "View"),
+        app.info && app.info.workspace ? h("button.btn.small.send-workspace", {
+          title: app.info.language === "matlab" ? "Put the selected entities in MATLAB's workspace" : "Put the selected entities in the Python session the app was opened from",
+          on: { click: () => sendToWorkspace(grid.selectedRows()) } }, N.icon("download", 14), "To workspace") : null,
         h("button.btn.small", { on: { click: () => removeRows(grid.selectedRows()) } }, N.icon("trash", 14), "Remove from table"),
         h("button.btn.small", { on: { click: () => grid.clearSelection() } }, "Clear"));
+    }
+    async function sendToWorkspace(rows) {
+      const name = await N.prompt("Send to the workspace", "Variable name", "entities");
+      if (!name) return;
+      try {
+        const result = await app.client.request("workspace.send", { entityType, keys: rows.map((r) => r.key), name });
+        N.toast("Sent to the workspace", `${result.count} ${entityType}(s) in ${result.name}`, "success");
+      } catch (error) { N.showError(error, "Could not send them"); }
     }
     function addToViewMenu(anchor, rows) {
       const keys = rows.map((r) => r.key);

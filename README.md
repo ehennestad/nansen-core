@@ -49,6 +49,9 @@ project.run("core.file_stats", sessions[:3])
 table = project.table("session")
 table.update(sessions[0].key, description="Good imaging")
 table.write()
+
+from nansen.server import open_app
+server = open_app(project, namespace=globals())   # the dashboard, from a notebook; "To workspace" puts the selection in `entities`
 ```
 
 ### An existing NANSEN project

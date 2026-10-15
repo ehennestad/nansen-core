@@ -8,6 +8,7 @@ no global state.
 from __future__ import annotations
 
 import json
+import keyword
 import re
 import threading
 import traceback
@@ -58,6 +59,8 @@ class Api:
         self._listeners: List[Listener] = []
         # Opens a folder in the system's file browser; tests put their own here
         self.open_folder: Callable[[Path], None] = open_in_file_browser
+        # Where workspace.send puts entities: a namespace such as a notebook's globals(), or None for none
+        self.workspace: Optional[Dict[str, Any]] = None
         self._lock = threading.RLock()
         self._methods: Dict[str, Callable[[dict], Any]] = {
             name.replace("__", "."): getattr(self, name) for name in dir(self)
@@ -159,7 +162,18 @@ class Api:
 
     def app__info(self, params: dict) -> dict:
         return {"name": "nansen", "language": "python", "version": __version__, "protocolVersion": PROTOCOL_VERSION,
-                "methods": self.method_names}
+                "methods": self.method_names, "workspace": self.workspace is not None}
+
+    def workspace__send(self, params: dict) -> dict:
+        """Put the entities into the workspace the app was opened from, as a list named name."""
+        name = params.get("name", "entities")
+        if not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name):
+            raise NansenError("invalid-params", f"{name!r} is not a variable name")
+        if self.workspace is None:
+            raise NansenError("no-workspace", "this app was not opened from a workspace")
+        entities = self._entities(params)
+        self.workspace[name] = entities
+        return {"name": name, "count": len(entities)}
 
     def catalog__list(self, params: dict) -> list:
         return self.catalog.projects() if self.catalog is not None else []

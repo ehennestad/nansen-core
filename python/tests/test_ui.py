@@ -615,3 +615,20 @@ def test_browse_an_entitys_files(empty_app, page):
     assert "2 B" in page.locator(f"{tree} li[data-name='masks.json'] .size").inner_text()
     page.locator(f"{tree} .path-list .browse").first.click()  # closes it again
     page.wait_for_selector(f"{tree} ul.file-tree", state="detached")
+
+
+def test_send_the_selection_to_the_workspace(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    namespace = {}
+    api.workspace = namespace
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    rows = page.locator(".grid-table tbody tr[data-id]")
+    rows.nth(0).locator("td.sel input").check()
+    rows.nth(2).locator("td.sel input").check()
+    page.click(".selection-bar .send-workspace")
+    page.fill(".dialog.narrow input", "chosen")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".toast:has-text('2 session(s) in chosen')")
+    assert len(namespace["chosen"]) == 2

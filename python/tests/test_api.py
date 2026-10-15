@@ -207,3 +207,21 @@ def test_the_dataset_config_is_edited_as_text(tmp_path):
     assert call("dataset.save", text="{")["error"]["code"] == "dataset-invalid"
     assert config.read_text() == edited
     assert call("entities.list", entityType="session")["result"]["rows"]
+
+
+def test_entities_are_sent_to_the_workspace(tmp_path):
+    from nansen.demo import create_demo
+
+    api = Api(project=create_demo(tmp_path / "demo"), start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    rows = call("entities.list", entityType="session")["result"]["rows"]
+    assert call("app.info")["result"]["workspace"] is False
+    assert call("workspace.send", entityType="session")["error"]["code"] == "no-workspace"
+    namespace = {}
+    api.workspace = namespace
+    assert call("app.info")["result"]["workspace"] is True
+    result = call("workspace.send", entityType="session", keys=[r["key"] for r in rows[:2]], name="picked")["result"]
+    assert result == {"name": "picked", "count": 2}
+    assert [e.key for e in namespace["picked"]] == [r["key"] for r in rows[:2]]
+    assert call("workspace.send", entityType="session", name="not valid")["error"]["code"] == "invalid-params"
+    assert call("workspace.send", entityType="session", name="class")["error"]["code"] == "invalid-params"

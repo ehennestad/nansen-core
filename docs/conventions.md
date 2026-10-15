@@ -117,5 +117,6 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `task-not-queued` | The task is no longer queued (or a worker is starting it), so it cannot be held, changed or reordered |
 | `unknown-pipeline` | No pipeline has that id |
 | `no-catalog` | The app was started without a project catalog |
+| `no-workspace` | The app was not opened from a workspace that entities can be sent to |
 | `unknown-project` | The project is not in the catalog |
 | `folder-not-empty` | A new project, demo or import needs an empty folder |
