@@ -1,0 +1,369 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.list",
+        "id": 2,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": []
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 3,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "Curated",
+            "keys": [
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "Curated",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 4,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "Good ones",
+            "filters": [
+              {
+                "column": "ignore",
+                "op": "is",
+                "value": false
+              },
+              {
+                "column": "description",
+                "op": "contains",
+                "text": "good"
+              }
+            ],
+            "hiddenColumns": [
+              "ignore"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "Good ones"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 5,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "Curated",
+            "keys": [
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              },
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-002"
+              }
+            ],
+            "description": "Hand-picked"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            },
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-002"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.list",
+        "id": 6,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "Curated",
+            "description": "Hand-picked",
+            "keys": [
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              },
+              {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-002"
+              }
+            ]
+          },
+          {
+            "name": "Good ones",
+            "filters": [
+              {
+                "column": "ignore",
+                "op": "is",
+                "value": false
+              },
+              {
+                "column": "description",
+                "op": "contains",
+                "text": "good"
+              }
+            ],
+            "hiddenColumns": [
+              "ignore"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 7,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "One value",
+            "filters": [
+              {
+                "column": "description",
+                "op": "in",
+                "values": [
+                  "good imaging"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "One value"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.list",
+        "id": 8,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {},
+          {},
+          {
+            "filters": [
+              {
+                "values": [
+                  "good imaging"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 9,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "Range",
+            "filters": [
+              {
+                "column": "session_id",
+                "op": "range",
+                "min": "m110",
+                "max": "m111"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "Range"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 10,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": ""
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 11,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "Bad",
+            "keys": [
+              {
+                "session_id": "x"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 12,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "Bad",
+            "filters": [
+              {
+                "column": "x",
+                "op": "near"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "schema-validation"
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 13,
+        "params": {
+          "entityType": "probe",
+          "view": {
+            "name": "x"
+          }
+        }
+      },
+      "expect": {
+        "error": "unknown-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "views.delete",
+        "id": 14,
+        "params": {
+          "entityType": "session",
+          "name": "Good ones"
+        }
+      },
+      "expect": {
+        "result": {
+          "removed": "Good ones"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.delete",
+        "id": 15,
+        "params": {
+          "entityType": "session",
+          "name": "Good ones"
+        }
+      },
+      "expect": {
+        "error": "unknown-view"
+      }
+    },
+    {
+      "request": {
+        "method": "views.list",
+        "id": 16,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "name": "Curated"
+          },
+          {
+            "name": "One value"
+          },
+          {
+            "name": "Range"
+          }
+        ]
+      }
+    }
+  ]
+}

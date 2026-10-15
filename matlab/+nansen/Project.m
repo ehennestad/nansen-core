@@ -1108,6 +1108,20 @@ classdef Project < handle
             table.write();
         end
 
+        function path = viewsPath(obj, entityType)
+            path = string(fullfile(obj.Folder, "views", entityType + ".views.nansen.json"));
+        end
+
+        function views = views(obj, entityType)
+            %views The saved views of an entity type's table (an nansen.Views)
+            arguments
+                obj
+                entityType (1,1) string
+            end
+            obj.entityType(entityType);
+            views = nansen.Views(obj.viewsPath(entityType), entityType, obj.table(entityType).Key);
+        end
+
         function choices = columnChoices(obj, entityType)
             %columnChoices The choices of the entity type's columns that have them (a struct: column -> string row)
             choices = struct();

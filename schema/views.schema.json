@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:views",
+  "title": "NANSEN saved views",
+  "description": "Named views of one entity type's table, at views/<entityType>.views.nansen.json in the project: which rows (a list of keys, as dev's extra metatables held, and/or filters on columns) and which columns to show. The dashboard applies them; the table itself is not changed.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "entityType", "views"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.views" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "entityType": { "type": "string" },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "description": "Unique within the entity type; also what the dashboard shows." },
+          "description": { "type": "string" },
+          "keys": {
+            "type": "array",
+            "description": "When given, the view holds only these entities (and of them, those the filters keep).",
+            "items": { "type": "object", "additionalProperties": { "type": ["string", "integer"] } }
+          },
+          "filters": {
+            "type": "array",
+            "description": "Every filter must hold for a row to be shown.",
+            "items": { "$ref": "#/definitions/filter" }
+          },
+          "hiddenColumns": { "type": "array", "items": { "type": "string" } },
+          "search": { "type": "string" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "filter": {
+      "type": "object",
+      "required": ["column", "op"],
+      "additionalProperties": false,
+      "properties": {
+        "column": { "type": "string" },
+        "op": { "enum": ["in", "range", "is", "contains", "empty", "notEmpty"] },
+        "values": { "type": "array", "description": "op in: the row's value is one of these (null for none).", "items": { "type": ["string", "number", "boolean", "null"] } },
+        "min": { "type": ["string", "number"], "description": "op range: at least this (a number, or a date or datetime as in the CSV)." },
+        "max": { "type": ["string", "number"], "description": "op range: at most this." },
+        "value": { "type": "boolean", "description": "op is: the yes/no value." },
+        "text": { "type": "string", "description": "op contains: text the value contains, ignoring case." }
+      }
+    }
+  }
+}

@@ -41,6 +41,7 @@ Events flow from the core to the frontend:
 | `entities` | Rows changed | `{entityTypes, keys?}` |
 | `notes` | A note was added or removed | `{entityType, key?}` |
 | `pipelines` | A pipeline was saved or deleted | `{id}` |
+| `views` | A view was saved or deleted | `{entityType}` |
 | `task` | A task was queued, started, made progress or finished | The task document |
 | `removed` | A task was removed | `{id}` |
 | `log` | A running task logged a line | `{id, line}` |
@@ -73,6 +74,9 @@ Events flow from the core to the frontend:
 | `entities.remove` | `entityType`, `key` | `{removed}` |
 | `files.resolve` | `path` (relative; "" for the folder itself), `dataLocation?`, `rootStoragePath?` | `{path, exists, isFolder}`: the absolute path inside the project folder, or inside the location's root. `invalid-params` for an absolute path or one that leads out with `..` |
 | `files.reveal` | as `files.resolve` | The same, after showing the folder (a file's folder) in the system's file browser; `file-not-found` if it does not exist |
+| `views.list` | `entityType` | The entity type's saved views: `[{name, description?, keys?, filters?, hiddenColumns?, search?}]` |
+| `views.save` | `entityType`, `view` | The view, added or put in place of the one of the same name. A filter is `{column, op}` with `op` `in` (`values`), `range` (`min`, `max`), `is` (`value`), `contains` (`text`), `empty` or `notEmpty` |
+| `views.delete` | `entityType`, `name` | `{removed}` (`unknown-view` if there is no such view) |
 | `notes.list` | `entityType?`, `key?` (needs `entityType`) | Notes, newest first, each with its `entityType`: `[{id, entityType, key, createdAt, author, type, title, text, tags}]` |
 | `notes.add` | `entityType`, `key`, `text`, `title?`, `type?` (`informal`, `important`, `todo` or `question`; default `informal`), `author?` (default: the user name) | The note; its `tags` are the `#words` in the title and text |
 | `notes.remove` | `entityType`, `id` | `{removed}` (`unknown-note` if there is no such note) |

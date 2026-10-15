@@ -18,6 +18,7 @@ from .errors import NansenError
 from .methods import Method, MethodContext, run_method
 from .modules import Module, resolve_module
 from .notebook import Notebook
+from .views import Views
 from . import runs
 from .schemas import current_version
 from .tables import Column, EntityTable, TableSpec
@@ -154,6 +155,14 @@ class Project:
         """The notes on an entity type's entities."""
         self.entity_type(entity_type)
         return Notebook(self.notebook_path(entity_type), entity_type, self.table(entity_type).spec.key)
+
+    def views_path(self, entity_type: str) -> Path:
+        return self.folder / "views" / f"{entity_type}.views.nansen.json"
+
+    def views(self, entity_type: str) -> Views:
+        """The saved views of an entity type's table."""
+        self.entity_type(entity_type)
+        return Views(self.views_path(entity_type), entity_type, self.table(entity_type).spec.key)
 
     def column_choices(self, entity_type: str) -> Dict[str, List[str]]:
         """The choices of the entity type's columns that have them, from their fragments."""

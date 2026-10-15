@@ -38,7 +38,7 @@ classdef Api < handle
             names = ["app.info", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "dataset.setRoot", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "data.status", ...
                 "methods.list", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -391,6 +391,24 @@ classdef Api < handle
             table.write();
             obj.emit("entities", struct("entityTypes", {{char(params.entityType)}}));
             result = struct("removed", params.key);
+        end
+
+        function result = apiViewsList(obj, params)
+            result = obj.requireProject().views(string(nansen.Api.param(params, "entityType"))).list();
+        end
+
+        function result = apiViewsSave(obj, params)
+            entityType = string(nansen.Api.param(params, "entityType"));
+            result = obj.requireProject().views(entityType).save(nansen.Api.param(params, "view"));
+            obj.emit("views", struct("entityType", char(entityType)));
+        end
+
+        function result = apiViewsDelete(obj, params)
+            entityType = string(nansen.Api.param(params, "entityType"));
+            name = string(nansen.Api.param(params, "name"));
+            obj.requireProject().views(entityType).remove(name);
+            obj.emit("views", struct("entityType", char(entityType)));
+            result = struct("removed", char(name));
         end
 
         function result = apiFilesResolve(obj, params)

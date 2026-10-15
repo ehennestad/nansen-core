@@ -414,6 +414,21 @@ class Api:
         self.open_folder(path if resolved["isFolder"] else path.parent)
         return resolved
 
+    # -- views ---------------------------------------------------------------------------------
+
+    def views__list(self, params: dict) -> list:
+        return self._require_project().views(params["entityType"]).list()
+
+    def views__save(self, params: dict) -> dict:
+        view = self._require_project().views(params["entityType"]).save(params["view"])
+        self.emit("views", {"entityType": params["entityType"]})
+        return view
+
+    def views__delete(self, params: dict) -> dict:
+        self._require_project().views(params["entityType"]).delete(params["name"])
+        self.emit("views", {"entityType": params["entityType"]})
+        return {"removed": params["name"]}
+
     # -- notes ---------------------------------------------------------------------------------
 
     def notes__list(self, params: dict) -> list:
