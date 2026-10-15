@@ -590,13 +590,22 @@ class Api:
 
     def fragments__list(self, params: dict) -> list:
         project = self._require_project()
-        return [self._fragment_summary(f) for f in project.fragments()]
+        return [dict(self._fragment_summary(f), source="project" if project.fragment_path(f.id).is_file() else "module")
+                for f in project.fragments()]
 
     @staticmethod
     def _fragment_summary(f) -> dict:
         return {"id": f.id, "version": f.version, "title": f.document.get("title", f.id),
                 "description": f.document.get("description", ""), "computed": "compute" in f.document,
                 "columns": f.document["columns"]}
+
+    def fragments__save(self, params: dict) -> dict:
+        """Change a project fragment's definition (not its columns' names, types or order)."""
+        project = self._require_project()
+        fragment = project.save_fragment(params["document"])
+        self.emit("entities", {"entityTypes": [e["name"] for e in project.document["entityTypes"]
+                                               if fragment.id in e.get("fragments", [])]})
+        return self._fragment_summary(fragment)
 
     def fragments__create(self, params: dict) -> dict:
         """Save a project fragment (the document); with entityType, also add it to that entity type."""

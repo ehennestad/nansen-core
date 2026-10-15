@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "data.send", "modules.list", "modules.add", "modules.remove", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "data.send", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -648,6 +648,26 @@ classdef Api < handle
         function result = apiFragmentsList(obj, ~)
             project = obj.requireProject();
             result = cellfun(@nansen.Api.fragmentSummary, project.fragments(), UniformOutput=false);
+            for i = 1:numel(result)
+                result{i}.source = 'module';
+                if isfile(project.fragmentPath(string(result{i}.id)))
+                    result{i}.source = 'project';
+                end
+            end
+        end
+
+        function result = apiFragmentsSave(obj, params)
+            % Change a project fragment's definition (not its columns' names, types or order)
+            project = obj.requireProject();
+            fragment = project.saveFragment(nansen.Api.param(params, "document"));
+            users = {};
+            for entry = project.Document.entityTypes
+                if ismember(fragment.Id, string(nansen.internal.asCellstr(nansen.internal.getField(entry{1}, "fragments", {}))))
+                    users{end + 1} = char(string(entry{1}.name)); %#ok<AGROW>
+                end
+            end
+            obj.emit("entities", struct("entityTypes", {users}));
+            result = nansen.Api.fragmentSummary(fragment);
         end
 
         function result = apiFragmentsCreate(obj, params)

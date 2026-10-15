@@ -45,6 +45,11 @@ class Fragment:
 
 EXCLUDE_ESCAPED = set("\\.^$|?*+()[]{}")  # characters escaped in an exclude pattern made from a name
 
+
+def _version_tuple(version: str) -> Tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
 class Project:
     def __init__(self, folder: PathLike, document: dict, environment: Optional[str] = None):
         self.folder = Path(folder)
@@ -912,6 +917,44 @@ class Project:
         fragment = Fragment(check_document(document, "nansen.fragment"))
         write_json(self.fragment_path(fragment.id), fragment.document)
         return fragment
+
+    def save_fragment(self, document: dict) -> Fragment:
+        """Change a project fragment's definition: titles, descriptions, units, defaults and choices.
+
+        Its columns keep their names, types and order, so the values in the tables stay as they are; new
+        choices must allow the values there. The version goes up (a patch step unless a higher one is
+        given), and every table holding the fragment records it.
+        """
+        new = Fragment(check_document(document, "nansen.fragment"))
+        path = self.fragment_path(new.id)
+        if not path.is_file():
+            self.fragment(new.id)  # unknown-fragment
+            raise NansenError("fragment-read-only", f"fragment {new.id!r} comes from a module; only the project's own can be changed")
+        old = Fragment.read(path)
+        if [(c.name, c.data_type) for c in old.columns] != [(c.name, c.data_type) for c in new.columns]:
+            raise NansenError("fragment-mismatch", f"the columns of {new.id} keep their names, types and order when it is changed")
+        if _version_tuple(new.version) < _version_tuple(old.version):
+            raise NansenError("invalid-params", f"{new.id} is at {old.version}; it cannot go back to {new.version}")
+        version = new.version
+        if version == old.version:
+            parts = list(_version_tuple(version))
+            version = ".".join(map(str, parts[:-1] + [parts[-1] + 1]))
+        users = [e["name"] for e in self.document["entityTypes"] if new.id in e.get("fragments", [])]
+        tables = [self.table(name) for name in users]
+        for name, table in zip(users, tables):
+            for column in new.document["columns"]:
+                if "choices" in column:
+                    stray = sorted({str(row[column["name"]]) for row in table.rows
+                                    if row.get(column["name"]) is not None and row[column["name"]] not in column["choices"]})
+                    if stray:
+                        raise NansenError("invalid-value", f"{name} rows hold {', '.join(stray[:5])} in {column['name']!r}, "
+                                                           f"which the choices leave out")
+        changed = dict(new.document, version=version)
+        write_json(path, check_document(changed, "nansen.fragment"))
+        for table in tables:
+            table.spec.fragments[new.id] = version
+            table.write()
+        return Fragment(changed)
 
     def attach_fragment(self, entity_type: str, fragment_id: str) -> EntityTable:
         """Add a fragment to an entity type that may already have rows; they get the columns' defaults."""

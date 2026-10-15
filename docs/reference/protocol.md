@@ -90,8 +90,9 @@ Events flow from the core to the frontend:
 | `notes.list` | `entityType?`, `key?` (needs `entityType`) | Notes, newest first, each with its `entityType`: `[{id, entityType, key, createdAt, author, type, title, text, tags}]` |
 | `notes.add` | `entityType`, `key`, `text`, `title?`, `type?` (`informal`, `important`, `todo` or `question`; default `informal`), `author?` (default: the user name) | The note; its `tags` are the `#words` in the title and text |
 | `notes.remove` | `entityType`, `id` | `{removed}` (`unknown-note` if there is no such note) |
-| `fragments.list` | | `[{id, version, title, description, computed, columns}]` |
+| `fragments.list` | | `[{id, version, title, description, computed, columns, source}]`; `source` is `project` (in its `fragments/`, so it can be changed) or `module` |
 | `fragments.create` | `document` (a `nansen.fragment`), `entityType?` | The fragment summary; with `entityType`, it is also added to that entity type (as `fragments.attach`) |
+| `fragments.save` | `document` (a `nansen.fragment` of the project) | The fragment summary. Titles, descriptions, units, defaults and choices change; the columns keep their names, types and order (`fragment-mismatch`), so the values stay. New choices must allow the values in every table holding it (`invalid-value`). The version goes up a patch step unless a higher one is given (a lower one is `invalid-params`), and the tables record it. A module's fragment is `fragment-read-only` |
 | `fragments.attach` | `entityType`, `fragmentId` | `{entityType, fragments}`; existing rows get the columns' defaults |
 | `fragments.detach` | `entityType`, `fragmentId` | `{entityType, fragments}`; the fragment's columns and their values leave the table |
 | `columns.reset` | `entityType`, `column`, `keys?` | `{reset}`: how many rows got the column's default again (none if it has no default); key columns are `read-only-column` |

@@ -1,4 +1,4 @@
 {
-  "description": "Column management: a column with choices refuses other values (\"\" too) but takes none, a choice list on a non-string column is invalid, reset gives a column its default in some rows or all, a key column cannot be reset, and detaching a fragment takes its columns and values away (attaching it again gives the defaults).",
-  "steps": 19
+  "description": "Column management: a column with choices refuses other values (\"\" too) but takes none, a choice list on a non-string column is invalid, reset gives a column its default in some rows or all, a key column cannot be reset, and detaching a fragment takes its columns and values away (attaching it again gives the defaults). A project fragment's definition can be changed (titles, choices...) without losing values: the version goes up a patch step unless a higher one is given, the choices must allow the values in the table, and the columns' names and types, a lower version, and a module's fragment are refused.",
+  "steps": 30
 }

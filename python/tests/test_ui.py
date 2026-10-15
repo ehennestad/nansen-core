@@ -790,3 +790,29 @@ def test_a_pipeline_step_run_by_hand(empty_app, page):
     page.click(".drawer .pipeline-card .run-step")
     page.wait_for_selector(".drawer.open .pipeline-card .steps li.done")
     assert call("entities.get", entityType="session", key=rows[0]["key"])["result"]["pipeline"]["done"] == 1
+
+
+def test_edit_a_column(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    call = lambda method, **params: api.handle({"id": 2, "method": method, "params": params})
+    call("fragments.create", entityType="session", document={
+        "schemaType": "nansen.fragment", "schemaVersion": "0.1.0", "id": "qc", "version": "1.0.0",
+        "columns": [{"name": "quality", "dataType": "string", "choices": ["good", "poor"]}]})
+    key = call("entities.list", entityType="session")["result"]["rows"][0]["key"]
+    call("entities.update", entityType="session", key=key, values={"quality": "poor"})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table th:has-text('quality')")
+    page.hover(".grid-table th:has-text('quality')")
+    page.click(".grid-table th:has-text('quality') .col-menu")
+    page.click(".menu .item:has-text('Edit column')")
+    page.fill(".dialog .field:has-text('Choices') input", "good")
+    page.click(".dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".dialog .form-message:has-text('which the choices leave out')")
+    page.fill(".dialog .field:has-text('Title') input", "Quality")
+    page.fill(".dialog .field:has-text('Choices') input", "good, poor, unsure")
+    page.click(".dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".grid-table th:has-text('Quality')")
+    fragment = next(f for f in call("fragments.list")["result"] if f["id"] == "qc")
+    assert fragment["version"] == "1.0.1" and fragment["columns"][0]["choices"] == ["good", "poor", "unsure"]
+    assert call("entities.get", entityType="session", key=key)["result"]["values"]["quality"] == "poor"

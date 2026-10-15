@@ -368,6 +368,338 @@
           }
         }
       }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 20,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "quality": "poor"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "quality": "poor"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 21,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "qc",
+            "version": "1.0.0",
+            "columns": [
+              {
+                "name": "quality",
+                "dataType": "string",
+                "title": "Quality",
+                "choices": [
+                  "good",
+                  "poor",
+                  "unsure"
+                ]
+              },
+              {
+                "name": "checked",
+                "dataType": "boolean",
+                "default": false,
+                "title": "Checked"
+              }
+            ],
+            "title": "Quality control"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "qc",
+          "version": "1.0.1",
+          "title": "Quality control",
+          "columns": [
+            {
+              "name": "quality",
+              "title": "Quality",
+              "choices": [
+                "good",
+                "poor",
+                "unsure"
+              ]
+            },
+            {
+              "name": "checked"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 22,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          },
+          "values": {
+            "quality": "unsure"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "quality": "unsure"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 23,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "qc",
+            "version": "1.0.1",
+            "columns": [
+              {
+                "name": "quality",
+                "dataType": "string",
+                "title": "Quality",
+                "choices": [
+                  "good",
+                  "poor"
+                ]
+              },
+              {
+                "name": "checked",
+                "dataType": "boolean",
+                "default": false,
+                "title": "Checked"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-value"
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 24,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "qc",
+            "version": "1.0.1",
+            "columns": [
+              {
+                "name": "quality",
+                "dataType": "number"
+              },
+              {
+                "name": "checked",
+                "dataType": "boolean",
+                "default": false
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "fragment-mismatch"
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 25,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "qc",
+            "version": "1.0.0",
+            "columns": [
+              {
+                "name": "quality",
+                "dataType": "string",
+                "title": "Quality",
+                "choices": [
+                  "good",
+                  "poor",
+                  "unsure"
+                ]
+              },
+              {
+                "name": "checked",
+                "dataType": "boolean",
+                "default": false,
+                "title": "Checked"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 26,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "qc",
+            "version": "2.0.0",
+            "columns": [
+              {
+                "name": "quality",
+                "dataType": "string",
+                "title": "Quality",
+                "choices": [
+                  "good",
+                  "poor",
+                  "unsure",
+                  "bad"
+                ]
+              },
+              {
+                "name": "checked",
+                "dataType": "boolean",
+                "default": false,
+                "title": "Checked"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "version": "2.0.0"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 27,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "values": {
+            "quality": "unsure"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.list",
+        "id": 28,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "notes"
+          },
+          {
+            "id": "qc",
+            "version": "2.0.0"
+          },
+          {
+            "id": "core.notes"
+          },
+          {
+            "id": "core.file_stats"
+          },
+          {
+            "id": "core.subject"
+          },
+          {
+            "id": "core.pipeline"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 29,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "core.notes",
+            "version": "9.0.0",
+            "columns": [
+              {
+                "name": "ignore",
+                "dataType": "boolean",
+                "default": false
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "fragment-read-only"
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 30,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "nonesuch",
+            "version": "1.0.0",
+            "columns": [
+              {
+                "name": "x",
+                "dataType": "string"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "unknown-fragment"
+      }
     }
   ]
 }

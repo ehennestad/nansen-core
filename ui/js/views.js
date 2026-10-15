@@ -320,6 +320,59 @@
       app.project.dataset ? h("button.btn", { on: { click: () => app.sync(entityType) } }, N.icon("sync"), "Sync") : null,
       h("button.btn.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play"), "Run method"));
 
+    /* Change a project column's title, description, unit, default or choices; its values stay. */
+    function editColumnDialog(fragment, name) {
+      const current = fragment.columns.find((c) => c.name === name);
+      const isText = current.dataType === "string";
+      const isNumber = current.dataType === "number" || current.dataType === "integer";
+      const properties = {
+        title: { type: "string", title: "Title", description: `Empty for the name, ${name}` },
+        description: { type: "string", title: "Description" },
+      };
+      if (isNumber) properties.unit = { type: "string", title: "Unit" };
+      properties.default = current.dataType === "boolean" ? { type: "boolean", title: "Default (for new rows)" } : { type: "string", title: "Default (for new rows)", description: "Empty for none" };
+      if (isText) properties.choices = { type: "string", title: "Choices", description: "The values it may take, separated by commas; empty for any text. The values in the table must be among them." };
+      const values = { title: current.title || "", description: current.description || "", unit: current.unit || "",
+        default: current.dataType === "boolean" ? current.default === true : (current.default === undefined || current.default === null ? "" : String(current.default)),
+        choices: (current.choices || []).join(", ") };
+      formDialog({
+        title: `Edit ${current.title || name}`,
+        intro: `The column's values stay as they are. ${fragment.title} goes to a new version, which the tables record.`,
+        label: "Save",
+        schema: { type: "object", properties },
+        values,
+        submit: async (entered) => {
+          const column = { name, dataType: current.dataType };
+          if (entered.title) column.title = entered.title;
+          if (entered.description) column.description = entered.description;
+          if (isNumber && entered.unit) column.unit = entered.unit;
+          if (current.dataType === "boolean") column.default = entered.default === true;
+          else if (entered.default !== undefined && entered.default !== "") {
+            if (isNumber) {
+              const number = Number(entered.default);
+              if (!Number.isFinite(number) || (current.dataType === "integer" && !Number.isInteger(number))) throw new Error(`Default: ${entered.default} is not a${current.dataType === "integer" ? "n integer" : " number"}`);
+              column.default = number;
+            } else column.default = entered.default;
+          }
+          const choices = isText ? (entered.choices || "").split(",").map((c) => c.trim()).filter(Boolean) : [];
+          if (choices.length) {
+            if (new Set(choices).size !== choices.length) throw new Error("Choices: a choice is listed twice");
+            if (column.default !== undefined && !choices.includes(column.default)) throw new Error(`Default: ${column.default} is not one of the choices`);
+            column.choices = choices;
+          }
+          for (const key of ["format"]) if (current[key] !== undefined) column[key] = current[key];
+          const document = { schemaType: "nansen.fragment", schemaVersion: "0.1.0", id: fragment.id, version: fragment.version,
+            columns: fragment.columns.map((c) => (c.name === name ? column : c)) };
+          if (fragment.title && fragment.title !== fragment.id) document.title = fragment.title;
+          if (fragment.description) document.description = fragment.description;
+          await app.client.request("fragments.save", { document });
+          await app.reloadProject();
+          app.render();
+          N.toast("Column changed", column.title || name, "success");
+        },
+      });
+    }
+
     function columnMenu(column, anchor) {
       const items = [{ heading: column.title || column.name },
         { label: "Sort A → Z", icon: "sort-asc", onClick: () => grid.sortBy(column.name, 1) },
@@ -345,7 +398,11 @@
         if (column.fragment) {
           const fragment = (app.fragments || []).find((f) => f.id === column.fragment) || { id: column.fragment, title: column.fragment, columns: [column] };
           const names = fragment.columns.map((c) => c.title || c.name).join(", ");
-          items.push({ heading: "Columns" }, { label: `Remove ${fragment.title}…`, icon: "trash", onClick: async () => {
+          items.push({ heading: "Columns" });
+          if (fragment.source === "project" && !fragment.computed) {
+            items.push({ label: "Edit column…", icon: "edit", onClick: () => editColumnDialog(fragment, column.name) });
+          }
+          items.push({ label: `Remove ${fragment.title}…`, icon: "trash", onClick: async () => {
             const message = `The column(s) ${names} and every value in them are removed from the ${type.title || entityType} table. ` +
               "The fragment can be added again from the Columns menu, with its defaults.";
             if (!(await N.confirm(`Remove ${fragment.title}?`, message, "Remove", "danger"))) return;

@@ -197,6 +197,15 @@ classdef EntityTable < handle
             end
         end
 
+        function setFragmentVersion(obj, fragmentId, version)
+            %setFragmentVersion Record that the table follows a new version of one of its fragments
+            index = find(obj.FragmentIds == string(fragmentId), 1);
+            if isempty(index)
+                nansen.internal.throwError("unknown-fragment", "the %s table holds no fragment '%s'", obj.EntityType, fragmentId)
+            end
+            obj.FragmentVersions(index) = string(version);
+        end
+
         function removeColumns(obj, names, fragmentId)
             %removeColumns Drop columns (never key columns) and their values; with a fragment id, the table stops recording it
             arguments

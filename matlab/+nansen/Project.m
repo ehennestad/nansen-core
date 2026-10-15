@@ -1558,6 +1558,73 @@ classdef Project < handle
             obj.writeDocument(document);
         end
 
+        function fragment = saveFragment(obj, document)
+            %saveFragment Change a project fragment's definition: titles, descriptions, units, defaults and choices
+            %
+            %   Its columns keep their names, types and order, so the values in the
+            %   tables stay as they are; new choices must allow the values there.
+            %   The version goes up (a patch step unless a higher one is given), and
+            %   every table holding the fragment records it.
+            arguments
+                obj
+                document (1,1) struct
+            end
+            document = nansen.checkDocument(document, ExpectedType="nansen.fragment");
+            new = nansen.Fragment(document);
+            path = obj.fragmentPath(new.Id);
+            if ~isfile(path)
+                obj.fragment(new.Id);   % unknown-fragment
+                nansen.internal.throwError("fragment-read-only", "fragment '%s' comes from a module; only the project's own can be changed", new.Id)
+            end
+            old = nansen.Fragment.read(path);
+            if ~isequal([old.Columns.Name], [new.Columns.Name]) || ~isequal([old.Columns.DataType], [new.Columns.DataType])
+                nansen.internal.throwError("fragment-mismatch", "the columns of %s keep their names, types and order when it is changed", new.Id)
+            end
+            oldParts = double(split(old.Version, "."))';
+            newParts = double(split(new.Version, "."))';
+            difference = find(newParts ~= oldParts, 1);
+            if ~isempty(difference) && newParts(difference) < oldParts(difference)
+                nansen.internal.throwError("invalid-params", "%s is at %s; it cannot go back to %s", new.Id, old.Version, new.Version)
+            end
+            version = new.Version;
+            if isempty(difference)
+                newParts(end) = newParts(end) + 1;
+                version = strjoin(string(newParts), ".");
+            end
+            users = strings(1, 0);
+            for entry = obj.Document.entityTypes
+                listed = string(nansen.internal.asCellstr(nansen.internal.getField(entry{1}, "fragments", {})));
+                if ismember(new.Id, listed)
+                    users(end + 1) = string(entry{1}.name); %#ok<AGROW>
+                end
+            end
+            tables = cell(1, numel(users));
+            columns = nansen.internal.asCellOfStructs(document.columns);
+            for i = 1:numel(users)
+                tables{i} = obj.table(users(i));
+                for c = 1:numel(columns)
+                    if ~isfield(columns{c}, "choices")
+                        continue
+                    end
+                    values = string(tables{i}.Data.(columns{c}.name));
+                    values = values(~ismissing(values));
+                    stray = unique(values(~ismember(values, string(nansen.internal.asCellstr(columns{c}.choices)))));
+                    if ~isempty(stray)
+                        nansen.internal.throwError("invalid-value", "%s rows hold %s in '%s', which the choices leave out", ...
+                            users(i), strjoin(stray(1:min(5, end)), ", "), columns{c}.name)
+                    end
+                end
+            end
+            document.version = char(version);
+            document = nansen.checkDocument(document, ExpectedType="nansen.fragment");
+            nansen.internal.writeJson(path, document)
+            for i = 1:numel(tables)
+                tables{i}.setFragmentVersion(new.Id, version);
+                tables{i}.write();
+            end
+            fragment = nansen.Fragment(document);
+        end
+
         function fragment = addFragment(obj, document)
             %addFragment Save a project-defined fragment, given as a struct
             arguments
