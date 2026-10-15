@@ -63,22 +63,12 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             end
         end
 
-        function [stack, centers] = separateCells()
-            %separateCells 128 x 128 x 1000 frames: 12 cells on a 3 x 4 grid, 28 px apart, shaped and active
-            %as in EXTRACT's own simulator (Gaussian profiles, an event per 50 frames at 8 x the noise)
-            rng(2);
-            sz = 128;
-            frames = 1000;
-            [xx, yy] = meshgrid(1:sz, 1:sz);
-            stack = repmat(300 + 50 * (xx + yy) / sz, 1, 1, frames);
-            [cy, cx] = ndgrid([36, 64, 92], [22, 50, 78, 106]);
-            centers = [cy(:), cx(:)] + randi([-2, 2], 12, 2);
-            for i = 1:size(centers, 1)
-                trace = 80 * filter(1, [1, -exp(-1 / 10)], double(rand(1, frames) < 0.02));
-                shape = exp(-((yy - centers(i, 1)) .^ 2 + (xx - centers(i, 2)) .^ 2) / (2 * 2.5 ^ 2));
-                stack = stack + shape .* reshape(trace, 1, 1, []);
-            end
-            stack = uint16(max(0, stack + 10 * randn(size(stack))));
+        function [stack, centers] = simulatedByExtract()
+            %simulatedByExtract 128 x 128 x 1000 frames from EXTRACT's own simulator (simulate_data): 12 cells
+            %of radius 4-6 at least 20 px apart, an event per 50 frames (tau 10) at 8 x the noise
+            rng(3);
+            [movie, ~, ~, ~, ~, centers] = feval("simulate_data", [128, 128, 1000], 12, [4, 6], 20, 0.02, 10, 8, 0.02, 0, 1, 0);
+            stack = uint16(round(1000 * (movie + 1)));
         end
     end
 
@@ -110,9 +100,9 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
         end
 
         function extractFindsTheCells(testCase)
-            % EXTRACT gets a recording of its own, like its simulator's: on the shared one's flat, very bright
-            % disks it fits rings around the cells and keeps noise
-            [stack, centers] = ExternalToolsTest.separateCells();
+            % EXTRACT gets a recording from its own simulator: on the shared one's flat, very bright disks it
+            % fits rings around the cells and keeps noise
+            [stack, centers] = ExternalToolsTest.simulatedByExtract();
             testCase.Project.save(testCase.Session, "TwoPhotonSeries_Corrected", stack);
             testCase.Centers = centers;
             result = testCase.Project.run("ophys.extract", {testCase.Session}, ...
