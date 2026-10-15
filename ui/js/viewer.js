@@ -660,6 +660,7 @@
       ["delete", "trash", "Delete (Delete)", () => remove()],
     ].map(([name, icon, title, run]) => h(`button.btn.ghost.icon.small.roi-${name}`, { title, on: { click: run } }, N.icon(icon, 13)));
     const growButton = h("button.btn.ghost.icon.small.roi-grow", { title: "Grow the selected ROI by a pixel (+)", on: { click: () => reshape(1) } }, N.icon("plus", 13));
+    const improveButton = h("button.btn.ghost.icon.small.roi-improve", { title: "Improve the selected ROIs (i): find each again around its middle, as the Detect tool does, keeping its id and class", on: { click: () => improve() } }, N.icon("crosshair", 13));
     const shrinkButton = h("button.btn.ghost.icon.small.roi-shrink", { title: "Shrink the selected ROI by a pixel (-)", on: { click: () => reshape(-1) } }, N.icon("minus", 13));
     const undoButton = h("button.btn.ghost.icon.small.roi-undo", { title: "Undo (Ctrl+Z)", on: { click: () => undo() } }, N.icon("undo", 13));
     const redoButton = h("button.btn.ghost.icon.small.roi-redo", { title: "Redo (Ctrl+Shift+Z)", on: { click: () => redo() } }, N.icon("redo", 13));
@@ -780,7 +781,7 @@
     // ROIs read only (no project to save them into): seen, selected and gone through in the gallery, not changed
     const roiPanel = h("div.viewer-roi-panel",
       readOnly ? h("div.viewer-roi-actions", h("span.muted.viewer-read-only-note", "Read only"), h("div.spacer"), galleryButton)
-        : h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
+        : h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, improveButton, h("div.spacer"), undoButton, redoButton, galleryButton),
       readOnly ? null : h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, addFromButton, h("div.spacer"), radius),
       h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
         h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links")),
@@ -855,6 +856,7 @@
       actions.forEach((b) => { b.disabled = state.selection.size === 0; });
       mergeButton.disabled = state.selection.size < 2;
       growButton.disabled = shrinkButton.disabled = state.selection.size !== 1;
+      improveButton.disabled = !state.selection.size;
       undoButton.disabled = !state.undo.length;
       redoButton.disabled = !state.redo.length;
       galleryButton.disabled = !state.rois || !state.rois.length;
@@ -929,6 +931,25 @@
       }
       edit({ pixels: [{ id: roi.id, pixels }] });
     }
+    /** dev's improveRois (i): each selected ROI found again around its middle (rois.detect, as the Detect tool, in twice the radius of a
+     * circle of its area), the shape replaced and its id, class and links kept; one undo puts them all back. */
+    async function improve() {
+      if (!state.selection.size || !last || readOnly) return;
+      const changed = [];
+      status.textContent = "Improving…";
+      try {
+        for (const id of selectedIds()) {
+          const roi = state.rois.find((r) => r.id === id);
+          if (!roi || !roi.pixels.length) continue;
+          const middle = [0, 1].map((i) => Math.round(roi.pixels.reduce((sum, p) => sum + p[i], 0) / roi.pixels.length));
+          const radius = Math.max(4, 2 * Math.round(Math.sqrt(roi.pixels.length / Math.PI)));
+          const found = await app.client.request("rois.detect", { entityType, key, variable, point: middle, radius, channel: state.channel, plane: state.plane });
+          if (found.pixels.length) changed.push({ id, pixels: found.pixels });
+        }
+      } catch (error) { N.showError(error, "Could not improve the ROIs"); return; }
+      if (changed.length) edit({ pixels: changed });
+      else status.textContent = "No cell found in the selected ROIs: draw them instead";
+    }
     function classify(label) { if (state.selection.size) edit({ classify: selectedIds().map((id) => ({ id, classification: label })) }); }
     function remove() { if (state.selection.size) edit({ remove: selectedIds() }); }
     // roimanager's cell types (Shift+E, I, X; again to clear) and links between ROIs (Shift+C: the selected one with the others)
@@ -976,6 +997,7 @@
       else if (event.key === "q") classify("unresolved");
       else if (event.key === "u") classify(null);
       else if (event.key === "m") merge();
+      else if (event.key === "i") improve();
       else if (event.key === "E") setCellType("excitatory");
       else if (event.key === "I") setCellType("inhibitory");
       else if (event.key === "X") setCellType("axon");

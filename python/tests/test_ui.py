@@ -1,5 +1,6 @@
 """The dashboard in a real browser, against the demo project. Skipped without Playwright and Chromium."""
 
+import math
 import time
 
 import pytest
@@ -2296,6 +2297,25 @@ def test_polygons_grow_shrink_undo_and_projections_in_the_viewer(empty_app, page
     wait_until(lambda: len(rois()) == 3)
     page.click(".roi-undo")   # the deleted ROI comes back with its id
     wait_until(lambda: [r["id"] for r in rois()] == [1, 2, 3, 4] and pixels(rois()[3]) == grown)
+
+    # improve (i, dev's improveRois): ROI 1, shrunk, found again around its middle as the Detect tool finds one; its id and class kept
+    page.click(".viewer-roi-list li[data-roi='1']")
+    page.keyboard.press("a")
+    wait_until(lambda: rois()[0].get("classification") == "accepted")
+    before = pixels(rois()[0])
+    page.keyboard.press("-")
+    wait_until(lambda: len(rois()[0]["pixels"]) < len(before))
+    small = pixels(rois()[0])
+    middle = [math.floor(sum(p[i] for p in small) / len(small) + 0.5) for i in (0, 1)]
+    radius = max(4, 2 * math.floor(math.sqrt(len(small) / math.pi) + 0.5))
+    found = api.handle({"id": 9, "method": "rois.detect", "params": {"entityType": "session", "key": s1[0], "variable": "TwoPhotonSeries_Corrected",
+                                                                    "point": middle, "radius": radius}})["result"]["pixels"]
+    assert found and sorted(map(tuple, found)) != small
+    page.keyboard.press("i")
+    wait_until(lambda: pixels(rois()[0]) == sorted(map(tuple, found)))
+    assert rois()[0]["id"] == 1 and rois()[0].get("classification") == "accepted"
+    page.keyboard.press("Control+z")
+    wait_until(lambda: pixels(rois()[0]) == small)
 
     # the gallery sorted by the ROIs' largest ΔF/F
     page.click(".viewer-gallery")
