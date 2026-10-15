@@ -1,6 +1,6 @@
 function result = detectRois(entity, options, context)
 %detectRois ROIs as 4-connected areas of pixels whose average correlation with their 8 neighbours reaches the threshold
-    stack = ophys.internal.loadStack(context, entity, options.stack, options);
+    stack = ophys.internal.openStack(context, entity, options.stack, options);   % read a chunk at a time
     [height, width, ~] = size(stack);
     image = ophys.internal.correlationImage(stack);
     border = options.border;

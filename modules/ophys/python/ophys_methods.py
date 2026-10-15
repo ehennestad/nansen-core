@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from nansen.errors import NansenError
+from nansen.stacks import as_stack
 
 SMOOTHING = 1.15  # pixels: the phase correlation is smoothed by a Gaussian of this width, as suite2p does
 CHUNK = 100       # frames handled at a time
@@ -317,8 +318,9 @@ def _smoothing(height, width):
 
 
 def detect_rois(entity, options, context):
-    """ROIs as 4-connected areas of pixels whose average correlation with their 8 neighbours reaches the threshold."""
-    stack = _load_stack(entity, options["stack"], context, options)
+    """ROIs as 4-connected areas of pixels whose average correlation with their 8 neighbours reaches the threshold.
+    Reads the stack a chunk at a time (three times)."""
+    stack = _open_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     image = correlation_image(stack)
     border = options["border"]
@@ -334,22 +336,37 @@ def detect_rois(entity, options, context):
 
 
 def correlation_image(stack):
-    """Each pixel's average Pearson correlation with its in-frame 8 neighbours over time."""
-    height, width = stack.shape[:2]
-    data = stack.astype(np.float64)
-    data -= data.mean(axis=2, keepdims=True)
-    spread = np.sqrt((data ** 2).mean(axis=2, keepdims=True))
-    data = np.divide(data, spread, out=np.zeros_like(data), where=spread > 0)
+    """Each pixel's average Pearson correlation with its in-frame 8 neighbours over time.
+
+    Read a chunk of frames at a time, in three passes: each pixel's mean, its spread (the root mean square of
+    its deviations from the mean), and the sums over time of its normalised deviations times each neighbour's.
+    """
+    stack = as_stack(stack)
+    height, width, frames = stack.shape
+    chunks = lambda: (stack.frames(start, start + CHUNK).astype(np.float64) for start in range(0, frames, CHUNK))
+    total = np.zeros((height, width))
+    for chunk in chunks():
+        total += chunk.sum(axis=2)
+    mean = (total / frames)[:, :, None]
+    squares = np.zeros((height, width))
+    for chunk in chunks():
+        squares += ((chunk - mean) ** 2).sum(axis=2)
+    spread = np.sqrt(squares / frames)[:, :, None]
+    offsets = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx]
+    span = lambda d, size: slice(max(0, d), min(size, size + d))
+    products = {offset: np.zeros((height, width)) for offset in offsets}
+    for chunk in chunks():
+        data = np.divide(chunk - mean, spread, out=np.zeros_like(chunk), where=spread > 0)
+        for dy, dx in offsets:
+            here = (span(-dy, height), span(-dx, width))
+            there = (span(dy, height), span(dx, width))
+            products[(dy, dx)][here] += (data[here] * data[there]).sum(axis=2)
     total = np.zeros((height, width))
     count = np.zeros((height, width))
-    for dy in (-1, 0, 1):
-        for dx in (-1, 0, 1):
-            if dy == 0 and dx == 0:
-                continue
-            here = (slice(max(0, -dy), min(height, height - dy)), slice(max(0, -dx), min(width, width - dx)))
-            there = (slice(max(0, dy), min(height, height + dy)), slice(max(0, dx), min(width, width + dx)))
-            total[here] += (data[here] * data[there]).mean(axis=2)
-            count[here] += 1
+    for dy, dx in offsets:
+        here = (span(-dy, height), span(-dx, width))
+        total[here] += products[(dy, dx)][here] / frames
+        count[here] += 1
     return np.divide(total, count, out=np.zeros_like(total), where=count > 0)
 
 
@@ -400,10 +417,11 @@ def quicky(entity, options, context):
     3 px of the median, and the ROI is the largest area of their overlap image above the mid-point of its
     50th and 95th percentile, holes filled. ROIs overlapping an earlier one by 75 % or more are left out.
     """
-    stack = _load_stack(entity, options["stack"], context, options)
+    stack = _open_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     diameter = options["roiDiameter"]
-    binned = bin_max(stack.astype(np.float64), options["binSize"])
+    shape_wanted = options.get("useShapeDetection", False)
+    binned, average = binned_max(stack, options["binSize"], shape_wanted)
     context.progress(0.1, "removing background")
     data = binned - gaussian_circular(binned, options["smoothingSigma"])
     data = data - moving_mean(data, 20)
@@ -427,9 +445,9 @@ def quicky(entity, options, context):
         areas = [a for a in areas if len(a) <= largest]
     rois = unique_rois(areas, height, width, diameter, options["observationsRequired"], options["maxRois"])
     shaped = []
-    if options.get("useShapeDetection", False):   # somata seen by their shape in the mean image, first
+    if shape_wanted:   # somata seen by their shape in the mean image, first
         context.progress(0.8, "shape detection")
-        shaped = shape_rois(stack.astype(np.float64).mean(axis=2), int(options.get("innerRadius", 3)), int(options.get("outerRadius", 5)))
+        shaped = shape_rois(average, int(options.get("innerRadius", 3)), int(options.get("outerRadius", 5)))
         rois = (shaped + [r for r in rois if not any(overlap(r, s) > 0.75 for s in shaped)])[:options["maxRois"]]
     document = {"imageSize": [height, width], "rois": [_roi(n + 1, pixels) for n, pixels in enumerate(rois)]}
     _save(entity, options["output"], document, context)
@@ -621,6 +639,24 @@ def _inside(points, px, py):
 def _half_up(value):
     """value rounded to a whole number, half away from zero (as MATLAB's round, for positive values)."""
     return int(math.floor(value + 0.5))
+
+
+def binned_max(stack, size, average=False):
+    """bin_max of a stack read a chunk of whole bins at a time; and, when asked, the mean of every frame."""
+    height, width, frames = stack.shape
+    size = frames if frames < size else size
+    count = max(1, frames // size)
+    binned = np.zeros((height, width, count))
+    total = np.zeros((height, width)) if average else None
+    step = size * max(1, CHUNK // size)
+    for start in range(0, frames if average else count * size, step):
+        chunk = stack.frames(start, min(start + step, frames)).astype(np.float64)
+        whole = min(chunk.shape[2], count * size - start) // size * size if start < count * size else 0
+        if whole:
+            binned[:, :, start // size:start // size + whole // size] = chunk[:, :, :whole].reshape(height, width, whole // size, size).max(axis=3)
+        if average:
+            total += chunk.sum(axis=2)
+    return binned, (total / frames if average else None)
 
 
 def bin_max(stack, size):
@@ -1093,17 +1129,31 @@ def deinterleave(entity, options, context):
 
 
 def denoise(entity, options, context):
-    """Gaussian smoothing in space and in time, with the weights renormalised at the edges."""
-    stack = _load_stack(entity, options["stack"], context, options)
-    out = stack.astype(np.float64)
-    for axis, sigma in ((0, options["spatialSigma"]), (1, options["spatialSigma"]), (2, options["temporalSigma"])):
-        context.check_cancelled()
-        out = gaussian_along(out, axis, sigma)
-    out = out.astype(np.float32)
-    _save(entity, options["output"], out, context)
-    height, width, frames = out.shape
+    """Gaussian smoothing in space and in time, with the weights renormalised at the edges.
+
+    Read and written a chunk at a time: each part with 3 temporal sigmas of frames on either side, so every
+    frame gets the weights it would get were the stack smoothed whole.
+    """
+    stack = _open_stack(entity, options["stack"], context, options)
+    height, width, frames = stack.shape
+    temporal = options["temporalSigma"]
+    halo = int(math.ceil(3 * temporal)) if temporal > 0 else 0
+    total = 0.0
+    step = max(1, CHUNK - 2 * halo)   # each read, halo included, is a chunk at most
+    with context.project.stack_writer(entity, options["output"], (height, width, frames), np.float32) as out:
+        for start in range(0, frames, step):
+            context.check_cancelled()
+            stop = min(start + step, frames)
+            first, last = max(0, start - halo), min(frames, stop + halo)
+            block = stack.frames(first, last).astype(np.float64)
+            for axis, sigma in ((0, options["spatialSigma"]), (1, options["spatialSigma"]), (2, temporal)):
+                block = gaussian_along(block, axis, sigma)
+            piece = block[:, :, start - first:stop - first].astype(np.float32)
+            out.write(start, piece)
+            total += float(piece.astype(np.float64).sum())
+            context.progress(stop / frames, f"frame {stop}/{frames}")
     context.log(f"{_name(entity)}: smoothed {frames} frames")
-    return {"frames": frames, "height": height, "width": width, "meanIntensity": round_to(out.astype(np.float64).mean(), 4)}
+    return {"frames": frames, "height": height, "width": width, "meanIntensity": round_to(total / (height * width * frames), 4)}
 
 
 def gaussian_along(data, axis, sigma):

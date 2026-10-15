@@ -8,10 +8,11 @@ function result = quicky(entity, options, context)
 %   same place in several bins make an ROI. With useShapeDetection, somata
 %   found by their shape in the mean image (ophys.internal.shapeRois) come
 %   first, and activity ROIs overlapping one by more than 75 % are left out.
-    stack = ophys.internal.loadStack(context, entity, options.stack, options);
+    stack = ophys.internal.openStack(context, entity, options.stack, options);   % read a chunk of bins at a time
     [height, width, ~] = size(stack);
     diameter = options.roiDiameter;
-    binned = ophys.internal.binMax(double(stack), options.binSize);
+    useShape = logical(nansen.internal.getField(options, "useShapeDetection", false));
+    [binned, average] = ophys.internal.binnedMax(stack, options.binSize, useShape);
     context.progress(0.1, "removing background");
     data = binned - ophys.internal.gaussianCircular(binned, options.smoothingSigma);
     data = data - ophys.internal.movingMean(data, 20);
@@ -39,10 +40,9 @@ function result = quicky(entity, options, context)
     end
     rois = ophys.internal.uniqueRois(areas, height, width, diameter, options.observationsRequired, options.maxRois);
     shaped = {};
-    useShape = logical(nansen.internal.getField(options, "useShapeDetection", false));
     if useShape   % somata seen by their shape in the mean image, first
         context.progress(0.8, "shape detection");
-        shaped = ophys.internal.shapeRois(mean(double(stack), 3), double(nansen.internal.getField(options, "innerRadius", 3)), ...
+        shaped = ophys.internal.shapeRois(average, double(nansen.internal.getField(options, "innerRadius", 3)), ...
             double(nansen.internal.getField(options, "outerRadius", 5)));
         keep = cellfun(@(r) ~any(cellfun(@(s) ophys.internal.overlapShare(r, s) > 0.75, shaped)), rois);
         rois = [reshape(shaped, 1, []), reshape(rois(keep), 1, [])];

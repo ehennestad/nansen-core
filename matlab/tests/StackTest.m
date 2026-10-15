@@ -112,8 +112,22 @@ classdef StackTest < matlab.unittest.TestCase
             testCase.verifyEqual(frame.frames, 250);
             image = nansen.internal.imageFrame(project.openStack(entity, "FovAverageProjection"), 0, 0, "", []);
             testCase.verifyEqual([image.height, image.width, image.frames], [48, 48, 1]);   % an image: its columns are not frames
-            testCase.verifyError(@() project.run("ophys.detect_rois", {entity}), "nansen:InvalidParams");   % needs every frame at once
+            % ROI detection, Quicky and smoothing read in chunks too, and give what they give with the whole recording
+            limited = {project.run("ophys.detect_rois", {entity}, Options=struct("threshold", 0.2)), ...
+                project.run("ophys.quicky", {entity}, Options=struct("roiDiameter", 6)), ...
+                project.run("ophys.denoise", {entity}, Options=struct("temporalSigma", 2, "spatialSigma", 1))};
+            denoised = project.load(entity, "TwoPhotonSeries_Denoised", Cached=false);
             project.StackFrameLimit = Inf;
+            unlimited = {project.run("ophys.detect_rois", {entity}, Options=struct("threshold", 0.2)), ...
+                project.run("ophys.quicky", {entity}, Options=struct("roiDiameter", 6)), ...
+                project.run("ophys.denoise", {entity}, Options=struct("temporalSigma", 2, "spatialSigma", 1))};
+            testCase.verifyEqual(limited, unlimited);
+            whole = double(project.load(entity, "TwoPhotonSeries_Corrected", Cached=false));
+            sigmas = [1, 1, 2];
+            for axis = 1:3
+                whole = ophys.internal.gaussianAlong(whole, axis, sigmas(axis));
+            end
+            testCase.verifyEqual(denoised, single(whole));   % each part read with 6 frames on either side
             whole = project.load(entity, "TwoPhotonSeries_Corrected", Cached=false);
             testCase.verifyEqual(all(project.openStack(entity, "TwoPhotonSeries_Corrected")), whole);
         end

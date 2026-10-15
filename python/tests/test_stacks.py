@@ -157,9 +157,20 @@ def test_the_large_data_methods_read_a_recording_in_chunks(api):
     assert frame["frames"] == 250 and frame["frame"] is None
     image = call(api, "data.frame", entityType="session", key=S2, variable="FovAverageProjection")
     assert (image["height"], image["width"], image["frames"]) == (48, 48, 1)   # an image: its columns are not frames
-    with pytest.raises(NansenError):   # this one needs every frame at once: refused under the limit
-        run(api, "ophys.detect_rois", {})
-    api.project.stack_frame_limit = None
+    # ROI detection (the correlation image), Quicky (bins and the mean image) and smoothing read in chunks too,
+    # and give what they give with the whole recording at hand
+    chunked = [run(api, "ophys.detect_rois", {"threshold": 0.2}), run(api, "ophys.quicky", {"roiDiameter": 6}),
+               run(api, "ophys.denoise", {"temporalSigma": 2, "spatialSigma": 1})]
     entity = api.project.entity("session", S2)
+    denoised = api.project.load(entity, "TwoPhotonSeries_Denoised", cached=False)
+    api.project.stack_frame_limit = None
+    assert chunked == [run(api, "ophys.detect_rois", {"threshold": 0.2}), run(api, "ophys.quicky", {"roiDiameter": 6}),
+                       run(api, "ophys.denoise", {"temporalSigma": 2, "spatialSigma": 1})]
+    from nansen.adapters import load_object
+    gaussian_along = load_object("ophys_methods:gaussian_along", CASE.parents[3] / "modules" / "ophys" / "python")
+    whole = np.asarray(api.project.open_stack(entity, "TwoPhotonSeries_Corrected")).astype(np.float64)
+    for axis, sigma in ((0, 1), (1, 1), (2, 2)):
+        whole = gaussian_along(whole, axis, sigma)
+    assert np.array_equal(denoised, whole.astype(np.float32))   # each chunk read with 6 frames on either side
     whole = api.project.load(entity, "TwoPhotonSeries_Corrected", cached=False)
     assert np.asarray(api.project.open_stack(entity, "TwoPhotonSeries_Corrected")).tolist() == whole.tolist()
