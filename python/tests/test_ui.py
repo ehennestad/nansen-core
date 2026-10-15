@@ -1442,6 +1442,58 @@ def test_the_viewer_shows_a_scalebar_and_the_time_the_files_give(empty_app, page
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_fov_map_images_photos_undo_and_svg(empty_app, page):
+    import json
+    imageio = pytest.importorskip("imageio.v2")
+    import numpy as np
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    run = lambda method, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": [s1], "options": options})
+    api = ophys_project(empty_app, [run("ophys.motion_correction", referenceFrames=1), run("ophys.image_stats"),
+                                    ("entities.update", {"entityType": "session", "key": s1, "values": {"fov_ml": 2.3, "fov_ap": -3.6}}),
+                                    ("entities.update", {"entityType": "subject", "key": {"subject_id": "m1"}, "values": {"window_ml": 2, "window_ap": -2}})])
+    (empty_app["folder"] / "ophys" / "images").mkdir()
+    colour = np.zeros((10, 10, 3), dtype=np.uint8)
+    colour[:, :, 0] = 200
+    imageio.imwrite(empty_app["folder"] / "ophys" / "images" / "window.png", colour)
+    page.goto(empty_app["server"].url + "#/page/ophys.fovmap")
+    page.wait_for_selector(".fov-canvas")
+    assert page.locator(".fov-image-variable").input_value() == "FovAverageProjection"
+    page.check(".fov-images")   # each FOV's average image in its place
+    page.wait_for_selector(".fov-canvas[data-images='1']")
+    page.click(".fov-list li[data-subject='m1']")
+    page.click(".add-photo")
+    page.fill(".photo-dialog input[name=path]", "images/window.png")
+    page.fill(".photo-dialog input[name=width]", "4")
+    page.click(".photo-dialog .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".fov-canvas[data-photos='1']")
+    stored = lambda: json.loads(api.handle({"id": 9, "method": "modules.data", "params": {"module": "ophys", "name": "fovmap"}})["result"]["text"])
+    assert stored()["photos"][0] | {"id": None} == {"id": None, "subject": {"subject_id": "m1"}, "path": "images/window.png",
+                                                     "dataLocation": None, "width": 4, "opacity": 0.7}
+    # the photo is red where the window is, under the FOV marks
+    red = page.evaluate("""() => { const c = document.querySelector('.fov-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 120 && d[i + 1] < 90 && d[i + 2] < 90) n++; return n; }""")
+    assert red > 100
+    page.click(".fov-undo")
+    page.wait_for_selector(".fov-canvas[data-photos='0']")
+    assert stored()["photos"] == []
+    page.click(".fov-redo")
+    page.wait_for_selector(".fov-canvas[data-photos='1']")
+    assert len(stored()["photos"]) == 1
+    page.click(".fov-list li[data-session='m1 / s1']")   # a placement is undone too: the values it had come back
+    page.click(".place-fov")
+    box = page.locator(".fov-canvas").bounding_box()
+    page.mouse.click(box["x"] + box["width"] * (1 + 6) / 12, box["y"] + box["height"] * (7 + 1) / 16)
+    wait_until(lambda: abs(api.project.table("session").get(s1)["fov_ml"] - 1) < 0.05)
+    wait_until(lambda: "ML 2.3" not in page.inner_text(".fov-list li[data-session='m1 / s1']"))   # placed, and on the map
+    page.keyboard.press("Control+z")
+    wait_until(lambda: api.project.table("session").get(s1)["fov_ml"] == 2.3)
+    with page.expect_download() as download:   # vectors for figures, as fovmanager's EPS
+        page.click(".fov-export-svg")
+    assert download.value.suggested_filename == "fov_map_m1.svg"
+    text = open(download.value.path()).read()
+    assert text.startswith("<svg") and text.count("<image") == 3 and "<path" in text and "<rect" in text   # atlas, photo, FOV image
+
+
 def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     api = ophys_project(empty_app)
     page.goto(empty_app["server"].url + "#/overview")

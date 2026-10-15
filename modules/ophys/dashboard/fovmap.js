@@ -103,6 +103,104 @@ if (!document.getElementById("ophys-fovmap-style")) {
   document.head.appendChild(style);
 }
 
+/**
+ * A drawing context with the calls draw() makes, that writes SVG: the map saved as vectors (dev's fovmanager saved EPS).
+ * Images (the atlas, photos, FOV images) are embedded as PNG.
+ */
+function svgContext(width, height) {
+  const parts = [];
+  const stack = [];
+  let state = { transform: [], dash: [], fillStyle: "#000", strokeStyle: "#000", lineWidth: 1, globalAlpha: 1, font: "11px sans-serif", textAlign: "start" };
+  let path = "";
+  const escape = (text) => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const n = (v) => Math.round(v * 100) / 100;
+  const attrs = () => (state.transform.length ? ` transform="${state.transform.join(" ")}"` : "") + (state.globalAlpha < 1 ? ` opacity="${state.globalAlpha}"` : "");
+  const strokeAttrs = () => ` stroke="${state.strokeStyle}" stroke-width="${state.lineWidth}"` + (state.dash.length ? ` stroke-dasharray="${state.dash.join(" ")}"` : "");
+  const ctx = {
+    get fillStyle() { return state.fillStyle; }, set fillStyle(v) { state.fillStyle = v; },
+    get strokeStyle() { return state.strokeStyle; }, set strokeStyle(v) { state.strokeStyle = v; },
+    get lineWidth() { return state.lineWidth; }, set lineWidth(v) { state.lineWidth = v; },
+    get globalAlpha() { return state.globalAlpha; }, set globalAlpha(v) { state.globalAlpha = v; },
+    get font() { return state.font; }, set font(v) { state.font = v; },
+    get textAlign() { return state.textAlign; }, set textAlign(v) { state.textAlign = v; },
+    imageSmoothingEnabled: false,
+    clearRect() {},
+    save() { stack.push({ ...state, transform: state.transform.slice(), dash: state.dash.slice() }); },
+    restore() { if (stack.length) state = stack.pop(); },
+    translate(x, y) { state.transform.push(`translate(${n(x)} ${n(y)})`); },
+    rotate(a) { state.transform.push(`rotate(${n(a * 180 / Math.PI)})`); },
+    setLineDash(d) { state.dash = d.slice(); },
+    beginPath() { path = ""; },
+    moveTo(x, y) { path += `M${n(x)} ${n(y)}`; },
+    lineTo(x, y) { path += `L${n(x)} ${n(y)}`; },
+    closePath() { path += "Z"; },
+    ellipse(x, y, rx, ry) { path += `M${n(x - rx)} ${n(y)}a${n(rx)} ${n(ry)} 0 1 0 ${n(2 * rx)} 0a${n(rx)} ${n(ry)} 0 1 0 ${n(-2 * rx)} 0`; },
+    arc(x, y, r) { ctx.ellipse(x, y, r, r); },
+    stroke() { parts.push(`<path d="${path}" fill="none"${strokeAttrs()}${attrs()}/>`); },
+    fill() { parts.push(`<path d="${path}" fill="${state.fillStyle}"${attrs()}/>`); },
+    fillRect(x, y, w, h) { parts.push(`<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" fill="${state.fillStyle}"${attrs()}/>`); },
+    strokeRect(x, y, w, h) { parts.push(`<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" fill="none"${strokeAttrs()}${attrs()}/>`); },
+    fillText(text, x, y) {
+      const anchor = state.textAlign === "center" ? "middle" : state.textAlign === "right" || state.textAlign === "end" ? "end" : "start";
+      const size = (state.font.match(/(\d+)px/) || [0, 11])[1];
+      parts.push(`<text x="${n(x)}" y="${n(y)}" font-size="${size}" font-family="sans-serif" text-anchor="${anchor}" fill="${state.fillStyle}"${attrs()}>${escape(text)}</text>`);
+    },
+    drawImage(image, x, y, w, h) {
+      parts.push(`<image x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" preserveAspectRatio="none" style="image-rendering:pixelated" href="${image.toDataURL("image/png")}"${attrs()}/>`);
+    },
+    svg: () => `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">\n${parts.join("\n")}\n</svg>\n`,
+  };
+  return ctx;
+}
+
+/** A data.frame or files.frame result as a canvas: its 8-bit pixels in gray, or channels [r, g, b] of three results in colour. */
+function frameCanvas(frames) {
+  const [first] = frames;
+  const canvas = document.createElement("canvas");
+  canvas.width = first.width;
+  canvas.height = first.height;
+  const ctx = canvas.getContext("2d");
+  const image = ctx.createImageData(first.width, first.height);
+  const bytes = frames.map((f) => atob(f.pixels));
+  for (let i = 0; i < first.width * first.height; i++) {
+    for (let c = 0; c < 3; c++) image.data[4 * i + c] = bytes[bytes.length === 3 ? c : 0].charCodeAt(i);
+    image.data[4 * i + 3] = 255;
+  }
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}
+
+/** A photo's fields (a file in the project folder or a data location, its width on the map, how opaque); null when cancelled. */
+function photoForm(locations, photo = {}) {
+  return new Promise((resolve) => {
+    const path = h("input.input", { name: "path", value: photo.path || "", placeholder: "images/window.png" });
+    const where = h("select.input", { name: "dataLocation" }, h("option", { value: "" }, "Project folder"),
+      locations.map((id) => h("option", { value: id, selected: id === photo.dataLocation }, id)));
+    const width = h("input.input", { name: "width", type: "number", step: "any", min: 0.1, value: String(photo.width ?? 3) });
+    const opacity = h("input.input", { name: "opacity", type: "number", step: "0.05", min: 0, max: 1, value: String(photo.opacity ?? 0.7) });
+    const finish = (close) => {
+      const values = { path: path.value.trim(), dataLocation: where.value || null, width: Number(width.value), opacity: Number(opacity.value) };
+      if (!values.path || !(values.width > 0) || !(values.opacity >= 0 && values.opacity <= 1)) {
+        N.toast("Check the fields", "A file, a width above 0 mm and an opacity from 0 to 1", "error");
+        return;
+      }
+      resolve(values);
+      close();
+    };
+    const d = N.dialog({
+      title: photo.id ? "Edit photo" : "Photo of the window", narrow: true,
+      content: h("div.mark-form",
+        h("div.field", h("label.name", "Image file (PNG, JPEG, TIFF, ...), as the window was seen"), path),
+        h("div.field", h("label.name", "In"), where), h("div.field", h("label.name", "Width on the map (mm)"), width),
+        h("div.field", h("label.name", "Opacity (0 to 1)"), opacity)),
+      buttons: [{ label: "Cancel", onClick: (close) => { resolve(null); close(); } }, { label: "OK", kind: "primary", onClick: finish }],
+      onClose: () => resolve(null),
+    });
+    d.el.classList.add("photo-dialog");
+    setTimeout(() => path.focus(), 0);
+  });
+}
+
 const keyText = (key) => Object.values(key).join(" / ");
 const sameKey = (a, b) => Object.keys(a).every((k) => a[k] === b[k]);
 const number = (v) => (typeof v === "number" && isFinite(v) ? v : null);
@@ -168,20 +266,56 @@ N.registerPage({
       return;
     }
     const atlas = await loadAtlas(app);
-    const state = { subject: null, session: null, placing: null, labels: true, hover: null };
+    const state = { subject: null, session: null, placing: null, labels: true, hover: null, images: false, imageVariable: "", opacity: 0.8 };
+    const imageCache = new Map();   // FOV images and window photos, by what they were read from: a canvas, or null when unreadable
+    const history = [], future = [];   // undo and redo: {undo, redo} of changes to the marks and to placements
     let sessions = [];
     let subjects = [];
-    let marks = { injections: [], notes: [] };   // the module's data: injection sites and notes on the map
+    let marks = { injections: [], notes: [], photos: [] };   // the module's data: injection sites, notes and window photos
     let revision = 0;
 
     async function loadMarks() {
       const stored = await app.client.request("modules.data", { module, name: "fovmap" });
       const value = JSON.parse(stored.text);
-      marks = { injections: (value && value.injections) || [], notes: (value && value.notes) || [] };
+      marks = { injections: (value && value.injections) || [], notes: (value && value.notes) || [], photos: (value && value.photos) || [] };
       revision = stored.revision;
     }
-    // Change the marks and save them; if another window saved first, start again from what it saved
-    async function changeMarks(change) {
+    // Change the marks and save them; if another window saved first, start again from what it saved. Undoable.
+    async function changeMarks(change, undoable = true) {
+      const before = JSON.stringify(marks);
+      await saveMarks(change);
+      if (!undoable) return;
+      const after = JSON.stringify(marks);
+      remember(() => saveMarks((all) => Object.assign(all, JSON.parse(before))), () => saveMarks((all) => Object.assign(all, JSON.parse(after))));
+    }
+    function remember(undo, redo) {
+      history.push({ undo, redo });
+      future.length = 0;
+      updateHistory();
+    }
+    async function step(from, to, which) {
+      const entry = from.pop();
+      if (!entry) return;
+      try {
+        await entry[which]();
+        to.push(entry);
+        await load();
+        refresh();
+      } catch (error) { N.showError(error, which === "undo" ? "Could not undo it" : "Could not redo it"); }
+      updateHistory();
+    }
+    // Place an FOV or a window (entity columns), undoably: the values it had are put back
+    async function place(entityType, key, values, region) {
+      const row = (entityType === fovType.name ? sessions : subjects).find((r) => sameKey(r.key, key));
+      const old = Object.fromEntries(Object.keys(values).map((k) => [k, row ? row.values[k] ?? null : null]));
+      const set = async (v) => {
+        await app.client.request("entities.update", { entityType, key, values: v });
+        if (region) await app.client.request("fragments.update", { entityType, fragmentId: "ophys.fov_region", keys: [key] });
+      };
+      await set(values);
+      remember(() => set(old), () => set(values));
+    }
+    async function saveMarks(change) {
       for (let attempt = 0; attempt < 2; attempt++) {
         change(marks);
         try {
@@ -205,6 +339,42 @@ N.registerPage({
       subjects = owners.rows;
       await loadMarks();
     }
+    async function loadChoices() {
+      try {
+        imageVariables = (await app.client.request("dataVariables.list", {}))
+          .filter((v) => v.entityType === fovType.name && ["Image", "ImageStack"].includes(v.dataType));
+      } catch (error) { imageVariables = []; }
+      try {
+        const dataset = await app.client.request("dataset.get", {});
+        locations = (JSON.parse(dataset.text).dataLocations || []).map((l) => l.identifier);
+      } catch (error) { locations = []; }
+      state.imageVariable = (imageVariables.find((v) => v.name === "FovAverageProjection") || imageVariables[0] || {}).name || "";
+      N.fill(imagePick, imageVariables.map((v) => h("option", { value: v.name, selected: v.name === state.imageVariable }, v.title || v.name)));
+      imageToggle.disabled = !imageVariables.length;
+    }
+    // An image read once and kept: an FOV's image variable (data.frame), or a window photo (files.frame, in colour)
+    function cachedImage(id, read) {
+      if (imageCache.has(id)) return imageCache.get(id);
+      imageCache.set(id, null);
+      read().then((canvas) => { imageCache.set(id, canvas); draw(); }, () => imageCache.set(id, null));
+      return null;
+    }
+    const fovImage = (session) => cachedImage(`fov|${state.imageVariable}|${keyText(session.key)}`, async () => {
+      const variable = imageVariables.find((v) => v.name === state.imageVariable);
+      const frame = await app.client.request("data.frame", { entityType: fovType.name, key: session.key, variable: state.imageVariable,
+        ...(variable && variable.dataType === "ImageStack" ? { projection: "mean" } : {}) });
+      return frameCanvas([frame]);
+    });
+    const photoImage = (photo) => cachedImage(`photo|${photo.dataLocation || ""}|${photo.path}`, async () => {
+      const where = { path: photo.path, ...(photo.dataLocation ? { dataLocation: photo.dataLocation } : {}) };
+      const first = await app.client.request("files.frame", where);
+      if (first.channels !== 3) return frameCanvas([first]);
+      const colours = await Promise.all([0, 1, 2].map((channel) => app.client.request("files.frame", { ...where, channel, limits: [0, 255] })));
+      return frameCanvas(colours);
+    });
+    let imageVariables = [];
+    let locations = [];
+
     // A session belongs to the subject whose key values it carries
     const subjectOf = (session) => subjects.find((s) => Object.keys(s.key).every((k) => session.values[k] === s.key[k])) || null;
     const shown = () => sessions.filter((s) => !state.subject || (subjectOf(s) && sameKey(subjectOf(s).key, state.subject)));
@@ -220,6 +390,22 @@ N.registerPage({
     const markList = h("ul.fov-list.fov-marks");
     const labels = h("input", { type: "checkbox", checked: true, on: { change: () => { state.labels = labels.checked; draw(); } } });
     const exportButton = h("button.btn.ghost.icon.small.fov-export", { title: "Save the map as PNG", on: { click: () => saveMap() } }, N.icon("download", 14));
+    const svgButton = h("button.btn.ghost.small.fov-export-svg", { title: "Save the map as SVG (vectors, for figures)", on: { click: () => saveSvg() } }, "SVG");
+    const undoButton = h("button.btn.ghost.icon.small.fov-undo", { title: "Undo (Ctrl+Z)", on: { click: () => step(history, future, "undo") } }, N.icon("undo", 14));
+    const redoButton = h("button.btn.ghost.icon.small.fov-redo", { title: "Redo (Ctrl+Shift+Z)", on: { click: () => step(future, history, "redo") } }, N.icon("redo", 14));
+    const updateHistory = () => { undoButton.disabled = !history.length; redoButton.disabled = !future.length; };
+    const imageToggle = h("input.fov-images", { type: "checkbox", on: { change: () => { state.images = imageToggle.checked; draw(); } } });
+    const imagePick = h("select.input.fov-image-variable", { title: "The FOVs' image", on: { change: () => { state.imageVariable = imagePick.value; draw(); } } });
+    const opacityPick = h("input.fov-opacity", { type: "range", min: 0, max: 1, step: 0.05, value: state.opacity, title: "Opacity of the FOV images",
+      on: { input: () => { state.opacity = Number(opacityPick.value); draw(); } } });
+    const addPhoto = h("button.btn.small.add-photo", { title: "Show a photo of the subject's window on the map", on: { click: async () => {
+      const values = await photoForm(locations);
+      if (!values) return;
+      try {
+        await changeMarks((all) => { all.photos.push({ id: nextId(all.photos), subject: state.subject, ...values }); });
+        refresh();
+      } catch (error) { N.showError(error, "Could not add the photo"); }
+    } } }, N.icon("image", 13), "Photo");
 
     const scale = () => canvas.width / (atlas.width / atlas.pixelsPerMm);   // px per mm
     const toCanvas = (ml, ap) => [(ml - atlas.origin[0]) * scale(), (atlas.origin[1] + atlas.height / atlas.pixelsPerMm - ap) * scale()];
@@ -234,8 +420,8 @@ N.registerPage({
       canvas.classList.toggle("placing", Boolean(state.placing));
     }
 
-    function draw() {
-      const ctx = canvas.getContext("2d");
+    function draw(ctx = canvas.getContext("2d")) {
+      let drawnImages = 0, drawnPhotos = 0;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(atlasImage(atlas), 0, 0, canvas.width, canvas.height);
@@ -248,6 +434,21 @@ N.registerPage({
       const [bx, by] = toCanvas(0, 0);   // bregma
       ctx.strokeStyle = "rgba(20, 24, 33, 0.8)";
       ctx.beginPath(); ctx.moveTo(bx - 6, by); ctx.lineTo(bx + 6, by); ctx.moveTo(bx, by - 6); ctx.lineTo(bx, by + 6); ctx.stroke();
+      marks.photos.filter(ofSubject).forEach((photo) => {   // a photo of the window, centred on it and turned with it
+        const s = subjects.find((x) => photo.subject && sameKey(x.key, photo.subject));
+        const ml = s && number(s.values.window_ml), ap = s && number(s.values.window_ap);
+        const image = photoImage(photo);
+        if (ml === null || ap === null || !s || !image) return;
+        const [x, y] = toCanvas(ml, ap);
+        const w = photo.width * scale(), hgt = w * image.height / image.width;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-(number(s.values.window_rotation) || 0) * Math.PI / 180);
+        ctx.globalAlpha = photo.opacity;
+        ctx.drawImage(image, -w / 2, -hgt / 2, w, hgt);
+        ctx.restore();
+        drawnPhotos++;
+      });
       subjects.forEach((s) => {
         const ml = number(s.values.window_ml), ap = number(s.values.window_ap);
         if (ml === null || ap === null) return;
@@ -298,13 +499,23 @@ N.registerPage({
         const w = (number(s.values.fov_width_um) || 500) / 1000 * scale(), hgt = (number(s.values.fov_height_um) || number(s.values.fov_width_um) || 500) / 1000 * scale();
         const [x, y] = toCanvas(ml, ap);
         const selected = state.session && sameKey(s.key, state.session);
-        ctx.fillStyle = selected ? "rgba(61, 90, 254, 0.45)" : "rgba(255, 170, 0, 0.35)";
+        const image = state.images && state.imageVariable ? fovImage(s) : null;
+        if (image) {   // the FOV's own image in its place, as fovmanager's FOV images
+          ctx.save();
+          ctx.globalAlpha = state.opacity;
+          ctx.drawImage(image, x - w / 2, y - hgt / 2, w, hgt);
+          ctx.restore();
+          drawnImages++;
+        } else {
+          ctx.fillStyle = selected ? "rgba(61, 90, 254, 0.45)" : "rgba(255, 170, 0, 0.35)";
+          ctx.fillRect(x - w / 2, y - hgt / 2, w, hgt);
+        }
         ctx.strokeStyle = selected ? "#3d5afe" : "#b26a00";
         ctx.lineWidth = selected ? 2.5 : 1.5;
         ctx.setLineDash([]);
-        ctx.fillRect(x - w / 2, y - hgt / 2, w, hgt);
         ctx.strokeRect(x - w / 2, y - hgt / 2, w, hgt);
       });
+      if (ctx === canvas.getContext("2d")) { canvas.dataset.images = String(drawnImages); canvas.dataset.photos = String(drawnPhotos); }
     }
 
     function renderLists() {
@@ -324,18 +535,21 @@ N.registerPage({
       placeFov.disabled = !state.session;
       placeWindow.disabled = !state.subject || !windowType;
       placeInjection.disabled = !state.subject;
+      const subjectRow = state.subject && subjects.find((x) => sameKey(x.key, state.subject));
+      addPhoto.disabled = !subjectRow || number(subjectRow.values.window_ml) === null;
       const listed = [...marks.injections.filter(ofSubject).map((m) => ["injections", m, injectionText(m)]),
-        ...marks.notes.filter(ofSubject).map((m) => ["notes", m, m.text])];
+        ...marks.notes.filter(ofSubject).map((m) => ["notes", m, m.text]),
+        ...marks.photos.filter(ofSubject).map((m) => ["photos", m, `Photo: ${m.path.split("/").pop()}`])];
       N.fill(markList, listed.length ? listed.map(([kind, m, label]) => h("li", { dataset: { mark: `${kind}-${m.id}` }, title: "Edit",
         on: { click: () => edit(kind, m) } },
-        kind === "injections" ? h("span.swatch", { style: { background: colourOf(m) } }) : h("span.dot.plain"),
-        h("div.grow", h("div", label), h("div.sub.muted", `AP ${m.ap}, ML ${m.ml}` + (number(m.spread) ? ` · spread ${m.spread} µm` : "") +
-          (m.subject ? ` · ${keyText(m.subject)}` : ""))),
+        kind === "injections" ? h("span.swatch", { style: { background: colourOf(m) } }) : kind === "photos" ? N.icon("image", 12) : h("span.dot.plain"),
+        h("div.grow", h("div", label), h("div.sub.muted", kind === "photos" ? `${m.width} mm wide · opacity ${m.opacity}` + (m.subject ? ` · ${keyText(m.subject)}` : "")
+          : `AP ${m.ap}, ML ${m.ml}` + (number(m.spread) ? ` · spread ${m.spread} µm` : "") + (m.subject ? ` · ${keyText(m.subject)}` : ""))),
         h("button.btn.ghost.icon.small.remove-mark", { title: "Remove", on: { click: async (event) => {
           event.stopPropagation();
           try { await changeMarks((all) => { all[kind] = all[kind].filter((x) => x.id !== m.id); }); refresh(); }
           catch (error) { N.showError(error, "Could not remove it"); }
-        } } }, N.icon("trash", 12)))) : h("li.muted", "No injections or notes"));
+        } } }, N.icon("trash", 12)))) : h("li.muted", "No injections, notes or photos"));
     }
 
     function refresh() { renderLists(); draw(); }
@@ -356,7 +570,7 @@ N.registerPage({
     };
     const round2 = (v) => Math.round(v * 100) / 100;
     async function edit(kind, mark) {
-      const values = await markForm(kind, mark);
+      const values = kind === "photos" ? await photoForm(locations, mark) : await markForm(kind, mark);
       if (!values) return;
       try {
         await changeMarks((all) => { const m = all[kind].find((x) => x.id === mark.id); if (m) Object.assign(m, values); });
@@ -379,6 +593,17 @@ N.registerPage({
       N.toast("Map saved", name, "success", 2500);
     }
 
+    function saveSvg() {
+      const ctx = svgContext(canvas.width, canvas.height);
+      draw(ctx);
+      const name = `fov_map${state.subject ? "_" + keyText(state.subject).replace(/[^\w.-]+/g, "_") : ""}.svg`;
+      const link = h("a", { href: URL.createObjectURL(new Blob([ctx.svg()], { type: "image/svg+xml" })), download: name });
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      N.toast("Map saved", name, "success", 2500);
+    }
+
     canvas.addEventListener("mousemove", (event) => {
       const [ml, ap] = toMm(...pointer(event));
       where.textContent = `ML ${ml.toFixed(2)} mm, AP ${ap.toFixed(2)} mm` + (regionAt(atlas, ml, ap) ? ` · ${regionAt(atlas, ml, ap)}` : "");
@@ -395,8 +620,16 @@ N.registerPage({
       if (document.body.contains(canvas)) return false;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      document.removeEventListener("keydown", onKey);
       return true;
     };
+    const onKey = (event) => {
+      if (gone() || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z" || document.querySelector(".dialog")) return;
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+      event.preventDefault();
+      if (event.shiftKey) step(future, history, "redo"); else step(history, future, "undo");
+    };
+    document.addEventListener("keydown", onKey);
     const onMove = (event) => {
       if (gone() || !drag) return;
       drag.at = pointer(event);
@@ -423,12 +656,9 @@ N.registerPage({
       if (!state.placing && markAt(pointer(event))) return;   // a mark: edited or moved on mouseup
       try {
         if (state.placing === "fov" && state.session) {
-          await app.client.request("entities.update", { entityType: fovType.name, key: state.session, values: { fov_ml: round2(ml), fov_ap: round2(ap) } });
-          if ((fovType.fragments || []).includes("ophys.fov_region")) {
-            await app.client.request("fragments.update", { entityType: fovType.name, fragmentId: "ophys.fov_region", keys: [state.session] });
-          }
+          await place(fovType.name, state.session, { fov_ml: round2(ml), fov_ap: round2(ap) }, (fovType.fragments || []).includes("ophys.fov_region"));
         } else if (state.placing === "window" && state.subject) {
-          await app.client.request("entities.update", { entityType: windowType.name, key: state.subject, values: { window_ml: round2(ml), window_ap: round2(ap) } });
+          await place(windowType.name, state.subject, { window_ml: round2(ml), window_ap: round2(ap) }, false);
         } else if (state.placing === "injection" && state.subject) {
           const values = await markForm("injections");
           if (values === null) return;
@@ -453,13 +683,17 @@ N.registerPage({
     });
 
     await load();
+    await loadChoices();
+    updateHistory();
     N.fill(el,
       h("div.hero", h("div", h("h1", "FOV map"),
         h("p", `Cranial windows (${windowType ? N.titleCase(windowType.name) : "no entity type has them"}) and fields of view (${N.titleCase(fovType.name)}) on ${atlas.name}, in mm from bregma.`))),
       h("div.fov-layout",
         h("div.card.fov-side", h("div.card-head", h("h3", windowType ? N.titleCase(windowType.name) : "Subjects")), subjectList),
         h("div.card.fov-map",
-          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, h("div.spacer"), h("label.fov-labels", labels, "Region labels"), exportButton),
+          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, addPhoto, h("div.spacer"), undoButton, redoButton),
+          h("div.fov-bar.fov-view-bar", h("label.fov-labels", labels, "Region labels"), h("label.fov-labels", imageToggle, "FOV images"), imagePick, opacityPick,
+            h("div.spacer"), exportButton, svgButton),
           canvas, where),
         h("div.fov-side-column",
           h("div.card.fov-side", h("div.card-head", h("h3", N.titleCase(fovType.name))), sessionList),
