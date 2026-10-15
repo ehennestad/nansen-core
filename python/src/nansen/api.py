@@ -91,6 +91,20 @@ def _frame_rate(params: dict, entity: Any) -> Optional[float]:
     return float(rate)
 
 
+def _entity_metadata(metadata: dict, entity: Any) -> dict:
+    """A stack's metadata, with what its files do not give taken from the entity's columns (dev's Edit Stack Properties):
+    frameRate from frame_rate, pixelSize from pixel_size_um (square pixels) and zStep from z_step_um, each a positive
+    number, rounded to 6 decimals as the files' are. A processed stack (aligned, .npy) carries none of its own."""
+    out = dict(metadata)
+    usable = lambda v: not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v) and v > 0
+    rounded = lambda v: math.floor(float(v) * 1e6 + 0.5) / 1e6
+    for key, column in (("frameRate", "frame_rate"), ("pixelSize", "pixel_size_um"), ("zStep", "z_step_um")):
+        value = entity.get(column)
+        if key not in out and usable(value):
+            out[key] = [rounded(value), rounded(value)] if key == "pixelSize" else rounded(value)
+    return out
+
+
 def _bin_of(params: dict) -> Optional[dict]:
     """data.frame's bin: {size (2 or more frames), method: mean or max}, or None."""
     value = params.get("bin")
@@ -1156,7 +1170,7 @@ class Api:
         stack = project.open_stack(entity, params["variable"])
         result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
                              int(params.get("plane", 0)), params.get("filter"), _bin_of(params))
-        result["metadata"] = dict(stack.metadata)
+        result["metadata"] = _entity_metadata(stack.metadata, entity)
         if params.get("rois"):   # those of the plane and channel shown, when they have places; none before the first is saved
             result["rois"] = roi_outlines(rois_at(self._rois_of(project, entity, params["rois"]), int(params.get("plane", 0)) + 1,
                                                   int(params.get("channel", 0)) + 1))

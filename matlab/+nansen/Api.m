@@ -1364,7 +1364,7 @@ classdef Api < handle
                 string(nansen.internal.getField(params, "projection", "")), double(limits), ...
                 double(nansen.internal.getField(params, "plane", 0)), string(nansen.internal.getField(params, "filter", "")), ...
                 nansen.Api.binOf(params));
-            result.metadata = stack.Metadata;
+            result.metadata = nansen.Api.entityMetadata(stack.Metadata, entity);
             rois = string(nansen.internal.getField(params, "rois", ""));
             if rois ~= ""   % those of the plane and channel shown, when they have places; none before the first is saved
                 result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(nansen.Api.roisOf(project, entity, rois, true), ...
@@ -2346,6 +2346,23 @@ classdef Api < handle
                 added = project.addDatasetEntityTypes(Fragments=fragments);
                 if ismember("core", modules) && ismember("subject", added)   % as dev's subject table: date of birth, sex, species
                     project.attachFragment("subject", "core.subject");
+                end
+            end
+        end
+
+        function metadata = entityMetadata(metadata, entity)
+            % A stack's metadata, with what its files do not give taken from the entity's columns (dev's Edit Stack
+            % Properties): frameRate from frame_rate, pixelSize from pixel_size_um, zStep from z_step_um; as Python's
+            keys = ["frameRate", "pixelSize", "zStep"];
+            columns = ["frame_rate", "pixel_size_um", "z_step_um"];
+            for i = 1:3
+                value = entity.get(columns(i), []);
+                if ~isfield(metadata, keys(i)) && isnumeric(value) && isscalar(value) && isfinite(value) && value > 0
+                    value = floor(double(value) * 1e6 + 0.5) / 1e6;
+                    if keys(i) == "pixelSize"
+                        value = [value, value];
+                    end
+                    metadata.(keys(i)) = value;
                 end
             end
         end
