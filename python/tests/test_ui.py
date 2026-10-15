@@ -441,7 +441,7 @@ def test_filters_and_saved_views(empty_app, page):
     page.check(".dialog .filter-options label:has-text('Bleaching after 20 min') input")
     page.click(".dialog-foot button:has-text('Apply')")
     page.wait_for_selector(".filter-bar .filter-chip[data-column='description']")
-    assert rows().count() == bleaching
+    wait_until(lambda: rows().count() == bleaching)
 
     page.click(".toolbar button:has(.view-name)")
     page.click(".menu .item:has-text('Save as a new view')")
@@ -451,13 +451,13 @@ def test_filters_and_saved_views(empty_app, page):
     assert views()[0]["filters"] == [{"column": "description", "op": "in", "values": ["Bleaching after 20 min"]}]
 
     page.click(".filter-bar .filter-chip button")
-    assert rows().count() == 14
+    wait_until(lambda: rows().count() == 14)
     page.click(".toolbar button:has(.view-name)")
     page.click(".menu .item:has-text('Bleaching')")
-    assert rows().count() == bleaching
+    wait_until(lambda: rows().count() == bleaching)
     page.click(".toolbar button:has(.view-name)")
     page.click(".menu .item:has-text('All rows')")
-    assert rows().count() == 14
+    wait_until(lambda: rows().count() == 14)
 
     rows().nth(0).locator("td.sel input").check()
     rows().nth(1).locator("td.sel input").check()
