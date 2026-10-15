@@ -140,8 +140,25 @@ classdef TasksTest < matlab.unittest.TestCase
             task = testCase.Queue.submit("core.wait", sessions(1));
             task.status = 'running';
             testCase.Queue.save(task)
+            theirs = testCase.Queue.submit("core.wait", sessions(1), Language="python");
+            theirs.status = 'running';   % a Python worker's: it is still running for all MATLAB knows
+            testCase.Queue.save(theirs)
             testCase.verifyEqual(testCase.Queue.recover(), string(task.id));
             testCase.verifyEqual(string(testCase.Queue.get(string(task.id)).status), "failed");
+            testCase.verifyEqual(string(testCase.Queue.get(string(theirs.id)).status), "running");
+        end
+
+        function aMethodOnlyTheOtherLanguageRunsWaitsForItsWorker(testCase)
+            sessions = testCase.sessions();
+            testCase.Project.createMethod("only_python", Title="Only Python", EntityType="session", Languages="python");
+            theirs = testCase.Queue.submit("only_python", sessions(1));
+            testCase.verifyEqual(string(theirs.language), "python");
+            ours = testCase.Queue.submit("core.wait", sessions(1), Options=struct("seconds", 0, "steps", 1));
+            testCase.verifyFalse(isfield(ours, "language"));
+            done = nansen.worker(testCase.Project.Folder, UntilEmpty=true);   % the worker a Python app starts
+            testCase.verifyEqual(cellfun(@(t) string(t.id), done), string(ours.id));
+            testCase.verifyEqual(string(testCase.Queue.get(string(ours.id)).status), "completed");
+            testCase.verifyEqual(string(testCase.Queue.get(string(theirs.id)).status), "queued");
         end
 
         function removeAndClear(testCase)

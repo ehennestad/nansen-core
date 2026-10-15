@@ -250,6 +250,10 @@ classdef TaskQueue < handle
                 "method", struct("id", char(method.Id), "version", char(method.Version)), ...
                 "entities", {references}, "options", optionsEntry, "status", 'queued', ...
                 "createdAt", char(obj.createdAt()), "progress", 0);
+            languages = string(method.Languages);
+            if language == "" && ~isempty(languages) && ~any(languages == "matlab")
+                language = languages(1);   % only the other language runs it: that language's worker takes it
+            end
             if language ~= ""
                 task.language = char(language);
             end
@@ -395,10 +399,14 @@ classdef TaskQueue < handle
         end
 
         function recovered = recover(obj)
-            %recover Mark tasks left running by a worker that died as failed; call when no worker runs
+            %recover Mark MATLAB tasks left running by a worker that died as failed; call when no MATLAB worker
+            %runs. A Python worker's tasks are its own.
             recovered = strings(1, 0);
             for task = obj.list("running")
                 item = task{1};
+                if string(nansen.internal.getField(item, "language", "matlab")) ~= "matlab"
+                    continue
+                end
                 item.status = 'failed';
                 item.finishedAt = char(nansen.internal.timestamp());
                 item.error = struct("message", 'interrupted: the worker stopped while the task was running');

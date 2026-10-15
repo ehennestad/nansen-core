@@ -154,7 +154,8 @@ classdef Catalog
 
     methods (Static)
         function settings = defaultSettings()
-            settings = struct("queue", struct("autoStart", true, "worker", 'thread'), "addons", struct("folder", ""));
+            settings = struct("queue", struct("autoStart", true, "worker", 'thread'), "addons", struct("folder", ""), ...
+                "workers", struct("python", "", "matlab", ""));
         end
 
         function path = defaultPath()

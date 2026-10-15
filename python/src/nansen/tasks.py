@@ -181,6 +181,8 @@ class TaskQueue:
         }
         if preset:
             task["options"]["preset"] = preset
+        if not language and method.languages and "python" not in method.languages:
+            language = method.languages[0]   # only the other language runs it: that language's worker takes it
         if language:
             task["language"] = language
         if after:
@@ -340,9 +342,12 @@ class TaskQueue:
         return removed
 
     def recover(self) -> List[str]:
-        """Mark tasks left 'running' by a worker that died as failed. Call when no worker is running."""
+        """Mark Python tasks left 'running' by a worker that died as failed. Call when no Python worker is running;
+        a MATLAB worker's tasks are its own."""
         recovered = []
         for task in self.list("running"):
+            if task.get("language", "python") != "python":
+                continue
             task.update(status="failed", finishedAt=now(),
                         error={"message": "interrupted: the worker stopped while the task was running"})
             self._save(task)
@@ -448,6 +453,29 @@ class TaskQueue:
     @property
     def running(self) -> bool:
         return self._worker is not None and self._worker.is_alive()
+
+
+def run_worker(queue: "TaskQueue", until_empty: bool = False, poll_seconds: float = 1.0,
+               report: Optional[Callable[[dict], None]] = None) -> List[dict]:
+    """Run the queue's tasks for this language one after another, in this thread: a worker without an app (``nansen
+    worker``). With until_empty it returns when none is left (tasks for another language are left alone); otherwise
+    it runs until interrupted. Returns the tasks it ran."""
+    import time
+
+    done = []   # no recover: an app's worker may be running a task as this one starts
+    try:
+        while True:
+            task = queue.run_next()
+            if task is not None:
+                done.append(task)
+                if report:
+                    report(task)
+            elif until_empty:
+                return done
+            else:
+                time.sleep(poll_seconds)
+    except KeyboardInterrupt:
+        return done
 
 
 def run_task(project, task_id: str, on_event: Optional[EventHandler] = None) -> dict:

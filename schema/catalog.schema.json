@@ -43,6 +43,14 @@
           "properties": {
             "folder": { "type": "string", "default": "", "description": "Where add-ons from GitHub are downloaded; empty for ~/.nansen/addons. MATLAB puts the add-ons there on its path when an app or API starts." }
           }
+        },
+        "workers": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "python": { "type": "string", "default": "", "description": "The Python a MATLAB app starts a worker with (queue.startWorker), for tasks only Python runs; empty for MATLAB's pyenv, else python3 (python on Windows)." },
+            "matlab": { "type": "string", "default": "", "description": "The MATLAB a Python app starts a worker with, for tasks only MATLAB runs; empty for matlab on the PATH." }
+          }
         }
       }
     }

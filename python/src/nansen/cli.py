@@ -32,6 +32,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     legacy = commands.add_parser("import-legacy", help="make a project from a NANSEN dev export (nansen.legacyExport)")
     legacy.add_argument("export", help="the JSON written by nansen.legacy.exportProject in MATLAB")
     legacy.add_argument("folder", help="new, empty project folder")
+    worker = commands.add_parser("worker", help="run a project's queued Python tasks, without the app (a worker for "
+                                                "tasks a MATLAB app queued for Python)")
+    worker.add_argument("project")
+    worker.add_argument("--environment", default=None)
+    worker.add_argument("--until-empty", action="store_true", help="stop when no task is left for Python")
+    worker.add_argument("--poll", type=float, default=1.0, help="seconds between looks at the queue")
     run_task = commands.add_parser("run-task", help="run one queued task of a project (used by worker processes)")
     run_task.add_argument("project")
     run_task.add_argument("task_id")
@@ -70,6 +76,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         for warning in report["warnings"]:
             print(f"  note: {warning}")
         return 0
+
+    if args.command == "worker":
+        from .project import Project
+        from .tasks import TaskQueue, run_worker
+
+        queue = TaskQueue(Project.open(args.project, environment=args.environment))
+        done = run_worker(queue, until_empty=args.until_empty, poll_seconds=args.poll,
+                          report=lambda task: print(f"{task['status']:<9} {task['method']['id']} {task['id']}", flush=True))
+        return 0 if all(t["status"] in ("completed", "cancelled") for t in done) else 1
 
     if args.command == "run-task":
         from .project import Project

@@ -1220,7 +1220,22 @@
           const result = await app.client.request("tasks.clear").catch(N.showError);
           if (result) N.toast("Cleared", `${result.removed} finished task(s)`);
           load();
-        } } }, N.icon("trash"), "Clear finished"));
+        } } }, N.icon("trash"), "Clear finished"),
+        otherWorker());
+    }
+    // Tasks only the other language runs wait for its worker, which can be started from here
+    function otherWorker() {
+      const own = status.executor;
+      const waiting = tasks.filter((t) => t.status === "queued" && t.language && t.language !== own);
+      if (!own || !waiting.length) return null;
+      const language = waiting[0].language;
+      const name = language === "matlab" ? "MATLAB" : "Python";
+      return h("button.btn.start-other-worker", { title: `Start ${name} in the background to run the tasks only it runs; it stops when they are done`, on: { click: async () => {
+        try {
+          const result = await app.client.request("queue.startWorker", { language });
+          N.toast(`${name} worker started`, result.log ? `Its output: ${result.log}` : "", "success");
+        } catch (error) { N.showError(error, `Could not start a ${name} worker`); }
+      } } }, N.icon("play"), `Start a ${name} worker (${waiting.length} waiting)`);
     }
     // Queued tasks start in queue order: those given an order (by reordering) first, lowest first, then by creation
     const queuePosition = (t) => [t.order === undefined ? 1 : 0, t.order || 0, t.createdAt, t.id];

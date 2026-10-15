@@ -45,7 +45,7 @@ classdef Api < handle
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
-                "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
+                "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
             for name = names
                 % "entities.list" -> apiEntitiesList
                 handler = "api" + join(arrayfun(@(p) upper(extractBefore(p, 2)) + extractAfter(p, 1), split(name, ".")'), "");
@@ -1464,6 +1464,54 @@ classdef Api < handle
         function result = apiQueueStart(obj, ~)
             obj.queue().start();
             result = obj.apiQueueStatus(struct());
+        end
+
+        function result = apiQueueStartWorker(obj, params)
+            % Start a worker for the tasks of a language: this app's own, or a Python one (python -m nansen worker)
+            % for tasks only Python runs, which stops when none is left. Its output goes to tasks/worker-python.log.
+            language = string(nansen.internal.getField(params, "language", ""));
+            if language == "matlab"
+                result = obj.apiQueueStart(params);
+                return
+            end
+            if language ~= "python"
+                nansen.internal.throwError("invalid-params", "language is python or matlab")
+            end
+            project = obj.requireProject();
+            executable = "";
+            if ~isempty(obj.Catalog)
+                executable = string(nansen.internal.getField(obj.Catalog.settings().workers, "python", ""));
+            end
+            if executable == ""
+                try
+                    executable = string(pyenv().Executable);
+                catch
+                    executable = "";
+                end
+            end
+            if executable == ""
+                executable = "python3";
+                if ispc
+                    executable = "python";
+                end
+            end
+            log = fullfile(project.Folder, "tasks", "worker-python.log");
+            if ~isfolder(fileparts(log))
+                mkdir(fileparts(log));
+            end
+            command = string(sprintf('"%s" -m nansen worker "%s" --until-empty', executable, project.Folder));
+            if project.Environment ~= ""
+                command = command + sprintf(' --environment "%s"', project.Environment);
+            end
+            if ispc
+                status = system(sprintf('start "" /B cmd /c "%s >> "%s" 2>&1"', command, log));
+            else
+                status = system(sprintf('%s >> "%s" 2>&1 &', command, log));
+            end
+            if status ~= 0
+                nansen.internal.throwError("dependency-missing", "could not start %s: set the Python to use in Settings", executable)
+            end
+            result = struct("language", 'python', "started", true, "log", char(log));
         end
 
         function result = apiQueueStop(obj, ~)

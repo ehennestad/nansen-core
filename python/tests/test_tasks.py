@@ -120,8 +120,33 @@ def test_recover_marks_interrupted_tasks_failed(project):
     task = queue.submit("core.wait", project.entities("session")[:1])
     task["status"] = "running"
     queue._save(task)
+    theirs = queue.submit("core.wait", project.entities("session")[:1], language="matlab")
+    theirs["status"] = "running"   # a MATLAB worker's: it is still running for all Python knows
+    queue._save(theirs)
     assert queue.recover() == [task["id"]]
-    assert queue.get(task["id"])["status"] == "failed"
+    assert queue.get(task["id"])["status"] == "failed" and queue.get(theirs["id"])["status"] == "running"
+
+
+def test_a_method_only_the_other_language_runs_waits_for_its_worker(project, tmp_path):
+    import subprocess
+    import sys
+    from nansen.tasks import run_worker
+
+    project.create_method("only_matlab", "Only MATLAB", entity_type="session", languages=["matlab"])
+    queue = TaskQueue(project)
+    theirs = queue.submit("only_matlab", project.entities("session")[:1])
+    assert theirs["language"] == "matlab"
+    ours = queue.submit("core.wait", project.entities("session")[:1], {"seconds": 0, "steps": 1})
+    assert "language" not in ours
+    assert [t["id"] for t in run_worker(queue, until_empty=True)] == [ours["id"]]
+    assert queue.get(theirs["id"])["status"] == "queued"
+    # the Python worker a MATLAB app starts: nansen worker <folder> --until-empty
+    again = queue.submit("core.wait", project.entities("session")[:1], {"seconds": 0, "steps": 1})
+    done = subprocess.run([sys.executable, "-m", "nansen", "worker", str(project.folder), "--until-empty"],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert again["id"] in done.stdout and queue.get(again["id"])["status"] == "completed"
+    assert queue.get(theirs["id"])["status"] == "queued"
 
 
 def test_remove_and_clear(project):

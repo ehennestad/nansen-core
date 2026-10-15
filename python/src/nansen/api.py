@@ -1157,6 +1157,36 @@ class Api:
             counts[task["status"]] = counts.get(task["status"], 0) + 1
         return {"running": queue.running, "executor": "python", "worker": queue.executor, "counts": counts}
 
+    def queue__startWorker(self, params: dict) -> dict:
+        """Start a worker for the tasks of a language: this app's own, or a MATLAB one (matlab -batch nansen.worker)
+        for tasks only MATLAB runs, which stops when none is left. Its output goes to tasks/worker-matlab.log."""
+        language = params.get("language")
+        if language == "python":
+            return self.queue__start(params)
+        if language != "matlab":
+            raise NansenError("invalid-params", "language is python or matlab")
+        import shutil
+        import subprocess
+
+        project = self._require_project()
+        settings = self.catalog.settings() if self.catalog is not None else {}
+        executable = settings.get("workers", {}).get("matlab") or shutil.which("matlab")
+        if not executable:
+            raise NansenError("dependency-missing", "no MATLAB found: put matlab on the PATH, or set its path in Settings")
+        quote = lambda text: "'" + str(text).replace("'", "''") + "'"
+        script = f"nansen.worker({quote(project.folder)}, UntilEmpty=true)"
+        own = Path(__file__).resolve().parents[3] / "matlab"   # nansen's MATLAB code, beside this package in a clone
+        if (own / "+nansen").is_dir():
+            script = f"addpath({quote(own)}); " + script
+        if project.environment:
+            script = script[:-1] + f", Environment={quote(project.environment)})"
+        log = project.folder / "tasks" / "worker-matlab.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, "ab") as out:
+            subprocess.Popen([executable, "-batch", script], stdout=out, stderr=subprocess.STDOUT,
+                             stdin=subprocess.DEVNULL, start_new_session=True)
+        return {"language": "matlab", "started": True, "log": str(log)}
+
     def queue__start(self, params: dict) -> dict:
         self._queue().start()
         return self.queue__status({})

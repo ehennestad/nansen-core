@@ -77,8 +77,11 @@ Not carried over, by choice or not yet:
 - **Fragments carry their own version.** A table records the version of each fragment its columns follow. A mismatch is an error for now (see the open questions).
 - **Modules** (from `dev`) supply fragments, methods, adapters and pipelines through an explicit list in the project file, not by scanning the MATLAB path.
 
+## Mixed-language queues
+
+The project format is shared and each method declares its implementations. A task names the language that must run it when only the other language has the method (suite2p or DeepInterpolation queued from MATLAB, NoRMCorre or EXTRACT from Python), and each language's worker takes only its own tasks; recovering after a crash fails only its own. A headless worker runs a language's tasks without an app (`nansen worker <folder>`, `nansen.worker(folder)`), and the Tasks page starts one of the other language when tasks wait for it (`queue.startWorker`).
+
 ## Open questions
 
-- **Mixed-language queues.** The project format is shared and each method declares its implementations; a task can name the language that must run it, so a Python app can queue MATLAB work for a MATLAB worker. Whether the dashboard should start that worker is open.
 - **Fragment migrations.** When a fragment's columns change, who migrates existing tables? The likely answer is a migration function shipped by the module that owns the fragment.
 - **Large tables.** Measured on CI runners: 20,000 rows read in 0.6 s (Python) and 0.5 s (MATLAB, column by column, falling back to cell by cell to report the first error in row order). For 5,000 sessions on disk, Python scans in 0.6 s and lists them in 0.25 s; MATLAB scans in 7 s (5 s of it DSM's walk) and lists them in 2 s. `EntitiesTest/largeProjectTimings` logs these on every CI run, and with `NANSEN_PROFILE=1` also where the time goes. Hundreds of thousands of entities would also want the scan cached per folder and the dashboard to page through `entities.list`.
