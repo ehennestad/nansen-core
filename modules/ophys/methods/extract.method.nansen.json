@@ -6,7 +6,7 @@
   "title": "Detect cells (EXTRACT)",
   "category": "Two-photon/Segmentation",
   "entityType": "*",
-  "description": "Runs EXTRACT (extractor, with get_defaults) on the stack, when it is on the MATLAB path, and saves its cells as ROIs (the connected pixels around each cell's peak whose spatial weight is above threshold times the peak's) and its traces as signals.",
+  "description": "Runs EXTRACT (extractor, with get_defaults) on the stack, when it is on the MATLAB path, and saves its cells as ROIs (the connected pixels around each cell's peak whose spatial weight is above threshold times the peak's) and its traces as signals. Its options are passed to EXTRACT under EXTRACT's names (given in each option's description), with EXTRACT's defaults, except the partitions: one, as dev's, unless either is 0.",
   "implementations": {
     "matlab": "ophys.extract"
   },
@@ -35,7 +35,8 @@
         "type": "integer",
         "default": 6,
         "minimum": 1,
-        "title": "Cell radius (px)"
+        "title": "Cell radius (px)",
+        "description": "EXTRACT's avg_cell_radius"
       },
       "minSnr": {
         "type": "number",
@@ -51,6 +52,80 @@
         "maximum": 1,
         "title": "Mask threshold",
         "description": "Share of a cell's largest spatial weight a pixel needs to be part of its ROI"
+      },
+      "traceOutputOption": {
+        "type": "string",
+        "enum": [
+          "baseline_adjusted",
+          "nonneg",
+          "no_constraint",
+          "least_squares",
+          "nonnegative_least_squares"
+        ],
+        "default": "baseline_adjusted",
+        "title": "Traces",
+        "description": "EXTRACT's trace_output_option: how the final traces are estimated (nonneg: non-negative; no_constraint: raw)"
+      },
+      "cellfindMinSnr": {
+        "type": "number",
+        "default": 1,
+        "minimum": 0,
+        "title": "Smallest SNR to find a cell",
+        "description": "EXTRACT's cellfind_min_snr: the peak SNR an object needs to be taken as a cell while cells are found"
+      },
+      "maxIterations": {
+        "type": "integer",
+        "default": 6,
+        "minimum": 0,
+        "title": "Iterations",
+        "description": "EXTRACT's max_iter: iterations of the alternating estimation of cells and traces"
+      },
+      "spatialHighpassCutoff": {
+        "type": "number",
+        "default": 5,
+        "exclusiveMinimum": 0,
+        "title": "Spatial highpass cutoff",
+        "description": "EXTRACT's spatial_highpass_cutoff, relative to the cell radius: higher filters the movie less"
+      },
+      "temporalDenoising": {
+        "type": "boolean",
+        "default": false,
+        "title": "Temporal denoising",
+        "description": "EXTRACT's temporal_denoising: wavelet denoising of each pixel's trace before cells are found (slow)"
+      },
+      "dendriteAware": {
+        "type": "boolean",
+        "default": false,
+        "title": "Keep dendrites",
+        "description": "EXTRACT's dendrite_aware: elongated components are not left out"
+      },
+      "partitionsX": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 0,
+        "title": "Partitions across",
+        "description": "EXTRACT's num_partitions_x: the movie is cut into this many parts across, each run on its own. 0 here or in partitionsY lets EXTRACT choose both"
+      },
+      "partitionsY": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 0,
+        "title": "Partitions down",
+        "description": "EXTRACT's num_partitions_y"
+      },
+      "channel": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Channel",
+        "description": "Of a stack with channels (height x width x channels x frames): the one to use, from 1"
+      },
+      "plane": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "Plane",
+        "description": "Of a stack with planes (height x width x channels x planes x frames): the one to use, from 1"
       }
     }
   }

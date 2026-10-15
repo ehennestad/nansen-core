@@ -35,6 +35,29 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyNotEqual(ophys.internal.estimateShifts(frames, reference, 4), truth);
         end
 
+        function presetsAreOptionsOfTheirMethods(testCase)
+            % dev's shipped presets (Quicky's Soma, Soma (Virus) and Axons, NoRMCorre's Nonrigid (4x4) and Rigid), and
+            % the module's own: each names options its method has, with values its schema takes (as test_ophys.py)
+            module = nansen.Module.read(fullfile(nansen.internal.repoRoot(), "modules", "ophys"));
+            found = module.entityMethods();
+            ids = [found.Id];
+            names = strings(1, 0);
+            for document = module.presetDocuments()
+                preset = document{1};
+                method = found(ids == string(preset.method.id));
+                testCase.assertNumElements(method, 1, preset.name);
+                names(end + 1) = string(preset.method.id) + "/" + string(preset.name); %#ok<AGROW>
+                testCase.verifyNotEqual(string(preset.name), "default");
+                testCase.verifyEqual(string(preset.method.version), method.Version, preset.name);
+                options = method.resolveOptions(preset.values);
+                for field = reshape(string(fieldnames(preset.values)), 1, [])
+                    testCase.verifyEqual(options.(field), preset.values.(field), string(preset.name) + "." + field);
+                end
+            end
+            testCase.verifyTrue(all(ismember(["ophys.quicky/soma", "ophys.quicky/soma_virus", "ophys.quicky/axon", ...
+                "ophys.normcorre/nonrigid", "ophys.normcorre/rigid"], names)));
+        end
+
         function movesFramesBackAndFillsWithZero(testCase)
             stack = uint16(reshape(1:16, 4, 4)');
             out = ophys.internal.applyShifts(stack, [1, -1]);

@@ -4,7 +4,7 @@
   "id": "ophys.tiff_stack",
   "version": "1.0.0",
   "title": "TIFF stack",
-  "description": "A multi-page TIFF file of grayscale frames, read as height x width x frames. Python needs tifffile (pip install \"nansen-core[ophys]\").",
+  "description": "A multi-page TIFF file, read as height x width x frames; pages of several samples (RGB) as height x width x samples x frames, and a file series per channel (rec_ch1_part_001.tif, rec_ch2_part_001.tif, ...) as height x width x channels x frames. Python needs tifffile (pip install \"nansen-core[ophys]\").",
   "extensions": [
     ".tif",
     ".tiff"

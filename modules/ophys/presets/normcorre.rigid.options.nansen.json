@@ -1,0 +1,22 @@
+{
+  "schemaType": "nansen.options",
+  "schemaVersion": "0.1.0",
+  "method": {
+    "id": "ophys.normcorre",
+    "version": "1.0.0"
+  },
+  "name": "rigid",
+  "description": "dev's NoRMCorre preset Rigid: rigid correction",
+  "values": {
+    "maxShift": 40,
+    "maxDeviation": 15,
+    "overlap": 32,
+    "upsampling": 50,
+    "iterations": 1,
+    "updateTemplate": true,
+    "initialBatchSize": 100,
+    "binWidth": 50,
+    "patches": 0,
+    "gridSize": 0
+  }
+}

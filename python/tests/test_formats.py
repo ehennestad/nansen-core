@@ -202,6 +202,50 @@ def test_thorimage_frames_read_as_channels():
         adapter("ThorLabsTiffs").open([FILES / "binary" / "stack.raw"])
 
 
+def test_tiff_files_per_channel_read_as_channels(tmp_path):
+    folder = FILES / "tiff_channels"
+    paths = sorted(folder.glob("rec_ch*.tif"), reverse=True)   # any order: channels by number, parts in natural order
+    expected = EXPECTED["tiffChannels"]["files"]
+    stack = adapter("TiffStack").open(paths)
+    assert list(stack.shape) == expected["size"] and stack.dtype == np.uint16
+    data = np.asarray(stack)
+    assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]   # in the second part of channel 2
+    assert int(data.astype(np.int64).sum()) == expected["sum"]
+    assert data[1, :, 1, 4].tolist() == expected["channel2frame4row1"]
+    assert (stack.frames(2, 4) == data[..., 2:4]).all()   # across the parts
+    one = adapter("TiffStack").open([p for p in paths if "_ch1_" in p.name])   # one channel: its parts, joined
+    assert list(one.shape) == [6, 5, 5] and int(np.asarray(one).astype(np.int64).sum()) == expected["channel1sum"]
+    # other names of channels: channel1, Ch_2, C1-; files without one in every name are parts of one recording
+    tiff = adapter("TiffStack")
+    frames = np.arange(4 * 3 * 2, dtype=np.uint16).reshape(4, 3, 2)
+    for names in (["a_channel1.tif", "a_channel2.tif"], ["b_Ch_1.tif", "b_Ch_2.tif"], ["C1-c.tif", "C2-c.tif"]):
+        tiff.write(tmp_path / names[0], frames)
+        tiff.write(tmp_path / names[1], frames + 100)
+        both = np.asarray(tiff.open([tmp_path / n for n in reversed(names)]))
+        assert both.shape == (4, 3, 2, 2), names
+        assert (both[:, :, 0, :] == frames).all() and (both[:, :, 1, :] == frames + 100).all(), names
+    for names in (["d_ch1.tif", "d_part2.tif"], ["e_ch1_1.tif", "e_ch1_2.tif"], ["ChanA_1.tif", "ChanB_1.tif"]):
+        for n in names:
+            tiff.write(tmp_path / n, frames)
+        assert tiff.open([tmp_path / n for n in names]).shape == (4, 3, 4), names
+    tiff.write(tmp_path / "f_ch1.tif", frames)
+    tiff.write(tmp_path / "f_ch2.tif", frames[:, :, :1])
+    with pytest.raises(NansenError):   # channels of different lengths
+        tiff.open([tmp_path / "f_ch1.tif", tmp_path / "f_ch2.tif"])
+
+
+@pytest.mark.parametrize("key, file", [("rgb", "rgb.tif"), ("planar", "samples_planar.tif")])
+def test_tiff_pages_of_several_samples_read_as_channels(key, file):
+    expected = EXPECTED["tiffChannels"][key]
+    stack = adapter("TiffStack").open([FILES / "tiff_channels" / file])
+    assert list(stack.shape) == expected["size"]
+    data = np.asarray(stack)
+    assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]
+    assert int(data.astype(np.int64).sum()) == expected["sum"]
+    assert (stack.frames(1, 2) == data[..., 1:2]).all()
+    assert (adapter("TiffStack").read(FILES / "tiff_channels" / file) == data).all()
+
+
 def test_tsm_files_read_less_their_dark_frame(tmp_path):
     expected = EXPECTED["tsm"]
     stack = adapter("TsmStack").open([FILES / "macroscope.tsm"])

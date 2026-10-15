@@ -1,6 +1,9 @@
 """The ophys module's numerics and file adapters, apart from the conformance case that runs them through the API."""
 
 import json
+import shutil
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -9,6 +12,7 @@ np = pytest.importorskip("numpy")
 
 from nansen.adapters import load_object  # noqa: E402
 from nansen.errors import NansenError  # noqa: E402
+from nansen.modules import Module  # noqa: E402
 
 PYTHON = Path(__file__).resolve().parents[2] / "modules" / "ophys" / "python"
 ophys = load_object("ophys_methods:round_to", PYTHON).__globals__
@@ -194,6 +198,119 @@ def test_suite2p_says_what_is_missing():
     with pytest.raises(NansenError) as error:
         ophys["suite2p"](None, {}, None)
     assert error.value.code == "dependency-missing"
+
+
+def test_the_ophys_presets_are_options_of_their_methods():
+    """dev's shipped presets (Quicky's Soma, Soma (Virus) and Axons, NoRMCorre's Nonrigid (4x4) and Rigid), and the
+    module's own: each names options its method has, with values its schema takes."""
+    module = Module.read(PYTHON.parent)
+    methods = {m.id: m for m in module.methods()}
+    presets = {(doc["method"]["id"], doc["name"]): doc for doc in module.preset_documents()}
+    assert {("ophys.quicky", n) for n in ("soma", "soma_virus", "axon")} | {("ophys.normcorre", n) for n in ("nonrigid", "rigid")} <= set(presets)
+    for (method_id, name), doc in presets.items():
+        method = methods[method_id]
+        assert name != "default" and doc["method"]["version"] == method.version, name
+        assert set(doc["values"]) <= set(method.document["options"]["properties"]), name
+        resolved = method.resolve_options(doc["values"])
+        assert all(resolved[k] == v for k, v in doc["values"].items()), name
+    quicky = {name: methods["ophys.quicky"].resolve_options(presets[("ophys.quicky", name)]["values"]) for name in ("soma", "soma_virus", "axon")}
+    assert quicky["soma"]["useShapeDetection"] and not quicky["soma_virus"]["useShapeDetection"]
+    assert (quicky["axon"]["roiDiameter"], quicky["axon"]["binarizationPercentile"], quicky["axon"]["maxRois"]) == (4, 95, 1000)
+    assert presets[("ophys.normcorre", "nonrigid")]["values"]["patches"] == 4
+
+
+def _fake_suite2p(tmp_path, monkeypatch, version):
+    """A suite2p module with suite2p's own default settings (1.x) or ops (0.x) that records what it is run with and
+    writes the files of one cell, so that the wrapper can be run without suite2p."""
+    from nansen.stacks import from_array
+
+    calls = {}
+    fake = types.ModuleType("suite2p")
+
+    def run_s2p(**kwargs):
+        calls.update(kwargs)
+        plane = Path(kwargs["db"]["save_path0"]) / "suite2p" / "plane0"
+        plane.mkdir(parents=True)
+        np.save(plane / "stat.npy", np.array([{"ypix": np.array([1, 1, 2]), "xpix": np.array([2, 3, 2])}], dtype=object), allow_pickle=True)
+        np.save(plane / "iscell.npy", np.array([[1.0, 0.9]]))
+        for name in ("F", "Fneu", "spks"):
+            np.save(plane / f"{name}.npy", np.ones((1, 6), dtype=np.float32))
+
+    if version == 1:
+        fake.default_settings = lambda: {
+            "tau": 1.0, "fs": 10.0, "diameter": [12.0, 12.0], "run": {"do_registration": 1},
+            "registration": {"nimg_init": 400, "nonrigid": True, "block_size": (128, 128)},
+            "detection": {"algorithm": "sparsery", "denoise": False, "block_size": (64, 64), "threshold_scaling": 1.0,
+                          "sparsery_settings": {"spatial_scale": 0}, "sourcery_settings": {"max_iterations": 20}},
+            "extraction": {"neuropil_coefficient": 0.7, "inner_neuropil_radius": 2, "min_neuropil_pixels": 350}}
+        fake.default_db = lambda: {}
+    else:
+        fake.default_ops = lambda: {"tau": 1.0, "fs": 10.0, "do_registration": True, "nonrigid": True, "sparse_mode": True,
+                                    "threshold_scaling": 1.0, "max_iterations": 20, "spatial_scale": 0, "denoise": False,
+                                    "neucoeff": 0.7, "inner_neuropil_radius": 2, "min_neuropil_pixels": 350, "nimg_init": 200}
+    fake.run_s2p = run_s2p
+    monkeypatch.setitem(sys.modules, "suite2p", fake)
+
+    saved = {}
+    stack = np.zeros((8, 9, 2, 6), dtype=np.uint16)
+    stack[:, :, 1, :] = 7
+
+    class Project:
+        def open_stack(self, entity, name):
+            return from_array(stack)
+
+        def write_path(self, entity, name):
+            return tmp_path / "out" / f"{name}.json"
+
+        def save(self, entity, name, value):
+            saved[name] = value
+
+    entity = types.SimpleNamespace(key={"session_id": "s1"})
+    context = types.SimpleNamespace(project=Project(), log=lambda *args: None)
+    return calls, saved, entity, context
+
+
+@pytest.mark.parametrize("version", [1, 0])
+def test_suite2p_gets_its_options_under_its_own_names(tmp_path, monkeypatch, version):
+    tifffile = pytest.importorskip("tifffile")
+    calls, saved, entity, context = _fake_suite2p(tmp_path, monkeypatch, version)
+    method = {m.id: m for m in Module.read(PYTHON.parent).methods()}["ophys.suite2p"]
+    options = method.resolve_options({"stack": "Stack", "tau": 0.7, "registration": False, "nonrigid": False, "sparseMode": False,
+                                      "thresholdScaling": 2.5, "maxIterations": 7, "spatialScale": 2, "denoise": True,
+                                      "neuropilCoefficient": 0.5, "innerNeuropilRadius": 3, "minNeuropilPixels": 200,
+                                      "channel": 2, "framesPerSecond": 15, "cellDiameter": 6})
+    result = ophys["suite2p"](entity, options, context)
+    assert result == {"rois": 1, "frames": 6}
+    written = tifffile.imread(Path(calls["db"]["save_path0"]) / "input.tif")
+    assert written.shape == (6, 8, 9) and (written == 7).all()   # the second channel
+    if version == 1:
+        s = calls["settings"]
+        assert (s["tau"], s["fs"], s["diameter"], s["run"]["do_registration"]) == (0.7, 15.0, [6.0, 6.0], 0)
+        assert s["registration"]["nonrigid"] is False and s["registration"]["nimg_init"] == 6
+        d = s["detection"]
+        assert (d["algorithm"], d["threshold_scaling"], d["denoise"]) == ("sourcery", 2.5, True)
+        assert (d["sparsery_settings"]["spatial_scale"], d["sourcery_settings"]["max_iterations"]) == (2, 7)
+        assert s["extraction"] == {"neuropil_coefficient": 0.5, "inner_neuropil_radius": 3, "min_neuropil_pixels": 200}
+    else:
+        ops = calls["ops"]
+        assert {k: ops[k] for k in ("tau", "fs", "diameter", "do_registration", "nonrigid", "sparse_mode", "threshold_scaling",
+                                    "max_iterations", "spatial_scale", "denoise", "neucoeff", "inner_neuropil_radius",
+                                    "min_neuropil_pixels", "nimg_init")} == {
+            "tau": 0.7, "fs": 15, "diameter": 6, "do_registration": False, "nonrigid": False, "sparse_mode": False,
+            "threshold_scaling": 2.5, "max_iterations": 7, "spatial_scale": 2, "denoise": True, "neucoeff": 0.5,
+            "inner_neuropil_radius": 3, "min_neuropil_pixels": 200, "nimg_init": 6}
+    assert saved["RoiArray"]["rois"][0]["pixels"] == [[1, 2], [1, 3], [2, 2]]
+    assert saved["RoiSignals_MeanF"].shape == (6, 1)
+    # with the defaults, suite2p's own defaults are what it gets
+    calls.clear()
+    shutil.rmtree(tmp_path / "out")
+    ophys["suite2p"](entity, method.resolve_options({"stack": "Stack"}), context)
+    if version == 1:
+        s = calls["settings"]
+        assert (s["tau"], s["run"]["do_registration"], s["registration"]["nonrigid"], s["detection"]["algorithm"]) == (1.0, 1, True, "sparsery")
+        assert s["extraction"] == {"neuropil_coefficient": 0.7, "inner_neuropil_radius": 2, "min_neuropil_pixels": 350}
+    else:
+        assert (calls["ops"]["max_iterations"], calls["ops"]["neucoeff"], calls["ops"]["sparse_mode"]) == (20, 0.7, True)
 
 
 def test_oasis_reaches_the_optimum_of_the_deconvolution_problem():

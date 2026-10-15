@@ -1,0 +1,21 @@
+{
+  "schemaType": "nansen.options",
+  "schemaVersion": "0.1.0",
+  "method": {
+    "id": "ophys.quicky",
+    "version": "1.0.0"
+  },
+  "name": "soma_virus",
+  "description": "dev's Quicky preset Soma (Virus): optimized for viral GCaMP expression, without shape detection",
+  "values": {
+    "roiDiameter": 12,
+    "binSize": 5,
+    "smoothingSigma": 20,
+    "binarizationPercentile": 93,
+    "observationsRequired": 2,
+    "maxRois": 300,
+    "useShapeDetection": false,
+    "innerRadius": 3,
+    "outerRadius": 5
+  }
+}

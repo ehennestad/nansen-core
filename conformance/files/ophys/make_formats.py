@@ -252,6 +252,37 @@ def thorlabs(expected):
                             "sum": int(stack.astype(np.int64).sum()), "metadata": {"frameRate": 29.98, "pixelSize": [0.8, 0.8]}}
 
 
+def tiff_channels(expected):
+    """TIFF recordings with channels, read by ophys.tiff_stack: a file series per channel, named as dev's
+    TiffMultiPartMultiChannel expects (rec_ch1_part_001.tif, ...), 2 channels of 5 frames of 6 x 5 uint16, each in a
+    part of 3 frames and one of 2; rgb.tif, 3 pages of 4 x 6 RGB uint8 (samples contiguous); and samples_planar.tif, 2
+    pages of 5 x 3 uint16 with 2 samples stored planar. Pages of several samples read as channels."""
+    rng = np.random.default_rng(31)
+    folder = HERE / "tiff_channels"
+    folder.mkdir(exist_ok=True)
+    for old in folder.glob("*.tif"):
+        old.unlink()
+    stack = rng.integers(0, 4000, (6, 5, 2, 5)).astype(np.uint16)   # height x width x channels x frames
+    for c in range(2):
+        for part, frames in ((1, range(0, 3)), (2, range(3, 5))):
+            tifffile.imwrite(folder / f"rec_ch{c + 1}_part_{part:03d}.tif", np.moveaxis(stack[:, :, c, list(frames)], 2, 0),
+                             photometric="minisblack")
+    rgb = rng.integers(0, 256, (3, 4, 6, 3)).astype(np.uint8)   # pages x height x width x samples
+    tifffile.imwrite(folder / "rgb.tif", rgb, photometric="rgb")
+    planar = rng.integers(0, 60000, (2, 2, 5, 3)).astype(np.uint16)   # pages x samples x height x width
+    tifffile.imwrite(folder / "samples_planar.tif", planar, photometric="minisblack", planarconfig="separate")
+    rgb = rgb.transpose(1, 2, 3, 0)   # height x width x samples x pages
+    planar = planar.transpose(2, 3, 1, 0)
+    expected["tiffChannels"] = {
+        "files": {"size": [6, 5, 2, 5], "pixel": {"at": [4, 3, 1, 3], "value": int(stack[4, 3, 1, 3])},
+                  "sum": int(stack.astype(np.int64).sum()), "channel2frame4row1": [int(v) for v in stack[1, :, 1, 4]],
+                  "channel1sum": int(stack[:, :, 0, :].astype(np.int64).sum())},
+        "rgb": {"size": [4, 6, 3, 3], "pixel": {"at": [3, 5, 2, 1], "value": int(rgb[3, 5, 2, 1])},
+                "sum": int(rgb.astype(np.int64).sum())},
+        "planar": {"size": [5, 3, 2, 2], "pixel": {"at": [4, 1, 1, 0], "value": int(planar[4, 1, 1, 0])},
+                   "sum": int(planar.astype(np.int64).sum())}}
+
+
 def tsm(expected):
     """A TSM file: a FITS-like header (80-character cards, padded to 2880 bytes), 4 int16 frames of 5 rows x 7
     columns, little-endian, columns fastest, then a dark frame; read with the dark frame subtracted, saturating
@@ -468,6 +499,7 @@ def main():
     image_files(expected)
     norpix(expected)
     thorlabs(expected)
+    tiff_channels(expected)
     tsm(expected)
     suite2p_rois(expected)
     caiman_rois(expected)

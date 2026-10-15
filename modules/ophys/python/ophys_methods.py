@@ -1913,7 +1913,10 @@ def suite2p(entity, options, context):
     """Run suite2p on the stack and keep its cells as ROIs, with their signals and spikes.
 
     Works with suite2p 1.x (default_settings / default_db, torch on the GPU when there is one) and 0.x
-    (default_ops). Registration blocks are made to fit small frames.
+    (default_ops). Registration blocks are made to fit small frames. The options go to suite2p's settings (ops in
+    0.x): tau, do_registration, nonrigid, sparse_mode (1.x: detection algorithm sparsery, else sourcery),
+    threshold_scaling, max_iterations (1.x: sourcery's), spatial_scale, denoise, neucoeff (1.x: neuropil_coefficient),
+    inner_neuropil_radius and min_neuropil_pixels.
     """
     try:
         import suite2p as s2p
@@ -1937,17 +1940,38 @@ def suite2p(entity, options, context):
         except ImportError:
             settings["torch_device"] = "cpu"
         settings["fs"] = float(options["framesPerSecond"])
+        settings["tau"] = float(options["tau"])
         settings["diameter"] = [float(options["cellDiameter"])] * 2
-        settings["registration"]["block_size"] = (block, block)
-        settings["registration"]["nimg_init"] = min(settings["registration"]["nimg_init"], frames)
-        settings["detection"]["block_size"] = (min(64, block), min(64, block))
+        settings["run"]["do_registration"] = int(bool(options["registration"]))
+        registration = settings["registration"]
+        registration["nonrigid"] = bool(options["nonrigid"])
+        registration["block_size"] = (block, block)
+        registration["nimg_init"] = min(registration["nimg_init"], frames)
+        detection = settings["detection"]
+        detection["algorithm"] = "sparsery" if options["sparseMode"] else "sourcery"
+        detection["block_size"] = (min(64, block), min(64, block))
+        detection["threshold_scaling"] = float(options["thresholdScaling"])
+        detection["denoise"] = bool(options["denoise"])
+        detection["sparsery_settings"]["spatial_scale"] = int(options["spatialScale"])
+        detection["sourcery_settings"]["max_iterations"] = int(options["maxIterations"])
+        extraction = settings["extraction"]
+        extraction["neuropil_coefficient"] = float(options["neuropilCoefficient"])
+        extraction["inner_neuropil_radius"] = int(options["innerNeuropilRadius"])
+        extraction["min_neuropil_pixels"] = int(options["minNeuropilPixels"])
         db = s2p.default_db()
         db.update(data_path=[str(folder)], file_list=["input.tif"], save_path0=str(folder))
         s2p.run_s2p(db=db, settings=settings)
     else:  # suite2p 0.x
         ops = s2p.default_ops()
         ops.update({"fs": options["framesPerSecond"], "diameter": options["cellDiameter"], "nchannels": 1, "nplanes": 1,
-                    "block_size": [block, block], "nimg_init": min(ops.get("nimg_init", 200), frames)})
+                    "block_size": [block, block], "nimg_init": min(ops.get("nimg_init", 200), frames),
+                    "tau": float(options["tau"]), "do_registration": bool(options["registration"]),
+                    "nonrigid": bool(options["nonrigid"]), "sparse_mode": bool(options["sparseMode"]),
+                    "threshold_scaling": float(options["thresholdScaling"]), "max_iterations": int(options["maxIterations"]),
+                    "spatial_scale": int(options["spatialScale"]), "denoise": bool(options["denoise"]),
+                    "neucoeff": float(options["neuropilCoefficient"]),
+                    "inner_neuropil_radius": int(options["innerNeuropilRadius"]),
+                    "min_neuropil_pixels": int(options["minNeuropilPixels"])})
         s2p.run_s2p(ops=ops, db={"data_path": [str(folder)], "tiff_list": ["input.tif"], "save_path0": str(folder)})
     plane = folder / "suite2p" / "plane0"
     stat = np.load(plane / "stat.npy", allow_pickle=True)

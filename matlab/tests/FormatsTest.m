@@ -137,6 +137,67 @@ classdef FormatsTest < matlab.unittest.TestCase
             testCase.verifyMetadata(one, expected.metadata, "one channel");
         end
 
+        function readsTiffFilesPerChannelAsChannels(testCase)
+            listing = dir(fullfile(testCase.Files, "tiff_channels", "rec_ch*.tif"));
+            paths = flip(string(fullfile({listing.folder}, {listing.name})));   % any order: channels by number, parts in natural order
+            expected = testCase.Expected.tiffChannels.files;
+            stack = ophys.TiffStack().open(paths);
+            testCase.verifyEqual(size(stack), expected.size');
+            testCase.verifyEqual(stack.ClassName, "uint16");
+            data = stack.all();
+            at = num2cell(expected.pixel.at' + 1);
+            testCase.verifyEqual(double(data(at{:})), expected.pixel.value);   % in the second part of channel 2
+            testCase.verifyEqual(sum(double(data), "all"), expected.sum);
+            testCase.verifyEqual(reshape(double(data(2, :, 2, 5)), [], 1), expected.channel2frame4row1);
+            testCase.verifyEqual(stack.frames(3, 4), data(:, :, :, 3:4));   % across the parts
+            one = ophys.TiffStack().open(paths(contains(paths, "_ch1_")));   % one channel: its parts, joined
+            testCase.verifyEqual(size(one), [6, 5, 5]);
+            testCase.verifyEqual(sum(double(one.all()), "all"), expected.channel1sum);
+
+            % other names of channels: channel1, Ch_2, C1-; files without one in every name are parts of one recording
+            folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
+            tiff = ophys.TiffStack();
+            frames = reshape(uint16(0:23), 4, 3, 2);
+            names = {["a_channel1.tif", "a_channel2.tif"], ["b_Ch_1.tif", "b_Ch_2.tif"], ["C1-c.tif", "C2-c.tif"]};
+            for i = 1:numel(names)
+                files = fullfile(folder, names{i});
+                tiff.write(files(1), frames);
+                tiff.write(files(2), frames + 100);
+                both = tiff.open(flip(files)).all();
+                testCase.verifyEqual(size(both), [4, 3, 2, 2], names{i}(1));
+                testCase.verifyEqual(squeeze(both(:, :, 1, :)), frames, names{i}(1));
+                testCase.verifyEqual(squeeze(both(:, :, 2, :)), frames + 100, names{i}(1));
+            end
+            names = {["d_ch1.tif", "d_part2.tif"], ["e_ch1_1.tif", "e_ch1_2.tif"], ["ChanA_1.tif", "ChanB_1.tif"]};
+            for i = 1:numel(names)
+                files = fullfile(folder, names{i});
+                tiff.write(files(1), frames);
+                tiff.write(files(2), frames);
+                testCase.verifyEqual(size(tiff.open(files)), [4, 3, 4], names{i}(1));
+            end
+            tiff.write(fullfile(folder, "f_ch1.tif"), frames);
+            tiff.write(fullfile(folder, "f_ch2.tif"), frames(:, :, 1));
+            testCase.verifyError(@() tiff.open(fullfile(folder, ["f_ch1.tif", "f_ch2.tif"])), "nansen:InvalidData");   % channels of different lengths
+        end
+
+        function readsTiffPagesOfSeveralSamplesAsChannels(testCase)
+            for kind = ["rgb", "planar"]
+                file = "rgb.tif";
+                if kind == "planar"
+                    file = "samples_planar.tif";
+                end
+                expected = testCase.Expected.tiffChannels.(kind);
+                stack = ophys.TiffStack().open(fullfile(testCase.Files, "tiff_channels", file));
+                testCase.verifyEqual(size(stack), expected.size', kind);
+                data = stack.all();
+                at = num2cell(expected.pixel.at' + 1);
+                testCase.verifyEqual(double(data(at{:})), expected.pixel.value, kind);
+                testCase.verifyEqual(sum(double(data), "all"), expected.sum, kind);
+                testCase.verifyEqual(stack.frames(2, 2), data(:, :, :, 2), kind);
+                testCase.verifyEqual(ophys.TiffStack().read(fullfile(testCase.Files, "tiff_channels", file)), data, kind);
+            end
+        end
+
         function readsTsmFilesLessTheirDarkFrame(testCase)
             stack = ophys.TsmStack().open(fullfile(testCase.Files, "macroscope.tsm"));
             expected = testCase.Expected.tsm;

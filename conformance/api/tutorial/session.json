@@ -161,6 +161,25 @@
               "binarizationPercentile": 85
             },
             "source": "project"
+          },
+          {
+            "name": "axon",
+            "values": {
+              "roiDiameter": 4,
+              "useShapeDetection": false
+            },
+            "source": "module",
+            "module": "ophys"
+          },
+          {
+            "name": "soma",
+            "source": "module",
+            "module": "ophys"
+          },
+          {
+            "name": "soma_virus",
+            "source": "module",
+            "module": "ophys"
           }
         ]
       }
