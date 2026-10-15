@@ -1,0 +1,34 @@
+{
+  "schemaType": "nansen.fragment",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.injection",
+  "version": "1.0.0",
+  "title": "Injection",
+  "description": "Where a subject was injected (a virus or tracer), in mm from bregma, as dev's fovmanager marks it. Placed on the FOV map page.",
+  "columns": [
+    {
+      "name": "injection_ml",
+      "dataType": "number",
+      "title": "Injection ML",
+      "unit": "mm"
+    },
+    {
+      "name": "injection_ap",
+      "dataType": "number",
+      "title": "Injection AP",
+      "unit": "mm"
+    },
+    {
+      "name": "injection_depth_um",
+      "dataType": "number",
+      "title": "Injection depth",
+      "unit": "µm"
+    },
+    {
+      "name": "injection_material",
+      "dataType": "string",
+      "title": "Injected",
+      "description": "Virus or tracer, e.g. AAV1-syn-jGCaMP8m"
+    }
+  ]
+}

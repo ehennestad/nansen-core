@@ -6,7 +6,7 @@
   "title": "Set up two-photon variables",
   "category": "Two-photon/Setup",
   "entityType": "@project",
-  "description": "Adds the data variables the ophys methods read and write, for an entity type, in a data location: .npy arrays and a .json ROI file in a subfolder of each entity's folder. With rawFilePattern, TwoPhotonSeries_Original reads the raw recording through that file pattern. Variables that exist are left alone. Also adds the ophys.imaging, ophys.image_stats, ophys.fov_position and ophys.fov_region columns to the entity type, and ophys.cranial_window to the subject entity type.",
+  "description": "Adds the data variables the ophys methods read and write, for an entity type, in a data location: .npy arrays and a .json ROI file in a subfolder of each entity's folder. With rawFilePattern, TwoPhotonSeries_Original reads the raw recording through that file pattern. Variables that exist are left alone. Also adds the ophys.imaging, ophys.image_stats, ophys.fov_position and ophys.fov_region columns to the entity type, and ophys.cranial_window and ophys.injection to the subject entity type.",
   "implementations": {
     "python": "ophys_methods:setup_variables",
     "matlab": "ophys.setupVariables"
@@ -51,7 +51,7 @@
         "type": "string",
         "default": "subject",
         "title": "Subject entity type",
-        "description": "Gets the cranial window columns, when the project has it"
+        "description": "Gets the cranial window and injection columns, when the project has it"
       },
       "addColumns": {
         "type": "boolean",

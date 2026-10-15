@@ -598,7 +598,7 @@ def setup_variables(project, options, context):
     if options["addColumns"]:
         wanted = [(entity_type, f) for f in ("ophys.imaging", "ophys.image_stats", "ophys.fov_position", "ophys.fov_region")]
         if options["subjectType"] in project.entity_types:
-            wanted.append((options["subjectType"], "ophys.cranial_window"))
+            wanted += [(options["subjectType"], "ophys.cranial_window"), (options["subjectType"], "ophys.injection")]
         for owner, fragment_id in wanted:
             if fragment_id not in project.entity_type(owner).get("fragments", []):
                 project.attach_fragment(owner, fragment_id)

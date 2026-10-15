@@ -1032,6 +1032,9 @@ def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     page.mouse.click(*at(2, -2))
     wait_until(lambda: api.project.table("subject").get({"subject_id": "m1"}).get("window_ml") is not None)
     page.wait_for_selector(".fov-list li[data-subject='m1'] .pill")
+    page.click(".place-injection")
+    page.mouse.click(*at(1.5, -1.5))
+    wait_until(lambda: api.project.table("subject").get({"subject_id": "m1"}).get("injection_ml") is not None)
 
 
 def test_review_rois_across_sessions(empty_app, page):

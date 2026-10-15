@@ -131,7 +131,8 @@
               "ophys.image_stats",
               "ophys.fov_position",
               "ophys.fov_region",
-              "ophys.cranial_window"
+              "ophys.cranial_window",
+              "ophys.injection"
             ]
           }
         }

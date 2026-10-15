@@ -1,7 +1,7 @@
 /* The ophys module's FOV map: cranial windows and fields of view on the mouse dorsal cortex, as dev's fovmanager.
  *
  * Run by the dashboard with N (its toolkit) and module (this module's id). Positions are columns of the
- * ophys.cranial_window and ophys.fov_position fragments, so they are edited, filtered and exported like any
+ * ophys.cranial_window, ophys.injection and ophys.fov_position fragments, so they are edited, filtered and exported like any
  * other column; this page draws them on the atlas and places them with a click.
  */
 "use strict";
@@ -129,6 +129,7 @@ N.registerPage({
     const sessionList = h("ul.fov-list");
     const placeFov = h("button.btn.small.place-fov", { on: { click: () => setPlacing("fov") } }, N.icon("plus", 13), "Place FOV");
     const placeWindow = h("button.btn.small.place-window", { on: { click: () => setPlacing("window") } }, N.icon("plus", 13), "Place window");
+    const placeInjection = h("button.btn.small.place-injection", { on: { click: () => setPlacing("injection") } }, N.icon("plus", 13), "Place injection");
     const labels = h("input", { type: "checkbox", checked: true, on: { change: () => { state.labels = labels.checked; draw(); } } });
 
     const scale = () => canvas.width / (atlas.width / atlas.pixelsPerMm);   // px per mm
@@ -139,6 +140,7 @@ N.registerPage({
       state.placing = state.placing === what ? null : what;
       placeFov.classList.toggle("active", state.placing === "fov");
       placeWindow.classList.toggle("active", state.placing === "window");
+      placeInjection.classList.toggle("active", state.placing === "injection");
       canvas.classList.toggle("placing", Boolean(state.placing));
     }
 
@@ -174,6 +176,15 @@ N.registerPage({
         ctx.stroke();
         ctx.restore();
       });
+      subjects.forEach((s) => {   // injection sites: a dot, and what was injected
+        const ml = number(s.values.injection_ml), ap = number(s.values.injection_ap);
+        if (ml === null || ap === null) return;
+        const [x, y] = toCanvas(ml, ap);
+        const selected = state.subject && sameKey(s.key, state.subject);
+        ctx.fillStyle = selected ? "#d81b60" : "rgba(216, 27, 96, 0.6)";
+        ctx.beginPath(); ctx.arc(x, y, selected ? 6 : 4.5, 0, 2 * Math.PI); ctx.fill();
+        if (s.values.injection_material) { ctx.fillStyle = "#880e4f"; ctx.fillText(s.values.injection_material, x, y - 9); }
+      });
       shown().forEach((s) => {
         const ml = number(s.values.fov_ml), ap = number(s.values.fov_ap);
         if (ml === null || ap === null) return;
@@ -205,6 +216,7 @@ N.registerPage({
       }));
       placeFov.disabled = !state.session;
       placeWindow.disabled = !state.subject || !windowType;
+      placeInjection.disabled = !state.subject || !windowType || !(windowType.fragments || []).includes("ophys.injection");
     }
 
     function refresh() { renderLists(); draw(); }
@@ -226,6 +238,8 @@ N.registerPage({
           }
         } else if (state.placing === "window" && state.subject) {
           await app.client.request("entities.update", { entityType: windowType.name, key: state.subject, values: { window_ml: round2(ml), window_ap: round2(ap) } });
+        } else if (state.placing === "injection" && state.subject) {
+          await app.client.request("entities.update", { entityType: windowType.name, key: state.subject, values: { injection_ml: round2(ml), injection_ap: round2(ap) } });
         } else {
           // select the FOV under the cursor
           const hit = shown().find((s) => {
@@ -248,7 +262,7 @@ N.registerPage({
       h("div.fov-layout",
         h("div.card.fov-side", h("div.card-head", h("h3", windowType ? N.titleCase(windowType.name) : "Subjects")), subjectList),
         h("div.card.fov-map",
-          h("div.fov-bar", placeFov, placeWindow, h("div.spacer"), h("label.fov-labels", labels, "Region labels")),
+          h("div.fov-bar", placeFov, placeWindow, placeInjection, h("div.spacer"), h("label.fov-labels", labels, "Region labels")),
           canvas, where),
         h("div.card.fov-side", h("div.card-head", h("h3", N.titleCase(fovType.name))), sessionList)));
     refresh();

@@ -10,7 +10,8 @@
     "fragments/fov_position.fragment.nansen.json",
     "fragments/fov_region.fragment.nansen.json",
     "fragments/image_stats.fragment.nansen.json",
-    "fragments/imaging.fragment.nansen.json"
+    "fragments/imaging.fragment.nansen.json",
+    "fragments/injection.fragment.nansen.json"
   ],
   "methods": [
     "methods/align_sessions.method.nansen.json",
