@@ -516,3 +516,8 @@ table.shortcuts { margin: 8px 0 14px; }
 table.shortcuts td { padding: 7px 20px; }
 table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .btn.lock-edits.on { color: var(--warn, #b54708); }
+
+/* column order and widths */
+.grid-table thead th .col-resize { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; }
+.grid-table thead th .col-resize:hover { background: var(--accent-soft); }
+.grid-table thead th.drop { box-shadow: inset 2px 0 0 var(--accent); }

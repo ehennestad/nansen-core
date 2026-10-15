@@ -31,6 +31,8 @@
             "items": { "$ref": "#/definitions/filter" }
           },
           "hiddenColumns": { "type": "array", "items": { "type": "string" } },
+          "columnOrder": { "type": "array", "items": { "type": "string" }, "description": "Columns in the order shown; others after them." },
+          "columnWidths": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 }, "description": "Column name to width in pixels, for columns sized by hand." },
           "search": { "type": "string" }
         }
       }

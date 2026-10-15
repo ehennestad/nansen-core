@@ -901,3 +901,29 @@ def test_a_pipeline_rule_for_new_rows(empty_app, page):
     page.wait_for_selector(".card.pipeline[data-id='m110_only']")
     saved = next(p for p in api.handle({"id": 2, "method": "pipelines.list", "params": {"entityType": "session"}})["result"] if p["id"] == "m110_only")
     assert saved["assignWhen"] == [{"column": "subject_id", "op": "in", "values": ["m110", "m111"]}]
+
+
+def test_move_and_size_columns(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    headers = lambda: page.eval_on_selector_all(".grid-table thead th[data-column]", "els => els.map(e => e.dataset.column)")
+    before = headers()
+    assert before[:2] == ["subject_id", "session_id"]
+    page.drag_and_drop(".grid-table thead th[data-column='session_id']", ".grid-table thead th[data-column='subject_id']")
+    wait_until(lambda: headers()[:2] == ["session_id", "subject_id"])
+    handle = page.locator(".grid-table thead th[data-column='session_id'] .col-resize")
+    box = handle.bounding_box()
+    page.mouse.move(box["x"] + 3, box["y"] + 5)
+    page.mouse.down()
+    page.mouse.move(box["x"] + 103, box["y"] + 5, steps=5)
+    page.mouse.up()
+    width = page.eval_on_selector(".grid-table thead th[data-column='session_id']", "e => e.style.width")
+    assert width.endswith("px") and int(float(width[:-2])) > 100
+    page.reload()  # remembered
+    page.wait_for_selector(".grid-table tbody td.key")
+    assert headers()[:2] == ["session_id", "subject_id"]
+    page.click(".toolbar button:has-text('Columns')")
+    page.click(".menu .item:has-text('Reset the column order and widths')")
+    wait_until(lambda: headers() == before)

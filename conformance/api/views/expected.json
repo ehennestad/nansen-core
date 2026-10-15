@@ -1,4 +1,4 @@
 {
-  "description": "Saved views: one with keys, one with filters and hidden columns, replacing a view in its place, one-item arrays kept as arrays, and errors for no name, a bad key, a bad filter, an unknown entity type and an unknown view.",
-  "steps": 16
+  "description": "Saved views: one with keys, one with filters and hidden columns, replacing a view in its place, one-item arrays kept as arrays, and errors for no name, a bad key, a bad filter, an unknown entity type and an unknown view. A view can keep the column order and widths.",
+  "steps": 18
 }

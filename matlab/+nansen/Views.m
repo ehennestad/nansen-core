@@ -136,6 +136,9 @@ classdef Views
             if isfield(view, "hiddenColumns")
                 view.hiddenColumns = nansen.internal.asCellstr(view.hiddenColumns);
             end
+            if isfield(view, "columnOrder")
+                view.columnOrder = nansen.internal.asCellstr(view.columnOrder);
+            end
         end
     end
 

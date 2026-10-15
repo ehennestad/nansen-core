@@ -71,6 +71,8 @@
         this.sort = null;
         this.hidden = new Set(store(`nansen.hidden.${data.entityType}`) || []);
         this.hideIgnored = store(`nansen.hideIgnored.${data.entityType}`) === true;
+        this.order = store(`nansen.order.${data.entityType}`) || null;   // column names, as dragged; others after
+        this.widths = store(`nansen.widths.${data.entityType}`) || {};  // column name -> pixels, as resized
       } else {
         for (const id of [...this.selected]) if (!this.byId.has(id)) this.selected.delete(id);
       }
@@ -79,7 +81,41 @@
     }
 
     get columns() {
-      return this.data ? this.data.columns.filter((c) => !this.hidden.has(c.name)) : [];
+      if (!this.data) return [];
+      const shown = this.data.columns.filter((c) => !this.hidden.has(c.name));
+      if (!this.order) return shown;
+      const at = (c) => { const i = this.order.indexOf(c.name); return i < 0 ? this.order.length + shown.indexOf(c) : i; };
+      return [...shown].sort((a, b) => at(a) - at(b));
+    }
+
+    /** Put a column before another (or last), keeping the order for this entity type. */
+    moveColumn(name, before) {
+      const names = this.columns.map((c) => c.name).filter((n) => n !== name);
+      const at = before ? names.indexOf(before) : -1;
+      names.splice(at < 0 ? names.length : at, 0, name);
+      const hidden = (this.order || this.data.columns.map((c) => c.name)).filter((n) => this.hidden.has(n));
+      this.order = names.concat(hidden);
+      store(`nansen.order.${this.data.entityType}`, this.order);
+      this.refresh();
+    }
+
+    setWidth(name, width) {
+      if (width) this.widths[name] = Math.max(48, Math.round(width)); else delete this.widths[name];
+      store(`nansen.widths.${this.data.entityType}`, this.widths);
+      this.refresh();
+    }
+
+    resetLayout() {
+      this.order = null;
+      this.widths = {};
+      store(`nansen.order.${this.data.entityType}`, null);
+      store(`nansen.widths.${this.data.entityType}`, {});
+      this.refresh();
+    }
+
+    sizeStyle(name) {
+      const w = this.widths[name];
+      return w ? { width: w + "px", minWidth: w + "px", maxWidth: w + "px" } : null;
     }
 
     counts() {
@@ -144,14 +180,47 @@
         h("th.status", ""),
         this.columns.map((c) => {
           const sorted = this.sort && this.sort.name === c.name;
-          return h("th.src-" + c.source, {
-            title: `${c.name} · ${c.dataType}${c.fragment ? " · " + c.fragment : ""}${c.source === "attribute" ? " · read from the stores" : ""}`,
-            on: { click: () => this.toggleSort(c.name) },
+          const th = h("th.src-" + c.source, {
+            title: `${c.name} · ${c.dataType}${c.fragment ? " · " + c.fragment : ""}${c.source === "attribute" ? " · read from the stores" : ""} · drag to move, drag the edge to size`,
+            draggable: "true", style: this.sizeStyle(c.name), dataset: { column: c.name },
+            on: {
+              click: () => { if (!this.resizing) this.toggleSort(c.name); },
+              dragstart: (e) => { e.dataTransfer.setData("text/x-nansen-column", c.name); e.dataTransfer.effectAllowed = "move"; },
+              dragover: (e) => { if ([...e.dataTransfer.types].includes("text/x-nansen-column")) { e.preventDefault(); th.classList.add("drop"); } },
+              dragleave: () => th.classList.remove("drop"),
+              drop: (e) => {
+                e.preventDefault();
+                th.classList.remove("drop");
+                const moved = e.dataTransfer.getData("text/x-nansen-column");
+                if (moved && moved !== c.name) this.moveColumn(moved, c.name);
+              },
+            },
           }, c.source === "table" && !c.editable ? h("span.fx", "fx") : null, c.title || c.name,
           c.unit ? h("span.unit", ` (${c.unit})`) : null,
           sorted ? h("span.sort", this.sort.dir > 0 ? "▲" : "▼") : null,
           this.onColumnMenu ? h("button.col-menu", { title: "Column menu", "aria-label": `Menu of ${c.title || c.name}`,
-            on: { click: (e) => { e.stopPropagation(); this.onColumnMenu(c, e.currentTarget); } } }, "⋮") : null);
+            on: { click: (e) => { e.stopPropagation(); this.onColumnMenu(c, e.currentTarget); } } }, "⋮") : null,
+          h("span.col-resize", { title: "Drag to size; double-click to fit", on: {
+            click: (e) => e.stopPropagation(),
+            dblclick: (e) => { e.stopPropagation(); this.setWidth(c.name, null); },
+            mousedown: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const start = e.clientX;
+              const from = th.getBoundingClientRect().width;
+              this.resizing = true;
+              const move = (m) => { const w = Math.max(48, from + m.clientX - start); Object.assign(th.style, { width: w + "px", minWidth: w + "px", maxWidth: w + "px" }); };
+              const up = (m) => {
+                document.removeEventListener("mousemove", move);
+                document.removeEventListener("mouseup", up);
+                this.setWidth(c.name, from + m.clientX - start);
+                setTimeout(() => { this.resizing = false; }, 0);
+              };
+              document.addEventListener("mousemove", move);
+              document.addEventListener("mouseup", up);
+            },
+          } }));
+          return th;
         })));
     }
 
@@ -169,6 +238,10 @@
       this.filters = view && view.filters ? view.filters.map((f) => Object.assign({}, f)) : [];
       if (view && view.hiddenColumns) this.hidden = new Set(view.hiddenColumns);
       else this.hidden = new Set(store(`nansen.hidden.${this.data.entityType}`) || []);
+      if (view && view.columnOrder) this.order = [...view.columnOrder];
+      else this.order = store(`nansen.order.${this.data.entityType}`) || null;
+      if (view && view.columnWidths) this.widths = Object.assign({}, view.columnWidths);
+      else this.widths = store(`nansen.widths.${this.data.entityType}`) || {};
       this.search = view && view.search ? view.search.toLowerCase() : "";
       this.refresh();
     }
@@ -227,7 +300,7 @@
       if (column.dataType === "number" || column.dataType === "integer") classes.push("num");
       const editable = column.editable && row.inTable && !this.locked;
       if (editable && column.dataType !== "boolean") classes.push("editable");
-      const td = h(classes.join("."));
+      const td = h(classes.join("."), { style: this.sizeStyle(column.name) });
       if (column.source === "progress") {
         const state = row.progress;
         if (!state) { td.classList.add("missing"); td.textContent = "—"; return td; }

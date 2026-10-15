@@ -140,11 +140,12 @@
     const search = h("input.input", { autofocus: true, placeholder: `Search ${type.title || entityType}…`, on: { input: N.debounce((e) => grid.setSearch(e.target.value), 120) } });
     const columnsButton = h("button.btn", N.icon("columns"), "Columns");
     columnsButton.addEventListener("click", () => {
-      const items = [{ heading: "Show columns" }].concat(grid.data.columns.map((c) => ({
+      const items = [{ heading: "Show columns" }].concat(grid.columns.concat(grid.data.columns.filter((c) => grid.hidden.has(c.name))).map((c) => ({
         node: h("label.item", h("input", { type: "checkbox", checked: !grid.hidden.has(c.name),
           on: { change: () => grid.toggleColumn(c.name) } }), c.title || c.name, h("span.muted", { style: { marginLeft: "auto", fontSize: "11px" } }, c.source)),
       })));
       const available = (app.fragments || []).filter((f) => !type.fragments.includes(f.id) && !f.computed);
+      if (grid.order || Object.keys(grid.widths).length) items.push({ label: "Reset the column order and widths", icon: "refresh", onClick: () => grid.resetLayout() });
       items.push({ heading: "Add" }, { label: "Add a column…", icon: "plus", onClick: () => addColumnDialog(app, entityType) },
         { label: "Add a computed column…", icon: "zap", onClick: () => computedColumnDialog(app, entityType) });
       for (const f of available) {
@@ -200,6 +201,8 @@
       if (activeView && activeView.keys) view.keys = activeView.keys;
       if (!view.filters.length) delete view.filters;
       if (!view.hiddenColumns.length) delete view.hiddenColumns;
+      if (grid.order) view.columnOrder = [...grid.order];
+      if (Object.keys(grid.widths).length) view.columnWidths = Object.assign({}, grid.widths);
       return view;
     }
     async function saveView(view) {

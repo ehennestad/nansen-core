@@ -364,6 +364,55 @@
           }
         ]
       }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 17,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "layout",
+            "columnOrder": [
+              "session_id"
+            ],
+            "columnWidths": {
+              "session_id": 140,
+              "subject_id": 90.5
+            }
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "layout",
+          "columnOrder": [
+            "session_id"
+          ],
+          "columnWidths": {
+            "session_id": 140,
+            "subject_id": 90.5
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "views.save",
+        "id": 18,
+        "params": {
+          "entityType": "session",
+          "view": {
+            "name": "bad",
+            "columnWidths": {
+              "session_id": -1
+            }
+          }
+        }
+      },
+      "expect": {
+        "error": "schema-validation"
+      }
     }
   ]
 }
