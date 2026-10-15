@@ -1851,6 +1851,7 @@
     const fileName = h("input.input.variable-file", { value: v.fileName || "", placeholder: "{session_id}_roi_signals.mat" });
     const adapter = h("select.input.variable-adapter");
     const description = h("input.input.variable-description", { value: v.description || "" });
+    const inFile = h("input.input.variable-in-file", { value: v.variableInFile || "", placeholder: "for example RoiSignals_Dff" });
     const message = h("div.form-message.hidden");
     let options = { locations: [], fileAdapters: [] };
 
@@ -1882,16 +1883,25 @@
         h("div.field-row", field("Entity type", entityType), field("Data location", location)),
         field("File pattern", pattern, "A pattern of the dataset at the entity type's level; reading uses the files the scan matched to it"),
         h("div.field-row", field("Subfolder", subfolder), field("File name", fileName, "{field} is filled from the entity's values")),
-        field("File adapter", adapter, "Reads and writes the file"), field("Description", description), message),
+        h("div.field-row", field("File adapter", adapter, "Reads and writes the file"),
+          field("Variable in file", inFile, "One variable of a file of several (a .mat file's): empty for the whole file")),
+        field("Description", description), message),
       buttons: [
         { label: "Cancel" },
         { label: existing ? "Save" : "Add data variable", kind: "primary", onClick: async (close) => {
-          const document = { schemaType: "nansen.dataVariable", schemaVersion: "0.1.0", name: name.value.trim(),
-            entityType: entityType.value, dataLocation: location.value, fileAdapter: adapter.value };
-          for (const [key, input] of [["title", title], ["filePattern", pattern], ["subfolder", subfolder], ["fileName", fileName], ["description", description]]) {
-            if (input.value.trim()) document[key] = input.value.trim();
+          // an edit keeps what the form does not show, as the variable is now: the data type and column names
+          let current = existing;
+          if (existing) {
+            try { current = (await app.client.request("dataVariables.list")).find((x) => x.name === existing.name) || existing; } catch (error) { /* as shown */ }
           }
-          if (existing && v.dataType) document.dataType = v.dataType;
+          const kept = current ? Object.fromEntries(Object.entries(current).filter(([key]) => ["dataType", "columnNames"].includes(key))) : {};
+          const document = Object.assign(kept, { schemaType: "nansen.dataVariable", schemaVersion: "0.1.0", name: name.value.trim(),
+            entityType: entityType.value, dataLocation: location.value, fileAdapter: adapter.value });
+          for (const [key, input] of [["title", title], ["filePattern", pattern], ["subfolder", subfolder], ["fileName", fileName],
+            ["description", description], ["variableInFile", inFile]]) {
+            if (input.value.trim()) document[key] = input.value.trim();
+            else delete document[key];
+          }
           const problems = [];
           if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(document.name)) problems.push("Name: a letter, then letters, digits or _");
           if (!document.filePattern && !document.fileName) problems.push("Give a file pattern or a file name");

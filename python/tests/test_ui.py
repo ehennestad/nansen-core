@@ -539,13 +539,21 @@ def test_add_edit_and_delete_a_data_variable(empty_app, page):
     variable = next(v for v in api.handle({"id": 3, "method": "dataVariables.list"})["result"] if v["name"] == "config")
     assert (variable["dataLocation"], variable["filePattern"], variable["fileAdapter"]) == ("raw", "acquisition_config", "json")
 
+    saved = api.handle({"id": 4, "method": "dataVariables.save", "params": {"document": dict(variable, columnNames=["rate"])}})
+    assert "result" in saved, saved
+    page.goto(empty_app["server"].url + "#/")   # and back, so the page has the variable as it is now
+    page.goto(empty_app["server"].url + "#/data")
+    page.wait_for_selector(".data-variables tr[data-variable='config'] .edit-variable")
     page.click(".data-variables tr[data-variable='config'] .edit-variable")
     page.wait_for_selector(".dialog .variable-pattern option[value='acquisition_config']", state="attached")
     assert page.locator(".dialog .variable-name").is_disabled()
     assert page.locator(".dialog .variable-location").input_value() == "raw"
     page.fill(".dialog .variable-title", "Acquisition config")
+    page.fill(".dialog .variable-in-file", "settings")   # one variable of a file of several
     page.click(".dialog-foot button:has-text('Save')")
     page.wait_for_selector(".data-variables tr[data-variable='config']:has-text('Acquisition config')")
+    variable = next(v for v in api.handle({"id": 5, "method": "dataVariables.list"})["result"] if v["name"] == "config")
+    assert variable["variableInFile"] == "settings" and variable["columnNames"] == ["rate"]   # what the form does not show is kept
 
     page.click(".data-variables tr[data-variable='config'] .delete-variable")
     page.click(".dialog-foot button:has-text('Delete')")
