@@ -32,6 +32,12 @@
         "title": "Maximum projection",
         "description": "Variable the maximum over frames is saved to. Leave empty to not save it."
       },
+      "frameStatsOutput": {
+        "type": "string",
+        "default": "FrameStats",
+        "title": "Frame statistics",
+        "description": "Variable each frame's mean, minimum, maximum and standard deviation (frames x 4) is saved to. Leave empty to not save it."
+      },
       "channel": {
         "type": "integer",
         "default": 1,

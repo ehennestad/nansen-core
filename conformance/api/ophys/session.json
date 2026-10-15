@@ -115,6 +115,7 @@
               "TwoPhotonSeries_Corrected",
               "TwoPhotonSeries_Downsampled",
               "MotionCorrectionShifts",
+              "FrameStats",
               "FovAverageProjection",
               "FovMaximumProjection",
               "RoiArray",
@@ -829,6 +830,13 @@
             ]
           },
           {
+            "name": "FrameStats",
+            "dataLocation": "processed",
+            "files": [
+              "${scratch}/project/data/processed/sub-m1/ses-s1/ophys/frame_stats.npy"
+            ]
+          },
+          {
             "name": "MotionCorrectionShifts",
             "dataLocation": "processed",
             "files": [
@@ -912,6 +920,67 @@
             "files": []
           }
         ]
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 2301,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "FrameStats"
+          ],
+          "columns": [
+            0,
+            3
+          ],
+          "maxPoints": 4
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 40,
+          "start": 0,
+          "step": 10,
+          "points": 4,
+          "traces": [
+            {
+              "variable": "FrameStats",
+              "count": 4,
+              "columnNames": [
+                "mean",
+                "min",
+                "max",
+                "std"
+              ],
+              "columns": [
+                {
+                  "column": 0,
+                  "values": [
+                    203.625,
+                    181.6807,
+                    175.2725,
+                    196.915
+                  ]
+                },
+                {
+                  "column": 3,
+                  "values": [
+                    57.3134,
+                    91.9797,
+                    98.1465,
+                    95.1129
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     {
@@ -3126,6 +3195,7 @@
               "TwoPhotonSeries_Corrected",
               "TwoPhotonSeries_Downsampled",
               "MotionCorrectionShifts",
+              "FrameStats",
               "FovAverageProjection",
               "FovMaximumProjection",
               "RoiArray",
@@ -4239,6 +4309,17 @@
               "min": 157.0,
               "max": 812.0,
               "mean": 251.6592
+            },
+            {
+              "name": "FrameStats",
+              "kind": "array",
+              "size": [
+                5,
+                4
+              ],
+              "min": 34.0,
+              "max": 812.0,
+              "mean": 211.463
             }
           ]
         }

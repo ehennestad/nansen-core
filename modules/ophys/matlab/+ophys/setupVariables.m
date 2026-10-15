@@ -9,7 +9,8 @@ function result = setupVariables(project, options, context)
     variables = {
         "TwoPhotonSeries_Corrected", "Motion-corrected stack", "two_photon_series_corrected.npy", "npy", "ImageStack"
         "TwoPhotonSeries_Downsampled", "Downsampled stack", "two_photon_series_downsampled.npy", "npy", "ImageStack"
-        "MotionCorrectionShifts", "Motion correction shifts", "motion_correction_shifts.npy", "npy", "Array"
+        "MotionCorrectionShifts", "Motion correction shifts", "motion_correction_shifts.npy", "npy", "TimeSeries"
+        "FrameStats", "Frame statistics", "frame_stats.npy", "npy", "TimeSeries"
         "FovAverageProjection", "Average projection", "fov_average_projection.npy", "npy", "Image"
         "FovMaximumProjection", "Maximum projection", "fov_maximum_projection.npy", "npy", "Image"
         "RoiArray", "ROIs", "roi_array.json", "json", "RoiArray"
@@ -20,6 +21,7 @@ function result = setupVariables(project, options, context)
         "RoiSignals_Denoised", "Denoised calcium", "roi_signals_denoised.npy", "npy", "RoiSignals"
         "TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack";
         "TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"};
+    columnNames = struct("MotionCorrectionShifts", {{'rows', 'columns'}}, "FrameStats", {{'mean', 'min', 'max', 'std'}});
     documents = {};
     if strlength(string(options.rawFilePattern)) > 0
         documents{end + 1} = struct("schemaType", "nansen.dataVariable", "schemaVersion", "0.1.0", ...
@@ -37,6 +39,9 @@ function result = setupVariables(project, options, context)
         document.fileName = variables{i, 3};
         document.fileAdapter = variables{i, 4};
         document.dataType = variables{i, 5};
+        if isfield(columnNames, variables{i, 1})
+            document.columnNames = columnNames.(variables{i, 1});
+        end
         documents{end + 1} = document; %#ok<AGROW>
     end
     created = {};

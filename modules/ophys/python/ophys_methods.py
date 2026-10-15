@@ -30,14 +30,18 @@ def round_to(value, digits):
 
 
 def image_stats(entity, options, context):
-    """Size and intensity of the stack; saves its average and maximum projections. Reads a chunk at a time."""
+    """Size and intensity of the stack; saves its average and maximum projections, and each frame's mean, minimum,
+    maximum and standard deviation (frames x 4, as dev's per-frame image stats, for plotting). Reads a chunk at a time."""
     stack = _open_stack(entity, options["stack"], context, options)
     height, width, frames = stack.shape
     total = 0.0
     maximum = None
     average = np.zeros((height, width))
+    per_frame = np.zeros((frames, 4))
     for start in range(0, frames, CHUNK):
         chunk = stack[:, :, start:start + CHUNK]
+        flat = chunk.reshape(height * width, -1).astype(np.float64)
+        per_frame[start:start + flat.shape[1]] = np.stack([flat.mean(axis=0), flat.min(axis=0), flat.max(axis=0), flat.std(axis=0)], axis=1)
         average += chunk.astype(np.float64).sum(axis=2)
         peak = chunk.max(axis=2)
         maximum = peak if maximum is None else np.maximum(maximum, peak)
@@ -45,6 +49,7 @@ def image_stats(entity, options, context):
     average /= frames
     _save(entity, options["averageOutput"], average, context)
     _save(entity, options["maximumOutput"], maximum, context)
+    _save(entity, options.get("frameStatsOutput", ""), per_frame, context)
     context.log(f"{_name(entity)}: {frames} frames of {height} x {width}")
     return {"n_frames": frames, "height": height, "width": width,
             "mean_intensity": round_to(total / stack.size, 4), "max_intensity": float(maximum.max())}
@@ -1464,7 +1469,8 @@ def atlas_region(atlas, ml, ap):
 VARIABLES = [
     ("TwoPhotonSeries_Corrected", "Motion-corrected stack", "two_photon_series_corrected.npy", "npy", "ImageStack"),
     ("TwoPhotonSeries_Downsampled", "Downsampled stack", "two_photon_series_downsampled.npy", "npy", "ImageStack"),
-    ("MotionCorrectionShifts", "Motion correction shifts", "motion_correction_shifts.npy", "npy", "Array"),
+    ("MotionCorrectionShifts", "Motion correction shifts", "motion_correction_shifts.npy", "npy", "TimeSeries"),
+    ("FrameStats", "Frame statistics", "frame_stats.npy", "npy", "TimeSeries"),
     ("FovAverageProjection", "Average projection", "fov_average_projection.npy", "npy", "Image"),
     ("FovMaximumProjection", "Maximum projection", "fov_maximum_projection.npy", "npy", "Image"),
     ("RoiArray", "ROIs", "roi_array.json", "json", "RoiArray"),
@@ -1476,6 +1482,8 @@ VARIABLES = [
     ("TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack"),
     ("TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"),
 ]
+
+COLUMN_NAMES = {"MotionCorrectionShifts": ["rows", "columns"], "FrameStats": ["mean", "min", "max", "std"]}
 
 
 def setup_variables(project, options, context):
@@ -1495,6 +1503,8 @@ def setup_variables(project, options, context):
         if options["subfolder"]:
             document["subfolder"] = options["subfolder"]
         document.update({"fileName": file_name, "fileAdapter": adapter, "dataType": data_type})
+        if name in COLUMN_NAMES:
+            document["columnNames"] = COLUMN_NAMES[name]
         documents.append(document)
     created, existing = [], []
     for document in documents:

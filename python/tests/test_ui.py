@@ -1268,7 +1268,7 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     run = lambda method, options=None: ("methods.run", {"methodId": method, "entityType": "session", "keys": s1, "options": options or {}})
     ophys_project(empty_app, [run("ophys.motion_correction", {"referenceFrames": 1}), run("ophys.detect_rois", {"threshold": 0.25, "border": 4}),
-                              run("ophys.extract_signals"), run("ophys.compute_dff"),
+                              run("ophys.extract_signals"), run("ophys.compute_dff"), run("ophys.image_stats"),
                               ("entities.update", {"entityType": "session", "key": s1[0], "values": {"frame_rate": 20}})])
     page.goto(empty_app["server"].url + "#/entities/session")
     page.wait_for_selector(".grid-table tbody td.key")
@@ -1294,6 +1294,13 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     page.mouse.move(box["x"] + 300, box["y"] + 60, steps=5)
     page.mouse.up()
     page.wait_for_selector(".trace-status:has-text('double-click for all')")
+    page.locator(".traces-dialog .dialog-head button[title='Close']").click()
+
+    # time series: the per-frame image stats and the motion shifts, their columns named
+    page.click(".drawer li[data-variable='FrameStats'] .plot-data")
+    page.wait_for_selector(".traces-dialog .trace-roi-list li:has-text('std')")
+    assert page.locator(".trace-roi-list li").all_inner_texts() == ["mean", "min", "max", "std"]
+    assert page.locator(".traces-dialog .trace-variable").all_inner_texts() == ["FrameStats", "MotionCorrectionShifts"]
     page.locator(".traces-dialog .dialog-head button[title='Close']").click()
 
     page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")

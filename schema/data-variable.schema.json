@@ -77,7 +77,12 @@
     },
     "dataType": {
       "type": "string",
-      "description": "What the adapter returns, e.g. 'ImageStack' or 'RoiArray'. Informational."
+      "description": "What the adapter returns, e.g. 'ImageStack', 'RoiArray', 'RoiSignals' (frames x ROIs) or 'TimeSeries' (frames x N numbers, such as motion shifts). The dashboard shows images and plots signals and time series by it."
+    },
+    "columnNames": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What each column of a frames x N array is, in order, for plots (data.traces gives them)."
     },
     "description": {
       "type": "string"

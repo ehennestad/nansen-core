@@ -168,7 +168,14 @@ def preview_expected(first):
     average, maximum = first.astype(float).mean(axis=2), first.max(axis=2).astype(float)
     return {"frames": 5, "results": [{"n_frames": 5, "height": HEIGHT, "width": WIDTH, "mean_intensity": round_to(first.astype(float).mean(), 4),
                                       "max_intensity": float(first.max())}],
-            "outputs": [dict(name="FovAverageProjection", kind="array", **stats(average)), dict(name="FovMaximumProjection", kind="array", **stats(maximum))]}
+            "outputs": [dict(name="FovAverageProjection", kind="array", **stats(average)), dict(name="FovMaximumProjection", kind="array", **stats(maximum)),
+                        dict(name="FrameStats", kind="array", **stats(frame_stats(first)))]}
+
+
+def frame_stats(stack):
+    """image_stats' per-frame stats: each frame's mean, minimum, maximum and (population) standard deviation."""
+    flat = stack.astype(float).reshape(-1, stack.shape[2])
+    return np.stack([flat.mean(axis=0), flat.min(axis=0), flat.max(axis=0), flat.std(axis=0)], axis=1)
 
 
 def main():
@@ -254,6 +261,11 @@ def main():
     expected["signalsExpansion"] = {"rois": len(disks), "frames": FRAMES,
                                     "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],
                                     "meanNeuropil": [round_to(v, 4) for v in np.stack(expanded, axis=1).mean(axis=0)]}
+    # data.traces of image_stats' FrameStats (of the aligned recording): mean and std at frames 0, 10, 20, 30
+    stats = frame_stats(aligned)
+    expected["frameStatsTraces"] = {"frames": FRAMES, "start": 0, "step": 10, "points": 4, "traces": [
+        {"variable": "FrameStats", "count": 4, "columnNames": ["mean", "min", "max", "std"],
+         "columns": [{"column": c, "values": [four(stats[t, c]) for t in range(0, FRAMES, 10)]} for c in (0, 3)]}]}
     expected["frame3"] = {"frame": 3, **frame_bytes(aligned[:, :, 3], (0, 1000))}
     # export_tiff of frames 3..7 (from 1), read back through a data variable: its frame 2 (from 0) is frame 4 (from 0)
     expected["exported"] = {"height": HEIGHT, "width": WIDTH, "frames": 5, "frame": 2, **frame_bytes(aligned[:, :, 4], (0, 1000))}

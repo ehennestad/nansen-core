@@ -78,11 +78,10 @@ classdef TaskQueue < handle
         end
 
         function task = get(obj, taskId)
-            path = obj.path(taskId);
-            if ~isfile(path)
+            task = nansen.TaskQueue.readTask(obj.path(taskId));
+            if isempty(task)
                 nansen.internal.throwError("unknown-task", "no task '%s'", taskId)
             end
-            task = nansen.readDocument(path, ExpectedType="nansen.task");
         end
 
         function tasks = list(obj, status)
@@ -97,13 +96,9 @@ classdef TaskQueue < handle
             end
             listing = dir(fullfile(obj.Folder, "*.task.nansen.json"));
             for i = 1:numel(listing)
-                try
-                    tasks{end + 1} = nansen.readDocument(fullfile(obj.Folder, listing(i).name), ...
-                        ExpectedType="nansen.task"); %#ok<AGROW>
-                catch err
-                    if ~isa(err, "nansen.NansenError")
-                        rethrow(err)
-                    end
+                task = nansen.TaskQueue.readTask(fullfile(obj.Folder, listing(i).name));
+                if ~isempty(task)
+                    tasks{end + 1} = task; %#ok<AGROW>
                 end
             end
             if isempty(tasks)
@@ -131,7 +126,8 @@ classdef TaskQueue < handle
             end
             task = nansen.checkDocument(task, ExpectedType="nansen.task");
             path = obj.path(string(task.id));
-            temporary = path + "." + string(feature("getpid")) + ".tmp";
+            [~, suffix] = fileparts(tempname);   % a worker thread shares this process's id
+            temporary = path + "." + string(suffix) + ".tmp";
             nansen.internal.writeJson(temporary, task)
             movefile(temporary, path, "f");
             obj.emit("task", task)
@@ -579,6 +575,25 @@ classdef TaskQueue < handle
     end
 
     methods (Static)
+        function task = readTask(path)
+            %readTask A task document, or [] when there is none; read again for a moment when the file is
+            %missing or unreadable, as it is while a worker replaces it (movefile is not an atomic replace)
+            task = [];
+            for attempt = 1:10
+                if isfile(path)
+                    try
+                        task = nansen.readDocument(path, ExpectedType="nansen.task");
+                        return
+                    catch err
+                        if ~isa(err, "nansen.NansenError")
+                            rethrow(err)
+                        end
+                    end
+                end
+                pause(0.02);
+            end
+        end
+
         function tf = hasProcessPools()
             %hasProcessPools Whether this MATLAB has the Parallel Computing Toolbox, licensed
             tf = ~isempty(ver("parallel")) && license("test", "Distrib_Computing_Toolbox");

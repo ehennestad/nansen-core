@@ -16,6 +16,8 @@
 
   /** Signal variables: arrays of frames x ROIs. */
   N.isSignalVariable = (d) => d.dataType === "RoiSignals" && d.files && d.files.length > 0;
+  /** Time series: other frames x N arrays (motion shifts, per-frame image stats), their columns named by the variable. */
+  N.isSeriesVariable = (d) => d.dataType === "TimeSeries" && d.files && d.files.length > 0;
 
   /** The column of each ROI, when the signals are the ROIs' in order (all of them, or those not rejected). */
   N.roiColumns = function (rois, count) {
@@ -203,6 +205,7 @@
     });
 
     function labelOf(column) {
+      if (state.names && state.names[column]) return state.names[column];
       const map = N.roiColumns(state.rois, state.count);
       if (map) for (const [id, c] of map) if (c === column) return `ROI ${id}`;
       return `Column ${column + 1}`;
@@ -231,6 +234,7 @@
       try {
         const result = await app.client.request("data.traces", params);
         if (result.rois) state.rois = result.rois;
+        state.names = (result.traces.find((t) => t.columnNames) || {}).columnNames || null;
         state.count = Math.min(...result.traces.map((t) => t.count));
         plot.draw(result, state.columns.map(labelOf));
         status.textContent = `${result.frames} frames` + (result.frameRate ? ` at ${N.fmt.number(result.frameRate)} Hz` : "") + (start !== null ? ` · showing ${result.start}–${result.start + (result.points - 1) * result.step} (double-click for all)` : " · drag across a plot to zoom") +

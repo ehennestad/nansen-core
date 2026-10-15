@@ -1071,6 +1071,12 @@ classdef Api < handle
             result = nansen.internal.signalTraces(names, arrays, reshape(columns, 1, []), nansen.internal.getField(params, "start", 0), ...
                 nansen.internal.getField(params, "stop", []), nansen.internal.getField(params, "maxPoints", 2000));
             result.frameRate = nansen.Api.frameRate(params, entity);
+            for i = 1:numel(result.traces)   % what each column is, when the data variable says (a time series' columns)
+                columnNames = nansen.internal.getField(project.dataVariable(string(names{i})).Document, "columnNames", {});
+                if ~isempty(columnNames)
+                    result.traces{i}.columnNames = reshape(cellstr(string(columnNames)), 1, []);
+                end
+            end
             rois = string(nansen.internal.getField(params, "rois", ""));
             if rois ~= ""
                 outlines = nansen.internal.roiOutlines(project.load(entity, rois));

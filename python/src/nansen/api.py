@@ -895,6 +895,10 @@ class Api:
         values = {name: project.load(entity, name) for name in names}
         result = signal_traces(values, columns, params.get("start", 0), params.get("stop"), params.get("maxPoints", 2000))
         result["frameRate"] = _frame_rate(params, entity)
+        for trace in result["traces"]:   # what each column is, when the data variable says (a time series' columns)
+            names = project.data_variable(trace["variable"]).document.get("columnNames")
+            if names:
+                trace["columnNames"] = list(names)
         if params.get("rois"):
             result["rois"] = [{"id": r["id"], "classification": r["classification"]}
                               for r in roi_outlines(project.load(entity, params["rois"]))]

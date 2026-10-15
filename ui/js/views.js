@@ -674,6 +674,10 @@
           (detail.data || []).filter(N.isSignalVariable).map((r) => r.name),
           { variable: d.name, roiVariable: ((detail.data || []).find((r) => r.dataType === "RoiArray" && r.files.length) || {}).name || null }) } },
         N.icon("activity", 13)) : null,
+      N.isSeriesVariable(d) ? h("button.btn.ghost.icon.small.plot-data", {
+        title: "Plot it over the frames", on: { click: () => N.views.traces(app, entityType, detail.key,
+          (detail.data || []).filter(N.isSeriesVariable).map((r) => r.name), { variable: d.name }) } },
+        N.icon("activity", 13)) : null,
       d.files.length && app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-data", {
         title: "Load it into the workspace", on: { click: async () => {
           const name = await N.prompt(`Load ${d.name} into the workspace`, "Variable name", d.name);
