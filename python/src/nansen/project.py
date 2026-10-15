@@ -811,6 +811,13 @@ class Project:
         return {"fragment": self.fragment(method_id), "method": self.method(method_id) if method else None,
                 "files": [p.relative_to(self.folder).as_posix() for p in files]}
 
+    def import_legacy_methods(self, path: PathLike, entity_type: Optional[str] = None) -> dict:
+        """Import the NANSEN dev session method of a .m file, or those of a folder and its packages, as methods of the
+        project that run dev's code unchanged in MATLAB: {methods (summaries), warnings}. See nansen.legacymethods."""
+        from .legacymethods import import_into
+
+        return import_into(self, path, entity_type)
+
     def method(self, method_id: str) -> Method:
         for method in self.methods():
             if method.id == method_id:

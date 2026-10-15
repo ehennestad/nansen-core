@@ -1590,6 +1590,15 @@ class Api:
             self.emit("entities", {"entityTypes": [method.entity_type]})
         return dict(method.summary(), files=files)
 
+    def methods__importLegacy(self, params: dict) -> dict:
+        """Import NANSEN dev session methods (a .m file, or a folder of them) as project methods run in MATLAB."""
+        if not isinstance(params.get("path"), str) or not params["path"]:
+            raise NansenError("invalid-params", "path is a .m file or a folder")
+        entity_type = params.get("entityType") or None   # by default sessions, when the project has them
+        result = self._require_project().import_legacy_methods(params["path"], entity_type)
+        self.emit("project", {"name": self.project.name})
+        return result
+
     def presets__list(self, params: dict) -> list:
         project = self._require_project()
         preferred = project.preferred_preset(params["methodId"])

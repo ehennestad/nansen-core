@@ -18,7 +18,9 @@ What maps over:
   module for dev's ROI files (RoiArray, RoiGroup) and image stacks (ImageStack of TIFF, dev's binary or SciScan raw,
   HDF5 or npy files). A variable dev kept in a .mat file under its own name (its Default adapter, and RoiSignalArray,
   which kept all the ROI signals in one file) is that variable of the file (variableInFile);
-- the notes of a ``Notebook`` column go into the entity type's notebook, in the order they were written.
+- the notes of a ``Notebook`` column go into the entity type's notebook, in the order they were written;
+- the project's own session methods (``code/+<package>/+sessionmethod``) become methods of sessions that run dev's
+  code unchanged in MATLAB (``nansen.legacymethods``), and pipeline tasks that call them become steps.
 
 Whatever cannot be mapped is left out and named in the report's ``warnings``.
 """
@@ -26,9 +28,10 @@ Whatever cannot be mapped is left out and named in the report's ``warnings``.
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import legacymethods
 from .documents import PathLike, check_document, write_json
 from .errors import NansenError
 from .project import Project
@@ -112,10 +115,12 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
             notes[table["entityType"]] = len(table["notes"])
     for variable in plan["dataVariables"]:
         project.add_data_variable(variable)
+    legacymethods.write(project, plan["methods"])
     for pipeline in plan["pipelines"]:
         project.save_pipeline(pipeline)
     return {"project": str(folder), "rows": rows, "notes": notes,
             "dataVariables": [v["name"] for v in plan["dataVariables"]],
+            "methods": [m["document"]["id"] for m in plan["methods"]],
             "pipelines": [p["id"] for p in plan["pipelines"]], "warnings": plan["warnings"]}
 
 
@@ -126,7 +131,8 @@ def plan_legacy(export: dict) -> dict:
     dataset, levels = _dataset(export, warnings)
     variables = _data_variables(export, dataset, levels, warnings)
     fragments, tables = _tables(export, dataset, warnings)
-    pipelines = _pipelines(export, warnings)
+    methods = _session_methods(export, warnings)
+    pipelines = _pipelines(export, {m["function"]: m["document"]["id"] for m in methods}, warnings)
     if pipelines:   # sessions keep the pipeline they follow, and its progress, in core.pipeline
         for table in tables:
             if table["entityType"] == "session" and "core.pipeline" not in table["fragments"]:
@@ -138,13 +144,23 @@ def plan_legacy(export: dict) -> dict:
     modules = ["core"] + (["ophys"] if uses_ophys else [])
     return {"name": name, "title": info.get("name") or name, "description": info.get("description") or "",
             "dataset": dataset, "modules": modules, "fragments": fragments, "tables": tables, "dataVariables": variables,
-            "pipelines": pipelines, "warnings": warnings}
+            "methods": methods, "pipelines": pipelines, "warnings": warnings}
 
 
-# -- pipelines and presets -------------------------------------------------------------------
+# -- session methods, pipelines and presets ----------------------------------------------------
 
-def _pipelines(export: dict, warnings: List[str]) -> List[dict]:
-    """dev's pipelines of sessions, with the tasks that have a method here, and their rules for new sessions."""
+def _session_methods(export: dict, warnings: List[str]) -> List[dict]:
+    """The project's own session methods, as methods of sessions that run dev's code (legacymethods.plan)."""
+    sources = [(item["file"], legacymethods.function_name(PurePosixPath(item["file"])), item["text"])
+               for item in export.get("sessionMethods", [])]
+    methods, skipped = legacymethods.plan(sources, "session")
+    warnings.extend(skipped)
+    return methods
+
+
+def _pipelines(export: dict, imported: Dict[str, str], warnings: List[str]) -> List[dict]:
+    """dev's pipelines of sessions, with the tasks that have a method here (one of dev's that has an equivalent, or
+    one of the project's own session methods, imported), and their rules for new sessions."""
     pipelines: List[dict] = []
     ids: set = set()
     for item in export.get("pipelines", []):
@@ -152,7 +168,7 @@ def _pipelines(export: dict, warnings: List[str]) -> List[dict]:
         steps = []
         for task in item.get("tasks", []):
             function = str(task.get("function") or "")
-            method = DEV_METHODS.get(".".join(function.split(".")[-2:]).lower())
+            method = imported.get(function) or DEV_METHODS.get(".".join(function.split(".")[-2:]).lower())
             if method is None:
                 warnings.append(f"pipeline '{label}': task '{task.get('name', '')}' ({function}) has no method here; left out")
                 continue

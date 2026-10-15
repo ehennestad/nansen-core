@@ -1,5 +1,5 @@
 {
-  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table); dev's pipelines, with the tasks that have a method here and their rules for new sessions.",
+  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table); dev's pipelines, with the tasks that have a method here and their rules for new sessions. The project's own session methods (code/+RatNav/+sessionmethod) become methods of sessions that run dev's code (their files copied into matlab/, in the same packages), with the options read from their text; a file that is not a session method is left out, and a pipeline task that calls one of them becomes a step.",
   "project": {
     "schemaType": "nansen.project",
     "schemaVersion": "0.1.0",
@@ -390,9 +390,10 @@
     "table 'Sessions': 1 note(s) with no time; left out",
     "table 'Subjects': 1 BiologicalSex value(s) not among female, male, not detected; kept as written",
     "table 'Sessions (curated)': 1 row(s) not found in the session table; left out of its view",
+    "session method code/+RatNav/+sessionmethod/+process/+tools/makeLabel.m: makeLabel.m does not call nansen.session.SessionMethod.setAttributes, so it is not a dev session method; left out",
     "pipeline 'Two-photon preprocessing': task 'Plot stats' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
     "pipeline 'Plots only': task 'Plot stats' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
-    "pipeline 'Plots only': none of its tasks has a method here; left out",
+    "pipeline 'Plots only': task 'Plot speed' used dev's option preset 'Fast', which is not carried over; the method's defaults are used",
     "option presets of nansen.wrapper.normcorre.Processor (fast, thorough) are not carried over: dev's options are not the methods' here"
   ],
   "notebooks": [
@@ -510,6 +511,20 @@
     {
       "schemaType": "nansen.pipeline",
       "schemaVersion": "0.1.0",
+      "id": "legacy.plots_only",
+      "version": "1.0.0",
+      "title": "Plots only",
+      "entityType": "session",
+      "steps": [
+        {
+          "method": "legacy.plot_speed",
+          "title": "Plot speed"
+        }
+      ]
+    },
+    {
+      "schemaType": "nansen.pipeline",
+      "schemaVersion": "0.1.0",
       "id": "legacy.two_photon_preprocessing",
       "version": "1.0.0",
       "title": "Two-photon preprocessing",
@@ -544,5 +559,84 @@
         }
       ]
     }
+  ],
+  "methods": [
+    {
+      "schemaType": "nansen.method",
+      "schemaVersion": "0.1.0",
+      "id": "legacy.count_trials",
+      "version": "1.0.0",
+      "title": "Count Trials",
+      "description": "Count the trials of a session from its running speed.",
+      "category": "Process",
+      "entityType": "session",
+      "batchMode": "batch",
+      "implementations": {
+        "matlab": "RatNav.sessionmethod.process.countTrials"
+      },
+      "legacySessionMethod": {
+        "kind": "function"
+      },
+      "options": {
+        "type": "object",
+        "properties": {
+          "MinDuration": {
+            "type": "number",
+            "default": 2.5,
+            "description": "seconds"
+          },
+          "Method": {
+            "type": "string",
+            "default": "peaks",
+            "enum": [
+              "peaks",
+              "threshold"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "schemaType": "nansen.method",
+      "schemaVersion": "0.1.0",
+      "id": "legacy.plot_speed",
+      "version": "1.0.0",
+      "title": "Plot running speed",
+      "description": "Plot the running speed of a session.",
+      "category": "Plot",
+      "entityType": "session",
+      "batchMode": "serial",
+      "queueable": false,
+      "implementations": {
+        "matlab": "RatNav.sessionmethod.plot.PlotSpeed"
+      },
+      "legacySessionMethod": {
+        "kind": "class"
+      },
+      "options": {
+        "type": "object",
+        "properties": {
+          "Smooth": {
+            "type": "boolean",
+            "default": true
+          },
+          "Window": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "default": [
+              0,
+              60
+            ],
+            "description": "seconds shown"
+          }
+        }
+      }
+    }
+  ],
+  "methodFiles": [
+    "+RatNav/+sessionmethod/+plot/PlotSpeed.m",
+    "+RatNav/+sessionmethod/+process/countTrials.m"
   ]
 }

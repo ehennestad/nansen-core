@@ -1,0 +1,298 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 1,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 2,
+        "params": {
+          "path": "${scratch}/data/+lab/+sessionmethod/helper.m"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 3,
+        "params": {
+          "path": "${scratch}/data/notes.txt"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 4,
+        "params": {
+          "path": "${scratch}/data/missing"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 5,
+        "params": {
+          "path": "${scratch}/data/+lab",
+          "entityType": "nope"
+        }
+      },
+      "expect": {
+        "error": "unknown-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 6,
+        "params": {
+          "path": ""
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 7,
+        "params": {
+          "path": "${scratch}/data/+lab/+sessionmethod/+process/countFiles.m"
+        }
+      },
+      "expect": {
+        "result": {
+          "methods": [
+            {
+              "id": "legacy.count_files",
+              "version": "1.0.0",
+              "title": "Count Files",
+              "entityType": "session",
+              "description": "Count the files of a session's folder and save the count.",
+              "category": "Process",
+              "batchMode": "serial",
+              "queueable": true,
+              "languages": [
+                "matlab"
+              ],
+              "module": "project",
+              "tool": false,
+              "legacy": true,
+              "options": {
+                "type": "object",
+                "properties": {
+                  "DataLocation": {
+                    "type": "string",
+                    "default": "Raw",
+                    "description": "The data location whose files are counted"
+                  },
+                  "Extension": {
+                    "type": "string",
+                    "default": ".tif",
+                    "description": "Which files are counted",
+                    "enum": [
+                      ".tif",
+                      ".txt"
+                    ]
+                  },
+                  "Scale": {
+                    "type": "number",
+                    "default": 1
+                  },
+                  "Label": {
+                    "type": "string",
+                    "default": "it's 100% files"
+                  },
+                  "Window": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "default": [
+                      1,
+                      10
+                    ]
+                  },
+                  "Tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "default": [
+                      "a",
+                      "b"
+                    ]
+                  },
+                  "Advanced": {
+                    "type": "object",
+                    "properties": {
+                      "Verbose": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Print what is counted"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "warnings": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 8,
+        "params": {
+          "path": "${scratch}/data/+lab/+sessionmethod/+process/countFiles.m"
+        }
+      },
+      "expect": {
+        "error": "method-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 9,
+        "params": {
+          "path": "${scratch}/data/+lab/+sessionmethod/+plot"
+        }
+      },
+      "expect": {
+        "result": {
+          "methods": [
+            {
+              "id": "legacy.summarize_sessions",
+              "title": "Summarize sessions",
+              "description": "Write a line about each session, all of them at once.",
+              "category": "Plot",
+              "batchMode": "batch",
+              "queueable": false,
+              "languages": [
+                "matlab"
+              ],
+              "legacy": true,
+              "options": {
+                "type": "object",
+                "properties": {
+                  "Prefix": {
+                    "type": "string",
+                    "default": "Session",
+                    "description": "Put before each line"
+                  },
+                  "Repeat": {
+                    "type": "number",
+                    "default": 2
+                  },
+                  "Mode": {
+                    "type": "string",
+                    "default": "short",
+                    "enum": [
+                      "short",
+                      "long"
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "warnings": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.importLegacy",
+        "id": 10,
+        "params": {
+          "path": "${scratch}/data/+lab"
+        }
+      },
+      "expect": {
+        "error": "method-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.list",
+        "id": 11,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "legacy.count_files",
+            "legacy": true
+          },
+          {
+            "id": "legacy.summarize_sessions",
+            "legacy": true
+          },
+          {
+            "id": "core.file_stats"
+          },
+          {
+            "id": "core.export_keys"
+          },
+          {
+            "id": "core.wait"
+          },
+          {
+            "id": "core.backup"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "files.list",
+        "id": 12,
+        "params": {
+          "path": "matlab/+lab/+sessionmethod"
+        }
+      },
+      "expect": {
+        "result": {
+          "entries": [
+            {
+              "name": "+plot",
+              "isFolder": true
+            },
+            {
+              "name": "+process",
+              "isFolder": true
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

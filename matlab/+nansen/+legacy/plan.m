@@ -3,13 +3,20 @@ function out = plan(export)
 %
 %   The export must be checked already (nansen.legacy.convert does that).
 %   plan has fields name, title, description, dataset, modules, fragments,
-%   tables, dataVariables, pipelines and warnings; see nansen.legacy.convert.
+%   tables, dataVariables, methods (the project's own session methods, as
+%   nansen.legacy.planSessionMethods plans them), pipelines and warnings;
+%   see nansen.legacy.convert.
     warnings = {};
     info = nansen.internal.getField(export, "project", struct());
     [dataset, levels, warnings] = buildDataset(export, warnings);
     [variables, dataset, warnings] = buildDataVariables(export, dataset, levels, warnings);
     [fragments, tables, warnings] = buildTables(export, dataset, warnings);
-    [pipelines, warnings] = buildPipelines(export, warnings);
+    [methods_, warnings] = buildSessionMethods(export, warnings);
+    imported = containers.Map("KeyType", "char", "ValueType", "char");   % dev's function name -> method id
+    for i = 1:numel(methods_)
+        imported(char(methods_{i}.function)) = methods_{i}.document.id;
+    end
+    [pipelines, warnings] = buildPipelines(export, imported, warnings);
     if ~isempty(pipelines)   % sessions keep the pipeline they follow, and its progress, in core.pipeline
         for i = 1:numel(tables)
             if string(tables{i}.entityType) == "session" && ~ismember("core.pipeline", string(tables{i}.fragments))
@@ -42,13 +49,27 @@ function out = plan(export)
     end
     out = struct("name", name, "title", title, "description", textOf(info, "description"), ...
         "dataset", dataset, "modules", modules, "fragments", {fragments}, "tables", {tables}, "dataVariables", {variables}, ...
-        "pipelines", {pipelines}, "warnings", {warnings});
+        "methods", {methods_}, "pipelines", {pipelines}, "warnings", {warnings});
 end
 
-% -- pipelines and presets -------------------------------------------------------------------
+% -- session methods, pipelines and presets ----------------------------------------------------
 
-function [pipelines, warnings] = buildPipelines(export, warnings)
-    % dev's pipelines of sessions, with the tasks that have a method here, and their rules for new sessions
+function [methods_, warnings] = buildSessionMethods(export, warnings)
+    % The project's own session methods, as methods of sessions that run dev's code (nansen.legacy.planSessionMethods)
+    items = listOf(nansen.internal.getField(export, "sessionMethods", {}));
+    sources = cell(1, numel(items));
+    for i = 1:numel(items)
+        file = textOf(items{i}, "file");
+        sources{i} = struct("where", file, "function", nansen.legacy.functionName(file), ...
+            "text", string(nansen.internal.getField(items{i}, "text", "")));
+    end
+    [methods_, skipped] = nansen.legacy.planSessionMethods(sources, "session");
+    warnings = [warnings, skipped];
+end
+
+function [pipelines, warnings] = buildPipelines(export, imported, warnings)
+    % dev's pipelines of sessions, with the tasks that have a method here (one of dev's that has an equivalent, or
+    % one of the project's own session methods, imported), and their rules for new sessions
     methods_ = struct("motioncorrection_normcorre", "ophys.normcorre", "motioncorrection_flowreg", "ophys.flowreg", ...
         "autosegmentation_quicky", "ophys.quicky", "autosegmentation_suite2p", "ophys.suite2p", ...
         "autosegmentation_extract", "ophys.extract", "signalextraction_extractsignals", "ophys.extract_signals", ...
@@ -71,11 +92,14 @@ function [pipelines, warnings] = buildPipelines(export, warnings)
             parts = split(functionName, ".");
             count = numel(parts);
             key = lower(strjoin(parts(max(1, count - 1):count), "_"));
-            if ~isvarname(char(key)) || ~isfield(methods_, key)
+            if isKey(imported, char(functionName))
+                method = string(imported(char(functionName)));
+            elseif isvarname(char(key)) && isfield(methods_, key)
+                method = string(methods_.(key));
+            else
                 warnings{end + 1} = sprintf("pipeline '%s': task '%s' (%s) has no method here; left out", label, textOf(task, "name"), functionName); %#ok<AGROW>
                 continue
             end
-            method = string(methods_.(key));
             stepTitle = textOf(task, "name");
             if stepTitle == ""
                 stepTitle = method;

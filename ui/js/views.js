@@ -1686,6 +1686,8 @@
             h("ul.list", fragments.map((f) => h("li", h("div.grow", h("div.title", f.title, f.computed ? h("span.pill.accent", { style: { marginLeft: "8px" } }, "computed") : null),
               h("div.sub", `${f.id} ${f.version} · ${f.columns.map((c) => c.name).join(", ")}`)))))),
           h("div.card.methods-card", h("div.card-head", N.icon("zap"), h("h3", "Methods"), h("div.spacer"),
+            h("button.btn.small.ghost.import-legacy-method", { title: "Import a session method of NANSEN dev (a .m file, or a folder of them), to run as it is in MATLAB",
+              on: { click: () => importLegacyMethodDialog(app) } }, N.icon("file"), "Import dev method"),
             h("button.btn.small.new-method", { on: { click: () => newMethodDialog(app) } }, N.icon("plus", 14), "New method")),
             h("ul.list", methods.map((m) => {
               // dev's Customize Menus: a method left out of the run menus still runs when asked for by id
@@ -1696,7 +1698,8 @@
                 } catch (error) { shown.checked = !shown.checked; N.showError(error, "Could not change the menus"); }
               } } });
               const item = h("li" + (m.hidden ? ".muted" : ""), { dataset: { method: m.id } },
-                h("div.grow", h("div.title", m.title), h("div.sub", `${m.id} · ${m.tool ? "project tool" : m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)),
+                h("div.grow", h("div.title", m.title, m.legacy ? h("span.pill.legacy-pill", { style: { marginLeft: "8px" }, title: "A session method of NANSEN dev, run as it is in MATLAB" }, "dev") : null),
+                  h("div.sub", `${m.id} · ${m.tool ? "project tool" : m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)),
                 h("label.switch.method-shown", { title: "Shown in the run menus" }, shown, h("span")));
               return item;
             }))))));
@@ -2227,6 +2230,32 @@
         await app.reloadProject();
         app.render();
         N.toast("Method created", result.files.join(" · "), "success", 7000);
+      },
+    });
+  }
+
+  /* Import NANSEN dev session methods: their files are copied into the project and run unchanged in MATLAB. */
+  function importLegacyMethodDialog(app) {
+    const types = app.project.entityTypes.map((t) => t.name);
+    formDialog({
+      title: "Import dev method",
+      intro: "A session method of NANSEN dev (a function made from its template, or a subclass of nansen.session.SessionMethod) is copied into the project's matlab/ folder, in its packages, and runs as it is in MATLAB, with a stand-in for dev's session object. A folder, such as a dev project's code/+<name>/+sessionmethod, imports each one in it. Its options are read from its defaults.",
+      label: "Import",
+      required: ["path"],
+      schema: { type: "object", properties: {
+        path: { type: "string", title: "File or folder", description: "A .m file or a folder; relative to the project folder, or a full path" },
+        entityType: { type: "string", title: "Runs on", enum: ["*", ...types], default: types.includes("session") ? "session" : "*" },
+      } },
+      submit: async (values) => {
+        const result = await app.client.request("methods.importLegacy", { path: values.path, entityType: values.entityType });
+        await app.reloadProject();
+        app.render();
+        N.toast("Imported from dev", result.methods.map((m) => m.id).join(" · "), "success", 7000);
+        if (result.warnings.length) {
+          N.dialog({ title: "Not imported", content: h("div", { style: { padding: "16px 20px" } },
+            h("p.muted", { style: { marginTop: 0 } }, "These files are not dev session methods:"),
+            h("ul.notes", result.warnings.map((w) => h("li", w)))), buttons: [{ label: "OK", kind: "primary" }] });
+        }
       },
     });
   }

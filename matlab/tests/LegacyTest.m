@@ -68,10 +68,11 @@ classdef LegacyTest < matlab.unittest.TestCase
                 "IsInternal", {false, false, false, true}, "IsFavorite", {false, false, false, false});
             save(fullfile(folder, "configurations", "filepath_settings.mat"), "Data", "Preferences");
 
-            % a pipeline with a task that has a method here, one that has not, and a rule for new sessions
-            tasks = struct("TaskNum", {1, 2}, "TaskName", {'Extract signals', 'Plot stats'}, ...
+            % a pipeline with a task that has a method here, one that has not, one of the project's own, and a rule for new sessions
+            tasks = struct("TaskNum", {1, 2, 3}, "TaskName", {'Extract signals', 'Plot stats', 'Note zoom'}, ...
                 "TaskFunction", {'nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.extractSignals', ...
-                'nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats'}, "OptionPresetSelection", {'Default', ''});
+                'nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats', 'RatNav.sessionmethod.process.noteZoom'}, ...
+                "OptionPresetSelection", {'Default', '', ''});
             Data = struct("Uuid", 'p1', "PipelineName", 'Signals', "PipelineTasks", tasks, ...
                 "SessionProperties", struct("VariableName", 'sessionID', "Mode", 'contains', "Expression", 'm110'));
             Preferences = struct("SourceID", '', "DefaultPipeline", '');
@@ -107,6 +108,35 @@ classdef LegacyTest < matlab.unittest.TestCase
             save(fullfile(folder, "metadata", "tables", "sessions.mat"), "-struct", "S");
             catalogTable = table({'Sessions'}, true, VariableNames=["MetaTableName", "IsMaster"]);
             save(fullfile(folder, "metadata", "tables", "metatable_catalog.mat"), "catalogTable");
+
+            % the project's own session method (dev's Module.getObjectMethodFolder), and a file there that is not one
+            methods_ = fullfile(folder, "code", "+RatNav", "+sessionmethod");
+            mkdir(fullfile(methods_, "+process"));
+            lines = [
+                "function varargout = noteZoom(sessionObject, varargin)"
+                "%NOTEZOOM Write the zoom of the session's config in its raw folder."
+                "    params = getDefaultParameters();"
+                "    ATTRIBUTES = {'serial'};"
+                "    attributes = nansen.session.SessionMethod.setAttributes(params, ATTRIBUTES{:});"
+                "    if ~nargin && nargout > 0"
+                "        varargout = {attributes};   return"
+                "    end"
+                "    params = utility.parsenvpairs(params, [], varargin);"
+                "    config = sessionObject.loadData('SessionConfig');"
+                "    folder = sessionObject.getSessionFolder('Rawdata');"
+                "    fid = fopen(fullfile(folder, params.FileName), 'w');"
+                "    fprintf(fid, '%d', config.zoom * params.Factor);"
+                "    fclose(fid);"
+                "end"
+                ""
+                "function params = getDefaultParameters()"
+                "    params = struct();"
+                "    params.FileName = 'zoom.txt'; % Written in the session's raw folder"
+                "    params.Factor = 1;"
+                "end"
+                ];
+            nansen.internal.writeText(fullfile(methods_, "+process", "noteZoom.m"), strjoin(lines', newline) + newline);
+            nansen.internal.writeText(fullfile(methods_, "describe.m"), "function d = describe(s)" + newline + "    d = s;" + newline + "end" + newline);
         end
     end
 
@@ -137,6 +167,10 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(rows{1}.Date), "2025-05-23");
             testCase.verifyEmpty(rows{2}.Description);   % empty text is null
             testCase.verifyEmpty(rows{2}.Quality);       % NaN is null
+            methods_ = nansen.internal.asCellOfStructs(export.sessionMethods);   % the project's own, with their text
+            testCase.verifyEqual(string(cellfun(@(m) m.file, methods_, UniformOutput=false)), ...
+                ["code/+RatNav/+sessionmethod/+process/noteZoom.m", "code/+RatNav/+sessionmethod/describe.m"]);
+            testCase.verifyTrue(startsWith(string(methods_{1}.text), "function varargout = noteZoom("));
         end
 
         function exportWritesJsonForPython(testCase)
@@ -157,6 +191,8 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyEqual(report.notes, struct("session", 2));
             testCase.verifyEqual(string(report.pipelines), "legacy.signals");   % with extractSignals; plotImageStats has no method here
             testCase.verifyTrue(any(contains(string(report.warnings), "task 'Plot stats'")));
+            testCase.verifyEqual(string(report.methods), "legacy.note_zoom");   % the project's own session method
+            testCase.verifyTrue(any(contains(string(report.warnings), "session method code/+RatNav/+sessionmethod/describe.m: ")));
             testCase.verifyTrue(any(contains(string(report.warnings), "option presets of normcorre (Fast) are not carried over")));
             testCase.verifyTrue(any(contains(string(report.warnings), "1 note(s) on rows that were left out")));
 
@@ -176,6 +212,16 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyEqual(cellfun(@(n) string(n.type), notes), ["todo", "important"]);
             testCase.verifyEqual(string(notes{2}.tags), "drift");
             testCase.verifyEqual(string(notes{2}.key.session_id), "m110-001");
+
+            % dev's session method runs as it is: dev's data location and variable names, and its options
+            steps = nansen.internal.asCellOfStructs(project.pipeline("legacy.signals").steps);
+            testCase.verifyEqual(string(cellfun(@(s) s.method, steps, UniformOutput=false)), ["ophys.extract_signals", "legacy.note_zoom"]);
+            method = project.method("legacy.note_zoom");
+            testCase.verifyTrue(isfile(fullfile(target, "matlab", "+RatNav", "+sessionmethod", "+process", "noteZoom.m")));
+            testCase.verifyEqual(string(method.Document.implementations.matlab), "RatNav.sessionmethod.process.noteZoom");
+            project.run("legacy.note_zoom", {first}, Options=struct("Factor", 3));
+            written = fullfile(testCase.Folder, "raw", "m110", "2025_05_23", "session-m110-001", "zoom.txt");
+            testCase.verifyEqual(string(nansen.internal.readText(written)), "6");
         end
 
         function importNeedsAnEmptyFolder(testCase)

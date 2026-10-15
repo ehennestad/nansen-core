@@ -70,6 +70,11 @@ classdef Method
             tf = obj.EntityType == "@project";
         end
 
+        function tf = isLegacy(obj)
+            %isLegacy A session method of NANSEN dev, run unchanged through nansen.legacy.runSessionMethod
+            tf = isfield(obj.Document, "legacySessionMethod");
+        end
+
         function schema = optionsSchema(obj)
             schema = nansen.internal.getField(obj.Document, "options", struct("type", 'object', "properties", struct()));
         end
@@ -143,6 +148,9 @@ classdef Method
                 "category", char(nansen.internal.getField(obj.Document, "category", "")), ...
                 "batchMode", char(obj.BatchMode), "queueable", obj.Queueable, ...
                 "languages", {cellstr(obj.Languages)}, "module", char(obj.Module), "options", obj.optionsSchema(), "tool", obj.isTool());
+            if obj.isLegacy()
+                summary.legacy = true;
+            end
         end
     end
 end

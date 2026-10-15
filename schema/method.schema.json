@@ -38,6 +38,17 @@
     "options": {
       "type": "object",
       "description": "A draft-07 JSON Schema for the options object (type object, with properties). Each property's default is its default value."
+    },
+    "legacySessionMethod": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "description": "The MATLAB implementation is a session method of NANSEN dev, imported unchanged (methods.importLegacy): a function varargout = name(sessionObject, varargin) whose attributes come from nansen.session.SessionMethod.setAttributes, or a subclass of nansen.session.SessionMethod. nansen.runMethod calls it with a nansen.legacy.SessionShim per entity (dev's session object) and dev's default options with the run's options over them.",
+      "properties": {
+        "kind": { "type": "string", "enum": ["function", "class"] }
+      }
     }
-  }
+  },
+  "if": { "required": ["legacySessionMethod"] },
+  "then": { "properties": { "implementations": { "required": ["matlab"] } } }
 }

@@ -52,7 +52,7 @@ classdef Api < handle
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "columns.import", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "view.updateRois", "view.detect", "view.methods", "view.run", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "adapters.import", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "rois.neuropil", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
-                "methods.list", "methods.setHidden", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
+                "methods.list", "methods.setHidden", "methods.create", "methods.importLegacy", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.comment", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
             for name = names
@@ -1927,6 +1927,18 @@ classdef Api < handle
                 obj.emit("entities", struct("entityTypes", {{char(method.EntityType)}}));
             end
             result.files = files;
+        end
+
+        function result = apiMethodsImportLegacy(obj, params)
+            % Import NANSEN dev session methods (a .m file, or a folder of them) as project methods run in MATLAB
+            path = nansen.internal.getField(params, "path", "");
+            if ~((ischar(path) || isstring(path)) && strlength(string(path)) > 0)
+                nansen.internal.throwError("invalid-params", "path is a .m file or a folder")
+            end
+            project = obj.requireProject();
+            result = project.importLegacyMethods(string(path), ...
+                EntityType=string(nansen.internal.getField(params, "entityType", "")));
+            obj.emit("project", struct("name", char(project.Name)));
         end
 
         function result = apiMethodsRun(obj, params)
