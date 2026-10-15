@@ -2,8 +2,10 @@
  *
  * As dev's classifyMultiSessionRois (with roiclassifier): ophys.align_sessions copies a reference session's
  * ROIs to the others with the same ids, and this page shows each id's crop of every session's FOV image,
- * so an ROI that drifted or vanished is rejected everywhere with one key. A double-click on a crop opens that session
- * in the viewer with the ROI selected, to move, reshape or redraw it there (dev's multi-session editRois).
+ * so an ROI that drifted or vanished is rejected everywhere with one key, or deleted from all of them. A double-click on a
+ * crop opens that session in the viewer with the ROI selected, to move, reshape or redraw it there (dev's multi-session
+ * editRois); with "Apply edits to all aligned sessions", what is added, moved, reshaped or deleted there is done in every
+ * session aligned with it too, through each one's alignment (rois.update's mirror, dev's synchEntries 'Mirror').
  */
 "use strict";
 const { h } = N;
@@ -75,7 +77,7 @@ N.registerPage({
       return;
     }
     const state = { roiVariable: roiVariables[0].name, imageVariable: (imageVariables.find((v) => v.name === "FovAverageProjection") || imageVariables[0]).name,
-      sessions: [], selected: null };
+      sessions: [], selected: null, mirror: false };
     const pick = (list, value, onChange) => {
       const select = h("select.input", { on: { change: () => onChange(select.value) } }, list.map((v) => h("option", { value: v.name, selected: v.name === value }, v.name)));
       return select;
@@ -124,7 +126,7 @@ N.registerPage({
 
     function editIn(session, id) {
       N.views.stackViewer(app, session.entityType, session.key, state.imageVariable, [state.roiVariable], [],
-        { select: id, mode: "mean", onClose: () => load() });
+        { select: id, mode: "mean", mirror: state.mirror, onClose: () => load() });
     }
 
     // An ROI's classification: the one all sessions agree on, or none
@@ -155,6 +157,24 @@ N.registerPage({
       } catch (error) { N.showError(error, "Could not classify the ROI"); }
     }
 
+    // dev's MultiSessionRoiCollection: an ROI deleted in every session that has it
+    async function removeEverywhere() {
+      if (state.selected === null) return;
+      const id = state.selected;
+      const holders = state.sessions.filter((s) => s.rois.some((r) => r.id === id));
+      if (!(await N.confirm("Delete the ROI?", `ROI ${id} is deleted from ${holders.length} session${holders.length === 1 ? "" : "s"}.`, "Delete", "danger"))) return;
+      try {
+        for (const s of holders) {
+          const result = await app.client.request("rois.update", { entityType: s.entityType, key: s.key, variable: state.roiVariable, remove: [id] });
+          s.rois = result.rois;
+        }
+        const list = ids();
+        state.selected = null;
+        draw();
+        if (list.length) select(list.find((other) => other > id) ?? list[list.length - 1]);
+      } catch (error) { N.showError(error, "Could not delete the ROI"); }
+    }
+
     const onKey = (event) => {
       if (!document.body.contains(table)) { document.removeEventListener("keydown", onKey); return; }
       if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName) || document.querySelector(".backdrop")) return;
@@ -164,6 +184,7 @@ N.registerPage({
       else if (event.key === "r") classify("rejected");
       else if (event.key === "q") classify("unresolved");
       else if (event.key === "u") classify(null);
+      else if (event.key === "Delete") removeEverywhere();
       else if (event.key === "ArrowDown" || event.key === "j") select(list[Math.min(list.length - 1, at + 1)]);
       else if (event.key === "ArrowUp" || event.key === "k") select(list[Math.max(0, at - 1)]);
       else return;
@@ -173,13 +194,17 @@ N.registerPage({
 
     N.fill(el,
       h("div.hero", h("div", h("h1", "ROI review"),
-        h("p", "Each ROI in every session that has it, cropped from the session's FOV image. Accept (a) or reject (r) an ROI in all sessions at once; u clears it, ↑ and ↓ move."))),
+        h("p", "Each ROI in every session that has it, cropped from the session's FOV image. Accept (a) or reject (r) an ROI in all sessions at once; u clears it, Delete removes it from all of them, ↑ and ↓ move. Double-click a crop to edit the ROI in that session."))),
       h("div.card", { style: { padding: "14px" } },
         h("div.rr-bar",
           h("label", "ROIs", pick(roiVariables, state.roiVariable, (v) => { state.roiVariable = v; load(); })),
           h("label", "Image", pick(imageVariables, state.imageVariable, (v) => { state.imageVariable = v; load(); })),
           h("button.btn.small.rr-accept", { on: { click: () => classify("accepted") } }, N.icon("check", 13), "Accept"),
           h("button.btn.small.rr-reject", { on: { click: () => classify("rejected") } }, N.icon("x", 13), "Reject"),
+          h("button.btn.small.rr-delete", { title: "Delete the ROI from every session (Delete)", on: { click: () => removeEverywhere() } }, N.icon("trash", 13), "Delete"),
+          h("label.rr-mirror-label", { title: "In the viewer a double-click opens, ROIs added, moved, reshaped or deleted are changed in every session aligned with it too" },
+            h("input.rr-mirror", { type: "checkbox", checked: state.mirror, on: { change: (event) => { state.mirror = event.target.checked; } } }),
+            "Apply edits to all aligned sessions"),
           h("div", { style: { flex: 1 } }), status),
         table));
     await load();

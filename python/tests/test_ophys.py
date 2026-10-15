@@ -556,6 +556,112 @@ def test_a_turned_image_is_turned_back():
     assert ophys["rotate_points"](points, 90, 40, 40).tolist() == [[20.0, 30.0]]   # 10 rows below the centre, a quarter turn on
 
 
+ALIGNED = {"key": {"session_id": "b"}, "shift": [2, -3], "rotation": 2.5, "patches": 3,
+           "rowShifts": [0, 1, 0, -1, 0, 1, 2, 0, -1], "columnShifts": [1, 0, 0, 0, -1, 0, 0, 1, 1]}
+
+
+def test_points_go_to_an_aligned_entity_and_back():
+    from nansen.frames import _displacement, aligned_points, carried_pixels, reference_points
+    rng = np.random.default_rng(4)
+    points = rng.uniform(-2, 50, (200, 2))
+    there = aligned_points(points, ALIGNED, 48, 50)
+    assert np.abs(reference_points(there, ALIGNED, 48, 50) - points).max() < 1e-9
+    # the displacement field is the motion correction's: the patches' shifts at their centres, bilinear between them
+    rows, columns = np.mgrid[0:48, 0:50]
+    grid = np.stack([rows.ravel(), columns.ravel()], axis=1).astype(float)
+    field = _displacement(grid, ALIGNED, 48, 50)
+    weights = (ophys["_axis_weights"](ophys["patch_edges"](48, 3), 48), ophys["_axis_weights"](ophys["patch_edges"](50, 3), 50))
+    for axis, name in enumerate(("rowShifts", "columnShifts")):
+        assert np.array_equal(field[:, axis].reshape(48, 50), ophys["shift_field"](np.reshape(ALIGNED[name], (3, 3)), *weights))
+    # an ROI carried from an entity to itself stays; from the reference (no move at all) it goes where aligned_points puts it
+    reference = {"key": {"session_id": "a"}, "shift": [0, 0], "rotation": 0}
+    pixels = [[20, 20], [20, 21], [21, 20], [21, 21]]
+    assert carried_pixels(pixels, ALIGNED, ALIGNED, 48, 50) == pixels
+    expected = sorted({tuple(int(v) for v in p) for p in np.floor(aligned_points(pixels, ALIGNED, 48, 50) + 0.5)})
+    assert carried_pixels(pixels, reference, ALIGNED, 48, 50) == [list(p) for p in expected]
+    assert carried_pixels([[0, 0]], reference, {"shift": [-5, -5], "rotation": 0}, 48, 50) == []   # outside the image
+
+
+def test_an_edit_is_mirrored_to_an_aligned_entity():
+    from nansen.frames import mirror_rois_at, roi_outlines
+    source, target = {"shift": [0, 0], "rotation": 0}, {"shift": [1, 2], "rotation": 0}
+    before = roi_outlines({"rois": [{"id": 1, "pixels": [[3, 3]]}, {"id": 2, "pixels": [[5, 5]]}, {"id": 3, "pixels": [[7, 7]]},
+                                    {"id": 4, "pixels": [[9, 9]]}]})
+    after = roi_outlines({"rois": [{"id": 1, "pixels": [[3, 4]]}, {"id": 2, "pixels": [[5, 5]], "classification": "rejected"},
+                                   {"id": 4, "pixels": [[19, 19]]}, {"id": 6, "pixels": [[1, 1], [1, 2]], "classification": "accepted"},
+                                   {"id": 7, "pixels": [[2, 2]]}]})
+    here = {"imageSize": [20, 20], "rois": [{"id": 1, "pixels": [[4, 5]], "cellType": "axon"}, {"id": 2, "pixels": [[6, 7]]},
+                                            {"id": 3, "pixels": [[8, 9]]}, {"id": 4, "pixels": [[10, 11]]}, {"id": 5, "pixels": [[0, 0]]},
+                                            {"id": 7, "pixels": [[0, 1]], "plane": 2}]}
+    here["rois"][-1]["channel"] = 1
+    for roi in here["rois"][:-1]:
+        roi.update(plane=1, channel=1)
+    document, summary = mirror_rois_at(here, 1, 1, before, after, source, target, [20, 20])
+    # 1 moved (its cell type kept), 2 rejected, 3 removed, 4 moved out of the image (removed), 5 left, 6 added with its id,
+    # 7 not added: another plane's ROI has the id
+    assert summary == {"added": [6], "changed": [1, 2], "removed": [3, 4]}
+    rois = {roi["id"]: roi for roi in document["rois"]}
+    assert sorted(rois) == [1, 2, 5, 6, 7]
+    assert rois[1]["pixels"] == [[4, 6]] and rois[1]["cellType"] == "axon"
+    assert rois[2]["classification"] == "rejected" and rois[2]["pixels"] == [[6, 7]]
+    assert rois[6] == dict(rois[6], pixels=[[2, 3], [2, 4]], classification="accepted", plane=1, channel=1)
+    assert rois[7]["plane"] == 2 and rois[7]["pixels"] == [[0, 1]]
+
+
+def _motion_api(tmp_path):
+    """The ophys-motion conformance project, with its recordings as TwoPhotonSeries_Original."""
+    from nansen.api import Api
+    folder = tmp_path / "project"
+    shutil.copytree(Path(__file__).resolve().parents[2] / "conformance" / "api" / "ophys-motion" / "project", folder)
+    api = Api(start_queue=False)
+    for method, params in [("project.open", {"path": str(folder)}), ("project.scan", {}), ("project.sync", {}),
+                           ("tools.run", {"methodId": "ophys.setup_variables", "options": {"rawFilePattern": "recording", "rawFileAdapter": "npy", "addColumns": False}})]:
+        assert "result" in api.handle({"id": 1, "method": method, "params": params}), method
+    return api
+
+
+def _call(api, method, **params):
+    response = api.handle({"id": 2, "method": method, "params": params})
+    if "error" in response:
+        raise NansenError(response["error"]["code"], response["error"]["message"])
+    return response["result"]
+
+
+def test_rois_follow_a_field_of_view_that_bends_only_with_patches(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("make_data", Path(__file__).resolve().parents[2] / "conformance" / "api" / "ophys-motion" / "make_data.py")
+    truth = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(truth)
+    api = _motion_api(tmp_path)
+    s8, s9 = {"subject_id": "m1", "session_id": "s8"}, {"subject_id": "m1", "session_id": "s9"}
+    reference = api.project.load(api.project.entity("session", s8), "RoiArray")["rois"]
+    landed = [truth.half_up(np.stack(truth.nr_there(*np.array(roi["pixels"], float).T), axis=1)) for roi in reference]
+    rois = lambda: [roi["pixels"] for roi in api.project.load(api.project.entity("session", s9), "RoiArray", cached=False)["rois"]]
+    try:
+        align = lambda patches: _call(api, "methods.run", methodId="ophys.align_sessions", entityType="session", keys=[s8, s9],
+                                      options={"image": "TwoPhotonSeries_Original", "maxShift": 6, "patches": patches, "maxDeviation": 2})
+        align(1)
+        assert rois() != landed   # moved as a whole only, some pixels are off by the field
+        result = align(3)["results"][0]
+        assert rois() == landed
+        assert result["shifts"][1]["rowShifts"] == sum(truth.NR_ROWS, []) and result["shifts"][1]["shift"] == list(truth.NR_MOVE)
+        alignment = api.project.load(api.project.entity("session", s8), "RoiArray", cached=False)["alignment"]
+        assert alignment["reference"] == s8 and [e["variable"] for e in alignment["entities"]] == ["RoiArray", "RoiArray"]
+        # an ROI added in s9 with mirror goes to s8; an undo (a restore of what there was) with mirror takes it out again
+        before = _call(api, "rois.update", entityType="session", key=s9, variable="RoiArray")["rois"]
+        added = _call(api, "rois.update", entityType="session", key=s9, variable="RoiArray", add=[{"pixels": [[40, 40], [40, 41]]}], mirror=True)
+        assert added["added"] == [4] and added["mirrored"] == [{"key": s8, "added": [4], "changed": [], "removed": []}]
+        undone = _call(api, "rois.update", entityType="session", key=s9, variable="RoiArray", restore=before, mirror=True)
+        assert undone["mirrored"] == [{"key": s8, "added": [], "changed": [], "removed": [4]}]
+        assert [r["id"] for r in api.project.load(api.project.entity("session", s8), "RoiArray", cached=False)["rois"]] == [1, 2, 3]
+        # an id added in one session is free in the other too: s8 has an ROI 4 of its own now
+        _call(api, "rois.update", entityType="session", key=s8, variable="RoiArray", add=[{"pixels": [[2, 2]]}])
+        again = _call(api, "rois.update", entityType="session", key=s9, variable="RoiArray", add=[{"pixels": [[30, 30]]}], mirror=True)
+        assert again["added"] == [5] and again["mirrored"][0]["added"] == [5]
+    finally:
+        api.close()
+
+
 def test_shape_detection_finds_ring_shaped_somata_where_they_are():
     rng = np.random.default_rng(5)
     rows, columns = np.mgrid[0:64, 0:64].astype(float)

@@ -1519,11 +1519,17 @@ classdef Api < handle
             if ~isempty(imageSize) && ~isfield(current, "imageSize")
                 current.imageSize = double(reshape(imageSize, 1, []));
             end
+            mirror = nansen.Api.flag(params, "mirror");
+            aligned = {};
+            firstId = 1;
+            if mirror
+                [aligned, firstId] = obj.alignedRois(project, entity, params, current, variable);
+            end
             [document, added] = nansen.internal.updateRoisAt(current, plane, channel, ...
                 nansen.internal.getField(params, "classify", []), nansen.internal.getField(params, "remove", []), ...
                 nansen.internal.getField(params, "add", []), nansen.internal.getField(params, "move", []), ...
                 nansen.internal.getField(params, "merge", []), nansen.internal.getField(params, "pixels", []), restore, ...
-                nansen.internal.getField(params, "cellType", []), nansen.internal.getField(params, "link", []));
+                nansen.internal.getField(params, "cellType", []), nansen.internal.getField(params, "link", []), firstId);
             if isfield(params, "import") && ~(isnumeric(params.import) && isempty(params.import))   % null is none
                 % roimanager's loaded ROIs, or a segmentation's, added to these
                 spec = params.import;
@@ -1531,11 +1537,60 @@ classdef Api < handle
                     nansen.internal.throwError("invalid-params", "import is {variable} or {path, adapter?}, and a mode")
                 end
                 [document, imported] = nansen.internal.importRoisAt(document, plane, channel, obj.importedRois(project, entity, spec), ...
-                    nansen.internal.getField(spec, "mode", "append"));
+                    nansen.internal.getField(spec, "mode", "append"), firstId);
                 added = [reshape(added, 1, []), reshape(imported, 1, [])];
             end
             project.save(entity, variable, document);
             result = struct("rois", {nansen.internal.roiOutlines(nansen.internal.roisAt(document, plane, channel))}, "added", {added});
+            if mirror   % the same change made to the ROIs of the entities aligned with this one (dev's synchEntries 'Mirror')
+                before = nansen.internal.roiOutlines(nansen.internal.roisAt(current, plane, channel));
+                after = nansen.internal.roiOutlines(nansen.internal.roisAt(document, plane, channel));
+                alignment = current.alignment;
+                source = nansen.internal.alignmentEntry(alignment, entity.Key);
+                mirrored = cell(1, numel(aligned));
+                for i = 1:numel(aligned)
+                    entry = aligned{i}.entry;
+                    [value, summary] = nansen.internal.mirrorRoisAt(aligned{i}.value, plane, channel, before, after, source, entry, ...
+                        reshape(double(alignment.imageSize), 1, []));
+                    project.save(aligned{i}.entity, string(entry.variable), value);
+                    mirrored{i} = struct("key", aligned{i}.entity.Key, "added", {summary.added}, "changed", {summary.changed}, ...
+                        "removed", {summary.removed});
+                end
+                result.mirrored = mirrored;
+            end
+        end
+
+        function [aligned, firstId] = alignedRois(~, project, entity, params, current, variable)
+            % The entities aligned with this one by the alignment its ROI file has (ophys.alignSessions writes it): each
+            % with its alignment entry and ROI file, those gone or with no file left out; and the first id that is free in
+            % all of them, for ROIs added. invalid-params when the file has no alignment, or this entity is not in it.
+            % As Python's Api._aligned_rois.
+            alignment = nansen.internal.getField(current, "alignment", []);
+            if isempty(nansen.internal.alignmentEntry(alignment, entity.Key)) || ~isfield(alignment, "imageSize") || numel(alignment.imageSize) ~= 2
+                nansen.internal.throwError("invalid-params", "the ROIs of %s were not aligned with other entities' (ophys.align_sessions): " + ...
+                    "there is nothing to mirror the change to", variable)
+            end
+            idsOf = @(document) cellfun(@(roi) double(roi.id), nansen.internal.roiOutlines(document));
+            largest = max([idsOf(current), 0]);
+            aligned = {};
+            for item = nansen.internal.asCellOfStructs(alignment.entities)
+                entry = item{1};
+                if ~isempty(nansen.internal.alignmentEntry(struct("entities", {{entry}}), entity.Key))
+                    continue
+                end
+                try
+                    other = project.entity(string(nansen.Api.param(params, "entityType")), entry.key);
+                    value = project.load(other, string(entry.variable), Cached=false);
+                catch err
+                    if ~ismember(err.identifier, ["nansen:UnknownEntity", "nansen:DataNotFound", "nansen:UnknownDataVariable"])
+                        rethrow(err)
+                    end
+                    continue
+                end
+                aligned{end + 1} = struct("entity", other, "entry", entry, "value", value); %#ok<AGROW>
+                largest = max([largest, idsOf(value)]);
+            end
+            firstId = largest + 1;
         end
 
         function value = importedRois(obj, project, entity, spec)

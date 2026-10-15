@@ -24,7 +24,7 @@ from .dataset import Dataset
 from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
-from .frames import _mean as mean_image, _pick as pick_channel, detect_roi, image_frame, import_rois_at, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
+from .frames import _mean as mean_image, _pick as pick_channel, alignment_entry, detect_roi, image_frame, import_rois_at, mirror_rois_at, roi_outlines, roi_signal, rois_at, signal_traces, update_rois_at
 from .methods import MethodContext
 from . import runs
 from .project import Project
@@ -1278,19 +1278,57 @@ class Api:
         current = self._rois_of(project, entity, params["variable"], cached=False)
         if params.get("imageSize") and "imageSize" not in current:
             current = dict(current, imageSize=params["imageSize"])
+        mirror = params.get("mirror", False)
+        if not isinstance(mirror, bool):
+            raise NansenError("invalid-params", "mirror is true or false")
+        aligned, first_id = (self._aligned_rois(project, entity, params, current) if mirror else ([], 1))
         document, added = update_rois_at(current, plane, channel,
                                          classify=params.get("classify"), remove=params.get("remove"), add=params.get("add"),
                                          move=params.get("move"), merge=params.get("merge"), pixels=params.get("pixels"),
-                                         restore=params.get("restore"), cell_type=params.get("cellType"), link=params.get("link"))
+                                         restore=params.get("restore"), cell_type=params.get("cellType"), link=params.get("link"),
+                                         first_id=first_id)
         if params.get("import") is not None:   # roimanager's loaded ROIs, or a segmentation's, added to these
             spec = params["import"]
             if not isinstance(spec, dict):
                 raise NansenError("invalid-params", "import is {variable} or {path, adapter?}, and a mode")
             document, imported = import_rois_at(document, plane, channel, self._imported_rois(project, entity, spec),
-                                                spec.get("mode", "append"))
+                                                spec.get("mode", "append"), first_id)
             added = added + imported
         project.save(entity, params["variable"], document)
-        return {"rois": roi_outlines(rois_at(document, plane, channel)), "added": added}
+        result = {"rois": roi_outlines(rois_at(document, plane, channel)), "added": added}
+        if mirror:   # the same change made to the ROIs of the entities aligned with this one (dev's synchEntries 'Mirror')
+            before, after = roi_outlines(rois_at(current, plane, channel)), roi_outlines(rois_at(document, plane, channel))
+            alignment = current["alignment"]
+            source = alignment_entry(alignment, entity.key)
+            result["mirrored"] = []
+            for other, entry, value in aligned:
+                value, summary = mirror_rois_at(value, plane, channel, before, after, source, entry, alignment["imageSize"])
+                project.save(other, entry["variable"], value)
+                result["mirrored"].append(dict(key=dict(other.key), **summary))
+        return result
+
+    def _aligned_rois(self, project, entity, params: dict, current: Any) -> Any:
+        """The entities aligned with this one by the alignment its ROI file has (ophys.align_sessions writes it): each
+        with its alignment entry and ROI file, those gone or with no file left out; and the first id that is free in all
+        of them, for ROIs added. invalid-params when the file has no alignment, or this entity is not in it."""
+        alignment = current.get("alignment") if isinstance(current, dict) else None
+        if alignment_entry(alignment, entity.key) is None or not isinstance(alignment.get("imageSize"), list):
+            raise NansenError("invalid-params", f"the ROIs of {params['variable']} were not aligned with other entities' "
+                                                "(ophys.align_sessions): there is nothing to mirror the change to")
+        aligned, largest = [], max([int(r["id"]) for r in roi_outlines(current)] + [0])
+        for entry in alignment["entities"]:
+            if alignment_entry({"entities": [entry]}, entity.key) is not None:
+                continue
+            try:
+                other = project.entity(params["entityType"], entry["key"])
+                value = project.load(other, entry["variable"], cached=False)
+            except NansenError as error:
+                if error.code not in ("unknown-entity", "data-not-found", "unknown-data-variable"):
+                    raise
+                continue
+            aligned.append((other, entry, value))
+            largest = max([largest] + [int(r["id"]) for r in roi_outlines(value)])
+        return aligned, largest + 1
 
     def _imported_rois(self, project, entity, spec: dict) -> Any:
         """The ROIs rois.update imports: another ROI variable of the entity, or a file (as files.resolve takes it) read

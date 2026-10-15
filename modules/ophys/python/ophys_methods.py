@@ -1853,23 +1853,43 @@ def align_sessions(entities, options, context):
 
     With maxRotation, each image is also turned back by each angle from -maxRotation to maxRotation in steps of
     rotationStep (about the image centre, bilinearly, the image's mean outside it), and the angle of largest
-    correlation (the smallest, then the negative, of equal ones) is taken. An ROI pixel p of the first entity
-    goes to rotation(angle) * (p - centre + shift) + centre, rounded half up.
+    correlation (the smallest, then the negative, of equal ones) is taken. With patches > 1, the image moved back by
+    that shift and turned back by that angle is cut into patches x patches patches, as the motion correction's, and
+    each finds its own whole-pixel shift within maxDeviation of none (piecewise rigid, dev's alignFovs' non-rigid
+    step); the displacement field d interpolates them bilinearly between the patch centres. An ROI pixel p of the first
+    entity goes to rotation(angle) * (p + d(p) + shift - centre) + centre, rounded half up (nansen.frames.aligned_points).
+
+    Every entity's ROI file keeps the alignment ({reference, imageSize, entities: [{key, variable, shift, rotation,
+    patches, rowShifts, columnShifts}]}), so rois.update can mirror an edit to the others. With existingRois
+    keepCuration (the default), an entity that has ROIs already keeps, for the ROIs of the ids the copies have, their
+    classification, cell type, tags, uid and links, and keeps its ROIs of ids the first entity does not have; with
+    replace, the copies replace them.
     """
     if not entities:
         raise NansenError("no-entities", "no entities to align")
+    from nansen.frames import aligned_points
     reference_image = _image(context.project.load(entities[0], options["image"]))
     height, width = reference_image.shape
     most, step = float(options.get("maxRotation", 0)), float(options.get("rotationStep", 0.5))
     if most > 0 and step <= 0:
         raise NansenError("invalid-options", "rotationStep is more than 0")
+    patches, deviation = int(options.get("patches", 1)), int(options.get("maxDeviation", 3))
+    if patches < 1 or (patches > 1 and (height // patches < 4 or width // patches < 4)):
+        raise NansenError("invalid-options", f"{patches} x {patches} patches of a {height} x {width} image are not 1, or smaller than 4 pixels")
+    existing = options.get("existingRois", "keepCuration")
+    if existing not in ("keepCuration", "replace"):
+        raise NansenError("invalid-options", f"existingRois is keepCuration or replace, not {existing!r}")
     count = int(math.floor(most / step + 1e-9)) if most > 0 else 0
     angles = sorted({k * step for k in range(-count, count + 1)}, key=lambda a: (abs(a), a))
     tapered = most > 0
     reference_fft = _reference_fft(reference_image, tapered)
+    row_edges, column_edges = patch_edges(height, patches), patch_edges(width, patches)
+    patch_ffts = [[_reference_fft(reference_image[r0:r1, c0:c1], True) for c0, c1 in zip(column_edges, column_edges[1:])]
+                  for r0, r1 in zip(row_edges, row_edges[1:])]
     document = context.project.load(entities[0], options["rois"])
-    rois = [roi for roi in document.get("rois", []) if roi.get("classification") != "rejected"]
-    shifts, migrated = [], 0
+    numbered = [dict(roi, id=roi.get("id", n)) for n, roi in enumerate(document.get("rois", []), start=1)]
+    rois = [roi for roi in numbered if roi.get("classification") != "rejected"]
+    shifts, entries = [], []
     for number, entity in enumerate(entities):
         context.check_cancelled()
         image = _image(context.project.load(entity, options["image"]))
@@ -1887,19 +1907,85 @@ def align_sessions(entities, options, context):
             if best is None or value > best[0]:
                 best = (value, angle, dy, dx)
         _, angle, dy, dx = best
-        shifts.append({"key": entity.key, "shift": [dy, dx], "rotation": angle})
-        if number > 0:
-            moved = []
-            for roi in rois:
-                pixels = rotate_points(np.asarray(roi["pixels"], dtype=np.float64).reshape(-1, 2) + [dy, dx], angle, height, width)
-                pixels = sorted({(int(y), int(x)) for y, x in pixels if 0 <= y < height and 0 <= x < width})
-                if pixels:
-                    moved.append(_roi(roi.get("id", len(moved) + 1), pixels))
-            context.project.save(entity, options["output"], {"imageSize": [height, width], "rois": moved})
-            migrated += 1
+        entry = {"key": dict(entity.key), "shift": [int(dy), int(dx)], "rotation": angle}
+        if patches > 1:   # the rest, piecewise: the patches of the image moved and turned back, against the reference's
+            registered = transform_image(image, (dy, dx), angle)
+            found = estimate_patch_shifts(registered[:, :, None], patch_ffts, row_edges, column_edges, np.zeros((1, 2), dtype=int),
+                                          int(options["maxShift"]), deviation, False)
+            entry.update(patches=patches, rowShifts=[int(v) for v in found[0, 0].ravel()], columnShifts=[int(v) for v in found[0, 1].ravel()])
+        shifts.append(dict(entry))
+        entries.append(dict(entry, variable=options["rois"] if number == 0 else options["output"]))
         context.progress((number + 1) / len(entities), _name(entity))
+    alignment = {"reference": dict(entities[0].key), "imageSize": [height, width], "entities": entries}
+    kept = 0
+    for entity, entry in zip(entities[1:], entries[1:]):
+        context.check_cancelled()
+        moved = []
+        for roi in rois:
+            points = np.floor(aligned_points(np.asarray(roi["pixels"], dtype=np.float64).reshape(-1, 2), entry, height, width) + 0.5)
+            pixels = sorted({(int(y), int(x)) for y, x in points if 0 <= y < height and 0 <= x < width})
+            if pixels:
+                moved.append(_roi(roi["id"], pixels))
+        if existing == "keepCuration":
+            moved, curated = _keep_curation(moved, _existing_rois(entity, options["output"], context), {roi["id"] for roi in numbered})
+            kept += curated
+        context.project.save(entity, options["output"], {"imageSize": [height, width], "rois": moved, "alignment": alignment})
+    context.project.save(entities[0], options["rois"], dict(document, alignment=alignment))   # the reference's too
     context.log(f"aligned {len(entities)} entities to {_name(entities[0])}")
-    return {"reference": entities[0].key, "shifts": shifts, "migrated": migrated, "rois": len(rois)}
+    return {"reference": dict(entities[0].key), "shifts": shifts, "migrated": len(entities) - 1, "rois": len(rois), "kept": kept}
+
+
+CURATION = ("classification", "cellType", "tags", "uid", "links")   # what curating an ROI gives it
+
+
+def _existing_rois(entity, name, context):
+    """The ROIs an entity has in a variable already (its ROI file's list), or none when it has no file of it."""
+    try:
+        document = context.project.load(entity, name, cached=False)
+    except NansenError as error:
+        if error.code in ("data-not-found", "unknown-data-variable"):
+            return []
+        raise
+    return [dict(roi, id=roi.get("id", n)) for n, roi in enumerate(document.get("rois", []) if isinstance(document, dict) else [], start=1)]
+
+
+def _keep_curation(moved, existing, reference_ids):
+    """The copied ROIs with the curation of the entity's own ROIs of the same ids (classification, cell type, tags, uid
+    and links), followed by its ROIs of ids the reference does not have, as they are; links only to ROIs there. Returns
+    them and how many copies took a curation."""
+    before = {roi["id"]: roi for roi in existing}
+    curated = 0
+    for roi in moved:
+        old = before.get(roi["id"], {})
+        took = [name for name in CURATION if old.get(name)]
+        for name in took:
+            roi[name] = old[name]
+        curated += bool(took)
+    rois = moved + [roi for roi in existing if roi["id"] not in reference_ids]
+    ids = {roi["id"] for roi in rois}
+    for roi in rois:
+        if roi.get("links"):
+            links = [i for i in roi["links"] if i in ids]
+            if links:
+                roi["links"] = links
+            else:
+                del roi["links"]
+    return rois, curated
+
+
+def transform_image(image, shift, angle):
+    """The image moved back by shift and turned back by angle degrees about its centre: out[p] = image at
+    rotation(angle) * (p + shift - centre) + centre, bilinearly, and the image's mean where that is outside it."""
+    height, width = image.shape
+    cos, sin = _turn(angle)
+    cy, cx = (height - 1) / 2, (width - 1) / 2
+    rows, columns = np.mgrid[0:height, 0:width].astype(np.float64)
+    y, x = rows + shift[0] - cy, columns + shift[1] - cx
+    dy = cos * y - sin * x + cy - rows
+    dx = sin * y + cos * x + cx - columns
+    out = warp(image[:, :, None].astype(np.float64), dy[None], dx[None])[:, :, 0]
+    inside = warp(np.ones((height, width, 1)), dy[None], dx[None])[:, :, 0] > 0.5
+    return np.where(inside, out, image.mean())
 
 
 def _turn(angle):

@@ -24,7 +24,7 @@
         "result": {
           "records": {
             "subject": 1,
-            "session": 7
+            "session": 9
           },
           "unmatched": 0
         }
@@ -67,6 +67,14 @@
               {
                 "subject_id": "m1",
                 "session_id": "s7"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "s8"
+              },
+              {
+                "subject_id": "m1",
+                "session_id": "s9"
               }
             ]
           }
@@ -913,6 +921,1470 @@
       },
       "expect": {
         "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 24,
+        "params": {
+          "methodId": "ophys.align_sessions",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s8"
+            },
+            {
+              "subject_id": "m1",
+              "session_id": "s9"
+            }
+          ],
+          "options": {
+            "image": "TwoPhotonSeries_Original",
+            "maxShift": 6,
+            "patches": 256
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 25,
+        "params": {
+          "methodId": "ophys.align_sessions",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s8"
+            },
+            {
+              "subject_id": "m1",
+              "session_id": "s9"
+            }
+          ],
+          "options": {
+            "image": "TwoPhotonSeries_Original",
+            "maxShift": 6,
+            "patches": 3,
+            "maxDeviation": 2
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "reference": {
+                "subject_id": "m1",
+                "session_id": "s8"
+              },
+              "migrated": 1,
+              "rois": 3,
+              "kept": 0,
+              "shifts": [
+                {
+                  "key": {
+                    "subject_id": "m1",
+                    "session_id": "s8"
+                  },
+                  "shift": [
+                    0,
+                    0
+                  ],
+                  "rotation": 0,
+                  "patches": 3,
+                  "rowShifts": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "columnShifts": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "key": {
+                    "subject_id": "m1",
+                    "session_id": "s9"
+                  },
+                  "shift": [
+                    -2,
+                    3
+                  ],
+                  "rotation": 0,
+                  "patches": 3,
+                  "rowShifts": [
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    -1,
+                    1,
+                    0,
+                    0
+                  ],
+                  "columnShifts": [
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    -1,
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 26,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s9"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "width": 64,
+          "height": 64,
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  10,
+                  19
+                ],
+                [
+                  10,
+                  20
+                ],
+                [
+                  10,
+                  21
+                ],
+                [
+                  11,
+                  18
+                ],
+                [
+                  11,
+                  19
+                ],
+                [
+                  11,
+                  20
+                ],
+                [
+                  11,
+                  21
+                ],
+                [
+                  11,
+                  22
+                ],
+                [
+                  12,
+                  18
+                ],
+                [
+                  12,
+                  19
+                ],
+                [
+                  12,
+                  20
+                ],
+                [
+                  12,
+                  21
+                ],
+                [
+                  12,
+                  22
+                ],
+                [
+                  13,
+                  18
+                ],
+                [
+                  13,
+                  19
+                ],
+                [
+                  13,
+                  20
+                ],
+                [
+                  13,
+                  21
+                ],
+                [
+                  14,
+                  19
+                ],
+                [
+                  14,
+                  20
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  27,
+                  46
+                ],
+                [
+                  27,
+                  47
+                ],
+                [
+                  27,
+                  48
+                ],
+                [
+                  28,
+                  45
+                ],
+                [
+                  28,
+                  46
+                ],
+                [
+                  28,
+                  47
+                ],
+                [
+                  28,
+                  48
+                ],
+                [
+                  28,
+                  49
+                ],
+                [
+                  29,
+                  46
+                ],
+                [
+                  29,
+                  47
+                ],
+                [
+                  29,
+                  48
+                ],
+                [
+                  29,
+                  49
+                ],
+                [
+                  30,
+                  45
+                ],
+                [
+                  30,
+                  46
+                ],
+                [
+                  30,
+                  47
+                ],
+                [
+                  30,
+                  48
+                ],
+                [
+                  30,
+                  49
+                ],
+                [
+                  31,
+                  45
+                ],
+                [
+                  31,
+                  47
+                ],
+                [
+                  31,
+                  48
+                ],
+                [
+                  32,
+                  46
+                ]
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  44,
+                  24
+                ],
+                [
+                  44,
+                  25
+                ],
+                [
+                  44,
+                  26
+                ],
+                [
+                  45,
+                  23
+                ],
+                [
+                  45,
+                  24
+                ],
+                [
+                  45,
+                  25
+                ],
+                [
+                  45,
+                  26
+                ],
+                [
+                  45,
+                  27
+                ],
+                [
+                  46,
+                  23
+                ],
+                [
+                  46,
+                  24
+                ],
+                [
+                  46,
+                  25
+                ],
+                [
+                  46,
+                  26
+                ],
+                [
+                  47,
+                  23
+                ],
+                [
+                  47,
+                  24
+                ],
+                [
+                  47,
+                  25
+                ],
+                [
+                  47,
+                  26
+                ],
+                [
+                  48,
+                  24
+                ],
+                [
+                  48,
+                  25
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 27,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s9"
+          },
+          "variable": "RoiArray",
+          "add": [
+            {
+              "pixels": [
+                [
+                  38,
+                  40
+                ],
+                [
+                  39,
+                  39
+                ],
+                [
+                  39,
+                  40
+                ],
+                [
+                  39,
+                  41
+                ],
+                [
+                  40,
+                  38
+                ],
+                [
+                  40,
+                  39
+                ],
+                [
+                  40,
+                  40
+                ],
+                [
+                  40,
+                  41
+                ],
+                [
+                  40,
+                  42
+                ],
+                [
+                  41,
+                  39
+                ],
+                [
+                  41,
+                  40
+                ],
+                [
+                  41,
+                  41
+                ],
+                [
+                  42,
+                  40
+                ]
+              ]
+            }
+          ],
+          "mirror": true
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [
+            4
+          ],
+          "mirrored": [
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s8"
+              },
+              "added": [
+                4
+              ],
+              "changed": [],
+              "removed": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 28,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s8"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1
+            },
+            {
+              "id": 2
+            },
+            {
+              "id": 3
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  40,
+                  37
+                ],
+                [
+                  41,
+                  36
+                ],
+                [
+                  41,
+                  37
+                ],
+                [
+                  41,
+                  38
+                ],
+                [
+                  42,
+                  35
+                ],
+                [
+                  42,
+                  36
+                ],
+                [
+                  42,
+                  37
+                ],
+                [
+                  42,
+                  38
+                ],
+                [
+                  42,
+                  39
+                ],
+                [
+                  43,
+                  36
+                ],
+                [
+                  43,
+                  37
+                ],
+                [
+                  43,
+                  38
+                ],
+                [
+                  44,
+                  37
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 29,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s8"
+          },
+          "variable": "RoiArray",
+          "move": [
+            {
+              "id": 1,
+              "rows": 1,
+              "columns": -1
+            }
+          ],
+          "mirror": true
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [],
+          "mirrored": [
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s9"
+              },
+              "added": [],
+              "changed": [
+                1
+              ],
+              "removed": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 30,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s9"
+          },
+          "variable": "RoiArray",
+          "remove": [
+            3
+          ],
+          "mirror": true
+        }
+      },
+      "expect": {
+        "result": {
+          "mirrored": [
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s8"
+              },
+              "added": [],
+              "changed": [],
+              "removed": [
+                3
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 31,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s9"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  11,
+                  18
+                ],
+                [
+                  11,
+                  19
+                ],
+                [
+                  11,
+                  20
+                ],
+                [
+                  12,
+                  17
+                ],
+                [
+                  12,
+                  18
+                ],
+                [
+                  12,
+                  19
+                ],
+                [
+                  12,
+                  20
+                ],
+                [
+                  12,
+                  21
+                ],
+                [
+                  13,
+                  17
+                ],
+                [
+                  13,
+                  18
+                ],
+                [
+                  13,
+                  19
+                ],
+                [
+                  13,
+                  20
+                ],
+                [
+                  13,
+                  21
+                ],
+                [
+                  14,
+                  17
+                ],
+                [
+                  14,
+                  18
+                ],
+                [
+                  14,
+                  19
+                ],
+                [
+                  14,
+                  20
+                ],
+                [
+                  15,
+                  18
+                ],
+                [
+                  15,
+                  19
+                ]
+              ]
+            },
+            {
+              "id": 2
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  38,
+                  40
+                ],
+                [
+                  39,
+                  39
+                ],
+                [
+                  39,
+                  40
+                ],
+                [
+                  39,
+                  41
+                ],
+                [
+                  40,
+                  38
+                ],
+                [
+                  40,
+                  39
+                ],
+                [
+                  40,
+                  40
+                ],
+                [
+                  40,
+                  41
+                ],
+                [
+                  40,
+                  42
+                ],
+                [
+                  41,
+                  39
+                ],
+                [
+                  41,
+                  40
+                ],
+                [
+                  41,
+                  41
+                ],
+                [
+                  42,
+                  40
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 32,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s8"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  13,
+                  14
+                ],
+                [
+                  13,
+                  15
+                ],
+                [
+                  13,
+                  16
+                ],
+                [
+                  14,
+                  13
+                ],
+                [
+                  14,
+                  14
+                ],
+                [
+                  14,
+                  15
+                ],
+                [
+                  14,
+                  16
+                ],
+                [
+                  14,
+                  17
+                ],
+                [
+                  15,
+                  13
+                ],
+                [
+                  15,
+                  14
+                ],
+                [
+                  15,
+                  15
+                ],
+                [
+                  15,
+                  16
+                ],
+                [
+                  15,
+                  17
+                ],
+                [
+                  16,
+                  13
+                ],
+                [
+                  16,
+                  14
+                ],
+                [
+                  16,
+                  15
+                ],
+                [
+                  16,
+                  16
+                ],
+                [
+                  16,
+                  17
+                ],
+                [
+                  17,
+                  14
+                ],
+                [
+                  17,
+                  15
+                ],
+                [
+                  17,
+                  16
+                ]
+              ]
+            },
+            {
+              "id": 2
+            },
+            {
+              "id": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 33,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s8"
+          },
+          "variable": "RoiArray",
+          "classify": [
+            {
+              "id": 4,
+              "classification": "unresolved"
+            }
+          ],
+          "mirror": true
+        }
+      },
+      "expect": {
+        "result": {
+          "mirrored": [
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s9"
+              },
+              "added": [],
+              "changed": [
+                4
+              ],
+              "removed": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 34,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "add": [
+            {
+              "pixels": [
+                [
+                  1,
+                  1
+                ]
+              ]
+            }
+          ],
+          "mirror": true
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 35,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s9"
+          },
+          "variable": "RoiArray",
+          "remove": [
+            2
+          ],
+          "mirror": "yes"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 36,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s9"
+          },
+          "variable": "RoiArray",
+          "classify": [
+            {
+              "id": 2,
+              "classification": "accepted"
+            }
+          ],
+          "add": [
+            {
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 37,
+        "params": {
+          "methodId": "ophys.align_sessions",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s8"
+            },
+            {
+              "subject_id": "m1",
+              "session_id": "s9"
+            }
+          ],
+          "options": {
+            "image": "TwoPhotonSeries_Original",
+            "maxShift": 6,
+            "patches": 3,
+            "maxDeviation": 2
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "migrated": 1,
+              "rois": 3,
+              "kept": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 38,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s9"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "classification": null
+            },
+            {
+              "id": 2,
+              "classification": "accepted"
+            },
+            {
+              "id": 4,
+              "classification": "unresolved",
+              "pixels": [
+                [
+                  38,
+                  40
+                ],
+                [
+                  39,
+                  39
+                ],
+                [
+                  39,
+                  40
+                ],
+                [
+                  39,
+                  41
+                ],
+                [
+                  40,
+                  38
+                ],
+                [
+                  40,
+                  39
+                ],
+                [
+                  40,
+                  40
+                ],
+                [
+                  40,
+                  41
+                ],
+                [
+                  40,
+                  42
+                ],
+                [
+                  41,
+                  39
+                ],
+                [
+                  41,
+                  40
+                ],
+                [
+                  41,
+                  41
+                ],
+                [
+                  42,
+                  40
+                ]
+              ]
+            },
+            {
+              "id": 5,
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 39,
+        "params": {
+          "methodId": "ophys.align_sessions",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s8"
+            },
+            {
+              "subject_id": "m1",
+              "session_id": "s9"
+            }
+          ],
+          "options": {
+            "image": "TwoPhotonSeries_Original",
+            "maxShift": 6,
+            "patches": 3,
+            "maxDeviation": 2,
+            "existingRois": "replace"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "migrated": 1,
+              "rois": 3,
+              "kept": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 40,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s9"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1
+            },
+            {
+              "id": 2,
+              "classification": null
+            },
+            {
+              "id": 4,
+              "classification": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 41,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s4"
+          },
+          "variable": "RoiArray",
+          "add": [
+            {
+              "pixels": [
+                [
+                  22,
+                  30
+                ],
+                [
+                  23,
+                  29
+                ],
+                [
+                  23,
+                  30
+                ],
+                [
+                  23,
+                  31
+                ],
+                [
+                  24,
+                  28
+                ],
+                [
+                  24,
+                  29
+                ],
+                [
+                  24,
+                  30
+                ],
+                [
+                  24,
+                  31
+                ],
+                [
+                  24,
+                  32
+                ],
+                [
+                  25,
+                  29
+                ],
+                [
+                  25,
+                  30
+                ],
+                [
+                  25,
+                  31
+                ],
+                [
+                  26,
+                  30
+                ]
+              ]
+            }
+          ],
+          "mirror": true
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [
+            4
+          ],
+          "mirrored": [
+            {
+              "key": {
+                "subject_id": "m1",
+                "session_id": "s3"
+              },
+              "added": [
+                4
+              ],
+              "changed": [],
+              "removed": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 42,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s3"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1
+            },
+            {
+              "id": 2
+            },
+            {
+              "id": 3
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  20,
+                  31
+                ],
+                [
+                  21,
+                  30
+                ],
+                [
+                  21,
+                  31
+                ],
+                [
+                  21,
+                  32
+                ],
+                [
+                  22,
+                  29
+                ],
+                [
+                  22,
+                  30
+                ],
+                [
+                  22,
+                  31
+                ],
+                [
+                  22,
+                  32
+                ],
+                [
+                  22,
+                  33
+                ],
+                [
+                  23,
+                  30
+                ],
+                [
+                  23,
+                  31
+                ],
+                [
+                  23,
+                  32
+                ],
+                [
+                  24,
+                  31
+                ]
+              ]
+            }
+          ]
+        }
       }
     }
   ]

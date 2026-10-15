@@ -1,4 +1,4 @@
-function [document, added] = updateRois(document, classify, remove, add, move, merge, pixelChanges, restore, cellTypes, links)
+function [document, added] = updateRois(document, classify, remove, add, move, merge, pixelChanges, restore, cellTypes, links, firstId)
 %updateRois The ROI file with ROIs restored, classified, reshaped, moved, merged, removed and added, as Python's nansen.frames.update_rois
 %
 %   restore (missing when not given) is a list of id, pixels and
@@ -13,7 +13,8 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
 %   list of ids; add a struct array of pixels ([row, column], 0-based). An
 %   added ROI gets the next free id. A changed or added ROI gets its area
 %   and center again; pixels outside imageSize are left out. added are the
-%   ids of the added ROIs. ROIs come back with their pixels as lists of
+%   ids of the added ROIs, from firstId on at least (rois.update's mirror:
+%   ids free in every aligned entity; 1 when not given). ROIs come back with their pixels as lists of
 %   pairs, so they are written as the file had them.
     if nargin < 5
         move = [];
@@ -32,6 +33,9 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
     end
     if nargin < 10
         links = [];
+    end
+    if nargin < 11
+        firstId = 1;
     end
     nansen.internal.roiOutlines(document);   % checks the shape
     rois = {};
@@ -172,7 +176,7 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
             end
         end
     end
-    nextId = max([ids, 0]) + 1;
+    nextId = max([ids, 0, double(firstId) - 1]) + 1;
     added = {};
     if iscell(add)
         add = [add{:}];
