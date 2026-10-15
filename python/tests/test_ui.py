@@ -339,6 +339,7 @@ def test_save_and_delete_a_preset(empty_app, page):
     page.click(".preset-row button:has-text('Save as')")
     page.fill(".dialog.narrow input", "quick")
     page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".preset-row select option[value='quick']", state="attached")  # the dialog shows it first
     wait_until(lambda: presets() == ["default", "quick"])
     page.wait_for_selector(".preset-row button[title='Delete this preset']")
     page.click(".preset-row button[title='Delete this preset']")
@@ -384,3 +385,41 @@ def test_a_column_with_choices_reset_and_removed(empty_app, page):
     page.click(".dialog-foot button:has-text('Remove')")
     wait_until(lambda: "quality" not in [c["name"] for c in listed()["columns"]])
     page.wait_for_function("() => ![...document.querySelectorAll('.grid-table th')].some((th) => th.textContent.includes('quality'))")
+
+
+def test_pipelines_page_assign_and_progress(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    call = lambda method, **params: api.handle({"id": 2, "method": method, "params": params})["result"]
+    page.goto(empty_app["server"].url + "#/pipelines")
+    page.wait_for_selector(".card.pipeline[data-id='core.inspect']")
+    page.click(".hero button:has-text('New pipeline')")
+    page.fill(".dialog .field:has-text('Id') input", "count_only")
+    page.fill(".dialog .field:has-text('Title') input", "Count only")
+    page.select_option(".dialog .field:has-text('Entity type') select", "session")
+    page.click(".dialog .step-editor button:has-text('Add a step')")
+    page.select_option(".dialog .step-editor li:first-child select", "core.file_stats")
+    page.click(".dialog-foot button:has-text('Save pipeline')")
+    page.wait_for_selector(".card.pipeline[data-id='count_only'] .pill:has-text('project')")
+    assert [p["id"] for p in call("pipelines.list", entityType="session")] == ["count_only", "core.inspect"]
+
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    rows = page.locator(".grid-table tbody tr[data-id]")
+    rows.nth(0).locator("td.sel input").check()
+    rows.nth(1).locator("td.sel input").check()
+    page.click(".selection-bar button:has-text('Pipeline')")
+    page.click(".menu .item:has-text('Inspect')")
+    page.wait_for_selector(".grid-table th:has-text('Progress')")
+    page.wait_for_selector(".grid-table .progress-text:has-text('0/2')")
+    page.click(".selection-bar button:has-text('Pipeline')")
+    page.click(".menu .item:has-text('Queue the next steps')")
+    page.wait_for_url("**#/tasks")
+    for _ in range(4):
+        call("tasks.runNext")
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table .progress-text:has-text('2/2')")
+    assert page.locator(".grid-table .progress-text:has-text('2/2')").count() == 2
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open .pipeline-card .steps li.done")
+    assert page.locator(".drawer .pipeline-card .steps li.done").count() == 2

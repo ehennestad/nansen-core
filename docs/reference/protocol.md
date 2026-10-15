@@ -66,7 +66,7 @@ Events flow from the core to the frontend:
 | `project.info` | | `{name, title, description, folder, entityTypes[{name, title, fragments, rows, records}], modules, lastScan, dataset{environment, entityTypes, locations, roots}}` |
 | `project.scan` | `listing?` (a DSM DirectoryListing, instead of the file system) | `{scannedAt, records{type: count}, roots, unmatched}` |
 | `project.sync` | `entityType?` | `{added{type: [keys]}}` |
-| `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute\|progress, editable, choices?}], rows[{key, inStore, inTable, values, issues?, progress?}]}; with `core.pipeline`, a `progress` column (the fraction of the pipeline done) and each row's `progress {pipeline, title, done, total}`` |
+| `entities.list` | `entityType` | `{entityType, key, columns[{name, dataType, title, unit, fragment, source: key\|table\|attribute\|progress, editable, choices?}], rows[{key, inStore, inTable, values, issues?, progress?}]}; with `core.pipeline`, a `progress` column (the fraction of the pipeline done) and each row's `progress {pipeline, title, done, total}` |
 | `entities.get` | `entityType`, `key` | A row plus `locations`, `issueDetails`, `data` (data variable status), and `pipeline` when it has one: `{pipeline, title, steps[{title, method, done, finishedAt}], done, total}` |
 | `entities.update` | `entityType`, `key`, `values` | The updated row; key and computed columns are `read-only-column` |
 | `entities.add` | `entityType`, `key`, `values?` | The new row |

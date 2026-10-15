@@ -47,6 +47,7 @@
       this.client.on("removed", () => this.refreshTaskCount());
       this.client.on("log", (event) => this.onLogEvent && this.onLogEvent(event));
       this.client.on("entities", (data) => this.entitiesEvent(data));
+      this.client.on("pipelines", () => this.onPipelinesEvent && this.onPipelinesEvent());
       this.client.on("notes", (data) => {   // the page and an entity's drawer can both show notes
         if (this.onNotesEvent) this.onNotesEvent(data);
         if (this.onDrawerNotesEvent) this.onDrawerNotesEvent(data);
@@ -174,6 +175,7 @@
         h("div.nav-section", "Work"),
         link("#/tasks", "tasks", "Tasks", this.runningTasks || null),
         link("#/data", "database", "Data"),
+        link("#/pipelines", "layers", "Pipelines"),
         link("#/notes", "note", "Notes"),
         h("div.nav-section", "App"),
         link("#/projects", "folder", "Projects")]);
@@ -198,22 +200,31 @@
       this.onTaskEvent = null;
       this.onLogEvent = null;
       this.onNotesEvent = null;
+      this.onPipelinesEvent = null;
       this.currentGrid = null;
       N.drawer.close();
-      this.contentEl.className = "content";
       this.renderNav();
       N.clear(this.topActions);
-      const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", notes: "Notes", projects: "Projects" };
+      const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", notes: "Notes", pipelines: "Pipelines", projects: "Projects" };
       const title = this.route.name === "entities" ? this.typeTitle(arg) : crumbs[this.route.name] || "";
       N.fill(this.crumbsEl, this.project ? h("span.sub", this.project.title) : null, this.project ? h("span.sep", "/") : null, h("span", title));
       if (!this.project && this.route.name !== "projects") { this.go("#/projects"); return; }
-      const view = { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, projects: N.views.projects }[this.route.name];
+      const view = { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, pipelines: N.views.pipelines, projects: N.views.projects }[this.route.name];
       if (!view) { this.go("#/overview"); return; }
+      // Each render draws into a new container, shown when it is done, unless a later render has started:
+      // views load their data first, and one that finishes late must not draw over the page now shown.
+      const token = (this.renderToken = (this.renderToken || 0) + 1);
+      const target = h("div.content");
       try {
-        await view(this, this.contentEl, arg);
+        await view(this, target, arg);
       } catch (error) {
         N.showError(error);
       }
+      if (token !== this.renderToken) return;
+      this.contentEl.replaceWith(target);
+      this.contentEl = target;
+      const focus = target.querySelector("[autofocus]");
+      if (focus) focus.focus();
     },
   };
 

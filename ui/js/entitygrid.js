@@ -183,6 +183,15 @@
       const editable = column.editable && row.inTable;
       if (editable && column.dataType !== "boolean") classes.push("editable");
       const td = h(classes.join("."));
+      if (column.source === "progress") {
+        const state = row.progress;
+        if (!state) { td.classList.add("missing"); td.textContent = "—"; return td; }
+        td.title = `${state.title}: ${state.done} of ${state.total} steps done`;
+        td.appendChild(h("div.progress-cell",
+          h("div.progress-track", h("span" + (state.done === state.total ? ".done" : ""), { style: { width: `${(100 * state.done) / state.total}%` } })),
+          h("span.progress-text", `${state.done}/${state.total}`)));
+        return td;
+      }
       if (column.dataType === "boolean") {
         const box = h("input", { type: "checkbox", checked: value === true, disabled: !editable,
           on: { click: (e) => { e.stopPropagation(); this.commit(row, column, e.target.checked, td); } } });

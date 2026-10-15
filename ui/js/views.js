@@ -100,7 +100,7 @@
         h("button.chip" + (grid.status === id ? ".on" : ""), { on: { click: () => { grid.setStatus(id); renderChips(); } } },
           label, h("span.n", counts[id]))));
     };
-    const search = h("input.input", { placeholder: `Search ${type.title || entityType}…`, on: { input: N.debounce((e) => grid.setSearch(e.target.value), 120) } });
+    const search = h("input.input", { autofocus: true, placeholder: `Search ${type.title || entityType}…`, on: { input: N.debounce((e) => grid.setSearch(e.target.value), 120) } });
     const columnsButton = h("button.btn", N.icon("columns"), "Columns");
     columnsButton.addEventListener("click", () => {
       const items = [{ heading: "Show columns" }].concat(grid.data.columns.map((c) => ({
@@ -201,8 +201,30 @@
           const text = [names.join("\t"), ...selected.map((r) => names.map((n) => r.key[n]).join("\t"))].join("\n");
           N.copyText(text).then(() => N.toast("Copied", `${selected.length} key(s)`, "success"), (error) => N.showError(error, "Could not copy"));
         } } }, N.icon("copy", 14), "Copy keys"),
+        h("button.btn.small", { on: { click: (e) => pipelineMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("layers", 14), "Pipeline"),
         h("button.btn.small", { on: { click: () => removeRows(grid.selectedRows()) } }, N.icon("trash", 14), "Remove from table"),
         h("button.btn.small", { on: { click: () => grid.clearSelection() } }, "Clear"));
+    }
+    async function pipelineMenu(anchor, rows) {
+      const inTable = rows.filter((r) => r.inTable);
+      const pipelines = await app.client.request("pipelines.list", { entityType }).catch((error) => { N.showError(error); return null; });
+      if (!pipelines) return;
+      const assign = async (pipeline) => {
+        try {
+          const result = await app.client.request("pipelines.assign", { entityType, keys: inTable.map((r) => r.key), pipelineId: pipeline ? pipeline.id : null });
+          N.toast(pipeline ? "Pipeline assigned" : "Pipeline taken away", `${pipeline ? pipeline.title || pipeline.id : "None"}: ${result.assigned} row(s)`, "success");
+          await app.reloadProject();
+          app.reloadEntities();
+        } catch (error) { N.showError(error, "Could not assign the pipeline"); }
+      };
+      const items = [{ heading: `Assign to ${inTable.length} row(s)` }];
+      if (!inTable.length) items.push({ node: h("div.item.muted", "Only rows in the table get a pipeline") });
+      else {
+        for (const p of pipelines) items.push({ label: p.title || p.id, icon: "layers", onClick: () => assign(p) });
+        items.push({ label: "No pipeline", icon: "x", onClick: () => assign(null) });
+      }
+      items.push({ heading: "Run" }, { label: "Queue the next steps", icon: "play", onClick: () => N.views.queueNext(app, entityType, rows.map((r) => r.key)) });
+      N.menu(anchor, items);
     }
     async function removeRows(rows) {
       const inTable = rows.filter((r) => r.inTable);
@@ -299,6 +321,15 @@
     }
     actions.push(h("button.btn.small", { on: { click: () => N.views.methodDialog(app, entityType, [detail]) } }, N.icon("play", 14), "Run"));
     const notesEl = h("div.notes");
+    const pipeline = detail.pipeline ? [h("div.section-title", "Pipeline"),
+      h("div.card.pipeline-card",
+        h("div.card-head", N.icon("layers", 15), h("h3", detail.pipeline.title), h("div.spacer"),
+          h("span.pill" + (detail.pipeline.done === detail.pipeline.total ? ".good" : ".plain"), `${detail.pipeline.done}/${detail.pipeline.total}`)),
+        h("ol.steps", detail.pipeline.steps.map((s) => h("li" + (s.done ? ".done" : ""),
+          h("span.step-mark", s.done ? N.icon("check", 12) : null), h("div.grow", h("div.title", s.title), h("div.sub", s.method)),
+          s.done ? h("span.muted", N.fmt.ago(s.finishedAt)) : null))),
+        detail.pipeline.done < detail.pipeline.total ? h("div.card-foot",
+          h("button.btn.small.primary", { on: { click: () => N.views.queueNext(app, entityType, [detail.key]) } }, N.icon("play", 14), "Queue the next steps")) : null)] : null;
     N.drawer.open(N.fmt.key(detail.key), (app.typeTitle(entityType)).replace(/s$/, ""),
       h("div",
         h("div", { style: { margin: "12px 0" } }, statusPill),
@@ -306,10 +337,114 @@
         h("div.section-title", "Locations"), locations.length ? locations : h("div.muted", "Not found in any data location."),
         data.length ? [h("div.section-title", "Data"), h("ul.list.card", data)] : null,
         issues.length ? [h("div.section-title", "Issues"), h("ul.list.card", issues)] : null,
+        pipeline,
         h("div.section-title", "Notes"), notesEl),
       actions);
     N.views.entityNotes(app, notesEl, entityType, detail.key);
   };
+
+  /* ------------------------------------------------------------------ pipelines */
+  N.views.queueNext = async function (app, entityType, keys) {
+    try {
+      const result = await app.client.request("pipelines.queueNext", { entityType, keys });
+      if (!result.tasks.length) {
+        N.toast("Nothing to queue", `${result.skipped.length} entit${result.skipped.length === 1 ? "y has" : "ies have"} no pipeline, are done, or have steps queued already`);
+        return;
+      }
+      N.toast("Steps queued", `${result.tasks.length} task(s)` + (result.skipped.length ? `; ${result.skipped.length} skipped` : ""), "success");
+      app.go("#/tasks");
+    } catch (error) { N.showError(error, "Could not queue the steps"); }
+  };
+
+  N.views.pipelines = async function (app, content) {
+    app.onPipelinesEvent = () => { if (content.isConnected) app.render(); };
+    let pipelines = [];
+    try { pipelines = await app.client.request("pipelines.list"); } catch (error) { N.showError(error); }
+    const typeTitle = (t) => (t === "*" ? "Any entity" : app.typeTitle(t));
+    const card = (p) => h("div.card.pipeline", { dataset: { id: p.id } },
+      h("div.card-head", N.icon("layers", 16), h("div.grow", h("h3", p.title || p.id), h("div.sub", `${p.id} · ${typeTitle(p.entityType)}`)),
+        h("span.pill." + (p.source === "project" ? "accent" : "plain"), p.source === "project" ? "project" : "module"),
+        h("button.btn.small", { on: { click: () => pipelineEditor(app, p) } }, N.icon(p.source === "project" ? "edit" : "copy", 14), p.source === "project" ? "Edit" : "Customize"),
+        p.source === "project" ? h("button.btn.ghost.icon.small", { title: "Delete this pipeline", on: { click: async () => {
+          if (!(await N.confirm("Delete the pipeline?", `${p.title || p.id} is deleted from the project.` +
+            " Entities assigned to it keep the id; a module pipeline of the same id, if there is one, is used again.", "Delete", "danger"))) return;
+          try { await app.client.request("pipelines.delete", { pipelineId: p.id }); N.toast("Pipeline deleted", p.title || p.id, "success"); app.render(); }
+          catch (error) { N.showError(error, "Could not delete the pipeline"); }
+        } } }, N.icon("trash", 14)) : null),
+      p.description ? h("div.card-body.muted", p.description) : null,
+      h("ol.steps", p.steps.map((s, i) => h("li", h("span.step-mark.n", String(i + 1)),
+        h("div.grow", h("div.title", s.title), h("div.sub", s.method + (s.preset ? ` · preset ${s.preset}` : "")))))));
+    N.fill(content,
+      h("div.hero", h("div", h("h1", "Pipelines"), h("p", "Steps to take each entity through. Assign a pipeline to rows of a table, follow their progress there, and queue the steps that are left.")),
+        h("div.spacer"), h("div.actions", h("button.btn.primary", { on: { click: () => pipelineEditor(app, null) } }, N.icon("plus"), "New pipeline"))),
+      pipelines.length ? h("div.grid.two", pipelines.map(card))
+        : h("div.empty", N.icon("layers", 40), h("h3", "No pipelines yet"), h("div", "Make one from the methods of the project's modules.")));
+  };
+
+  /** Make or change a project pipeline: an id, a title, the entity type, and its steps (method, title, preset). */
+  async function pipelineEditor(app, existing) {
+    const methods = app.methods || [];
+    const types = ["*", ...app.project.entityTypes.map((t) => t.name)];
+    const doc = existing ? JSON.parse(JSON.stringify(existing)) : { id: "", title: "", entityType: types[1] || "*", steps: [] };
+    let steps = doc.steps.map((s) => ({ method: s.method, title: s.title || "", preset: s.preset || "", options: s.options }));
+    const id = h("input.input", { value: doc.id, placeholder: "e.g. preprocess", disabled: !!existing && existing.source === "project" });
+    const title = h("input.input", { value: doc.title || "" });
+    const description = h("input.input", { value: doc.description || "" });
+    const entityType = h("select.input", types.map((t) => h("option", { value: t, selected: t === doc.entityType }, t === "*" ? "Any entity" : app.typeTitle(t))));
+    const stepsEl = h("ol.step-editor");
+    const message = h("div.form-message.hidden");
+    const fits = (m) => entityType.value === "*" ? m.entityType === "*" : (m.entityType === "*" || m.entityType === entityType.value);
+    async function presetOptions(methodId) {
+      if (!methodId) return [];
+      const presets = await app.client.request("presets.list", { methodId }).catch(() => []);
+      return presets.filter((p) => p.name !== "default").map((p) => p.name);
+    }
+    async function renderSteps() {
+      const rows = await Promise.all(steps.map(async (step, i) => {
+        const method = h("select.input", { on: { change: (e) => { step.method = e.target.value; step.preset = ""; renderSteps(); } } },
+          h("option", { value: "" }, "Choose a method…"),
+          methods.filter(fits).map((m) => h("option", { value: m.id, selected: m.id === step.method }, `${m.title} (${m.id})`)));
+        const presets = await presetOptions(step.method);
+        const preset = h("select.input", { disabled: !presets.length, on: { change: (e) => { step.preset = e.target.value; } } },
+          h("option", { value: "" }, presets.length ? "Defaults" : "No presets"), presets.map((p) => h("option", { value: p, selected: p === step.preset }, p)));
+        const stepTitle = h("input.input", { value: step.title, placeholder: "Title (the method's)", on: { input: (e) => { step.title = e.target.value; } } });
+        const move = (d) => { const j = i + d; if (j < 0 || j >= steps.length) return; [steps[i], steps[j]] = [steps[j], steps[i]]; renderSteps(); };
+        return h("li", h("span.step-mark.n", String(i + 1)), h("div.step-fields", method, stepTitle, preset),
+          h("div.step-buttons",
+            h("button.btn.ghost.icon.small", { type: "button", title: "Up", disabled: i === 0, on: { click: () => move(-1) } }, "↑"),
+            h("button.btn.ghost.icon.small", { type: "button", title: "Down", disabled: i === steps.length - 1, on: { click: () => move(1) } }, "↓"),
+            h("button.btn.ghost.icon.small", { type: "button", title: "Remove this step", on: { click: () => { steps.splice(i, 1); renderSteps(); } } }, N.icon("x", 13))));
+      }));
+      N.fill(stepsEl, rows, h("li.add", h("button.btn.small", { type: "button", on: { click: () => { steps.push({ method: "", title: "", preset: "" }); renderSteps(); } } }, N.icon("plus", 14), "Add a step")));
+    }
+    entityType.addEventListener("change", renderSteps);
+    await renderSteps();
+    const say = (text) => { message.textContent = text; message.classList.toggle("hidden", !text); };
+    const field = (label, input, help) => h("div.field", h("label.name", label), input, help ? h("div.help", help) : null);
+    N.dialog({
+      title: existing ? (existing.source === "project" ? `Edit ${existing.title || existing.id}` : `Customize ${existing.title || existing.id}`) : "New pipeline",
+      content: h("div.form-body", { style: { padding: "18px 20px", display: "grid", gap: "12px" } },
+        existing && existing.source !== "project" ? h("div.muted", "The project gets its own copy, used instead of the module's.") : null,
+        field("Id", id, "Lower case letters, digits, _ and dots"), field("Title", title), field("Description", description),
+        field("Entity type", entityType), h("div.field", h("label.name", "Steps"), stepsEl), message),
+      buttons: [{ label: "Cancel", onClick: (close) => close() }, { label: "Save pipeline", kind: "primary", onClick: async (close) => {
+        const chosen = steps.filter((s) => s.method);
+        if (!id.value.trim()) return say("Give the pipeline an id");
+        if (!chosen.length) return say("Add at least one step with a method");
+        const document = { schemaType: "nansen.pipeline", schemaVersion: "0.1.0", id: id.value.trim(),
+          version: (existing && existing.version) || "1.0.0", entityType: entityType.value,
+          steps: chosen.map((s) => Object.assign({ method: s.method }, s.title ? { title: s.title } : {}, s.preset ? { preset: s.preset } : {}, s.options ? { options: s.options } : {})) };
+        if (title.value.trim()) document.title = title.value.trim();
+        if (description.value.trim()) document.description = description.value.trim();
+        try {
+          await app.client.request("pipelines.save", { document });
+          close();
+          N.toast("Pipeline saved", document.title || document.id, "success");
+          app.render();
+        } catch (error) { say(error.message || String(error)); }
+      } }],
+    });
+  }
 
   /* ------------------------------------------------------------------ notes */
   const NOTE_TYPES = [["informal", "Note", "plain"], ["important", "Important", "warn"], ["todo", "To do", "info"], ["question", "Question", "accent"]];
