@@ -277,6 +277,7 @@ classdef ApiTest < matlab.unittest.TestCase
             api = nansen.Api(Catalog=catalog);
             settings = api.handle(struct("id", 1, "method", "settings.get")).result;
             testCase.verifyTrue(settings.queue.autoStart);
+            testCase.verifyFalse(settings.queue.debug);   % dev's task debug mode, off
             settings = api.handle(struct("id", 2, "method", "settings.save", "params", ...
                 struct("settings", struct("queue", struct("autoStart", false))))).result;
             testCase.verifyFalse(settings.queue.autoStart);

@@ -1811,6 +1811,7 @@
       const size = first.width * first.height;
       const layout = planes && state.volume === "montage" ? N.montageLayout(planes.length, first.height, first.width) : null;
       if (layout) Object.assign(view, { height: layout.height, width: layout.width, tiles: layout.tiles });
+      if (planes) view.volume = state.volume;   // how its planes were put together, as asked (the status says so)
       channels.forEach((c, k) => {
         const low = Math.min(...answers[k].map((f) => f.low ?? 0)), high = Math.max(...answers[k].map((f) => f.high ?? 0));
         const each = answers[k].map((f) => rescale(bytesOf(f.pixels), f.low ?? 0, f.high ?? 0, [low, high]));
@@ -1879,8 +1880,8 @@
         drawHistogram();
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
-        const planes = frame.layers && state.volume !== "single" && state.planes > 1 && state.mode !== "peakTime"
-          ? ({ montage: " · %d planes side by side", max: " · maximum of %d planes", mean: " · mean of %d planes" })[state.volume].replace("%d", state.planes) : "";
+        const planes = frame.volume   // as the image shown was asked for, not as the picker says now (a later one is on its way then)
+          ? ({ montage: " · %d planes side by side", max: " · maximum of %d planes", mean: " · mean of %d planes" })[frame.volume].replace("%d", state.planes) : "";
         const [height, width] = frame.tiles ? [frame.tiles[0].height, frame.tiles[0].width] : [frame.height, frame.width];
         status.textContent = `${height} × ${width}` + planes + (state.rois && roisOn() ? ` · ${state.rois.length} ROIs` : "");
       } catch (error) {

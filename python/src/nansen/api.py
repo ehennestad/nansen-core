@@ -11,6 +11,7 @@ import json
 import keyword
 import math
 import re
+import sys
 import threading
 import traceback
 from pathlib import Path
@@ -1649,11 +1650,23 @@ class Api:
             done = project.already_done(method.id, entities, dict(values, **(params.get("options") or {})))
             skipped = [dict(e.key) for e, d in zip(entities, done) if d]
             entities = [e for e, d in zip(entities, done) if not d]
-        results = project.run(params["methodId"], entities, params.get("options"), params.get("preset")) if entities else []
+        try:
+            results = project.run(params["methodId"], entities, params.get("options"), params.get("preset")) if entities else []
+        except Exception:
+            self._debug_error()
+            raise
         if entities:
             self.emit("entities", {"entityTypes": [params["entityType"]]})
         from .tasks import _json_result
         return {"results": _json_result(results), "skipped": skipped}
+
+    def _debug_error(self) -> None:
+        """Stop at the error being handled in the post-mortem debugger, when the user's settings say so (queue.debug, dev's
+        SessionTaskDebug) and the app was started from a terminal to debug in."""
+        if self.catalog is None or not self.catalog.settings()["queue"].get("debug") or not sys.stdin or not sys.stdin.isatty():
+            return
+        import pdb
+        pdb.post_mortem(sys.exc_info()[2])
 
     def _run_in_worker(self, method, params: dict) -> dict:
         """Run a method only another language has: queue it for that language, start a worker for it (queue.startWorker)

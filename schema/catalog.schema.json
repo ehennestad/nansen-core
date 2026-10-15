@@ -34,6 +34,7 @@
           "additionalProperties": false,
           "properties": {
             "autoStart": { "type": "boolean", "default": true, "description": "Start the background worker when the app opens a project, so queued tasks run without pressing Start." },
+            "debug": { "type": "boolean", "default": false, "description": "Stop at errors (dev's SessionTaskDebug): a method run now (methods.run) stops in the debugger where it fails. MATLAB: dbstop if error; Python: the post-mortem debugger, when the app was started from a terminal." },
             "worker": { "enum": ["thread", "process"], "default": "thread", "description": "How the background worker runs tasks. thread: on a thread of the app's process (in MATLAB, backgroundPool). process: each task in a process of its own (in MATLAB, on a process pool of the Parallel Computing Toolbox, as dev ran tasks), for methods that cannot run on a thread, such as MEX files and most toolboxes." }
           }
         },

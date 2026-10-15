@@ -1965,6 +1965,10 @@ classdef Api < handle
             end
             results = {};
             if ~isempty(entities)
+                if ~isempty(obj.Catalog) && nansen.internal.getField(obj.Catalog.settings().queue, "debug", false) && ~batchStartupOptionUsed
+                    dbstop if error   % dev's SessionTaskDebug: stop where the method fails (the setting queue.debug)
+                    restore = onCleanup(@() dbclear("if", "error"));
+                end
                 results = project.run(method.Id, entities, Options=obj.optionsOf(params), Preset=preset);
                 obj.emit("entities", struct("entityTypes", {{char(params.entityType)}}));
             end

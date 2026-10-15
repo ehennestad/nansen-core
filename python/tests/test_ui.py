@@ -1023,6 +1023,11 @@ def test_settings_page(empty_app, page):
         page.select_option(".worker-select", "process")
     answer.value.finished()
     assert api.handle({"id": 1, "method": "settings.get"})["result"]["queue"]["worker"] == "process"
+    assert not page.locator(".debug-tasks input").is_checked()   # dev's task debug mode: stop at errors
+    with page.expect_response(saved) as answer:
+        page.locator(".debug-tasks span").click()
+    answer.value.finished()
+    assert api.handle({"id": 1, "method": "settings.get"})["result"]["queue"]["debug"] is True
     page.select_option(".theme-select", "dark")
     assert page.evaluate("document.documentElement.dataset.theme") == "dark"
     page.reload()

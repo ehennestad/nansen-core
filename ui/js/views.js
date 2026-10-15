@@ -1759,6 +1759,8 @@
             row("Run tasks in", "A thread of the app, or each task in a process of its own (in MATLAB, a process pool of the Parallel Computing Toolbox), for methods that cannot run on a thread, such as MEX files and most toolboxes",
               h("select.input.worker-select", { style: { width: "180px" }, on: { change: (event) => save({ queue: { worker: event.target.value } }) } },
                 [["thread", "A thread"], ["process", "Processes"]].map(([v, label]) => h("option", { value: v, selected: (settings.queue.worker || "thread") === v }, label)))),
+            row("Stop at errors", "Run now stops in the debugger where a method fails, as dev's task debug mode: in MATLAB (dbstop if error), or in Python's debugger when the app was started from a terminal",
+              toggle("debug-tasks", Boolean(settings.queue.debug), (on) => save({ queue: { debug: on } }))),
             row("Save rows into the data folders", "When a row is edited, write it as <entity type>_info.json into each of its entity's folders, so the data folders describe themselves",
               toggle("save-to-folders", Boolean(settings.tables && settings.tables.saveToDataFolders), (on) => save({ tables: { saveToDataFolders: on } }))))),
         h("div.card", h("div.card-head", N.icon("eye"), h("h3", "Dashboard")),

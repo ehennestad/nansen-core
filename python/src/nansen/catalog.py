@@ -25,7 +25,7 @@ def default_catalog_path() -> Path:
     return base / "nansen" / "catalog.nansen.json"
 
 
-DEFAULT_SETTINGS = {"queue": {"autoStart": True, "worker": "thread"}, "addons": {"folder": ""}, "workers": {"python": "", "matlab": ""},
+DEFAULT_SETTINGS = {"queue": {"autoStart": True, "worker": "thread", "debug": False}, "addons": {"folder": ""}, "workers": {"python": "", "matlab": ""},
                     "tables": {"saveToDataFolders": False}}
 
 

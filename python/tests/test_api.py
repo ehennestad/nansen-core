@@ -259,7 +259,7 @@ def test_the_worker_starts_as_the_settings_say(tmp_path):
 
     catalog = Catalog(tmp_path / "catalog.json")
     project = create_demo(tmp_path / "demo")
-    assert catalog.settings() == {"queue": {"autoStart": True, "worker": "thread"}, "addons": {"folder": ""},
+    assert catalog.settings() == {"queue": {"autoStart": True, "worker": "thread", "debug": False}, "addons": {"folder": ""},
                                   "workers": {"python": "", "matlab": ""}, "tables": {"saveToDataFolders": False}}
     server = open_app(project, catalog=catalog, open_browser=False)
     try:
@@ -504,3 +504,27 @@ def test_a_moved_project_is_located_again(tmp_path):
     moved = next(p for p in projects if p["name"] == "Pilot")
     assert moved["available"] is True and moved["path"] == str((tmp_path / "moved").resolve())
     assert call("catalog.relocate", path=entry["path"], newPath=str(tmp_path / "moved"))["error"]["code"] == "unknown-project"
+
+
+def test_run_now_stops_at_errors_in_the_debugger_when_set(tmp_path, monkeypatch):   # dev's SessionTaskDebug
+    import pdb
+    import sys as system
+
+    from nansen.catalog import Catalog
+    from nansen.demo import create_demo
+
+    catalog = Catalog(tmp_path / "catalog.json")
+    api = Api(catalog=catalog, project=create_demo(tmp_path / "demo"), start_queue=False)
+    stopped = []
+    monkeypatch.setattr(pdb, "post_mortem", lambda tb: stopped.append(tb))
+    monkeypatch.setattr(system.stdin, "isatty", lambda: True, raising=False)
+    key = api.handle({"id": 1, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"][0]["key"]
+    run = lambda: api.handle({"id": 2, "method": "methods.run", "params": {"methodId": "core.wait", "entityType": "session",
+                                                                          "keys": [key], "options": {"seconds": 0, "fail": True}}})
+    try:
+        assert "error" in run() and stopped == []   # not set: the error, and no debugger
+        api.handle({"id": 3, "method": "settings.save", "params": {"settings": {"queue": {"debug": True}}}})
+        assert "error" in run() and len(stopped) == 1 and stopped[0] is not None
+    finally:
+        api.close()
+
