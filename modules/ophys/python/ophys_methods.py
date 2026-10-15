@@ -15,6 +15,7 @@ from nansen.errors import NansenError
 
 SMOOTHING = 1.15  # pixels: the phase correlation is smoothed by a Gaussian of this width, as suite2p does
 CHUNK = 100       # frames handled at a time
+UPSAMPLE = 20     # subpixel shifts are found to 1/UPSAMPLE of a pixel
 
 
 def round_to(value, digits):
@@ -48,12 +49,17 @@ def image_stats(entity, options, context):
 
 
 def motion_correction(entity, options, context):
-    """Align each frame to a reference by the whole-pixel shift of largest (smoothed) phase correlation.
+    """Align each frame to a reference by the shift of largest (smoothed) phase correlation.
 
-    The stack is read a chunk at a time and the aligned stack written the same way, so a recording need not
-    fit in memory. Each iteration but the last makes the next reference: the average of the frames aligned.
-    In a stack with channels, the shifts are found in the options' channel and every channel is aligned by
-    them; in one with planes, the options' plane is aligned (height x width x channels x frames).
+    Rigid by default, in whole pixels. With subpixel, the peak is refined by a parabola through it and its
+    neighbours along each axis, and frames are moved by bilinear interpolation. With patches > 1, the frame is
+    also cut into patches x patches patches, each of which finds its own shift within maxDeviation of the
+    frame's whole-pixel shift; the shift of each pixel is interpolated bilinearly between the patch centres
+    (piecewise rigid, as NoRMCorre). The stack is read a chunk at a time and the aligned stack written the
+    same way, so a recording need not fit in memory. Each iteration but the last makes the next reference:
+    the average of the frames aligned. In a stack with channels, the shifts are found in the options' channel
+    and every channel is aligned by them; in one with planes, the options' plane is aligned (height x width x
+    channels x frames).
     """
     stack = _open_stack(entity, options["stack"], context, options)
     whole = context.project.open_stack(entity, options["stack"])
@@ -64,35 +70,60 @@ def motion_correction(entity, options, context):
     else:
         target = stack
     height, width, frames = stack.shape
+    subpixel = bool(options.get("subpixel", False))
+    patches = int(options.get("patches", 1))
+    deviation = int(options.get("maxDeviation", 3))
+    if patches > 1 and (height // patches < 4 or width // patches < 4):
+        raise NansenError("invalid-options", f"{patches} x {patches} patches of a {height} x {width} frame are smaller than 4 pixels")
+    row_edges, column_edges = patch_edges(height, patches), patch_edges(width, patches)
+    weights = (_axis_weights(row_edges, height), _axis_weights(column_edges, width))
+    tapered = subpixel or patches > 1   # whole-pixel rigid alignment works on the frames as they are
     count = min(options["referenceFrames"], frames)
     reference = stack[:, :, :count].astype(np.float64).mean(axis=2)
     iterations = options["iterations"]
     for iteration in range(iterations):
         last = iteration == iterations - 1
-        shifts = np.zeros((frames, 2), dtype=np.int32)
-        reference_fft = np.conj(np.fft.fft2(reference)) * _smoothing(height, width)
+        shifts = np.zeros((frames, 2, patches, patches))
+        reference_fft = _reference_fft(reference, tapered)
+        patch_ffts = [[_reference_fft(reference[r0:r1, c0:c1], True) for c0, c1 in zip(column_edges, column_edges[1:])]
+                      for r0, r1 in zip(row_edges, row_edges[1:])]
         total = np.zeros((height, width))
         with (context.project.stack_writer(entity, options["output"], target.shape, target.dtype) if last else _NoWriter()) as out:
             for start in range(0, frames, CHUNK):
                 context.check_cancelled()
                 stop = min(start + CHUNK, frames)
                 chunk = stack[:, :, start:stop]
-                shifts[start:stop] = estimate_shifts(chunk, reference_fft, options["maxShift"])
+                if patches == 1:
+                    shifts[start:stop, :, 0, 0] = estimate_shifts(chunk, reference_fft, options["maxShift"], subpixel, tapered)
+                else:
+                    rigid = estimate_shifts(chunk, reference_fft, options["maxShift"], tapered=True)
+                    shifts[start:stop] = estimate_patch_shifts(chunk, patch_ffts, row_edges, column_edges, rigid,
+                                                               options["maxShift"], deviation, subpixel)
+                align = lambda frames_: align_frames(frames_, shifts[start:stop], weights, subpixel)
                 if last:
                     if target is stack:
-                        out.write(start, apply_shifts(chunk, shifts[start:stop]))
+                        out.write(start, align(chunk))
                     else:
                         channels = target.frames(start, stop)
-                        out.write(start, np.stack([apply_shifts(channels[:, :, c, :], shifts[start:stop])
-                                                   for c in range(channels.shape[2])], axis=2))
+                        out.write(start, np.stack([align(channels[:, :, c, :]) for c in range(channels.shape[2])], axis=2))
                 else:
-                    total += apply_shifts(chunk, shifts[start:stop]).astype(np.float64).sum(axis=2)
+                    total += align(chunk).astype(np.float64).sum(axis=2)
                 context.progress((iteration * frames + stop) / (iterations * frames), f"iteration {iteration + 1}: frame {stop}/{frames}")
         reference = total / frames
-    _save(entity, options["shiftsOutput"], shifts, context)
-    distance = np.sqrt((shifts.astype(np.float64) ** 2).sum(axis=1))
-    context.log(f"{_name(entity)}: largest shift {int(np.abs(shifts).max(initial=0))} px")
-    return {"frames": frames, "maxShift": int(np.abs(shifts).max(initial=0)), "meanShift": round_to(distance.mean(), 4)}
+    if patches == 1:
+        saved = shifts[:, :, 0, 0] if subpixel else shifts[:, :, 0, 0].astype(np.int32)
+    else:
+        saved = shifts.reshape(frames, 2, patches * patches)   # patch (i, j) is i * patches + j
+        saved = saved if subpixel else saved.astype(np.int32)
+    _save(entity, options["shiftsOutput"], saved, context)
+    distance = np.sqrt(shifts[:, 0] ** 2 + shifts[:, 1] ** 2)
+    largest = float(np.abs(shifts).max(initial=0))
+    if subpixel:   # found to 1/UPSAMPLE of a pixel, and good to about a tenth
+        largest, mean = round_to(largest, 1), round_to(distance.mean(), 1)
+    else:
+        largest, mean = int(largest), round_to(distance.mean(), 4)
+    context.log(f"{_name(entity)}: largest shift {largest} px")
+    return {"frames": frames, "maxShift": largest, "meanShift": mean}
 
 
 class _NoWriter:
@@ -103,22 +134,75 @@ class _NoWriter:
         return False
 
 
-def estimate_shifts(frames, reference_fft, max_shift):
-    """(rows, columns) each frame of a height x width x n stack is displaced from the reference.
+def estimate_shifts(frames, reference_fft, max_shift, subpixel=False, tapered=False):
+    """(rows, columns) each frame of a height x width x n stack is displaced from the reference: n x 2.
 
     reference_fft is the conjugate of the reference's 2-D FFT times the smoothing. The peak is looked for
     within max_shift (and less than half the frame); of equal peaks, the one of smallest row shift, then
-    column shift, wins.
+    column shift, wins. With subpixel, the peak is refined (see _peak). With tapered, the frames are taken
+    less their mean and weighted by the taper, as the reference must have been.
     """
     height, width = frames.shape[:2]
+    if tapered:
+        frames = _tapered(frames)
+    correlation, product = _correlation(frames, reference_fft)
+    rows = _shift_range(0, max_shift, max_shift, (height - 1) // 2)
+    columns = _shift_range(0, max_shift, max_shift, (width - 1) // 2)
+    peaks = [_peak(correlation[:, :, t], product[:, :, t], rows, columns, subpixel) for t in range(frames.shape[2])]
+    return np.array(peaks, dtype=np.float64 if subpixel else np.int64).reshape(-1, 2)
+
+
+def estimate_patch_shifts(frames, patch_ffts, row_edges, column_edges, rigid, max_shift, deviation, subpixel):
+    """The shift of each patch of each frame: n x 2 x patches x patches. A patch's peak is looked for within
+    deviation of the frame's whole-pixel shift (rigid, n x 2), within max_shift and less than half the patch;
+    where that leaves nothing, the patch takes the frame's shift."""
+    n = frames.shape[2]
+    patches = len(row_edges) - 1
+    shifts = np.zeros((n, 2, patches, patches))
+    for i, (r0, r1) in enumerate(zip(row_edges, row_edges[1:])):
+        for j, (c0, c1) in enumerate(zip(column_edges, column_edges[1:])):
+            correlation, product = _correlation(_tapered(frames[r0:r1, c0:c1, :]), patch_ffts[i][j])
+            for t in range(n):
+                rows = _shift_range(int(rigid[t, 0]), deviation, max_shift, (r1 - r0 - 1) // 2)
+                columns = _shift_range(int(rigid[t, 1]), deviation, max_shift, (c1 - c0 - 1) // 2)
+                if rows.size and columns.size:
+                    shifts[t, :, i, j] = _peak(correlation[:, :, t], product[:, :, t], rows, columns, subpixel)
+                else:
+                    shifts[t, :, i, j] = rigid[t]
+    return shifts
+
+
+def _correlation(frames, reference_fft):
+    """The (whitened, smoothed) phase correlation of each frame of a stack with the reference, and the
+    cross-power spectrum it is the inverse FFT of."""
     product = np.fft.fft2(frames.astype(np.float64), axes=(0, 1)) * reference_fft[:, :, None]
     product /= np.maximum(np.abs(product), 1e-12)
-    correlation = np.real(np.fft.ifft2(product, axes=(0, 1)))
-    rows = np.arange(-min(max_shift, (height - 1) // 2), min(max_shift, (height - 1) // 2) + 1)
-    columns = np.arange(-min(max_shift, (width - 1) // 2), min(max_shift, (width - 1) // 2) + 1)
-    window = correlation[np.ix_(rows % height, columns % width)].reshape(rows.size * columns.size, -1)
-    best = window.argmax(axis=0)
-    return np.stack([rows[best // columns.size], columns[best % columns.size]], axis=1)
+    return np.real(np.fft.ifft2(product, axes=(0, 1))), product
+
+
+def _shift_range(centre, deviation, max_shift, half):
+    """The whole-pixel shifts within deviation of centre, max_shift of 0 and half the size of the frame."""
+    limit = min(max_shift, half)
+    return np.arange(max(centre - deviation, -limit), min(centre + deviation, limit) + 1)
+
+
+def _peak(correlation, product, rows, columns, subpixel):
+    """(dy, dx) of the largest correlation among the shifts rows x columns (the first in row-major order of
+    equal ones). With subpixel, refined as NoRMCorre does: the correlation is computed on a grid of
+    1/UPSAMPLE pixel within a pixel of that peak, from the cross-power spectrum (product), and its largest
+    value taken (the first in row-major order of equal ones)."""
+    height, width = correlation.shape
+    window = correlation[np.ix_(rows % height, columns % width)]
+    best = int(window.argmax())
+    dy, dx = int(rows[best // columns.size]), int(columns[best % columns.size])
+    if not subpixel:
+        return dy, dx
+    offsets = np.arange(-UPSAMPLE, UPSAMPLE + 1) / UPSAMPLE
+    down = np.exp(2j * np.pi * np.outer(dy + offsets, np.fft.fftfreq(height)))
+    across = np.exp(2j * np.pi * np.outer(np.fft.fftfreq(width), dx + offsets))
+    values = np.real(down @ product @ across)
+    best = int(values.argmax())
+    return dy + offsets[best // offsets.size], dx + offsets[best % offsets.size]
 
 
 def apply_shifts(stack, shifts):
@@ -130,6 +214,100 @@ def apply_shifts(stack, shifts):
         aligned[max(0, -dy):min(height, height - dy), max(0, -dx):min(width, width - dx), t] = \
             stack[max(0, dy):min(height, height + dy), max(0, dx):min(width, width + dx), t]
     return aligned
+
+
+def align_frames(frames, shifts, weights, subpixel):
+    """Frames moved back by their shifts (n x 2 x patches x patches): by whole pixels when they are rigid and
+    whole, otherwise each pixel by its shift, interpolated between the patch centres, and bilinearly."""
+    n = frames.shape[2]
+    if shifts.shape[2] == 1 and not subpixel:
+        return apply_shifts(frames, shifts[:, :, 0, 0].astype(int))
+    if shifts.shape[2] == 1:
+        return warp(frames, shifts[:, 0, 0, 0].reshape(n, 1, 1), shifts[:, 1, 0, 0].reshape(n, 1, 1))
+    rows, columns = weights
+    return warp(frames, np.stack([shift_field(shifts[t, 0], rows, columns) for t in range(n)]),
+                np.stack([shift_field(shifts[t, 1], rows, columns) for t in range(n)]))
+
+
+WARP_TOLERANCE = 1e-6
+
+
+def warp(frames, dy, dx):
+    """out[y, x, t] = frames[y + dy, x + dx, t], interpolated bilinearly, and 0 where that is outside the frame
+    (by more than a millionth of a pixel). dy and dx are n x height x width, or n x 1 x 1. Integer stacks are
+    rounded half up."""
+    height, width, n = frames.shape
+    rows, columns = np.mgrid[0:height, 0:width].astype(np.float64)
+    out = np.zeros(frames.shape)
+    for t in range(n):
+        y = rows + dy[t]
+        x = columns + dx[t]
+        inside = (y > -WARP_TOLERANCE) & (y < height - 1 + WARP_TOLERANCE) & (x > -WARP_TOLERANCE) & (x < width - 1 + WARP_TOLERANCE)
+        y = np.clip(y, 0, height - 1)
+        x = np.clip(x, 0, width - 1)
+        y0, x0 = np.floor(y).astype(int), np.floor(x).astype(int)
+        fy, fx = y - y0, x - x0
+        y1, x1 = np.minimum(y0 + 1, height - 1), np.minimum(x0 + 1, width - 1)
+        f = frames[:, :, t].astype(np.float64)
+        value = (1 - fy) * ((1 - fx) * f[y0, x0] + fx * f[y0, x1]) + fy * ((1 - fx) * f[y1, x0] + fx * f[y1, x1])
+        out[:, :, t] = np.where(inside, value, 0.0)
+    return _like(out, frames.dtype)
+
+
+def _like(values, dtype):
+    """values in dtype: rounded half up, and clipped, for integers."""
+    if np.issubdtype(dtype, np.integer):
+        info = np.iinfo(dtype)
+        return np.clip(np.floor(values + 0.5), info.min, info.max).astype(dtype)
+    return values.astype(dtype)
+
+
+def _tapered(frames):
+    """Frames (height x width x n) less their means, weighted by the taper."""
+    frames = frames.astype(np.float64)
+    return (frames - frames.mean(axis=(0, 1))) * taper(*frames.shape[:2])[:, :, None]
+
+
+def _reference_fft(reference, tapered):
+    """The conjugate FFT of a reference image (tapered, less its mean, when asked), times the smoothing."""
+    if tapered:
+        reference = _tapered(reference[:, :, None])[:, :, 0]
+    return np.conj(np.fft.fft2(reference)) * _smoothing(*reference.shape)
+
+
+def taper(height, width):
+    """A patch's weights before its FFT, so its edges do not count: a Hann window (sin^2) along each axis."""
+    return np.outer(np.sin(np.pi * (np.arange(height) + 0.5) / height) ** 2, np.sin(np.pi * (np.arange(width) + 0.5) / width) ** 2)
+
+
+def patch_edges(size, count):
+    """Where count patches of a size start and end: patch i is edges[i]:edges[i + 1]."""
+    return [(i * size) // count for i in range(count + 1)]
+
+
+def _axis_weights(edges, size):
+    """For each pixel along an axis: the patches whose centres it lies between, and how far from the first (0..1).
+    Pixels before the first centre or after the last take that patch's shift."""
+    centres = [(a + b - 1) / 2 for a, b in zip(edges, edges[1:])]
+    first, second, share = np.zeros(size, int), np.zeros(size, int), np.zeros(size)
+    for y in range(size):
+        if y <= centres[0]:
+            continue
+        if y >= centres[-1]:
+            first[y] = second[y] = len(centres) - 1
+            continue
+        k = max(i for i, c in enumerate(centres) if c <= y)
+        first[y], second[y], share[y] = k, k + 1, (y - centres[k]) / (centres[k + 1] - centres[k])
+    return first, second, share
+
+
+def shift_field(patch_shifts, rows, columns):
+    """One component of the patches' shifts (patches x patches), interpolated bilinearly to every pixel."""
+    r0, r1, fy = rows
+    c0, c1, fx = columns
+    fy, fx = fy[:, None], fx[None, :]
+    s = patch_shifts
+    return (1 - fy) * ((1 - fx) * s[np.ix_(r0, c0)] + fx * s[np.ix_(r0, c1)]) + fy * ((1 - fx) * s[np.ix_(r1, c0)] + fx * s[np.ix_(r1, c1)])
 
 
 def _smoothing(height, width):
@@ -766,12 +944,24 @@ def gaussian_along(data, axis, sigma):
 
 
 def align_sessions(entities, options, context):
-    """Align each entity's FOV image to the first entity's, and copy the first entity's ROIs, moved, to the others."""
+    """Align each entity's FOV image to the first entity's, and copy the first entity's ROIs, moved, to the others.
+
+    With maxRotation, each image is also turned back by each angle from -maxRotation to maxRotation in steps of
+    rotationStep (about the image centre, bilinearly, the image's mean outside it), and the angle of largest
+    correlation (the smallest, then the negative, of equal ones) is taken. An ROI pixel p of the first entity
+    goes to rotation(angle) * (p - centre + shift) + centre, rounded half up.
+    """
     if not entities:
         raise NansenError("no-entities", "no entities to align")
     reference_image = _image(context.project.load(entities[0], options["image"]))
     height, width = reference_image.shape
-    reference_fft = np.conj(np.fft.fft2(reference_image)) * _smoothing(height, width)
+    most, step = float(options.get("maxRotation", 0)), float(options.get("rotationStep", 0.5))
+    if most > 0 and step <= 0:
+        raise NansenError("invalid-options", "rotationStep is more than 0")
+    count = int(math.floor(most / step + 1e-9)) if most > 0 else 0
+    angles = sorted({k * step for k in range(-count, count + 1)}, key=lambda a: (abs(a), a))
+    tapered = most > 0
+    reference_fft = _reference_fft(reference_image, tapered)
     document = context.project.load(entities[0], options["rois"])
     rois = [roi for roi in document.get("rois", []) if roi.get("classification") != "rejected"]
     shifts, migrated = [], 0
@@ -780,13 +970,24 @@ def align_sessions(entities, options, context):
         image = _image(context.project.load(entity, options["image"]))
         if image.shape != (height, width):
             raise NansenError("invalid-data", f"{_name(entity)}: the image is {image.shape}, the reference {(height, width)}")
-        dy, dx = (int(v) for v in estimate_shifts(image[:, :, None], reference_fft, options["maxShift"])[0])
-        shifts.append({"key": entity.key, "shift": [dy, dx]})
+        best = None
+        for angle in angles:
+            turned = rotate_image(image, angle) if angle else image
+            frames = _tapered(turned[:, :, None]) if tapered else turned[:, :, None]
+            correlation, _ = _correlation(frames, reference_fft)
+            rows = _shift_range(0, options["maxShift"], options["maxShift"], (height - 1) // 2)
+            columns = _shift_range(0, options["maxShift"], options["maxShift"], (width - 1) // 2)
+            dy, dx = _peak(correlation[:, :, 0], None, rows, columns, False)
+            value = correlation[dy % height, dx % width, 0]
+            if best is None or value > best[0]:
+                best = (value, angle, dy, dx)
+        _, angle, dy, dx = best
+        shifts.append({"key": entity.key, "shift": [dy, dx], "rotation": angle})
         if number > 0:
             moved = []
             for roi in rois:
-                pixels = [(int(y) + dy, int(x) + dx) for y, x in np.asarray(roi["pixels"]).reshape(-1, 2)]
-                pixels = sorted(p for p in pixels if 0 <= p[0] < height and 0 <= p[1] < width)
+                pixels = rotate_points(np.asarray(roi["pixels"], dtype=np.float64).reshape(-1, 2) + [dy, dx], angle, height, width)
+                pixels = sorted({(int(y), int(x)) for y, x in pixels if 0 <= y < height and 0 <= x < width})
                 if pixels:
                     moved.append(_roi(roi.get("id", len(moved) + 1), pixels))
             context.project.save(entity, options["output"], {"imageSize": [height, width], "rois": moved})
@@ -794,6 +995,37 @@ def align_sessions(entities, options, context):
         context.progress((number + 1) / len(entities), _name(entity))
     context.log(f"aligned {len(entities)} entities to {_name(entities[0])}")
     return {"reference": entities[0].key, "shifts": shifts, "migrated": migrated, "rois": len(rois)}
+
+
+def _turn(angle):
+    """The rotation by angle degrees of (row, column) vectors: [[cos, -sin], [sin, cos]]."""
+    radians = math.radians(angle)
+    return math.cos(radians), math.sin(radians)
+
+
+def rotate_points(points, angle, height, width):
+    """(row, column) points (n x 2) turned by angle degrees about the image centre and rounded half up."""
+    if not angle:
+        return np.floor(points + 0.5)
+    cos, sin = _turn(angle)
+    cy, cx = (height - 1) / 2, (width - 1) / 2
+    y, x = points[:, 0] - cy, points[:, 1] - cx
+    return np.floor(np.stack([cos * y - sin * x + cy, sin * y + cos * x + cx], axis=1) + 0.5)
+
+
+def rotate_image(image, angle):
+    """The image turned back by angle degrees about its centre: out[p] = image at rotation(angle) * (p - centre)
+    + centre, bilinearly, and the image's mean where that is outside it."""
+    height, width = image.shape
+    cos, sin = _turn(angle)
+    cy, cx = (height - 1) / 2, (width - 1) / 2
+    rows, columns = np.mgrid[0:height, 0:width].astype(np.float64)
+    y, x = rows - cy, columns - cx
+    dy = cos * y - sin * x + cy - rows
+    dx = sin * y + cos * x + cx - columns
+    out = warp(image[:, :, None].astype(np.float64), dy[None], dx[None])[:, :, 0]
+    inside = warp(np.ones((height, width, 1)), dy[None], dx[None])[:, :, 0] > 0.5
+    return np.where(inside, out, image.mean())
 
 
 def _image(data):

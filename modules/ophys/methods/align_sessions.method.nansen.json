@@ -6,7 +6,7 @@
   "title": "Align sessions and copy ROIs",
   "category": "Two-photon/ROI registration",
   "entityType": "*",
-  "description": "Aligns each selected entity's FOV image to the first one's by phase correlation (whole pixels), and saves the first entity's ROIs, moved by that shift, as each other entity's ROIs. Rejected ROIs are left out, and pixels moved outside the image are dropped. Stacks are averaged over frames.",
+  "description": "Aligns each selected entity's FOV image to the first one's by phase correlation (whole pixels), and saves the first entity's ROIs, moved by that shift, as each other entity's ROIs. With a largest rotation, each image is also turned back by every angle up to it, in steps, and the angle that correlates best is taken; the ROIs are turned by it about the image centre. Rejected ROIs are left out, and pixels moved outside the image are dropped. Stacks are averaged over frames.",
   "batchMode": "batch",
   "implementations": {
     "python": "ophys_methods:align_sessions",
@@ -38,6 +38,20 @@
         "default": 30,
         "minimum": 0,
         "title": "Largest shift (px)"
+      },
+      "maxRotation": {
+        "type": "number",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 45,
+        "title": "Largest rotation (degrees)",
+        "description": "0 to only shift."
+      },
+      "rotationStep": {
+        "type": "number",
+        "default": 0.5,
+        "exclusiveMinimum": 0,
+        "title": "Rotation step (degrees)"
       }
     }
   }

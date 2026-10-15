@@ -1,0 +1,21 @@
+{
+  "schemaType": "nansen.project",
+  "schemaVersion": "0.1.0",
+  "name": "OphysMotion",
+  "dataset": "dataset.dsm.json",
+  "entityTypes": [
+    {
+      "name": "subject",
+      "fragments": []
+    },
+    {
+      "name": "session",
+      "fragments": []
+    }
+  ],
+  "modules": [
+    {
+      "id": "ophys"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "description": "Motion correction finer than whole pixels: subpixel shifts on a texture moved by half pixels, piecewise rigid correction (patches) of a texture whose quadrants move apart, and sessions aligned with a rotation, whose ROIs land where the ground truth puts them. make_data.py writes the recordings and the steps from the ground truth.",
+  "steps": 9
+}

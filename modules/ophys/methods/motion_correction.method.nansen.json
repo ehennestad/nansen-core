@@ -3,10 +3,10 @@
   "schemaVersion": "0.1.0",
   "id": "ophys.motion_correction",
   "version": "1.0.0",
-  "title": "Correct motion (rigid)",
+  "title": "Correct motion",
   "category": "Two-photon/Motion correction",
   "entityType": "*",
-  "description": "Aligns every frame to a reference image by the whole-pixel shift that maximises their phase correlation, and saves the aligned stack and the shifts. The reference is the average of the first frames; each further iteration uses the average of the frames aligned in the one before. Pixels shifted in from outside the frame are 0. In a stack with channels, the shifts are found in one channel and every channel is aligned by them; in one with planes, one plane is aligned (as height x width x channels x frames).",
+  "description": "Aligns every frame to a reference image by the shift that maximises their phase correlation, and saves the aligned stack and the shifts. Rigid and in whole pixels by default. With subpixel, shifts are found to a twentieth of a pixel (the correlation upsampled around its peak, as NoRMCorre does) and frames are moved by bilinear interpolation. With patches above 1, each frame is cut into patches x patches patches that find their own shifts near the frame's, and every pixel is moved by the shift interpolated between the patch centres (piecewise rigid, as NoRMCorre). Both weight the frames by a taper before the correlation, so their edges do not count. The reference is the average of the first frames; each further iteration uses the average of the frames aligned in the one before. Pixels shifted in from outside the frame are 0. In a stack with channels, the shifts are found in one channel and every channel is aligned by them; in one with planes, one plane is aligned (as height x width x channels x frames).",
   "implementations": {
     "python": "ophys_methods:motion_correction",
     "matlab": "ophys.motionCorrection"
@@ -30,7 +30,7 @@
         "type": "string",
         "default": "MotionCorrectionShifts",
         "title": "Shifts",
-        "description": "Variable the shifts are saved to: frames x 2 integers, the rows and columns each frame was displaced from the reference (aligning moves it back). Leave empty to not save it."
+        "description": "Variable the shifts are saved to: frames x 2, the rows and columns each frame was displaced from the reference (aligning moves it back); whole numbers unless subpixel. With patches, frames x 2 x patches², patch (i, j) at i x patches + j (from 0). Leave empty to not save it."
       },
       "maxShift": {
         "type": "integer",
@@ -50,6 +50,27 @@
         "minimum": 1,
         "maximum": 10,
         "title": "Iterations"
+      },
+      "subpixel": {
+        "type": "boolean",
+        "default": false,
+        "title": "Subpixel",
+        "description": "Find shifts to a twentieth of a pixel and move frames by bilinear interpolation. The results give the shifts to a tenth of a pixel."
+      },
+      "patches": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "maximum": 16,
+        "title": "Patches per side",
+        "description": "Above 1: piecewise rigid correction with this many patches down and across, each at least 4 pixels."
+      },
+      "maxDeviation": {
+        "type": "integer",
+        "default": 3,
+        "minimum": 0,
+        "title": "Largest patch deviation (px)",
+        "description": "How far a patch's shift may be from its frame's whole-pixel shift."
       },
       "channel": {
         "type": "integer",

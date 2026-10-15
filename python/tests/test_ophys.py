@@ -245,3 +245,61 @@ def test_binning_and_moving_mean():
     trace = np.arange(6, dtype=np.float64).reshape(1, 1, 6)
     # window 4: 2 before and 1 after, as MATLAB's movmean(x, 4)
     assert np.allclose(ophys["moving_mean"](trace, 4)[0, 0], [0.5, 1, 1.5, 2.5, 3.5, 4])
+
+
+def _blob_scene(rng, size, count=700):
+    """A function (rows, columns) -> image of many small bright blobs, to draw moved by any amount."""
+    blobs = [(rng.uniform(0, size), rng.uniform(0, size), rng.uniform(50, 200), rng.uniform(0.8, 2)) for _ in range(count)]
+
+    def draw(rows, columns):
+        value = np.full(rows.shape, 50.0)
+        for cy, cx, amplitude, sigma in blobs:
+            value += amplitude * np.exp(-((rows - cy) ** 2 + (columns - cx) ** 2) / (2 * sigma ** 2))
+        return value
+    return draw
+
+
+def test_subpixel_shifts_are_found_to_a_twentieth_of_a_pixel():
+    rng = np.random.default_rng(1)
+    rows, columns = np.mgrid[0:64, 0:64].astype(float)
+    draw = _blob_scene(rng, 64)
+    true = rng.uniform(-3, 3, (10, 2))
+    true[0] = 0
+    frames = np.stack([draw(rows - dy, columns - dx) for dy, dx in true], axis=2) + rng.normal(0, 0.5, (64, 64, 10))
+    reference = ophys["_reference_fft"](draw(rows, columns), True)
+    whole = ophys["estimate_shifts"](frames, reference, 8)
+    finer = ophys["estimate_shifts"](frames, reference, 8, True, True)
+    assert np.abs(whole - true).max() > 0.3
+    assert np.abs(finer - true).max() <= 0.06
+
+
+def test_piecewise_rigid_correction_follows_a_frame_that_bends():
+    rng = np.random.default_rng(2)
+    rows, columns = np.mgrid[0:64, 0:64].astype(float)
+    draw = _blob_scene(rng, 64)
+    across = np.clip((columns - 20) / 24, 0, 1)   # the left side moves (2, 0), the right side (-1, 1)
+    frame = (draw(rows - (2 - 3 * across), columns - across) + rng.normal(0, 2, (64, 64)))[:, :, None]
+    reference = draw(rows, columns)
+    rigid = ophys["estimate_shifts"](frame, ophys["_reference_fft"](reference, True), 8, tapered=True)
+    edges = ophys["patch_edges"](64, 4)
+    patch_ffts = [[ophys["_reference_fft"](reference[a:b, c:d], True) for c, d in zip(edges, edges[1:])] for a, b in zip(edges, edges[1:])]
+    patches = ophys["estimate_patch_shifts"](frame, patch_ffts, edges, edges, rigid, 8, 4, True)
+    assert np.abs(patches[0, :, :, 0] - [[2], [0]]).max() <= 0.35      # the left column of 16 x 16 patches
+    assert np.abs(patches[0, :, :, 3] - [[-1], [1]]).max() <= 0.35     # and the right one
+    weights = (ophys["_axis_weights"](edges, 64), ophys["_axis_weights"](edges, 64))
+    as_rigid = ophys["align_frames"](frame, rigid.reshape(1, 2, 1, 1).astype(float), weights, False)
+    as_patches = ophys["align_frames"](frame, patches, weights, True)
+    inner = (slice(6, -6), slice(6, -6))
+    error = lambda aligned: np.abs(aligned[:, :, 0] - reference)[inner].mean()
+    assert error(as_patches) < 0.5 * error(as_rigid)
+
+
+def test_a_turned_image_is_turned_back():
+    rng = np.random.default_rng(3)
+    image = rng.normal(100, 10, (40, 40))
+    there_and_back = ophys["rotate_image"](ophys["rotate_image"](image, 5.0), -5.0)
+    assert np.allclose(ophys["rotate_image"](image, 0.0), image)
+    centre = (slice(12, 28), slice(12, 28))
+    assert np.corrcoef(there_and_back[centre].ravel(), image[centre].ravel())[0, 1] > 0.6
+    points = np.array([[19.5 + 10, 19.5]])
+    assert ophys["rotate_points"](points, 90, 40, 40).tolist() == [[20.0, 30.0]]   # 10 rows below the centre, a quarter turn on
