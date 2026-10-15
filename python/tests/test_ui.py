@@ -816,3 +816,24 @@ def test_edit_a_column(empty_app, page):
     fragment = next(f for f in call("fragments.list")["result"] if f["id"] == "qc")
     assert fragment["version"] == "1.0.1" and fragment["columns"][0]["choices"] == ["good", "poor", "unsure"]
     assert call("entities.get", entityType="session", key=key)["result"]["values"]["quality"] == "poor"
+
+
+def test_add_a_computed_column(empty_app, page):
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.click(".toolbar button:has-text('Columns')")
+    page.click(".menu .item:has-text('Add a computed column')")
+    page.fill(".dialog .field:has-text('Column name') input", "n_frames")
+    page.fill(".dialog .field:has-text('Title') input", "Frames")
+    page.select_option(".dialog .field:has-text('Type') select", "integer")
+    page.click(".dialog-foot button:has-text('Create')")
+    page.wait_for_selector(".grid-table th:has-text('Frames')")
+    code = folder / "python" / "n_frames.py"
+    code.write_text(code.read_text().replace('"n_frames": None', '"n_frames": 42'))
+    page.click(".toolbar button:has-text('Update')")
+    page.click(".menu .item:has-text('Frames')")
+    wait_until(lambda: all(r["values"].get("n_frames") == 42 for r in
+                           api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"] if r["inTable"]))

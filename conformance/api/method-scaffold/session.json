@@ -346,6 +346,126 @@
       "expect": {
         "error": "unknown-method"
       }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 20,
+        "params": {
+          "id": "frame_count",
+          "title": "Frame count",
+          "entityType": "session",
+          "computes": [
+            {
+              "name": "n_frames",
+              "dataType": "integer",
+              "title": "Frames"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "id": "frame_count",
+          "files": [
+            "methods/frame_count.method.nansen.json",
+            "matlab/frame_count.m",
+            "python/frame_count.py",
+            "fragments/frame_count.fragment.nansen.json"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.list",
+        "id": 21,
+        "params": {}
+      },
+      "expect": {
+        "result": [
+          {
+            "id": "frame_count",
+            "computed": true,
+            "source": "project",
+            "columns": [
+              {
+                "name": "n_frames",
+                "title": "Frames"
+              }
+            ]
+          },
+          {
+            "id": "notes"
+          },
+          {
+            "id": "core.notes"
+          },
+          {
+            "id": "core.file_stats"
+          },
+          {
+            "id": "core.subject"
+          },
+          {
+            "id": "core.pipeline"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.update",
+        "id": 22,
+        "params": {
+          "entityType": "session",
+          "fragmentId": "frame_count"
+        }
+      },
+      "expect": {
+        "result": {
+          "failed": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 23,
+        "params": {
+          "id": "frame_count_again",
+          "entityType": "session",
+          "computes": [
+            {
+              "name": "n_frames",
+              "dataType": "integer",
+              "title": "Frames"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "column-exists"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.create",
+        "id": 24,
+        "params": {
+          "id": "anywhere",
+          "entityType": "*",
+          "computes": [
+            {
+              "name": "x",
+              "dataType": "string"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
     }
   ]
 }

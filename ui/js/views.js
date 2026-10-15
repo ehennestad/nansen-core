@@ -143,7 +143,8 @@
           on: { change: () => grid.toggleColumn(c.name) } }), c.title || c.name, h("span.muted", { style: { marginLeft: "auto", fontSize: "11px" } }, c.source)),
       })));
       const available = (app.fragments || []).filter((f) => !type.fragments.includes(f.id) && !f.computed);
-      items.push({ heading: "Add" }, { label: "Add a column…", icon: "plus", onClick: () => addColumnDialog(app, entityType) });
+      items.push({ heading: "Add" }, { label: "Add a column…", icon: "plus", onClick: () => addColumnDialog(app, entityType) },
+        { label: "Add a computed column…", icon: "zap", onClick: () => computedColumnDialog(app, entityType) });
       for (const f of available) {
         items.push({ label: `${f.title} (${f.columns.map((c) => c.name).join(", ")})`, icon: "layers", onClick: async () => {
           try {
@@ -1662,6 +1663,37 @@
       onClose: () => app.render(),
     });
     draw();
+  }
+
+  /* A column filled by a method, as dev's table variables with an update function: the method's files and the column. */
+  function computedColumnDialog(app, entityType) {
+    formDialog({
+      title: "Add a computed column",
+      intro: "NANSEN writes a method that returns the column's value for one entity, in the project's python/ and matlab/ folders, and adds the column. Fill in the function, then use Update in the toolbar to compute the values.",
+      label: "Create",
+      required: ["name"],
+      schema: { type: "object", properties: {
+        name: { type: "string", title: "Column name", description: "A lower-case letter, then letters, digits or _; also the method's name", pattern: "^[a-z][a-z0-9_]*$" },
+        title: { type: "string", title: "Title" },
+        dataType: { type: "string", title: "Type", enum: ["number", "integer", "string", "boolean", "date", "datetime"], default: "number" },
+        unit: { type: "string", title: "Unit", description: "Number columns only" },
+        python: { type: "boolean", title: "Python", default: true },
+        matlab: { type: "boolean", title: "MATLAB", default: true },
+      } },
+      submit: async (values) => {
+        const languages = ["python", "matlab"].filter((l) => values[l]);
+        if (!languages.length) throw new Error("Choose Python, MATLAB or both");
+        const column = { name: values.name, dataType: values.dataType };
+        if (values.title) column.title = values.title;
+        if (values.unit && (values.dataType === "number" || values.dataType === "integer")) column.unit = values.unit;
+        if (values.dataType === "boolean") column.default = false;
+        const result = await app.client.request("methods.create", { id: values.name, title: values.title || values.name,
+          entityType, languages, computes: [column] });
+        await app.reloadProject();
+        app.render();
+        N.toast("Computed column added", result.files.join(" · "), "success", 8000);
+      },
+    });
   }
 
   function datasetDialog(app) {

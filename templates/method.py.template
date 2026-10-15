@@ -10,4 +10,4 @@ def run(__ARG__, options, context):
     context.check_cancelled() report back to the task queue.
     """
     context.log("__TITLE__: nothing done yet")
-    return {}
+    return __RESULT__

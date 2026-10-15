@@ -888,7 +888,8 @@ classdef Api < handle
                 EntityType=string(nansen.internal.getField(params, "entityType", "*")), ...
                 Description=string(nansen.internal.getField(params, "description", "")), ...
                 BatchMode=string(nansen.internal.getField(params, "batchMode", "serial")), Languages=languages, ...
-                Queueable=logical(nansen.internal.getField(params, "queueable", true)));
+                Queueable=logical(nansen.internal.getField(params, "queueable", true)), ...
+                Computes=nansen.internal.getField(params, "computes", {}));
             obj.emit("project", struct("name", char(project.Name)));
             result = method.summary();
             files = {char("methods/" + method.Id + ".method.nansen.json")};
@@ -898,6 +899,10 @@ classdef Api < handle
                     extension = "py";
                 end
                 files{end + 1} = char(language + "/" + method.Id + "." + extension); %#ok<AGROW>
+            end
+            if ~isempty(nansen.internal.getField(params, "computes", {}))
+                files{end + 1} = char("fragments/" + method.Id + ".fragment.nansen.json");
+                obj.emit("entities", struct("entityTypes", {{char(method.EntityType)}}));
             end
             result.files = files;
         end

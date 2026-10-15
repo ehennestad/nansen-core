@@ -743,7 +743,9 @@ classdef Project < handle
                 options.BatchMode (1,1) string = "serial"
                 options.Languages (1,:) string = ["python", "matlab"]
                 options.Queueable (1,1) logical = true
+                options.Computes = {}   % columns (structs: name, dataType, title...) of a computed fragment it fills
             end
+            computes = nansen.internal.asCellOfStructs(options.Computes);
             if isempty(regexp(methodId, "^[a-z][a-z0-9_]*$", "once"))
                 nansen.internal.throwError("invalid-params", "a project method's id is a lower-case letter, then letters, digits or _")
             end
@@ -772,6 +774,27 @@ classdef Project < handle
             if ismember("matlab", languages)
                 paths(end + 1) = string(fullfile(obj.Folder, "matlab", methodId + ".m"));
                 templates(end + 1) = "method.m.template";
+            end
+            fragment = [];
+            if ~isempty(computes)   % a computed column, as dev's table variables with an update function
+                if ismember(options.EntityType, ["*", "@project"]) || options.BatchMode ~= "serial"
+                    nansen.internal.throwError("invalid-params", "a method that computes columns runs on one entity type, once per entity")
+                end
+                entry = nansen.internal.schemaEntry("nansen.fragment");
+                fragment = struct("schemaType", 'nansen.fragment', "schemaVersion", char(entry.version), "id", char(methodId), ...
+                    "version", '1.0.0', "title", char(title), "columns", {computes}, "compute", struct("method", char(methodId)));
+                fragment = nansen.checkDocument(fragment, ExpectedType="nansen.fragment");
+                names = string(cellfun(@(c) char(c.name), computes, UniformOutput=false));
+                clash = sort(intersect(obj.table(options.EntityType).columnNames(), names));
+                if ~isempty(clash)
+                    nansen.internal.throwError("column-exists", "%s already has column(s) %s", options.EntityType, strjoin(clash, ", "))
+                end
+                known = obj.fragments();
+                if any(cellfun(@(f) f.Id == methodId, known))
+                    nansen.internal.throwError("fragment-exists", "the project already has a fragment '%s'", methodId)
+                end
+                paths(end + 1) = string(obj.fragmentPath(methodId));
+                templates(end + 1) = "fragment";
             end
             existing = paths(isfile(paths));
             if ~isempty(existing) || ismember(methodId, [obj.entityMethods().Id])
@@ -820,8 +843,15 @@ classdef Project < handle
             else
                 shownDescription = description;
             end
-            tokens = ["__ID__", "__TITLE__", "__DESCRIPTION__", "__ARG_HELP_M__", "__ARG_HELP__", "__ARG__"];
-            values = [methodId, replace(title, """", "'"), shownDescription, helpM, help, argument];
+            resultM = "struct()";
+            resultPy = "{}";
+            if ~isempty(computes)
+                names = string(cellfun(@(c) char(c.name), computes, UniformOutput=false));
+                resultM = "struct(" + strjoin("""" + names + """, []", ", ") + ")";
+                resultPy = "{" + strjoin("""" + names + """: None", ", ") + "}  # a value per column";
+            end
+            tokens = ["__ID__", "__TITLE__", "__DESCRIPTION__", "__ARG_HELP_M__", "__ARG_HELP__", "__ARG__", "__RESULT_M__", "__RESULT__"];
+            values = [methodId, replace(title, """", "'"), shownDescription, helpM, help, argument, resultM, resultPy];
             for i = 1:numel(paths)
                 folder = fileparts(paths(i));
                 if ~isfolder(folder)
@@ -829,6 +859,9 @@ classdef Project < handle
                 end
                 if templates(i) == ""
                     nansen.internal.writeJson(paths(i), document)
+                    continue
+                elseif templates(i) == "fragment"
+                    nansen.internal.writeJson(paths(i), fragment)
                     continue
                 end
                 text = string(nansen.internal.readText(fullfile(nansen.internal.repoRoot(), "templates", templates(i))));
@@ -838,6 +871,9 @@ classdef Project < handle
                 nansen.internal.writeText(paths(i), text);
             end
             rehash   % a new file in a folder already on the path is seen at once
+            if ~isempty(computes)
+                obj.attachFragment(options.EntityType, methodId);
+            end
             method = obj.method(methodId);
         end
 

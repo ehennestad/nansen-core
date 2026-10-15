@@ -507,7 +507,7 @@ class Project:
 
     def create_method(self, method_id: str, title: str, entity_type: str = "*", description: str = "",
                       batch_mode: str = "serial", languages: Sequence[str] = ("python", "matlab"),
-                      queueable: bool = True) -> Method:
+                      queueable: bool = True, computes: Optional[Sequence[dict]] = None) -> Method:
         """Start a method of the project: its document in methods/ and, for each language, a file to fill in
         (python/<id>.py with run(), matlab/<id>.m), from the templates that ship with NANSEN."""
         from .modules import template_text
@@ -528,6 +528,19 @@ class Project:
             files[self.folder / "python" / f"{method_id}.py"] = "method.py.template"
         if "matlab" in languages:
             files[self.folder / "matlab" / f"{method_id}.m"] = "method.m.template"
+        fragment = None
+        if computes:  # a computed column, as dev's table variables with an update function: a fragment it fills
+            if entity_type in ("*", "@project") or batch_mode != "serial":
+                raise NansenError("invalid-params", "a method that computes columns runs on one entity type, once per entity")
+            fragment = {"schemaType": "nansen.fragment", "schemaVersion": current_version("nansen.fragment"), "id": method_id,
+                        "version": "1.0.0", "title": title, "columns": [dict(c) for c in computes], "compute": {"method": method_id}}
+            check_document(fragment, "nansen.fragment")
+            clash = sorted(set(self.table(entity_type).spec.column_names) & {c["name"] for c in computes})
+            if clash:
+                raise NansenError("column-exists", f"{entity_type} already has column(s) {', '.join(clash)}")
+            if any(f.id == method_id for f in self.fragments()):
+                raise NansenError("fragment-exists", f"the project already has a fragment {method_id!r}")
+            files[self.fragment_path(method_id)] = None
         existing = [str(p.relative_to(self.folder)) for p in files if p.exists()]
         if existing or any(m.id == method_id for m in self.methods()):
             raise NansenError("method-exists", f"the project already has {', '.join(existing) or 'a method ' + repr(method_id)}")
@@ -549,6 +562,8 @@ class Project:
             "__ID__": method_id, "__TITLE__": title.replace('"', "'"),
             "__DESCRIPTION__": description or title,
             "__ARG__": "project" if tool else "entities" if batch else "entity",
+            "__RESULT_M__": ("struct(" + ", ".join(f'"{c["name"]}", []' for c in computes) + ")") if computes else "struct()",
+            "__RESULT__": ("{" + ", ".join(f'"{c["name"]}": None' for c in computes) + "}  # a value per column") if computes else "{}",
             "__ARG_HELP__": "project is the project it runs on: project.entities(entity_type), project.table(entity_type)." if tool
             else ("entities are the entities it runs on, all at once" if batch else "entity is the entity it runs on")
             + (" (each with .key, .values, .locations, .load(name))." if batch else ": entity.key, entity.values, entity.locations, entity.load(name)."),
@@ -559,13 +574,15 @@ class Project:
         for path, template in files.items():
             path.parent.mkdir(parents=True, exist_ok=True)
             if template is None:
-                write_json(path, document)
+                write_json(path, fragment if fragment is not None and path == self.fragment_path(method_id) else document)
                 continue
             text = template_text(template)
             for token, value in replacements.items():
                 text = text.replace(token, value)
             with open(path, "w", encoding="utf-8", newline="") as f:
                 f.write(text)
+        if fragment is not None:
+            self.attach_fragment(entity_type, method_id)
         return self.method(method_id)
 
     def method(self, method_id: str) -> Method:
