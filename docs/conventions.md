@@ -123,6 +123,7 @@ Both implementations raise errors that carry one of these codes. MATLAB raises `
 | `unknown-task` | No task has that id |
 | `task-active` | The task is queued or running, so it cannot be retried or removed |
 | `task-not-queued` | The task is no longer queued (or a worker is starting it), so it cannot be held, changed or reordered |
+| `task-failed` | A method that only the other language has failed, was cancelled, or was not taken by a worker of that language in time (`methods.run`; the message says which, and the worker log has more) |
 | `unknown-pipeline` | No pipeline has that id |
 | `no-catalog` | The app was started without a project catalog |
 | `no-workspace` | The app was not opened from a workspace that entities can be sent to |

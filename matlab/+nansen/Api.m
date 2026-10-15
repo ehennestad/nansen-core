@@ -1252,10 +1252,53 @@ classdef Api < handle
 
         function result = apiMethodsRun(obj, params)
             project = obj.requireProject();
+            method = project.method(string(nansen.Api.param(params, "methodId")));
+            if ~isempty(method.Languages) && ~any(method.Languages == "matlab")
+                result = obj.runInWorker(method, params);
+                return
+            end
             results = project.run(string(nansen.Api.param(params, "methodId")), obj.entities(params), ...
                 Options=obj.optionsOf(params), Preset=string(nansen.internal.getField(params, "preset", "")));
             obj.emit("entities", struct("entityTypes", {{char(params.entityType)}}));
             result = struct("results", {results});
+        end
+
+        function result = runInWorker(obj, method, params)
+            % Run a method only another language has: queue it for that language, start a worker for it
+            % (queue.startWorker) and wait for the task. A task no worker has started within startTimeout
+            % seconds is cancelled.
+            language = method.Languages(1);
+            queue = obj.queue();
+            task = queue.submit(method.Id, obj.entities(params), Options=obj.optionsOf(params), ...
+                Preset=string(nansen.internal.getField(params, "preset", "")), Language=language);
+            obj.apiQueueStartWorker(struct("language", char(language)));
+            timeout = double(nansen.internal.getField(params, "startTimeout", 300));
+            started = tic;
+            while ~any(string(task.status) == ["completed", "failed", "cancelled"])
+                if string(task.status) == "queued" && toc(started) > timeout
+                    queue.cancel(string(task.id));
+                    nansen.internal.throwError("task-failed", "no %s worker took %s within %g s, so it was cancelled; see tasks/worker-%s.log", ...
+                        language, method.Id, timeout, language)
+                end
+                pause(0.2)
+                task = queue.get(string(task.id));
+            end
+            obj.emit("entities", struct("entityTypes", {{char(params.entityType)}}));
+            if string(task.status) ~= "completed"
+                message = "";
+                if isfield(task, "error") && isstruct(task.error) && isfield(task.error, "message")
+                    message = ": " + string(task.error.message);
+                end
+                nansen.internal.throwError("task-failed", "%s %s in a %s worker%s", method.Id, task.status, language, message)
+            end
+            results = [];
+            if isfield(task, "result")
+                results = task.result;
+            end
+            if method.BatchMode ~= "serial"
+                results = {results};
+            end
+            result = struct("results", {results}, "taskId", task.id, "language", char(language));
         end
 
         function result = apiMethodsPreview(obj, params)
@@ -1415,8 +1458,17 @@ classdef Api < handle
                 if isempty(options)
                     options = struct();
                 end
-                results = project.run(string(step.method), entity, Options=options, ...
-                    Preset=string(nansen.internal.getField(step, "preset", "")));
+                method = project.method(string(step.method));
+                if ~isempty(method.Languages) && ~any(method.Languages == "matlab")   % in a worker of the language it has
+                    results = obj.runInWorker(method, struct("methodId", char(method.Id), "entityType", char(entityType), ...
+                        "keys", {{entity{1}.Key}}, "options", options, "preset", char(string(nansen.internal.getField(step, "preset", ""))))).results;
+                    if ~iscell(results)
+                        results = num2cell(results);
+                    end
+                else
+                    results = project.run(string(step.method), entity, Options=options, ...
+                        Preset=string(nansen.internal.getField(step, "preset", "")));
+                end
                 value = NaN;
                 if ~isempty(results) && ~isempty(results{1})
                     value = results{1};

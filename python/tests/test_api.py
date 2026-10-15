@@ -312,6 +312,50 @@ def test_starting_a_matlab_worker_needs_matlab(tmp_path, monkeypatch):
         api.close()
 
 
+def test_running_a_method_only_matlab_has_waits_for_a_matlab_worker(tmp_path):
+    import sys
+    from nansen.demo import create_demo
+
+    # A stand-in for matlab -batch "nansen.worker(...)": it does what the outcome file says to the MATLAB task
+    fake = tmp_path / "matlab"
+    fake.write_text(f"""#!{sys.executable}
+import json, re, sys
+from pathlib import Path
+from nansen.project import Project
+from nansen.tasks import TaskQueue
+folder = re.search(r"nansen.worker\\('([^']*)'", sys.argv[2]).group(1)
+outcome = json.loads((Path(folder) / "outcome.json").read_text())
+if outcome:
+    queue = TaskQueue(Project.open(folder))
+    task = next(t for t in queue.list("queued") if t.get("language") == "matlab")
+    task.update(outcome)
+    queue._save(task)
+""")
+    fake.chmod(0o755)
+    catalog = Catalog(tmp_path / "catalog.json")
+    catalog.save_settings({"workers": {"matlab": str(fake)}})
+    project = create_demo(tmp_path / "demo")
+    project.create_method("only_matlab", "Only MATLAB", entity_type="session", languages=["matlab"])
+    api = Api(catalog=catalog, project=project, start_queue=False)
+    key = project.entities("session")[0].key
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    outcome = lambda value: (project.folder / "outcome.json").write_text(json.dumps(value))
+    try:
+        outcome({"status": "completed", "result": [{"frames": 3}]})   # one per entity
+        result = call("methods.run", methodId="only_matlab", entityType="session", keys=[key])["result"]
+        assert result["language"] == "matlab" and result["results"] == [{"frames": 3}]
+        assert api.queue.get(result["taskId"])["status"] == "completed"
+        outcome({"status": "failed", "error": {"identifier": "MATLAB:x", "message": "no toolbox"}})
+        error = call("methods.run", methodId="only_matlab", entityType="session", keys=[key])["error"]
+        assert error["code"] == "task-failed" and "no toolbox" in error["message"]
+        outcome({})   # the worker never takes it
+        error = call("methods.run", methodId="only_matlab", entityType="session", keys=[key], startTimeout=1)["error"]
+        assert error["code"] == "task-failed" and "worker-matlab.log" in error["message"]
+        assert [t["status"] for t in api.queue.list()][-1] == "cancelled"
+    finally:
+        api.close()
+
+
 def test_a_shared_project_is_installed_from_git(tmp_path):
     import shutil
     import subprocess

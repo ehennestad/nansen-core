@@ -79,7 +79,7 @@ Not carried over, by choice or not yet:
 
 ## Mixed-language queues
 
-The project format is shared and each method declares its implementations. A task names the language that must run it when only the other language has the method (suite2p or DeepInterpolation queued from MATLAB, NoRMCorre or EXTRACT from Python), and each language's worker takes only its own tasks; recovering after a crash fails only its own. A headless worker runs a language's tasks without an app (`nansen worker <folder>`, `nansen.worker(folder)`), and the Tasks page starts one of the other language when tasks wait for it (`queue.startWorker`).
+The project format is shared and each method declares its implementations. A task names the language that must run it when only the other language has the method (suite2p or DeepInterpolation queued from MATLAB, NoRMCorre or EXTRACT from Python), and each language's worker takes only its own tasks; recovering after a crash fails only its own. A headless worker runs a language's tasks without an app (`nansen worker <folder>`, `nansen.worker(folder)`), and the Tasks page starts one of the other language when tasks wait for it (`queue.startWorker`). Running such a method now (`methods.run`: the run dialog, Find ROIs in the viewer, a pipeline's next step) queues it for that language, starts a worker and waits for the task, so every method can be run from either app; only previews (`methods.preview`) stay in-language.
 
 ## Open questions
 

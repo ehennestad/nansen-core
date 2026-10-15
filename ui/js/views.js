@@ -1147,7 +1147,9 @@
           app.go("#/tasks/" + task.id);
         } else {
           close();
-          N.toast("Running", `${current.title} on ${target}…`);
+          const language = app.info && app.info.language;
+          const other = language && current.languages && !current.languages.includes(language) ? current.languages[0] : null;
+          N.toast("Running", other ? `${current.title} on ${target}, in a ${other === "matlab" ? "MATLAB" : "Python"} worker…` : `${current.title} on ${target}…`);
           await app.client.request("methods.run", params);
           N.toast("Done", `${current.title} finished`, "success");
           if (app.reloadEntities) app.reloadEntities();

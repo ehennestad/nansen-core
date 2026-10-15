@@ -402,9 +402,11 @@
       let methods = [];
       try { methods = await app.client.request("methods.list", { entityType }); } catch (error) { N.showError(error, "Could not list the methods"); return; }
       const language = app.info && app.info.language;
-      const found = methods.filter((m) => /\/Segmentation$/.test(m.category || "") && (!language || !m.languages || m.languages.includes(language)));
-      if (!found.length) { N.toast("No segmentation methods", "The project's modules have none this backend runs", "error"); return; }
-      N.menu(findButton, [{ heading: "Find ROIs with" }].concat(found.map((m) => ({ label: m.title, onClick: () => findWith(m) }))));
+      const found = methods.filter((m) => /\/Segmentation$/.test(m.category || ""));
+      if (!found.length) { N.toast("No segmentation methods", "The project's modules have none", "error"); return; }
+      // a method only the other language has runs in a worker of that language (methods.run starts one)
+      const elsewhere = (m) => language && m.languages && !m.languages.includes(language) ? ` (in ${m.languages[0] === "matlab" ? "MATLAB" : "Python"})` : "";
+      N.menu(findButton, [{ heading: "Find ROIs with" }].concat(found.map((m) => ({ label: m.title + elsewhere(m), onClick: () => findWith(m) }))));
     }
     function findWith(method) {
       const properties = (method.options && method.options.properties) || {};

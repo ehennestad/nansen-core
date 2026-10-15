@@ -146,6 +146,53 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyNotEmpty(sent{2});
         end
 
+        function aMethodOnlyPythonHasRunsInAPythonWorker(testCase)
+            % methods.run hands it to python -m nansen worker; a stand-in does to the task what outcome.json says
+            testCase.assumeFalse(ispc, "the stand-in worker is a script with a shebang");
+            [status, ~] = system("python3 --version");
+            testCase.assumeEqual(status, 0, "python3 is needed for the stand-in worker");
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            fake = fullfile(fixture.Folder, "python");
+            nansen.internal.writeText(fake, strjoin([
+                "#!/usr/bin/env python3"
+                "import glob, json, os, sys"
+                "folder = sys.argv[sys.argv.index('worker') + 1]"
+                "outcome = json.load(open(os.path.join(folder, 'outcome.json')))"
+                "for path in glob.glob(os.path.join(folder, 'tasks', '*.task.nansen.json')):"
+                "    task = json.load(open(path))"
+                "    if outcome and task['status'] == 'queued' and task.get('language') == 'python':"
+                "        task.update(outcome)"
+                "        json.dump(task, open(path + '.tmp', 'w'))"
+                "        os.replace(path + '.tmp', path)"
+                ], newline) + newline);
+            system(sprintf('chmod +x "%s"', fake));
+            catalog = nansen.Catalog(fullfile(fixture.Folder, "catalog.json"));
+            catalog.saveSettings(struct("workers", struct("python", fake)));
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            project.createMethod("only_python", Title="Only Python", EntityType="session", Languages="python");
+            api = nansen.Api(Project=project, Catalog=catalog);
+            rows = api.handle(struct("id", 1, "method", "entities.list", "params", struct("entityType", "session"))).result.rows;
+            rows = nansen.internal.asCellOfStructs(rows);
+            params = struct("methodId", "only_python", "entityType", "session", "keys", {{rows{1}.key}});
+            outcome = @(text) nansen.internal.writeText(fullfile(project.Folder, "outcome.json"), text);
+
+            outcome('{"status": "completed", "result": [{"frames": 3}]}');
+            result = api.handle(struct("id", 2, "method", "methods.run", "params", params)).result;
+            testCase.verifyEqual(string(result.language), "python");
+            testCase.verifyEqual(result.results.frames, 3);
+            outcome('{"status": "failed", "error": {"identifier": "ImportError", "message": "no suite2p"}}');
+            response = api.handle(struct("id", 3, "method", "methods.run", "params", params));
+            testCase.verifyEqual(string(response.error.code), "task-failed");
+            testCase.verifySubstring(string(response.error.message), "no suite2p");
+            outcome('{}');   % the worker never takes it
+            params.startTimeout = 1;
+            response = api.handle(struct("id", 4, "method", "methods.run", "params", params));
+            testCase.verifyEqual(string(response.error.code), "task-failed");
+            testCase.verifySubstring(string(response.error.message), "worker-python.log");
+            tasks = api.handle(struct("id", 5, "method", "tasks.list")).result;
+            testCase.verifyEqual(string(tasks{end}.status), "cancelled");
+        end
+
         function settingsAreKeptInTheCatalog(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             catalog = nansen.Catalog(fullfile(fixture.Folder, "catalog.json"));

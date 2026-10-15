@@ -74,6 +74,7 @@ def open_in_file_browser(folder: Path) -> None:
 
 FILES_LIST_LIMIT = 500  # entries files.list gives at most, unless asked for more
 FILES_INSPECT_LIMIT = 2000  # groups, datasets and links files.inspect gives at most
+WORKER_START_SECONDS = 300  # how long methods.run waits for another language's worker to take a task
 
 def _frame_rate(params: dict, entity: Any) -> Optional[float]:
     """data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive number."""
@@ -1057,10 +1058,38 @@ class Api:
     def methods__run(self, params: dict) -> dict:
         """Run a method now and wait for it (for quick methods); long ones go through tasks.submit."""
         project = self._require_project()
+        method = project.method(params["methodId"])
+        if method.languages and "python" not in method.languages:
+            return self._run_in_worker(method, params)
         results = project.run(params["methodId"], self._entities(params), params.get("options"), params.get("preset"))
         self.emit("entities", {"entityTypes": [params["entityType"]]})
         from .tasks import _json_result
         return {"results": _json_result(results)}
+
+    def _run_in_worker(self, method, params: dict) -> dict:
+        """Run a method only another language has: queue it for that language, start a worker for it (queue.startWorker)
+        and wait for the task. A task no worker has started within startTimeout seconds is cancelled."""
+        import time
+        from .tasks import TERMINAL
+
+        language = method.languages[0]
+        queue = self._queue()
+        task = queue.submit(method.id, self._entities(params), params.get("options"), params.get("preset"), language)
+        self.queue__startWorker({"language": language})
+        started, timeout = time.monotonic(), float(params.get("startTimeout", WORKER_START_SECONDS))
+        while task["status"] not in TERMINAL:
+            if task["status"] == "queued" and time.monotonic() - started > timeout:
+                queue.cancel(task["id"])
+                raise NansenError("task-failed", f"no {language} worker took {method.id} within {timeout:g} s, so it was "
+                                  f"cancelled; see tasks/worker-{language}.log")
+            time.sleep(0.2)
+            task = queue.get(task["id"])
+        self.emit("entities", {"entityTypes": [params["entityType"]]})
+        if task["status"] != "completed":
+            message = (task.get("error") or {}).get("message", "")
+            raise NansenError("task-failed", f"{method.id} {task['status']} in a {language} worker" + (f": {message}" if message else ""))
+        result = task.get("result")
+        return {"results": result if method.batch_mode == "serial" else [result], "taskId": task["id"], "language": language}
 
     def methods__preview(self, params: dict) -> dict:
         """Run a method on the first frames of one entity's stacks, saving nothing (nansen.preview)."""
@@ -1144,7 +1173,12 @@ class Api:
                 continue
             first = next(i for i, s in enumerate(state["steps"]) if not s["done"])
             step = pipelines[state["pipeline"]]["steps"][first]
-            result = project.run(step["method"], [entity], step.get("options"), step.get("preset"))
+            method = project.method(step["method"])
+            if method.languages and "python" not in method.languages:   # in a worker of the language it has
+                result = self._run_in_worker(method, {"methodId": method.id, "entityType": entity_type, "keys": [entity.key],
+                                                      "options": step.get("options"), "preset": step.get("preset")})["results"]
+            else:
+                result = project.run(step["method"], [entity], step.get("options"), step.get("preset"))
             ran.append({"key": entity.key, "step": first, "method": step["method"], "result": result[0] if result else None})
         if ran:
             self.emit("entities", {"entityTypes": [entity_type]})
