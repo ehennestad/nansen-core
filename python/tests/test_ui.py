@@ -513,7 +513,7 @@ def test_filters_and_saved_views(empty_app, page):
     page.evaluate("() => localStorage.clear()")
     page.reload()
     page.wait_for_function("() => document.querySelectorAll('.grid-table tbody tr[data-id]').length === 2")
-    assert page.locator(".toolbar .view-name").inner_text() == "Pair"
+    page.wait_for_selector(".toolbar .view-name:text-is('Pair')")
 
 
 def test_add_edit_and_delete_a_data_variable(empty_app, page):
