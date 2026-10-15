@@ -23,6 +23,7 @@ classdef Api < handle
         SendToWorkspace function_handle = @nansen.Api.assignInBase   % (name, value): where workspace.send puts entities
         OpenFile function_handle = @nansen.Api.openInFileBrowser   % opens a file in its default app
         EditFile function_handle = @nansen.Api.openInEditor   % opens a code file in MATLAB's editor
+        StartQueue (1,1) logical = false   % start the background worker whenever a project is opened (the app sets it)
     end
 
     properties (Access = private)
@@ -38,7 +39,7 @@ classdef Api < handle
             end
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
-            names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
+            names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "data.send", "modules.list", "modules.add", "modules.remove", ...
@@ -159,6 +160,21 @@ classdef Api < handle
             if ~isempty(obj.Catalog)
                 result = obj.Catalog.projects();
             end
+        end
+
+        function result = apiSettingsGet(obj, ~)
+            if isempty(obj.Catalog)
+                result = nansen.Catalog.defaultSettings();
+            else
+                result = obj.Catalog.settings();
+            end
+        end
+
+        function result = apiSettingsSave(obj, params)
+            if isempty(obj.Catalog)
+                nansen.internal.throwError("no-catalog", "this app has no project catalog to keep settings in")
+            end
+            result = obj.Catalog.saveSettings(nansen.Api.param(params, "settings"));
         end
 
         function result = apiCatalogRemove(obj, params)
@@ -1074,6 +1090,9 @@ classdef Api < handle
             obj.Queue = nansen.TaskQueue(project, OnEvent=@(kind, data) obj.emit(kind, data));
             if ~isempty(obj.Catalog)
                 obj.Catalog.add(project);
+            end
+            if obj.StartQueue
+                obj.Queue.start();
             end
         end
 

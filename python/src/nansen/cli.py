@@ -45,7 +45,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         catalog = Catalog(args.catalog or default_catalog_path())
         project = Project.open(args.project) if args.project else None
-        run_app(Api(catalog=catalog, project=project, executor=args.executor), port=args.port,
+        run_app(Api(catalog=catalog, project=project, executor=args.executor,
+                    start_queue=catalog.settings()["queue"]["autoStart"]), port=args.port,
                 open_browser=not args.no_browser)
         return 0
 

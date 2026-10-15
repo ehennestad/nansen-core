@@ -146,6 +146,24 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyNotEmpty(sent{2});
         end
 
+        function settingsAreKeptInTheCatalog(testCase)
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            catalog = nansen.Catalog(fullfile(fixture.Folder, "catalog.json"));
+            api = nansen.Api(Catalog=catalog);
+            settings = api.handle(struct("id", 1, "method", "settings.get")).result;
+            testCase.verifyTrue(settings.queue.autoStart);
+            settings = api.handle(struct("id", 2, "method", "settings.save", "params", ...
+                struct("settings", struct("queue", struct("autoStart", false))))).result;
+            testCase.verifyFalse(settings.queue.autoStart);
+            testCase.verifyFalse(catalog.settings().queue.autoStart);
+            response = api.handle(struct("id", 3, "method", "settings.save", "params", ...
+                struct("settings", struct("queue", struct("autoStart", "yes")))));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+            response = api.handle(struct("id", 4, "method", "settings.save", "params", struct("settings", struct("other", struct()))));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+            testCase.verifyFalse(api.StartQueue);   % a plain Api never starts a worker; nansen.App sets it from the setting
+        end
+
         function catalogListsTheLastOpenedFirstWithinOneSecond(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             api = nansen.Api(Catalog=nansen.Catalog(fullfile(fixture.Folder, "catalog.json")));

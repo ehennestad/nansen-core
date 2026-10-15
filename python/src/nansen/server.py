@@ -141,7 +141,8 @@ def open_app(project=None, namespace: Optional[dict] = None, catalog=None, port:
 
     if project is not None and not isinstance(project, Project):
         project = Project.open(project)
-    api = Api(catalog=catalog if catalog is not None else Catalog(default_catalog_path()), project=project)
+    catalog = catalog if catalog is not None else Catalog(default_catalog_path())
+    api = Api(catalog=catalog, project=project, start_queue=catalog.settings()["queue"]["autoStart"])
     api.workspace = namespace
     server = serve(api, port=port)
     if open_browser:

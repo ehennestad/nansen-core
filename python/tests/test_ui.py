@@ -757,3 +757,17 @@ def test_open_files_send_data_and_edit_code_from_the_app(empty_app, page):
     page.click(".method-detail .edit-code")
     wait_until(lambda: len(edited) == 1)
     assert edited[0].name == "count_frames.py"
+
+
+def test_settings_page(empty_app, page):
+    api = empty_app["api"]
+    page.goto(empty_app["server"].url + "#/settings")
+    page.wait_for_selector(".hero h1:has-text('Settings')")
+    assert page.locator(".auto-start input").is_checked()
+    page.locator(".auto-start span").click()
+    wait_until(lambda: api.handle({"id": 1, "method": "settings.get"})["result"]["queue"]["autoStart"] is False)
+    page.select_option(".theme-select", "dark")
+    assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+    page.reload()
+    page.wait_for_selector(".auto-start")
+    assert not page.locator(".auto-start input").is_checked()

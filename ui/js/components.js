@@ -46,7 +46,7 @@
     const rows = [
       ["/", "Search the table"], ["?", "These shortcuts"], ["Esc", "Close the drawer or a dialog, or leave the search box"],
       ["g then o", "Overview"], ["g then 1…9", "The first, second, … entity table"], ["g then t", "Tasks"],
-      ["g then d", "Data"], ["g then p", "Pipelines"], ["g then n", "Notes"], ["g then j", "Projects"],
+      ["g then d", "Data"], ["g then p", "Pipelines"], ["g then n", "Notes"], ["g then j", "Projects"], ["g then s", "Settings"],
       ["Shift + click", "Select a range of rows"],
     ];
     N.dialog({

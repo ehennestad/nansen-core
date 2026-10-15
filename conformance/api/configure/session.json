@@ -528,6 +528,36 @@
       "expect": {
         "error": "unknown-entity-type"
       }
+    },
+    {
+      "request": {
+        "method": "settings.get",
+        "id": 32,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "queue": {
+            "autoStart": true
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "settings.save",
+        "id": 33,
+        "params": {
+          "settings": {
+            "queue": {
+              "autoStart": false
+            }
+          }
+        }
+      },
+      "expect": {
+        "error": "no-catalog"
+      }
     }
   ]
 }

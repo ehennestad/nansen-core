@@ -204,6 +204,16 @@ class Api:
     def catalog__list(self, params: dict) -> list:
         return self.catalog.projects() if self.catalog is not None else []
 
+    def settings__get(self, params: dict) -> dict:
+        from .catalog import DEFAULT_SETTINGS
+
+        return self.catalog.settings() if self.catalog is not None else {g: dict(v) for g, v in DEFAULT_SETTINGS.items()}
+
+    def settings__save(self, params: dict) -> dict:
+        if self.catalog is None:
+            raise NansenError("no-catalog", "this app has no project catalog to keep settings in")
+        return self.catalog.save_settings(params["settings"])
+
     def catalog__remove(self, params: dict) -> list:
         if self.catalog is None:
             raise NansenError("no-catalog", "this app has no project catalog")

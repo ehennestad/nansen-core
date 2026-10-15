@@ -27,9 +27,15 @@ classdef App < handle
                 options.Project = []
                 options.CatalogPath (1,1) string = nansen.Catalog.defaultPath()
                 options.Visible (1,1) logical = true
-                options.StartQueue (1,1) logical = true
+                options.StartQueue = []   % true or false; empty: the user's setting (queue.autoStart)
             end
-            obj.Api = nansen.Api(Catalog=nansen.Catalog(options.CatalogPath));
+            catalog = nansen.Catalog(options.CatalogPath);
+            obj.Api = nansen.Api(Catalog=catalog);
+            if isempty(options.StartQueue)
+                settings = catalog.settings();
+                options.StartQueue = settings.queue.autoStart;
+            end
+            obj.Api.StartQueue = logical(options.StartQueue);   % also for projects opened later from the dashboard
             if ~isempty(options.Project)
                 folder = options.Project;
                 if isa(folder, "nansen.Project")
@@ -39,9 +45,6 @@ classdef App < handle
                     "params", struct("path", char(folder))));
                 if isfield(response, "error")
                     error("nansen:App:CannotOpen", "%s", response.error.message)
-                end
-                if options.StartQueue
-                    obj.Api.handle(struct("id", 0, "method", "queue.start"));
                 end
             end
             obj.Figure = uifigure(Name="NANSEN", Position=[80 80 1440 880], Visible=options.Visible, ...

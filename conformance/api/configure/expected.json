@@ -1,4 +1,4 @@
 {
-  "description": "Configuring a project from the app: what a data variable can name (locations, their file patterns at the entity type's level, file adapters), saving, replacing and deleting data variables, and listing, adding and removing modules; a module is not removed while a fragment of it is attached. Editing the DSM config as text: a config DSM refuses is not written. The project's title and description and entity types' titles are changed with project.update (an empty text gives the default back). The adapter list differs between languages, so it is not compared.",
-  "steps": 31
+  "description": "Configuring a project from the app: what a data variable can name (locations, their file patterns at the entity type's level, file adapters), saving, replacing and deleting data variables, and listing, adding and removing modules; a module is not removed while a fragment of it is attached. Editing the DSM config as text: a config DSM refuses is not written. The project's title and description and entity types' titles are changed with project.update (an empty text gives the default back). Settings have their defaults, and are kept in the catalog, so an app without one cannot save them. The adapter list differs between languages, so it is not compared.",
+  "steps": 33
 }

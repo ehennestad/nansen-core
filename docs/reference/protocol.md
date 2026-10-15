@@ -59,6 +59,8 @@ Events flow from the core to the frontend:
 | `workspace.send` | `entityType`, `keys?`, `name?` (default `entities`) | `{name, count}`: the entities are put in the workspace the app was opened from, as a variable of that name: MATLAB's base workspace (a cell row of `nansen.Entity`), or in Python the namespace given to `nansen.server.open_app` (a list of `Entity`). `no-workspace` when there is none |
 | `catalog.list` | | Projects in the catalog, most recently opened first |
 | `catalog.remove` | `path` | The remaining projects |
+| `settings.get` | | The user's app settings, kept in the catalog, with defaults for those not set: `{queue: {autoStart}}` (`autoStart`, default true: the app starts the background worker whenever it opens a project) |
+| `settings.save` | `settings` (some of them, in the same shape) | All the settings (`no-catalog` without a catalog, `invalid-params` for a setting that does not exist or a wrong value) |
 | `project.open` | `path`, `environment?` | `project.info` |
 | `project.create` | `path`, `name`, `title?`, `description?`, `dataset?` (a config in the folder) or `datasetSource?` (a config to copy in; its relative roots are made absolute), `modules?`, `entityTypes?` (true: one per DSM entity type, with `core.notes` when `core` is listed) | `project.info` |
 | `project.update` | `title?`, `description?`, `entityTypeTitles?` (`{entityType: title}`) | `project.info`; an empty text removes the title (the name is shown) or description; `unknown-entity-type` before anything changes |

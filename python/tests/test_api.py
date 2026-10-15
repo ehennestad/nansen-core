@@ -251,3 +251,25 @@ def test_open_files_edit_method_code_and_send_data(tmp_path):
     result = call("data.send", entityType="session", key=key, variable="motion_corrected", name="mc")["result"]
     assert result == {"name": "mc", "variable": "motion_corrected"}
     assert namespace["mc"] is not None
+
+
+def test_the_worker_starts_as_the_settings_say(tmp_path):
+    from nansen.demo import create_demo
+    from nansen.server import open_app
+
+    catalog = Catalog(tmp_path / "catalog.json")
+    project = create_demo(tmp_path / "demo")
+    assert catalog.settings() == {"queue": {"autoStart": True}}
+    server = open_app(project, catalog=catalog, open_browser=False)
+    try:
+        assert server.api.queue.running
+    finally:
+        server.shutdown()
+        server.api.close()
+    catalog.save_settings({"queue": {"autoStart": False}})
+    server = open_app(project, catalog=catalog, open_browser=False)
+    try:
+        assert not server.api.queue.running
+    finally:
+        server.shutdown()
+        server.api.close()

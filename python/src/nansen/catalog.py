@@ -24,9 +24,32 @@ def default_catalog_path() -> Path:
     return base / "nansen" / "catalog.nansen.json"
 
 
+DEFAULT_SETTINGS = {"queue": {"autoStart": True}}
+
+
 class Catalog:
     def __init__(self, path: PathLike):
         self.path = Path(path)
+
+    def settings(self) -> dict:
+        """The user's app settings, with the defaults for those not set."""
+        stored = self._read().get("settings", {})
+        return {group: dict(values, **stored.get(group, {})) for group, values in DEFAULT_SETTINGS.items()}
+
+    def save_settings(self, settings: dict) -> dict:
+        """Change some settings (a partial settings object); returns them all."""
+        document = self._read()
+        stored = document.get("settings", {})
+        for group, values in (settings or {}).items():
+            if not isinstance(values, dict):
+                raise NansenError("invalid-params", f"settings.{group} must be an object")
+            stored[group] = dict(stored.get(group, {}), **values)
+        document["settings"] = stored
+        try:
+            self._write(document)
+        except NansenError as error:
+            raise NansenError("invalid-params", f"settings: {error.message}") from None
+        return self.settings()
 
     def _read(self) -> dict:
         if not self.path.is_file():

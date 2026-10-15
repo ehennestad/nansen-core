@@ -23,6 +23,20 @@
           "lastOpened": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?$" }
         }
       }
+    },
+    "settings": {
+      "type": "object",
+      "description": "The user's app settings. Missing ones take their defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "queue": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "autoStart": { "type": "boolean", "default": true, "description": "Start the background worker when the app opens a project, so queued tasks run without pressing Start." }
+          }
+        }
+      }
     }
   }
 }

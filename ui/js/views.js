@@ -1205,6 +1205,38 @@
             h("ul.list", methods.map((m) => h("li", h("div.grow", h("div.title", m.title), h("div.sub", `${m.id} · ${m.tool ? "project tool" : m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)))))))));
   };
 
+  /* ------------------------------------------------------------------ settings */
+  N.views.settings = async function (app, content) {
+    let settings = await app.client.request("settings.get").catch(() => ({ queue: { autoStart: true } }));
+    const save = async (changes) => {
+      try {
+        settings = await app.client.request("settings.save", { settings: changes });
+        N.toast("Setting saved", "", "success", 2000);
+      } catch (error) { N.showError(error, "Could not save the setting"); }
+    };
+    const toggle = (cls, checked, onChange) => {
+      const input = h("input", { type: "checkbox", checked, on: { change: () => onChange(input.checked) } });
+      return h("label.switch." + cls, input, h("span"));
+    };
+    const row = (title, sub, control) => h("li", h("div.grow", h("div.title", title), h("div.sub", sub)), control);
+    const theme = h("select.input.theme-select", { style: { width: "180px" }, on: { change: () => { N.theme.save(theme.value); N.theme.apply(theme.value); } } },
+      [["auto", "Follow the system"], ["light", "Light"], ["dark", "Dark"]].map(([v, label]) => h("option", { value: v, selected: N.theme.load() === v }, label)));
+    let locked = false;
+    try { locked = JSON.parse(localStorage.getItem("nansen.locked") || "false") === true; } catch (e) { /* fine */ }
+    N.fill(content,
+      h("div.hero", h("div", h("h1", "Settings"), h("p", "How the app behaves for you. Worker settings are kept with your project list; how the dashboard looks is kept in this browser."))),
+      h("div.grid",
+        h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Tasks")),
+          h("ul.list", row("Start the worker when a project opens", "Queued tasks then run on their own; otherwise start it on the Tasks page. Takes effect the next time the app starts.",
+            toggle("auto-start", settings.queue.autoStart, (on) => save({ queue: { autoStart: on } }))))),
+        h("div.card", h("div.card-head", N.icon("eye"), h("h3", "Dashboard")),
+          h("ul.list",
+            row("Theme", "Light, dark, or as the system is set", theme),
+            row("Lock editing", "Values cannot be changed in the tables until this is off (also the lock in each table's toolbar)",
+              toggle("lock-setting", locked, (on) => { try { localStorage.setItem("nansen.locked", JSON.stringify(on)); } catch (e) { /* fine */ } })),
+            row("Keyboard shortcuts", "Press ? anywhere, or the keyboard button at the top", h("button.btn.small", { on: { click: () => N.showShortcuts() } }, N.icon("keyboard", 14), "Show"))))));
+  };
+
   /* ------------------------------------------------------------------ projects */
   N.views.projects = async function (app, content) {
     const projects = await app.client.request("catalog.list").catch(() => []);

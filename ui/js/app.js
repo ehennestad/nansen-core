@@ -162,7 +162,7 @@
       if (this.shortcutsBound) return;
       this.shortcutsBound = true;
       let pending = null;   // "g", waiting for the second key
-      const pages = { o: "#/overview", t: "#/tasks", d: "#/data", p: "#/pipelines", n: "#/notes", j: "#/projects" };
+      const pages = { o: "#/overview", t: "#/tasks", d: "#/data", p: "#/pipelines", n: "#/notes", j: "#/projects", s: "#/settings" };
       document.addEventListener("keydown", (event) => {
         const target = event.target;
         const typing = target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
@@ -176,7 +176,7 @@
           const types = (this.project && this.project.entityTypes) || [];
           const index = Number(event.key) - 1;
           const hash = pages[event.key] || (Number.isInteger(index) && types[index] ? `#/entities/${types[index].name}` : null);
-          if (hash && (this.project || hash === "#/projects")) { event.preventDefault(); this.go(hash); }
+          if (hash && (this.project || hash === "#/projects" || hash === "#/settings")) { event.preventDefault(); this.go(hash); }
           return;
         }
         if (event.key === "g") { pending = "g"; setTimeout(() => { pending = null; }, 1500); return; }
@@ -199,7 +199,7 @@
         count !== undefined && count !== null ? h("span.count", String(count)) : null);
       N.clear(this.navEl);
       if (!project) {
-        this.navEl.appendChild(link("#/projects", "folder", "Projects"));
+        N.append(this.navEl, [link("#/projects", "folder", "Projects"), link("#/settings", "settings", "Settings")]);
         return;
       }
       N.append(this.navEl, [
@@ -213,7 +213,8 @@
         link("#/pipelines", "layers", "Pipelines"),
         link("#/notes", "note", "Notes"),
         h("div.nav-section", "App"),
-        link("#/projects", "folder", "Projects")]);
+        link("#/projects", "folder", "Projects"),
+        link("#/settings", "settings", "Settings")]);
     },
 
     renderFooter() {
@@ -241,11 +242,11 @@
       N.drawer.close();
       this.renderNav();
       N.clear(this.topActions);
-      const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", notes: "Notes", pipelines: "Pipelines", projects: "Projects" };
+      const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", notes: "Notes", pipelines: "Pipelines", projects: "Projects", settings: "Settings" };
       const title = this.route.name === "entities" ? this.typeTitle(arg) : crumbs[this.route.name] || "";
       N.fill(this.crumbsEl, this.project ? h("span.sub", this.project.title) : null, this.project ? h("span.sep", "/") : null, h("span", title));
-      if (!this.project && this.route.name !== "projects") { this.go("#/projects"); return; }
-      const view = { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, pipelines: N.views.pipelines, projects: N.views.projects }[this.route.name];
+      if (!this.project && !["projects", "settings"].includes(this.route.name)) { this.go("#/projects"); return; }
+      const view = { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, pipelines: N.views.pipelines, projects: N.views.projects, settings: N.views.settings }[this.route.name];
       if (!view) { this.go("#/overview"); return; }
       // Each render draws into a new container, shown when it is done, unless a later render has started:
       // views load their data first, and one that finishes late must not draw over the page now shown.
@@ -275,6 +276,7 @@
     else document.documentElement.setAttribute("data-theme", theme);
   }
 
+  N.theme = { load: loadTheme, save: saveTheme, apply: applyTheme };
   N.app = app;
   window.addEventListener("DOMContentLoaded", () => app.start());
 })();

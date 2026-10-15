@@ -16,6 +16,45 @@ classdef Catalog
             obj.Path = path;
         end
 
+        function settings = settings(obj)
+            %settings The user's app settings, with the defaults for those not set
+            settings = nansen.Catalog.defaultSettings();
+            stored = nansen.internal.getField(obj.read(), "settings", struct());
+            for group = string(fieldnames(settings))'
+                if isfield(stored, group)
+                    for name = string(fieldnames(stored.(group)))'
+                        settings.(group).(name) = stored.(group).(name);
+                    end
+                end
+            end
+        end
+
+        function settings = saveSettings(obj, changes)
+            %saveSettings Change some settings (a partial settings struct); returns them all
+            document = obj.read();
+            stored = nansen.internal.getField(document, "settings", struct());
+            for group = string(fieldnames(changes))'
+                if ~isstruct(changes.(group)) || ~isscalar(changes.(group))
+                    nansen.internal.throwError("invalid-params", "settings.%s must be an object", group)
+                end
+                values = nansen.internal.getField(stored, group, struct());
+                for name = string(fieldnames(changes.(group)))'
+                    values.(name) = changes.(group).(name);
+                end
+                stored.(group) = values;
+            end
+            document.settings = stored;
+            try
+                obj.write(document);
+            catch err
+                if isa(err, "nansen.NansenError")
+                    nansen.internal.throwError("invalid-params", "settings: %s", err.message)
+                end
+                rethrow(err)
+            end
+            settings = obj.settings();
+        end
+
         function projects = projects(obj)
             %projects Projects, most recently opened first, each with whether its folder still holds a project
             projects = nansen.internal.asCellOfStructs(obj.read().projects);
@@ -86,6 +125,10 @@ classdef Catalog
     end
 
     methods (Static)
+        function settings = defaultSettings()
+            settings = struct("queue", struct("autoStart", true));
+        end
+
         function path = defaultPath()
             %defaultPath Where the app keeps the catalog for this user (the same file Python uses)
             if ispc
