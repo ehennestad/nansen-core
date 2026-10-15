@@ -126,10 +126,16 @@ end
 function [assignments, info] = classOptions(name, declaration, lines, info)
     % A class method's attributes (its constant properties) and the assignments of getDefaultOptions
     sessionMethod = "nansen.session.SessionMethod";
-    tokens = regexp(char(declaration), '^classdef\s*(?:\([^)]*\))?\s*[A-Za-z][\w.]*\s*(?:<(.*))?$', 'tokens', 'once');
+    % the superclasses: after the < of the declaration (outside its attributes in brackets), split at &
+    declaration = char(declaration);
+    attributes = regexp(declaration, '^classdef\s*\([^)]*\)', 'end', 'once');
+    if isempty(attributes)
+        attributes = 0;
+    end
+    at = find(declaration == '<' & (1:numel(declaration)) > attributes, 1);
     supers = strings(1, 0);
-    if ~isempty(tokens)
-        supers = reshape(strtrim(split(string(tokens{1}), "&")), 1, []);
+    if ~isempty(at)
+        supers = reshape(strtrim(split(string(declaration(at + 1:end)), "&")), 1, []);
     end
     if ~ismember(sessionMethod, supers)
         nansen.internal.throwError("unsupported-file", "%s.m is a class that does not subclass %s, " + ...

@@ -2804,9 +2804,10 @@ classdef Project < handle
             [line, stop] = regexp(text, "^[ \t]*function[ \t]+(?:\[?[ \t]*(?<output>[A-Za-z][A-Za-z0-9_]*)[ \t]*\]?[ \t]*=[ \t]*)?" + ...
                 "(?<name>[A-Za-z][A-Za-z0-9_]*)[ \t]*(?:\((?<inputs>[^)\n]*)\))?", "names", "end", "once", "lineanchors");
             if ~isempty(line) && string(line.name) == name
-                inputs = strtrim(split(string(line.inputs), ","));
+                % MATLAB leaves a named token out when its optional group does not take part in the match
+                inputs = strtrim(split(string(nansen.internal.getField(line, "inputs", "")), ","));
                 inputs = inputs(inputs ~= "");
-                output = string(line.output);
+                output = string(nansen.internal.getField(line, "output", ""));
                 if output ~= "" && numel(inputs) <= 1   % dev's table variable: value = Name(sessionObject)
                     shape.kind = "devFunction";
                     default = regexp(extractAfter(text, stop), "^[ \t]*" + output + "[ \t]*=[ \t]*([^;%\n]*)", "tokens", "once", "lineanchors");

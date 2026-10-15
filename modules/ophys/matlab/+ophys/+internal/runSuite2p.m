@@ -34,7 +34,12 @@ function out = runSuite2p(stack, ops, folder, register, neuropilCoefficient, spi
     ops = feval('build_ops3', db, ops);   % fsroot: the folder's TIFF file, input.tif
     ops.ResultsSavePath = folder;   % not the subfolders build_ops3 makes of mouse_name and date
     if register
+        % Suite2P's frame count of a TIFF file, which newer libtiff breaks, replaced while it registers
+        compat = fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), 'suite2pcompat');
+        addpath(compat, '-begin');
+        restorePath = onCleanup(@() rmpath(compat));
         ops1 = feval('reg2P', ops);
+        clear restorePath
         ops = feval('opsChanges', ops1{1}, ops);   % as run_pipeline: its own settings over reg2P's
     else
         ops.RegFile = fullfile(folder, 'nansen_suite2p_plane1.bin');

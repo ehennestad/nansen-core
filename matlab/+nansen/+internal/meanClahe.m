@@ -110,13 +110,14 @@ function out = clahe(image)
             rowRev = repmat((heightK:-1:1)', 1, widthM);
             columnW = repmat(0:widthM - 1, heightK, 1);
             columnRev = repmat(widthM:-1:1, heightK, 1);
-            ul = maps{mapRows(1), mapColumns(1)};
-            ur = maps{mapRows(1), mapColumns(2)};
-            bl = maps{mapRows(2), mapColumns(1)};
-            br = maps{mapRows(2), mapColumns(2)};
+            % each map looked up in the shape of the index (a row map indexed by a column would give a row)
+            ul = reshape(maps{mapRows(1), mapColumns(1)}(index), size(index));
+            ur = reshape(maps{mapRows(1), mapColumns(2)}(index), size(index));
+            bl = reshape(maps{mapRows(2), mapColumns(1)}(index), size(index));
+            br = reshape(maps{mapRows(2), mapColumns(2)}(index), size(index));
             out(top:top + heightK - 1, left:left + widthM - 1) = ...
-                (rowRev .* (columnRev .* ul(index) + columnW .* ur(index)) + ...
-                 rowW .* (columnRev .* bl(index) + columnW .* br(index))) / (heightK * widthM);
+                (rowRev .* (columnRev .* ul + columnW .* ur) + ...
+                 rowW .* (columnRev .* bl + columnW .* br)) / (heightK * widthM);
             left = left + widthM;
         end
         top = top + heightK;
