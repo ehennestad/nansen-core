@@ -182,6 +182,39 @@ def image_files(expected):
                    "sum": int(colour.astype(np.int64).sum())}}
 
 
+def norpix(expected):
+    """Norpix StreamPix sequences: a 1024-byte header, then each frame trueImageSize bytes apart (the image, an
+    8-byte timestamp and padding); 4 grayscale 8-bit frames of 6 x 8 at 25 fps, and 3 BGR frames of 4 x 5 at 12.5 fps,
+    whose last is cut short by the end of the file (it is left out)."""
+    rng = np.random.default_rng(29)
+
+    def write(name, images, kind, depth, rate, cut=0):
+        frames, height, width = images.shape[:3]
+        size = images[0].nbytes
+        true_size = size + 8 + 24   # timestamp and padding
+        head = bytearray(1024)
+        head[0:4] = (0xFEED).to_bytes(4, "little")
+        head[4:24] = "Norpix seq".encode("utf-16-le")
+        head[28:32] = (5).to_bytes(4, "little")
+        head[32:36] = (1024).to_bytes(4, "little")
+        values = [width, height, depth, depth, size, kind, frames, 0, true_size]
+        head[548:584] = np.array(values, dtype="<u4").tobytes()
+        head[584:592] = np.array([rate], dtype="<f8").tobytes()
+        body = b"".join(image.tobytes() + bytes(true_size - size) for image in images)
+        (HERE / name).write_bytes(bytes(head) + body[:len(body) - cut])
+
+    gray = rng.integers(0, 256, (4, 6, 8)).astype(np.uint8)
+    write("camera.seq", gray, 100, 8, 25.0)
+    bgr = rng.integers(0, 256, (3, 4, 5, 3)).astype(np.uint8)
+    write("camera_bgr.seq", bgr, 200, 24, 12.5, cut=40)
+    rgb = bgr[:2, ..., ::-1]
+    expected["norpix"] = {
+        "gray": {"size": [6, 8, 4], "pixel": {"at": [5, 7, 3], "value": int(gray[3, 5, 7])},
+                 "sum": int(gray.astype(np.int64).sum()), "metadata": {"frameRate": 25.0}},
+        "bgr": {"size": [4, 5, 3, 2], "pixel": {"at": [3, 4, 0, 1], "value": int(rgb[1, 3, 4, 0])},
+                "sum": int(rgb.astype(np.int64).sum()), "metadata": {"frameRate": 12.5}}}
+
+
 def thorlabs(expected):
     """A ThorImage recording: a TIFF file per frame and channel, ChanA_001_001_001_0001.tif and so on; 2 channels
     of 3 frames, 6 x 5 uint16, written out of order so natural order matters (frame 10 after frame 2), and the
@@ -403,6 +436,7 @@ def main():
     suite2p_binary(expected)
     video(expected)
     image_files(expected)
+    norpix(expected)
     thorlabs(expected)
     tsm(expected)
     suite2p_rois(expected)

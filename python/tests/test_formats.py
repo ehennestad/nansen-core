@@ -147,6 +147,19 @@ def test_image_files_read_as_frames(kind, pattern):
         np.asarray(adapter("ImageFiles").open(paths[:1] + sorted((FILES / "images").glob("*.bmp" if kind == "gray" else "*.png"))))
 
 
+@pytest.mark.parametrize("kind, file", [("gray", "camera.seq"), ("bgr", "camera_bgr.seq")])
+def test_norpix_sequences_read_raw_frames(kind, file):
+    expected = EXPECTED["norpix"][kind]
+    stack = adapter("NorpixSeq").open([FILES / file])
+    assert list(stack.shape) == expected["size"] and stack.dtype == np.uint8   # the BGR one's cut-off last frame left out
+    data = np.asarray(stack)
+    assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]
+    assert int(data.astype(np.int64).sum()) == expected["sum"]
+    assert (stack.frames(1, 2) == data[..., 1:2]).all() and stack.metadata == expected["metadata"]
+    with pytest.raises(NansenError):
+        adapter("NorpixSeq").open([FILES / "macroscope.tsm"])
+
+
 def test_thorimage_frames_read_as_channels():
     paths = sorted((FILES / "thorlabs").glob("*.tif"), reverse=True)   # any order: natural order inside
     expected = EXPECTED["thorlabs"]

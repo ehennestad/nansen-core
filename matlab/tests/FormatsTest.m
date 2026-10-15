@@ -101,6 +101,25 @@ classdef FormatsTest < matlab.unittest.TestCase
             end
         end
 
+        function readsNorpixSequences(testCase)
+            for kind = ["gray", "bgr"]
+                file = "camera.seq";
+                if kind == "bgr"
+                    file = "camera_bgr.seq";   % its cut-off last frame is left out
+                end
+                expected = testCase.Expected.norpix.(kind);
+                stack = ophys.NorpixSeq().open(fullfile(testCase.Files, file));
+                testCase.verifyEqual(size(stack), expected.size', kind);
+                data = stack.all();
+                testCase.verifyClass(data, "uint8");
+                at = num2cell(expected.pixel.at' + 1);
+                testCase.verifyEqual(double(data(at{:})), expected.pixel.value, kind);
+                testCase.verifyEqual(sum(double(data), "all"), expected.sum, kind);
+                testCase.verifyMetadata(stack, expected.metadata, kind);
+            end
+            testCase.verifyError(@() ophys.NorpixSeq().open(fullfile(testCase.Files, "macroscope.tsm")), "nansen:InvalidData");
+        end
+
         function readsThorImageFramesAsChannels(testCase)
             listing = dir(fullfile(testCase.Files, "thorlabs", "*.tif"));
             paths = flip(string(fullfile({listing.folder}, {listing.name})));   % any order: natural order inside

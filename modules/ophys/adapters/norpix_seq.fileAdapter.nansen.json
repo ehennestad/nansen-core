@@ -1,0 +1,16 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.norpix_seq",
+  "version": "1.0.0",
+  "title": "Norpix sequence",
+  "description": "A Norpix StreamPix sequence (.seq), as dev's Sequence stack: raw grayscale images of 8 or 16 bits (height x width x frames) or raw BGR images (height x width x 3 x frames, in RGB order), with the frame rate of its header. Several files of a recording are joined in natural order. Read a chunk at a time; read only.",
+  "extensions": [
+    ".seq"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:NorpixSeq",
+    "matlab": "ophys.NorpixSeq"
+  }
+}

@@ -480,6 +480,48 @@
    "sum": 23106
   }
  },
+ "norpix": {
+  "gray": {
+   "size": [
+    6,
+    8,
+    4
+   ],
+   "pixel": {
+    "at": [
+     5,
+     7,
+     3
+    ],
+    "value": 210
+   },
+   "sum": 24319,
+   "metadata": {
+    "frameRate": 25.0
+   }
+  },
+  "bgr": {
+   "size": [
+    4,
+    5,
+    3,
+    2
+   ],
+   "pixel": {
+    "at": [
+     3,
+     4,
+     0,
+     1
+    ],
+    "value": 127
+   },
+   "sum": 15951,
+   "metadata": {
+    "frameRate": 12.5
+   }
+  }
+ },
  "thorlabs": {
   "size": [
    6,

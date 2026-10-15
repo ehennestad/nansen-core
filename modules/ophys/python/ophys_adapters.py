@@ -415,6 +415,62 @@ class TsmStack:
         raise NansenError("invalid-params", "TSM files are written by the camera; save stacks as TIFF")
 
 
+class NorpixSeq:
+    """A Norpix StreamPix sequence (.seq), as dev's Sequence stack: a 1024-byte header (0xFEED, then width, height,
+    bit depth, image size, image format and frame count as uint32 from byte 548, and the frame rate as a double at 584),
+    then the frames, each trueImageSize bytes apart (the image, its timestamp and padding). Raw images only (image
+    format 100, grayscale of 8 or 16 bits, or 200, BGR of 8 bits): height x width x frames, or height x width x 3 x
+    frames in RGB order. Read a chunk at a time; read only."""
+
+    extensions = [".seq"]
+
+    @staticmethod
+    def header(path):
+        """(width, height, bit depth, image bytes, image format, frames, true image size, frame rate) of the header."""
+        with open(path, "rb") as f:
+            head = f.read(1024)
+        if len(head) < 1024 or int.from_bytes(head[:4], "little") != 0xFEED:
+            raise NansenError("invalid-data", f"{path} is not a Norpix sequence (no 0xFEED header)")
+        values = np.frombuffer(head[548:584], dtype="<u4")
+        rate = float(np.frombuffer(head[584:592], dtype="<f8")[0])
+        width, height, depth, _, size, kind, frames, _, true_size = (int(v) for v in values)
+        return width, height, depth, size, kind, frames, true_size, rate
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import Stack, join, natural_order
+        parts = []
+        for path in natural_order(paths):
+            width, height, depth, size, kind, frames, true_size, rate = self.header(path)
+            if (kind, depth) not in ((100, 8), (100, 16), (200, 24)):
+                raise NansenError("invalid-data", f"{path} has image format {kind} of {depth} bits; raw grayscale (100) of 8 or "
+                                                  "16 bits and raw BGR (200) of 24 are read")
+            colours = 3 if kind == 200 else 1
+            dtype = np.dtype("<u2") if depth == 16 else np.dtype(np.uint8)
+            if size != width * height * colours * dtype.itemsize or true_size < size:
+                raise NansenError("invalid-data", f"{path}: an image of {size} bytes in {true_size} does not fit {height} x {width}")
+            available = (Path(path).stat().st_size - 1024 + true_size - size) // true_size
+            frames = min(frames, available)   # an incomplete last frame is left out
+            mapped = np.memmap(path, dtype=np.uint8, mode="r", offset=1024) if frames else None
+
+            def read(start, stop, mapped=mapped, size=size, true_size=true_size, dtype=dtype, height=height, width=width,
+                     colours=colours):
+                raw = b"".join(mapped[t * true_size:t * true_size + size].tobytes() for t in range(start, stop))
+                images = np.frombuffer(raw, dtype=dtype).reshape(stop - start, height, width, colours)
+                if colours == 3:
+                    return np.ascontiguousarray(images[..., ::-1].transpose(1, 2, 3, 0))   # BGR to RGB
+                return np.ascontiguousarray(images[..., 0].transpose(1, 2, 0)).astype(dtype.newbyteorder("="))
+
+            shape = (height, width, 3, frames) if colours == 3 else (height, width, frames)
+            parts.append(Stack(shape, dtype.newbyteorder("="), read, stack_metadata(rate)))
+        return join(parts)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "Norpix sequences are written by StreamPix; save stacks as TIFF")
+
+
 class ThorLabsTiffs:
     """A ThorImage recording: a TIFF file per frame and channel, named ChanA_001_001_001_0001.tif and so on, as dev's
     ThorLabsTiffs reads them. The files of each channel letter are its frames, in natural order; with more than
