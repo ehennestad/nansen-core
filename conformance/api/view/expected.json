@@ -1,0 +1,4 @@
+{
+  "description": "Viewing without a project: an app given nothing to view lists nothing, and refuses a viewable it was not given (view.frame, view.signal, view.traces), with no project open; a file is still read by files.frame only in a project. Viewables are registered by the program that starts the app (nansen view, nansen.view), which a case cannot do; the Python and MATLAB unit tests view registered arrays and files.",
+  "steps": 7
+}

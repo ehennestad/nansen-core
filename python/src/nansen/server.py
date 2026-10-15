@@ -188,12 +188,12 @@ def open_app(project=None, namespace: Optional[dict] = None, catalog=None, port:
     return server
 
 
-def run_app(api: Api, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> None:
-    """Serve until interrupted."""
+def run_app(api: Api, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True, page: str = "") -> None:
+    """Serve until interrupted; page is where the browser opens (such as "#/view/v1")."""
     server = AppServer(api, (host, port))
-    print(f"NANSEN is running at {server.url} (Ctrl+C to stop)")
+    print(f"NANSEN is running at {server.url}{page} (Ctrl+C to stop)")
     if open_browser:
-        webbrowser.open(server.url)
+        webbrowser.open(server.url + page)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

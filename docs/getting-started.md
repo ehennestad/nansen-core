@@ -25,6 +25,32 @@ app = nansen.App(Project=project.Folder);
 
 In the protocol it is `demo.create {path, kind: "two-photon"}`.
 
+### Viewing a file without a project
+
+To look at a recording, an array or a set of signals without making a project, as dev's `imviewer(file)`,
+`imviewer(array)`, `signalviewer` and `roimanager` from the command line:
+
+```bash
+nansen view recording.tif                       # any stack file: TIFF, .npy, SciScan .raw, HDF5, video, ...
+nansen view recording.raw --rois rois.json      # with ROIs over it, read only
+nansen view --signals dff.npy --frame-rate 31.25   # frames x N signals in the trace plot (a .mat: --variable)
+```
+
+```python
+import nansen
+server = nansen.view(movie)                     # an array, height x width (x channels (x planes)) x frames
+server = nansen.view(signals=dff)               # frames x N
+```
+
+```matlab
+app = nansen.view(movie);
+app = nansen.view("recording.tif", Rois="rois.json");
+app = nansen.view([], Signals=dff, FrameRate=31.25);
+```
+
+The dashboard opens straight into the viewer, with its projections, binning, filters, colour channels and export.
+Only what was given can be read by the page.
+
 ### What is in it
 
 ```

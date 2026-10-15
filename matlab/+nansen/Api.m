@@ -15,6 +15,9 @@ classdef Api < handle
         Catalog = []
         Project = []
         Queue = []
+        % What view.frame, view.signal and view.traces may read, with no project: files and arrays handed to
+        % nansen.view (a nansen.Viewables, registered from MATLAB, never by a request)
+        Viewables = []
     end
 
     properties
@@ -37,13 +40,18 @@ classdef Api < handle
             arguments
                 options.Catalog = []
                 options.Project = []
+                options.Viewables = []
             end
             obj.Catalog = options.Catalog;
+            obj.Viewables = options.Viewables;
+            if isempty(obj.Viewables)
+                obj.Viewables = nansen.Viewables();
+            end
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "app.openUrl", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.comment", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
@@ -978,6 +986,69 @@ classdef Api < handle
             result.adapters = cellstr(candidates);
             [~, name, extension] = fileparts(string(resolved.path));
             result.name = char(name + extension);
+        end
+
+        % -- viewing without a project: what nansen.view registered ---------------------------------------------------
+
+        function result = apiViewList(obj, ~)
+            % The files and arrays this app was given to view: {id, kind (stack or signals), name, path, rois}
+            result = obj.Viewables.list();
+        end
+
+        function result = apiViewFrame(obj, params)
+            % A frame (or a projection) of a registered stack, as files.frame gives one of a file; with rois, its ROIs of
+            % the plane and channel shown. No project is needed, and nothing but what was registered is read
+            item = obj.Viewables.get(nansen.Api.param(params, "viewable"));
+            limits = nansen.internal.getField(params, "limits", []);
+            if ~isempty(limits) && (~isnumeric(limits) || numel(limits) ~= 2)
+                nansen.internal.throwError("invalid-params", "limits is [low, high]")
+            end
+            [stack, adapterId] = obj.Viewables.stack(item, string(nansen.internal.getField(params, "adapter", "")));
+            plane = double(nansen.internal.getField(params, "plane", 0));
+            channel = double(nansen.internal.getField(params, "channel", 0));
+            result = nansen.internal.imageFrame(stack, double(nansen.internal.getField(params, "frame", 0)), channel, ...
+                string(nansen.internal.getField(params, "projection", "")), double(limits), plane, ...
+                string(nansen.internal.getField(params, "filter", "")), nansen.Api.binOf(params));
+            result.metadata = nansen.Viewables.metadata(item, stack);
+            result.adapter = char(adapterId);
+            result.adapters = cellstr(item.adapters);
+            result.name = char(item.name);
+            if nansen.Api.flag(params, "rois") && item.hasRois
+                result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(item.rois, plane + 1, channel + 1));
+            end
+        end
+
+        function result = apiViewSignal(obj, params)
+            % An ROI's signal read from a registered stack (the mean of its pixels per frame), as rois.signal gives one
+            item = obj.Viewables.get(nansen.Api.param(params, "viewable"));
+            pixels = nansen.internal.getField(params, "pixels", []);
+            if isempty(pixels) || ~(isnumeric(pixels) || iscell(pixels))
+                nansen.internal.throwError("invalid-params", "pixels is a list of [row, column] pairs")
+            end
+            stack = obj.Viewables.stack(item, string(nansen.internal.getField(params, "adapter", "")));
+            stack = nansen.internal.pickChannel(stack, double(nansen.internal.getField(params, "channel", 0)), ...
+                double(nansen.internal.getField(params, "plane", 0)));
+            start = nansen.internal.getField(params, "start", 0);
+            stop = nansen.internal.getField(params, "stop", []);
+            trace = nansen.internal.roiSignal(stack, pixels, start, stop);
+            result = nansen.internal.signalTraces({char(item.name)}, {trace}, 0, start, stop, nansen.internal.getField(params, "maxPoints", 2000));
+            result.frameRate = obj.Viewables.rate(item);
+        end
+
+        function result = apiViewTraces(obj, params)
+            % Columns of registered signals (frames x N), a frame range thinned to maxPoints, as data.traces gives them
+            item = obj.Viewables.get(nansen.Api.param(params, "viewable"));
+            if item.kind ~= "signals"
+                nansen.internal.throwError("invalid-params", "%s is an image stack; view.frame shows it", item.name)
+            end
+            columns = nansen.internal.getField(params, "columns", 0);
+            if ~isnumeric(columns) || any(columns ~= round(columns))
+                nansen.internal.throwError("invalid-params", "columns is a list of 0-based column numbers")
+            end
+            result = nansen.internal.signalTraces({char(item.name)}, {item.signals}, reshape(columns, 1, []), ...
+                nansen.internal.getField(params, "start", 0), nansen.internal.getField(params, "stop", []), ...
+                nansen.internal.getField(params, "maxPoints", 2000));
+            result.frameRate = obj.Viewables.rate(item);
         end
 
         function result = apiFilesOpen(obj, params)

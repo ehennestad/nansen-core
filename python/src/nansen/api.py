@@ -29,6 +29,7 @@ from .methods import MethodContext
 from . import runs
 from .project import Project
 from .tasks import TaskQueue
+from .viewables import Viewables
 
 PROTOCOL_VERSION = "0.1"
 
@@ -123,8 +124,11 @@ def _matlab_text(text: Any) -> str:
 
 class Api:
     def __init__(self, catalog: Optional[Catalog] = None, project: Optional[Project] = None,
-                 executor: Optional[str] = None, start_queue: bool = True):
+                 executor: Optional[str] = None, start_queue: bool = True, viewables: Optional[Viewables] = None):
         self.catalog = catalog
+        # What view.frame, view.signal and view.traces may read, with no project: files and arrays handed to
+        # `nansen view` or nansen.view (registered from Python, never by a request)
+        self.viewables: Viewables = viewables if viewables is not None else Viewables()
         self.project: Optional[Project] = None
         self.queue: Optional[TaskQueue] = None
         # how queued tasks run: "thread" or "process"; without one given, the user's setting (queue.worker)
@@ -974,6 +978,54 @@ class Api:
         path = Path(resolved["path"])
         self.open_folder(path if resolved["isFolder"] else path.parent)
         return resolved
+
+    # -- viewing without a project: what `nansen view` and nansen.view registered ---------------------------------
+
+    def view__list(self, params: dict) -> list:
+        """The files and arrays this app was given to view: [{id, kind (stack or signals), name, path, rois}]."""
+        return self.viewables.list()
+
+    def view__frame(self, params: dict) -> dict:
+        """A frame (or a projection) of a registered stack, as files.frame gives one of a file; with rois, its ROIs of
+        the plane and channel shown. No project is needed, and nothing but what was registered is read."""
+        viewable = self.viewables.get(params["viewable"])
+        limits = params.get("limits")
+        if limits is not None and (not isinstance(limits, list) or len(limits) != 2):
+            raise NansenError("invalid-params", "limits is [low, high]")
+        stack, adapter = self.viewables.stack(viewable, params.get("adapter"))
+        plane, channel = int(params.get("plane", 0)), int(params.get("channel", 0))
+        result = image_frame(stack, int(params.get("frame", 0)), channel, params.get("projection"), limits,
+                             plane, params.get("filter"), _bin_of(params))
+        result = dict(result, metadata=viewable.metadata(stack), adapter=adapter, adapters=list(viewable.adapters), name=viewable.name)
+        if _flag(params, "rois") and viewable.rois is not None:
+            result["rois"] = roi_outlines(rois_at(viewable.rois, plane + 1, channel + 1))
+        return result
+
+    def view__signal(self, params: dict) -> dict:
+        """An ROI's signal read from a registered stack (the mean of its pixels per frame), as rois.signal gives one."""
+        viewable = self.viewables.get(params["viewable"])
+        pixels = params.get("pixels")
+        if not isinstance(pixels, list) or not pixels:
+            raise NansenError("invalid-params", "pixels is a list of [row, column] pairs")
+        stack, _ = self.viewables.stack(viewable, params.get("adapter"))
+        stack, _, _ = pick_channel(stack, int(params.get("channel", 0)), int(params.get("plane", 0)))
+        start, stop = params.get("start", 0), params.get("stop")
+        result = signal_traces({viewable.name: roi_signal(stack, pixels, start, stop)}, [0], start, stop, params.get("maxPoints", 2000))
+        result["frameRate"] = viewable.rate()
+        return result
+
+    def view__traces(self, params: dict) -> dict:
+        """Columns of registered signals (frames x N), a frame range thinned to maxPoints, as data.traces gives them."""
+        viewable = self.viewables.get(params["viewable"])
+        if viewable.kind != "signals":
+            raise NansenError("invalid-params", f"{viewable.name} is an image stack; view.frame shows it")
+        columns = params.get("columns", [0])
+        if not isinstance(columns, list) or not all(isinstance(c, int) and not isinstance(c, bool) for c in columns):
+            raise NansenError("invalid-params", "columns is a list of 0-based column numbers")
+        result = signal_traces({viewable.name: viewable.signals}, columns, params.get("start", 0), params.get("stop"),
+                               params.get("maxPoints", 2000))
+        result["frameRate"] = viewable.rate()
+        return result
 
     # -- views ---------------------------------------------------------------------------------
 

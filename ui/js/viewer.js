@@ -201,9 +201,17 @@
    * Open the viewer on a variable of an entity. roiVariables are the entity's variables that hold ROIs, and
    * signalVariables its signals, shown for the selected ROI. options.select is an ROI to select once the ROIs are
    * read, and options.mode the image to start on ("mean", ...); options.onClose is called when the viewer closes.
+   * options.file is a file of no entity (files.frame); options.viewable ({id, name, rois}) something `nansen view` or
+   * nansen.view was given, with no project (view.frame): its ROIs, when it has some, are shown read only.
    */
   N.views.stackViewer = function (app, entityType, key, variable, roiVariables = [], signalVariables = [], options = {}) {
     let initial = options.select ?? null;
+    const viewable = options.viewable || null;
+    if (viewable) roiVariables = viewable.rois ? ["ROIs"] : [];
+    const readOnly = Boolean(viewable);   // no project to save ROIs into
+    // what the stack is called in file names and titles
+    const title = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${variable} · ${N.fmt.key(key)}`;
+    const stem = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${N.fmt.key(key)}_${variable}`;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, hideRejected: false, channel: 0, plane: 0,
       zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false, links: false,
@@ -511,7 +519,7 @@
         return;   // circle and detect act on the click
       } else if (event.shiftKey && state.rois) {   // roimanager's multi-select: the ROIs inside a rectangle dragged out
         state.drag = { kind: "box", from: [px, py], to: [px, py], add: event.ctrlKey || event.metaKey };
-      } else if (roi && roi.id === state.selected && !several(event)) {
+      } else if (roi && roi.id === state.selected && !several(event) && !readOnly) {
         state.drag = { kind: "move", roi, from: [Math.floor(py), Math.floor(px)], dy: 0, dx: 0 };
       } else {
         state.drag = { kind: "pan", from: [event.clientX, event.clientY], scroll: [stage.scrollLeft, stage.scrollTop], moved: false };
@@ -761,9 +769,11 @@
     const linkToggle = h("input.viewer-roi-links", { type: "checkbox", on: { change: () => { state.links = linkToggle.checked; drawOverlay(); } } });
     const outlineToggle = h("input.viewer-roi-outlines", { type: "checkbox", on: { change: () => { state.outlines = outlineToggle.checked; redraw(); } } });
     const roiList = h("ul.viewer-roi-list");
+    // ROIs read only (no project to save them into): seen, selected and gone through in the gallery, not changed
     const roiPanel = h("div.viewer-roi-panel",
-      h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
-      h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, addFromButton, h("div.spacer"), radius),
+      readOnly ? h("div.viewer-roi-actions", h("span.muted.viewer-read-only-note", "Read only"), h("div.spacer"), galleryButton)
+        : h("div.viewer-roi-actions", actions, mergeButton, growButton, shrinkButton, h("div.spacer"), undoButton, redoButton, galleryButton),
+      readOnly ? null : h("div.viewer-roi-actions.viewer-roi-tools", tools, findButton, addFromButton, h("div.spacer"), radius),
       h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
         h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links")),
       roiList);
@@ -812,7 +822,8 @@
         if (live) {
           const roi = state.rois.find((r) => r.id === selected);
           if (!roi) return;
-          result = await app.client.request("rois.signal", { entityType, key, variable, pixels: roi.pixels, channel: state.channel, plane: state.plane, maxPoints: 1200, ...range });
+          const where = viewable ? { viewable: viewable.id, ...(state.adapter ? { adapter: state.adapter } : {}) } : { entityType, key, variable };
+          result = await app.client.request(viewable ? "view.signal" : "rois.signal", { ...where, pixels: roi.pixels, channel: state.channel, plane: state.plane, maxPoints: 1200, ...range });
         } else {
           result = await app.client.request("data.traces", { entityType, key, variables: [signal.variable], columns: [column], maxPoints: 1200, ...range });
         }
@@ -867,6 +878,7 @@
     const enqueue = (task) => (queue = queue.then(task, task));
     function edit(change, history = "record") { return enqueue(() => apply(change, history)); }
     async function apply(change, history) {
+      if (readOnly) { status.textContent = "These ROIs are read only: open them in a project to change them"; return; }
       const before = snapshot();
       try {
         const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, channel: state.channel, plane: state.plane,
@@ -983,7 +995,7 @@
       ctx.drawImage(canvas, 0, 0, out.width, out.height);
       if (last.tiles) labelTiles(ctx, last.tiles, scale, tileFont(scale));
       const planes = last.layers && state.volume !== "single" ? `_planes${state.volume === "montage" ? "" : state.volume}` : "";
-      const name = `${N.fmt.key(key)}_${variable}_${state.mode === "frame" ? `frame${state.frame + 1}` : state.mode}${planes}.png`.replace(/[^\w.-]+/g, "_");
+      const name = `${stem}_${state.mode === "frame" ? `frame${state.frame + 1}` : state.mode}${planes}.png`.replace(/[^\w.-]+/g, "_");
       const link = h("a", { href: out.toDataURL("image/png"), download: name });
       document.body.appendChild(link);
       link.click();
@@ -1048,7 +1060,7 @@
       recorder.stop();
       await done;
       if (tracePlot) tracePlot.cursor(was.mode === "frame" ? was.frame : null);
-      const name = `${options.file ? options.file.path.split("/").pop() : `${N.fmt.key(key)}_${variable}`}_frames${first + 1}-${final + 1}.webm`.replace(/[^\w.-]+/g, "_");
+      const name = `${stem}_frames${first + 1}-${final + 1}.webm`.replace(/[^\w.-]+/g, "_");
       const link = h("a", { href: URL.createObjectURL(new Blob(chunks, { type: "video/webm" })), download: name });
       document.body.appendChild(link);
       link.click();
@@ -1060,7 +1072,7 @@
     async function exportMenu() {
       let method = null;
       try {
-        if (!options.file) method = (await app.client.request("methods.list", { entityType })).find((m) => m.id === "ophys.export_tiff") || null;
+        if (!options.file && !viewable) method = (await app.client.request("methods.list", { entityType })).find((m) => m.id === "ophys.export_tiff") || null;
       } catch (error) { /* the PNG is still there */ }
       const items = [{ label: "Image as PNG", icon: "download", onClick: () => saveImage() }];
       if (state.frames > 1 && window.MediaRecorder) items.push({ label: "Video with the ROI's signal…", icon: "play", onClick: () => saveVideo() });
@@ -1123,7 +1135,7 @@
         const value = at < 0 ? null : classifier.stats[name][at];
         return value === null || value === undefined ? Infinity : -value;   // largest first; none last
       };
-      const loadClassifier = app.client.request("data.value", { entityType, key, variable: "RoiImages" }).then(({ value }) => {
+      const loadClassifier = (viewable ? Promise.reject(new Error("no project")) : app.client.request("data.value", { entityType, key, variable: "RoiImages" })).then(({ value }) => {
         const list = (v) => [].concat(v);   // one ROI's lists may come back as a single value
         classifier = { boxSize: value.boxSize, ids: list(value.ids), images: {}, stats: {} };
         for (const [name, images] of Object.entries(value.images || {})) classifier.images[name] = list(images).map(list);
@@ -1213,7 +1225,7 @@
       };
       document.addEventListener("keydown", keys, true);
       onSelect = render;
-      const view = N.dialog({ title: `ROIs · ${N.fmt.key(key)}`, content: h("div.roi-gallery-body",
+      const view = N.dialog({ title: `ROIs · ${viewable ? viewable.name : N.fmt.key(key)}`, content: h("div.roi-gallery-body",
         h("div.roi-gallery-bar", imagePick, sortPick, showPick, h("span.muted", "Click a tile to select it; a, r, q and u accept, reject, mark unresolved and clear it; the arrow keys go through them.")), grid),
         onClose: () => { document.removeEventListener("keydown", keys, true); onSelect = null; } });
       view.el.classList.add("roi-gallery-dialog");
@@ -1230,18 +1242,19 @@
      * composed view has the answer's fields, its size, layers ({channel, bytes, color}) and, for the montage, tiles.
      */
     async function fetchView(at, withRois) {
-      // a file of no entity (options.file: as files.resolve takes it) is read by files.frame, as dev's imviewer opens any file
-      const base = options.file ? { ...options.file, ...at } : { entityType, key, variable, ...at };
-      if (options.file && state.adapter) base.adapter = state.adapter;
+      // a file of no entity (options.file: as files.resolve takes it) is read by files.frame, as dev's imviewer opens any
+      // file; what `nansen view` was given, by view.frame, with no project
+      const base = viewable ? { viewable: viewable.id, ...at } : options.file ? { ...options.file, ...at } : { entityType, key, variable, ...at };
+      if ((options.file || viewable) && state.adapter) base.adapter = state.adapter;
       if (state.filter) base.filter = state.filter;
-      const method = options.file ? "files.frame" : "data.frame";
+      const method = viewable ? "view.frame" : options.file ? "files.frame" : "data.frame";
       const limitsOf = (c) => {
         if (c === state.channel) return state.auto ? null : [state.low, state.high];
         const own = state.channelLimits[c];
         return own && !own.auto ? [own.low, own.high] : null;
       };
       const ask = (c, p, more = {}) => app.client.request(method, { ...base, channel: c, plane: p, ...(limitsOf(c) ? { limits: limitsOf(c) } : {}), ...more });
-      const rois = withRois && state.showRois && state.roiVariable && !state.rois ? { rois: state.roiVariable } : {};
+      const rois = withRois && state.showRois && state.roiVariable && !state.rois ? { rois: viewable ? true : state.roiVariable } : {};
       const colour = composite() && at.projection !== "peakTime";   // the time of peak has its own colours
       const planes = state.volume !== "single" && state.planes > 1 && at.projection !== "peakTime" ? range(state.planes) : null;
       if (!colour && !planes) return ask(state.channel, state.plane, rois);
@@ -1355,7 +1368,7 @@
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel, gridButton));
-    const dialog = N.dialog({ title: options.file ? options.file.path.split("/").pop() : `${variable} · ${N.fmt.key(key)}`, content, onClose: () => {
+    const dialog = N.dialog({ title, content, onClose: () => {
       if (options.onClose) options.onClose();
       state.playing = false;
       resizing.disconnect();
@@ -1364,6 +1377,7 @@
       window.removeEventListener("mouseup", onUp);
     } });
     dialog.el.classList.add("viewer-dialog");
+    if (readOnly) dialog.el.classList.add("viewer-read-only");
     if (options.mode) { state.mode = options.mode; mode.value = options.mode; }
     show();
     return dialog;

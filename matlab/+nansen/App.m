@@ -2,7 +2,10 @@ classdef App < handle
 %App The NANSEN app in MATLAB: one uihtml showing the HTML/JS frontend, talking to nansen.Api
 %
 %   app = nansen.App() opens the app with the user's project catalog.
-%   app = nansen.App(Project=folder) opens a project. The frontend sends
+%   app = nansen.App(Project=folder) opens a project.
+%   app = nansen.App(Viewables=viewables) opens straight into the viewer
+%   on files and arrays registered in a nansen.Viewables, with no project
+%   (nansen.view does this). The frontend sends
 %   requests with sendEventToMATLAB("request", json); the app answers with
 %   sendEventToHTMLSource(..., "response", json) and pushes core events as
 %   "event". Tasks run on backgroundPool, polled by a timer. Needs R2023a+.
@@ -28,9 +31,11 @@ classdef App < handle
                 options.CatalogPath (1,1) string = nansen.Catalog.defaultPath()
                 options.Visible (1,1) logical = true
                 options.StartQueue = []   % true or false; empty: the user's setting (queue.autoStart)
+                options.Viewables = []    % a nansen.Viewables: what to view without a project (nansen.view)
+                options.Name (1,1) string = "NANSEN"   % the window's title
             end
             catalog = nansen.Catalog(options.CatalogPath);
-            obj.Api = nansen.Api(Catalog=catalog);
+            obj.Api = nansen.Api(Catalog=catalog, Viewables=options.Viewables);
             if isempty(options.StartQueue)
                 settings = catalog.settings();
                 options.StartQueue = settings.queue.autoStart;
@@ -47,7 +52,7 @@ classdef App < handle
                     error("nansen:App:CannotOpen", "%s", response.error.message)
                 end
             end
-            obj.Figure = uifigure(Name="NANSEN", Position=[80 80 1440 880], Visible=options.Visible, ...
+            obj.Figure = uifigure(Name=options.Name, Position=[80 80 1440 880], Visible=options.Visible, ...
                 CloseRequestFcn=@(~, ~) obj.close());
             grid = uigridlayout(obj.Figure, [1 1], Padding=0);
             obj.Html = uihtml(grid, HTMLSource=fullfile(nansen.internal.repoRoot(), "ui", "index.html"), ...

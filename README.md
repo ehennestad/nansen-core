@@ -27,6 +27,7 @@ addpath("path/to/dataset-structure-model/src/matlab")   % the DSM reader
 
 project = nansen.demo.create(fullfile(tempdir, "nansen-demo"));
 app = nansen.App(Project=project.Folder);
+viewer = nansen.view(rand(64, 64, 100));  % the viewer on an array or file, with no project (as dev's imviewer)
 
 sessions = project.entities("session");
 project.run("core.file_stats", sessions(1:3));
@@ -40,6 +41,7 @@ results = runNansenCoreTests();          % unit tests and every conformance case
 pip install -e ".[test]"
 nansen demo /tmp/nansen-demo
 nansen app /tmp/nansen-demo              # opens the dashboard in the browser
+nansen view recording.tif                # the viewer on any stack file, with no project (as dev's imviewer)
 pytest && nansen conformance
 ```
 

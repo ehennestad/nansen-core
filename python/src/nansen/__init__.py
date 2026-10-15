@@ -9,6 +9,16 @@ from .tables import Column, EntityTable, TableSpec
 
 __version__ = "0.1.0"
 
+
+def view(data=None, **options):
+    """Open the dashboard's viewer on image stacks or signals, with no project (dev's imviewer and signalviewer):
+    nansen.view(array), nansen.view("recording.tif", rois="rois.json"), nansen.view(signals=traces). Returns the
+    server without blocking; see nansen.viewables.view for the options."""
+    from .viewables import view as open_viewer
+
+    return open_viewer(data, **options)
+
+
 __all__ = [
     "Column",
     "DEFAULT_MIGRATIONS",
@@ -25,4 +35,5 @@ __all__ = [
     "parse_csv",
     "parse_version",
     "read_document",
+    "view",
 ]
