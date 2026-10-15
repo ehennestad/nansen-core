@@ -117,6 +117,22 @@ classdef StackTest < matlab.unittest.TestCase
             whole = project.load(entity, "TwoPhotonSeries_Corrected", Cached=false);
             testCase.verifyEqual(all(project.openStack(entity, "TwoPhotonSeries_Corrected")), whole);
         end
+
+        function aPreviewReadsTheFirstFramesAndWritesNothing(testCase)
+            project = testCase.ophysProject();
+            key = struct("subject_id", "m1", "session_id", "s2");
+            entity = project.entity("session", key);
+            preview = nansen.internal.previewMethod(project, "ophys.motion_correction", entity, struct("referenceFrames", 1), "", 6);
+            testCase.verifyEqual(preview.results{1}.frames, 6);
+            testCase.verifyEqual(string(cellfun(@(o) char(o.name), preview.outputs, UniformOutput=false)), ["TwoPhotonSeries_Corrected", "MotionCorrectionShifts"]);
+            testCase.verifyEqual(preview.outputs{1}.size, [32, 32, 6]);
+            testCase.verifyEqual([preview.outputs{1}.image.height, preview.outputs{1}.image.width], [32, 32]);
+            testCase.verifyEqual(preview.outputs{2}.size, [6, 2]);
+            testCase.verifyFalse(isfield(preview.outputs{2}, "image"));   % frames x 2 is not an image
+            testCase.verifyEmpty(project.existingFiles(entity, "TwoPhotonSeries_Corrected"));
+            testCase.verifyEmpty(project.existingFiles(entity, "MotionCorrectionShifts"));
+            testCase.verifyError(@() nansen.internal.previewMethod(project, "ophys.image_stats", entity, struct(), "", 0), "nansen:InvalidParams");
+        end
     end
 
     methods (Access = private)
