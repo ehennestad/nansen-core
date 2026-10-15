@@ -6,9 +6,10 @@
   "title": "Run suite2p",
   "category": "Two-photon/Segmentation",
   "entityType": "*",
-  "description": "Runs suite2p (registration, cell detection, signal extraction and deconvolution) on the stack, when the suite2p package (0.x or 1.x) is installed, and saves its cells as ROIs, and their signals and spikes, in the same variables as the native methods. suite2p's own output is kept in a suite2p folder next to the ROI file. Its options are passed to suite2p under suite2p's names (given in each option's description), with suite2p's defaults; of a stack with channels or planes, suite2p gets the channel and plane chosen.",
+  "description": "Runs suite2p (registration, cell detection, signal extraction and deconvolution) on the stack and saves its cells as ROIs, and their signals and spikes, in the same variables as the native methods: in Python the suite2p package (0.x or 1.x), in MATLAB the MATLAB Suite2P (cortex-lab/Suite2P, as dev; its spikes need OASIS, which CaImAn-MATLAB has), when installed. suite2p's own output is kept in a suite2p folder next to the ROI file. Its options are passed to suite2p under suite2p's names (given in each option's description), with suite2p's defaults; the MATLAB Suite2P has no sparse mode (it finds cells with sourcery), so sparseMode, spatialScale and denoise are for Python. Of a stack with channels or planes, suite2p gets the channel and plane chosen.",
   "implementations": {
-    "python": "ophys_methods:suite2p"
+    "python": "ophys_methods:suite2p",
+    "matlab": "ophys.suite2p"
   },
   "options": {
     "type": "object",
