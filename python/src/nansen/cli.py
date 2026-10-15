@@ -27,6 +27,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     app.add_argument("--no-browser", action="store_true")
     app.add_argument("--executor", choices=["thread", "process"], default=None,
                      help="how queued tasks run (default: the user's setting, queue.worker)")
+    view = commands.add_parser("view", help="view image stacks or signals without a project (as dev's imviewer, "
+                                            "signalviewer and roimanager)")
+    view.add_argument("files", nargs="*", help="image stack files: any a stack adapter reads (TIFF, .npy, SciScan .raw, "
+                                               "HDF5, video, ...)")
+    view.add_argument("--rois", default=None, help="ROIs to show over the first stack, read only (.json as ophys saves "
+                                                   "them, or dev's roimanager .mat)")
+    view.add_argument("--signals", action="append", default=[], metavar="FILE",
+                      help="frames x N signals to plot (.npy, or .mat: see --variable); may be given more than once")
+    view.add_argument("--variable", default=None, help="the variable of a .mat signals file (default: its only numeric array)")
+    view.add_argument("--adapter", default=None, help="the file adapter that reads the stacks (default: the first that opens each)")
+    view.add_argument("--frame-rate", type=float, default=None, help="frames per second, when the files do not tell")
+    view.add_argument("--port", type=int, default=0, help="the port to serve on (default: any free one)")
+    view.add_argument("--catalog", default=None, help="project catalog file (default: the user's)")
+    view.add_argument("--no-browser", action="store_true")
     demo = commands.add_parser("demo", help="create a demo project with a small dataset")
     demo.add_argument("folder")
     demo.add_argument("--kind", choices=["sessions", "two-photon"], default="sessions",
@@ -57,6 +71,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         run_app(Api(catalog=catalog, project=project, executor=args.executor,
                     start_queue=catalog.settings()["queue"]["autoStart"]), port=args.port,
                 open_browser=not args.no_browser)
+        return 0
+
+    if args.command == "view":
+        from .api import Api
+        from .catalog import Catalog, default_catalog_path
+        from .server import run_app
+        from .viewables import Viewables, register
+
+        if not args.files and not args.signals:
+            parser.error("view: give an image stack file, or --signals")
+        try:
+            viewables = register(Viewables(), args.files or None, rois=args.rois, signals=args.signals or None,
+                                 adapter=args.adapter, variable=args.variable, frame_rate=args.frame_rate)
+        except NansenError as error:
+            print(f"nansen view: {error.message}", file=sys.stderr)
+            return 1
+        catalog = Catalog(args.catalog or default_catalog_path())
+        run_app(Api(catalog=catalog, viewables=viewables, start_queue=False), port=args.port,
+                open_browser=not args.no_browser, page="#/view/" + viewables.list()[0]["id"])
         return 0
 
     if args.command == "demo":

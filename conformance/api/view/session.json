@@ -1,0 +1,11 @@
+{
+  "steps": [
+    {"request": {"method": "view.list", "id": 1, "params": {}}, "expect": {"result": []}},
+    {"request": {"method": "view.frame", "id": 2, "params": {"viewable": "v1"}}, "expect": {"error": "unknown-viewable"}},
+    {"request": {"method": "view.frame", "id": 3, "params": {"viewable": "v1", "frame": 0, "rois": true}}, "expect": {"error": "unknown-viewable"}},
+    {"request": {"method": "view.signal", "id": 4, "params": {"viewable": "v1", "pixels": [[0, 0]]}}, "expect": {"error": "unknown-viewable"}},
+    {"request": {"method": "view.traces", "id": 5, "params": {"viewable": "v1", "columns": [0]}}, "expect": {"error": "unknown-viewable"}},
+    {"request": {"method": "view.frame", "id": 6, "params": {}}, "expect": {"error": "invalid-params"}},
+    {"request": {"method": "files.frame", "id": 7, "params": {"path": "recording.tif"}}, "expect": {"error": "no-project"}}
+  ]
+}

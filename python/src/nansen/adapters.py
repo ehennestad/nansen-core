@@ -431,6 +431,16 @@ class AdapterRegistry:
             ids.append("npy")
         return sorted(ids)
 
+    def for_rois(self, extension: str) -> List[str]:
+        """Ids of the adapters that read files of an extension as ROIs (declared with data type RoiArray, and the
+        built-in json for .json, the ROI document as ophys saves it), in id order."""
+        extension = extension.lower()
+        ids = [i for i, doc in self._declarations.items()
+               if doc.get("dataType") == "RoiArray" and extension in [e.lower() for e in doc.get("extensions", [])]]
+        if extension == ".json":
+            ids.append("json")
+        return sorted(ids)
+
     def get(self, adapter_id: str) -> Any:
         if adapter_id in self._adapters:
             return self._adapters[adapter_id]

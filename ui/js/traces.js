@@ -240,8 +240,10 @@
     };
   };
 
-  /** The traces dialog: ROIs (columns) of one entity's signal variables. */
-  N.views.traces = async function (app, entityType, key, signalVariables, { variable = null, roiVariable = null, column = 0 } = {}) {
+  /** The traces dialog: ROIs (columns) of one entity's signal variables; or, with viewable ({id, name}), signals
+   * `nansen view` or nansen.view was given, with no project (view.traces), as dev's signalviewer. */
+  N.views.traces = async function (app, entityType, key, signalVariables, { variable = null, roiVariable = null, column = 0, viewable = null } = {}) {
+    if (viewable) signalVariables = [viewable.name];
     const state = { variables: variable ? [variable] : signalVariables.slice(0, 1), columns: [column], range: [null, null], count: 0, rois: null };
     const status = h("div.muted.trace-status", "Loading…");
     const plot = N.tracePlot({
@@ -339,11 +341,12 @@
     }
     async function load() {
       const [start, stop] = state.range;
-      const params = { entityType, key, variables: state.variables, columns: state.columns, maxPoints: 1500 };
+      const params = viewable ? { viewable: viewable.id, columns: state.columns, maxPoints: 1500 }
+        : { entityType, key, variables: state.variables, columns: state.columns, maxPoints: 1500 };
       if (start !== null) { params.start = start; params.stop = stop; }
       if (roiVariable && !state.rois) params.rois = roiVariable;
       try {
-        const result = await app.client.request("data.traces", params);
+        const result = await app.client.request(viewable ? "view.traces" : "data.traces", params);
         if (result.rois) state.rois = result.rois;
         state.names = (result.traces.find((t) => t.columnNames) || {}).columnNames || null;
         state.count = Math.min(...result.traces.map((t) => t.count));
@@ -370,7 +373,7 @@
         markButton, status),
       h("div.trace-main", h("div.trace-side", h("div.trace-hint.muted", "Click an ROI; Ctrl-click to add more. ↑ and ↓ move."), list),
         h("div.trace-stage", plot.el, eventList)));
-    const dialog = N.dialog({ title: `Signals · ${N.fmt.key(key)}`, content, onClose: () => document.removeEventListener("keydown", onKey) });
+    const dialog = N.dialog({ title: viewable ? `Signals · ${viewable.name}` : `Signals · ${N.fmt.key(key)}`, content, onClose: () => document.removeEventListener("keydown", onKey) });
     dialog.el.classList.add("traces-dialog");
     window.addEventListener("resize", plot.redraw);
     await loadEvents();
