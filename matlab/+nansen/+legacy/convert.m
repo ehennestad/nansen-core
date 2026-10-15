@@ -3,8 +3,8 @@ function report = convert(export, folder)
 %
 %   report = nansen.legacy.convert(export, folder) takes the export as a
 %   struct (from nansen.legacy.exportProject, or decoded from its JSON file)
-%   and returns a struct with fields project, rows, dataVariables and
-%   warnings. The rules are those of the Python nansen.legacy module, and
+%   and returns a struct with fields project, rows, notes, dataVariables,
+%   methods, pipelines and warnings. The rules are those of the Python nansen.legacy module, and
 %   the cases in conformance/legacy hold the two to the same result:
 %
 %   - data locations, with their roots, folder levels and metadata rules,
@@ -16,7 +16,10 @@ function report = convert(export, folder)
 %   - file path settings become data variables when their file adapter has
 %     a built-in equivalent;
 %   - the notes of a Notebook column go into the entity type's notebook;
-%   - filtered (non-master) tables become views of their entity type.
+%   - filtered (non-master) tables become views of their entity type;
+%   - the project's own session methods (sessionMethods) become methods of
+%     sessions that run dev's code unchanged (nansen.legacy.SessionShim),
+%     and pipeline tasks that call them become steps.
 %
 %   Whatever cannot be mapped is left out and named in report.warnings.
     arguments
@@ -73,11 +76,13 @@ function report = convert(export, folder)
         project.addDataVariable(plan.dataVariables{i});
         names{end + 1} = plan.dataVariables{i}.name; %#ok<AGROW>
     end
+    nansen.legacy.writeSessionMethods(folder, plan.methods);
+    methodIds = cellfun(@(m) m.document.id, plan.methods, UniformOutput=false);
     pipelineIds = {};
     for i = 1:numel(plan.pipelines)
         project.savePipeline(plan.pipelines{i});
         pipelineIds{end + 1} = plan.pipelines{i}.id; %#ok<AGROW>
     end
     report = struct("project", char(folder), "rows", rows, "notes", notes, "dataVariables", {names}, ...
-        "pipelines", {pipelineIds}, "warnings", {plan.warnings});
+        "methods", {methodIds}, "pipelines", {pipelineIds}, "warnings", {plan.warnings});
 end

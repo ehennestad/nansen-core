@@ -1216,6 +1216,18 @@ classdef Project < handle
             method = obj.method(methodId);
         end
 
+        function result = importLegacyMethods(obj, path, options)
+            %importLegacyMethods Import NANSEN dev session methods (a .m file, or a folder of them) as methods of the
+            %   project that run dev's code unchanged: a struct with methods (summaries) and warnings. See
+            %   nansen.legacy.importSessionMethods.
+            arguments
+                obj
+                path (1,1) string
+                options.EntityType (1,1) string = ""
+            end
+            result = nansen.legacy.importSessionMethods(obj, path, options.EntityType);
+        end
+
         function method = method(obj, methodId)
             for candidate = obj.entityMethods()
                 if candidate.Id == string(methodId)

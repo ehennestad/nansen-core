@@ -91,6 +91,28 @@
           }
         }
       }
+    },
+    "sessionMethods": {
+      "type": "array",
+      "description": "The project's own session methods (the .m files of code/+<package>/+sessionmethod and its packages), with their text, so the export holds what the conversion imports as methods.",
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "pattern": "^([^/\\\\]+/)*[A-Za-z][A-Za-z0-9_]*\\.m$",
+            "description": "The file's path in the dev project folder, '/'-separated, e.g. code/+RatNav/+sessionmethod/+process/countTrials.m. Its package folders (+name) and name give the function's name."
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "definitions": {

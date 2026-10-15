@@ -45,7 +45,7 @@ Each step was usable without a GUI before the next one started.
 | `VariableModel` (file path settings) | Data variables: DSM file pattern or file name template + file adapter; added, edited and deleted on the Data page |
 | `MetaTable` of `Session`/`Subject` objects | Entity tables joined with DSM records; one generic entity, so entity types are documents, not classes |
 | Table variables (with update functions) | Fragments; computed fragments for the ones with update functions |
-| Session methods with `OptionsManager` presets, and their preview mode | Methods with JSON Schema options and preset documents; MATLAB and/or Python implementations; `methods.preview` runs one on the first frames of an entity, writing nothing |
+| Session methods with `OptionsManager` presets, and their preview mode | Methods with JSON Schema options and preset documents; MATLAB and/or Python implementations; `methods.preview` runs one on the first frames of an entity, writing nothing. dev's own session methods are imported as they are and run in MATLAB with a stand-in for dev's session object (`methods.importLegacy`) |
 | Notebooks of sessions and subjects (`HasNotes`, note viewer) | Notebooks: dated, typed notes with #tags per entity, in one `nansen.notebook` per entity type; on an entity's drawer and the Notes page |
 | Batch processor with `task_list.mat` | Task queue of `nansen.task` files: claims, cancellation, logs, recovery, retry, dependencies; queued tasks held, reordered and given new options |
 | Pipelines | Pipelines: one chain of tasks per entity; assigned to entities, with each one's progress from a run journal |

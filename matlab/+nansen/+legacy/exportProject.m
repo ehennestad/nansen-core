@@ -10,6 +10,7 @@ function export = exportProject(folder, options)
 %     metadata/tables/*.mat                        MetaTables (MetaTableEntries and catalog fields)
 %     configurations/pipeline_settings.mat         pipelines (Data)
 %     configurations/custom_options/*.mat          option presets, by function (OptionsEntries), only named
+%     code/+<package>/+sessionmethod/**/*.m         the project's own session methods, with their text
 %
 %   Table values become JSON values: text, numbers, logicals and dates.
 %   Columns of other types (structs, objects, several columns per variable)
@@ -33,6 +34,7 @@ function export = exportProject(folder, options)
     export.tables = readTables(fullfile(folder, "metadata", "tables"));
     export.pipelines = readPipelines(fullfile(folder, "configurations", "pipeline_settings.mat"));
     export.presets = readPresets(fullfile(folder, "configurations", "custom_options"));
+    export.sessionMethods = readSessionMethods(folder);
     export = nansen.checkDocument(nansen.internal.jsonRoundTrip(export), ExpectedType="nansen.legacyExport", ...
         Source="legacy export");
     if options.File ~= ""
@@ -361,6 +363,35 @@ function presets = readPresets(folder)
         if ~isempty(names)
             [~, functionName] = fileparts(listing(i).name);
             presets{end + 1} = struct("function", functionName, "names", {names}); %#ok<AGROW>
+        end
+    end
+end
+
+function methods_ = readSessionMethods(folder)
+    % The .m files of the project's session method packages (dev's Module.getObjectMethodFolder: code/+<package>/
+    % +sessionmethod, and the packages in it), in order of their paths, with their text
+    methods_ = {};
+    files = strings(0, 1);
+    for package = reshape(dir(fullfile(folder, "code", "+*")), 1, [])
+        root = fullfile(folder, "code", package.name, "+sessionmethod");
+        if package.isdir && isfolder(root)
+            files = [files; packageFiles(root, "code/" + string(package.name) + "/+sessionmethod/")]; %#ok<AGROW>
+        end
+    end
+    for file = reshape(sort(files), 1, [])
+        methods_{end + 1} = struct("file", char(file), "text", nansen.internal.readText(fullfile(folder, file))); %#ok<AGROW>
+    end
+end
+
+function files = packageFiles(folder, relative)
+    % The relative paths of the .m files in a folder and its package folders (+name)
+    files = strings(0, 1);
+    for item = reshape(dir(folder), 1, [])
+        name = string(item.name);
+        if ~item.isdir && endsWith(name, ".m")
+            files(end + 1, 1) = relative + name; %#ok<AGROW>
+        elseif item.isdir && startsWith(name, "+") && strlength(name) > 1
+            files = [files; packageFiles(fullfile(folder, name), relative + name + "/")]; %#ok<AGROW>
         end
     end
 end

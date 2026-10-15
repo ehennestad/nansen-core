@@ -104,11 +104,19 @@ class Method:
             self._function = load_object(reference, self.python_root)
         return self._function
 
+    @property
+    def is_legacy(self) -> bool:
+        """A session method of NANSEN dev, run unchanged in MATLAB (legacySessionMethod)."""
+        return "legacySessionMethod" in self.document
+
     def summary(self) -> dict:
-        return {"id": self.id, "version": self.version, "title": self.title, "entityType": self.entity_type,
-                "description": self.document.get("description", ""), "category": self.document.get("category", ""),
-                "batchMode": self.batch_mode, "queueable": self.queueable, "languages": self.languages,
-                "module": self.module, "options": self.options_schema, "tool": self.is_tool}
+        summary = {"id": self.id, "version": self.version, "title": self.title, "entityType": self.entity_type,
+                   "description": self.document.get("description", ""), "category": self.document.get("category", ""),
+                   "batchMode": self.batch_mode, "queueable": self.queueable, "languages": self.languages,
+                   "module": self.module, "options": self.options_schema, "tool": self.is_tool}
+        if self.is_legacy:
+            summary["legacy"] = True
+        return summary
 
 
 def defaults_of(schema: dict) -> Any:

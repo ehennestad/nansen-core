@@ -461,6 +461,11 @@
         {
           "name": "Plot stats",
           "function": "nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats"
+        },
+        {
+          "name": "Plot speed",
+          "function": "RatNav.sessionmethod.plot.PlotSpeed",
+          "preset": "Fast"
         }
       ]
     }
@@ -472,6 +477,20 @@
         "fast",
         "thorough"
       ]
+    }
+  ],
+  "sessionMethods": [
+    {
+      "file": "code/+RatNav/+sessionmethod/+plot/PlotSpeed.m",
+      "text": "classdef PlotSpeed < nansen.session.SessionMethod\n%PlotSpeed Plot the running speed of a session.\n\n    properties (Constant)\n        MethodName = 'Plot running speed'\n        BatchMode = 'serial'\n        IsManual = false\n        IsQueueable = false\n        OptionsManager = nansen.OptionsManager(mfilename('class'))\n    end\n\n    methods\n        function obj = PlotSpeed(varargin)\n            obj@nansen.session.SessionMethod(varargin{:})\n        end\n    end\n\n    methods (Static)\n        function options = getDefaultOptions()\n            options = struct();\n            options.Smooth = true;\n            options.Window = [0, 60]; % seconds shown\n        end\n    end\n\n    methods\n        function runMethod(obj)\n            speed = obj.loadData('RunningSpeed');\n            plot(speed(obj.Options.Window(1) + 1:obj.Options.Window(2)))\n        end\n    end\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+sessionmethod/+process/+tools/makeLabel.m",
+      "text": "function label = makeLabel(session)\n%MAKELABEL A label for plots; not a session method.\n    label = sprintf('%s (%s)', session.sessionID, session.subjectID);\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+sessionmethod/+process/countTrials.m",
+      "text": "function varargout = countTrials(sessionObject, varargin)\n%COUNTTRIALS Count the trials of a session from its running speed.\n\n    params = getDefaultParameters();\n    ATTRIBUTES = {'batch', 'queueable'};\n\n    import nansen.session.SessionMethod\n    fcnAttributes = SessionMethod.setAttributes(params, ATTRIBUTES{:});\n    if ~nargin && nargout > 0\n        varargout = {fcnAttributes};   return\n    end\n    params = utility.parsenvpairs(params, [], varargin);\n\n    for i = 1:numel(sessionObject)\n        speed = sessionObject(i).loadData('RunningSpeed');\n        sessionObject(i).saveData('TrialCount', sum(speed > params.MinDuration))\n    end\nend\n\nfunction params = getDefaultParameters()\n    params = struct();\n    params.MinDuration = 2.5; % seconds\n    params.Method = 'peaks';\n    params.Method_ = {'peaks', 'threshold'};\n    params.Folder = fullfile(tempdir, 'trials');\nend\n"
     }
   ]
 }

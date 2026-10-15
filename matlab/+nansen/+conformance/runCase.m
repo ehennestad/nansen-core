@@ -161,7 +161,25 @@ function actual = evaluateLegacy(folder)
         "notebooks", {readAll(fullfile(target, "notes"), "*.notebook.nansen.json")}, ...
         "views", {readAll(fullfile(target, "views"), "*.views.nansen.json")}, ...
         "pipelines", {readAll(fullfile(target, "pipelines"), "*.pipeline.nansen.json")}, ...
+        "methods", {readAll(fullfile(target, "methods"), "*.method.nansen.json")}, ...
+        "methodFiles", {filesUnder(fullfile(target, "matlab"))}, ...
         "tables", tables, "warnings", {report.warnings});
+end
+
+function files = filesUnder(folder)
+    % The paths of the files in a folder and its subfolders, relative to it, '/'-separated and sorted
+    files = {};
+    if ~isfolder(folder)
+        return
+    end
+    listing = dir(fullfile(folder, "**", "*"));
+    listing = listing(~[listing.isdir]);
+    paths = strings(1, numel(listing));
+    for i = 1:numel(listing)
+        paths(i) = replace(string(fullfile(listing(i).folder, listing(i).name)), "\", "/");
+    end
+    prefix = replace(string(folder), "\", "/") + "/";
+    files = cellstr(sort(extractAfter(paths, strlength(prefix))));
 end
 
 function documents = readAll(folder, pattern)

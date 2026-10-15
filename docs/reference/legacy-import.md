@@ -9,7 +9,7 @@ report.warnings      % what could not be carried over
 
 The import has two steps, because the dev MetaTables are MATLAB `table` objects in `.mat` files, which only MATLAB can read:
 
-1. **Export (MATLAB).** `nansen.legacy.exportProject(folder)` reads the dev files and returns a `nansen.legacyExport` document. This is plain JSON with no MATLAB types left in it ([schema](../../schema/legacy-export.schema.json)). Pass `File=` to save it.
+1. **Export (MATLAB).** `nansen.legacy.exportProject(folder)` reads the dev files and returns a `nansen.legacyExport` document. This is plain JSON with no MATLAB types left in it ([schema](../../schema/legacy-export.schema.json)), and it holds the text of the project's own session methods. Pass `File=` to save it.
 2. **Convert (MATLAB or Python).** `nansen.legacy.convert(export, folder)` writes the new project. In Python, `nansen import-legacy export.json folder` does the same, so the export can be made on a machine with MATLAB and converted anywhere. Given a dev project folder, the Python app (`legacy.import`) runs the export itself with `matlab -batch` when MATLAB is installed (on the PATH, or set in Settings). The cases in [`conformance/legacy`](../../conformance/legacy) hold both implementations to the same result.
 
 ## What is read
@@ -22,6 +22,7 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 | `metadata/tables/*.mat` | MetaTables: `MetaTableEntries`, `MetaTableClass`, `MetaTableName`, `IsMaster` |
 | `configurations/pipeline_settings.mat` | Pipelines: name, tasks (name, function, option preset), session properties that assign it |
 | `configurations/custom_options/*.mat` | Option presets a user made (`Custom`), by function: listed in the warnings only |
+| `code/+<name>/+sessionmethod/**/*.m` | The project's own session methods: each file's path and text |
 
 ## How it maps
 
@@ -59,12 +60,60 @@ The import has two steps, because the dev MetaTables are MATLAB `table` objects 
 ### Pipelines
 
 - Each pipeline becomes a pipeline of sessions (`legacy.<name>`) with the tasks whose session method has an equivalent here: dev's NoRMCorre and Flow-Registration motion correction, Quicky, suite2p and EXTRACT segmentation, signal extraction, ΔF/F, CaImAn deconvolution, downsampling, DeepInterpolation denoising and backup. Tasks without one (plots, viewers, ROI curation apps) are left out, named in the warnings, and so is a pipeline left with no task. A Quicky or NoRMCorre task keeps its preset as the ophys module's preset of dev's values: Quicky's Soma, Soma_Virus and Axon (and Default, which is Soma's values) as `soma`, `soma_virus` and `axon`, NoRMCorre's Default (4 x 4 nonrigid) and Rigid as `nonrigid` and `rigid`. Other presets are named in the warnings, and those steps use the method's defaults.
+- A task that calls one of the project's own session methods (by its full function name) becomes a step of that method as imported (see below).
 - Its session properties become `assignWhen` rules: `contains` stays `contains`, `match` becomes `in`, on the column the variable was imported to. The session table gets `core.pipeline`, which keeps each session's pipeline and progress.
 - A task's option preset other than `Default` is named in the warnings: dev's options are not the methods' here, so the step starts from the method's defaults. The presets users made are listed in the warnings for the same reason.
 
+### Session methods
+
+The project's own session methods (the `.m` files of `code/+<name>/+sessionmethod` and the packages in it) become methods of sessions that run dev's code unchanged in MATLAB. A dev session method is one of these:
+
+- a function made from dev's template, `varargout = name(sessionObject, varargin)`, which calls `nansen.session.SessionMethod.setAttributes(params, ATTRIBUTES{:})` and returns its attributes when called with no inputs;
+- a class that subclasses `nansen.session.SessionMethod`, with a `runMethod` (or `main`), a static `getDefaultOptions` and constant `MethodName`, `BatchMode` and `IsQueueable`. It may subclass classes of its own too, but not other classes of dev's `nansen`, which nansen-core does not have.
+
+Other files (helpers, scripts) are left out and named in the warnings. A session method's file is copied into the new project's `matlab/` folder, in the same packages (`matlab/+RatNav/+sessionmethod/+process/countTrials.m`, so its name stays `RatNav.sessionmethod.process.countTrials`), and gets a method document, `methods/legacy.<name in snake case>.method.nansen.json`:
+
+```json
+{
+  "schemaType": "nansen.method", "schemaVersion": "0.1.0",
+  "id": "legacy.count_trials", "version": "1.0.0", "title": "Count Trials",
+  "description": "Count the trials of a session from its running speed.",
+  "category": "Process", "entityType": "session", "batchMode": "batch",
+  "implementations": { "matlab": "RatNav.sessionmethod.process.countTrials" },
+  "legacySessionMethod": { "kind": "function" },
+  "options": { "type": "object", "properties": {
+    "MinDuration": { "type": "number", "default": 2.5, "description": "seconds" },
+    "Method": { "type": "string", "default": "peaks", "enum": ["peaks", "threshold"] } } }
+}
+```
+
+What the document says is read from the file's text, without running it, by the same rules in both languages:
+
+- The title is the class's `MethodName` (or a function's `'MethodName'` attribute), or else the name as words (`countTrials`: Count Trials). The description is the first line of the help text, less a first word that is the name (`%COUNTTRIALS`). The category is the packages under `+sessionmethod`, as dev's menus (`+process/+motionCorrection`: Process/Motion Correction).
+- `batchMode` is `batch` when the function's `ATTRIBUTES` (or the flags given to `setAttributes`) have `'batch'`, or the class's `BatchMode` is `'batch'`. `queueable` is false with `'unqueueable'`, or `IsQueueable = false`.
+- The options are the fields that the defaults set to plain values, one assignment per line: `getDefaultParameters` (or whichever local function the variable given to `setAttributes` comes from, and that variable's fields set in the function itself) of a function, `getDefaultOptions` of a class. `true`/`false` are booleans, numbers are numbers, text in `'...'` or `"..."` is a string, a row of numbers (`[1, 10]`) and a cell of text (`{'a', 'b'}`) are arrays. `params.a.b = ...` makes an object option `a`. A comment after the value is the option's description. dev's `<name>_` field listing the choices of a text option (`params.Method_ = {'peaks', 'threshold'}`) is its `enum`. A default that is not a plain value (`[]`, `getenv('HOME')`, a struct) is left out of the schema; dev's own value is used.
+
+**How it runs.** `nansen.runMethod` sees `legacySessionMethod` and calls `nansen.legacy.runSessionMethod`. That puts `matlab/devcompat` on the path (at the end): the parts of dev that these methods call, `nansen.session.SessionMethod` (with `setAttributes`), `nansen.OptionsManager` and `utility.parsenvpairs`. It makes a `nansen.legacy.SessionShim` for each entity and calls dev's code as dev did: a function as `name(sessions, options)`, a class as `name(sessions, options)` and then `run` (its `runMethod`). A batch method gets all the sessions as one array. The options are dev's defaults (the function's `DefaultOptions` attribute, the class's `getDefaultOptions`) with the run's options over them, each in the shape of dev's default (text as char, rows of numbers as rows, cells as cells). In Python the method has only a MATLAB implementation, so `methods.run`, `tasks.submit` and pipelines run it in a MATLAB worker.
+
+`nansen.legacy.SessionShim` is dev's `nansen.metadata.type.Session` over the entity:
+
+| dev | Here |
+|---|---|
+| `sessionID`, `subjectID`, `Date`, `Time`, `Ignore`, `Description` | `session_id`, `subject_id`, `session_date` (a `datetime`), `session_time`, `ignore`, `description` of the entity |
+| Other table variables (`Experiment`, ...) | Each value of the entity (key, DSM attribute, table column) as a property of its name |
+| `loadData(varName)` | The project's data variable of that name (of any case, or without underscores: `RoiArray`, `roi_array`), read by its file adapter; a `.mat` file without `variableInFile` gives the variable of the name, as dev's `Default` adapter. `NANSEN:Session:VariableNotFound` when there is no file |
+| `saveData(varName, data, Name, Value)` | Written by its file adapter. A variable the project has not got is made as dev's `createVariable` made it: `<session_id>_<name in snake case>.mat` (`FileType` `.json` or `.txt` for those adapters), as a variable of its name in the file, in the `DataLocation` given or the first that can be written, in its `Subfolder`, named by its `FileNameExpression` if given |
+| `getDataFilePath(varName, '-r' or '-w', Name, Value)` | The variable's file, or where it is written; `-w` makes its folder and a variable the project has not got. The second output is dev's variable info |
+| `getSessionFolder(dataLocation, mode)` | The entity's folder in the location of that identifier or display name (`Rawdata`: `rawdata`); `create` makes it in a location that can be written, `force` in any. Without a location: the first the entity has a folder in. `NANSEN:Session:FolderNotFound` |
+| `existVariable`, `validateVariable`, `existSessionFolder`, `createSessionFolder`, `getDataLocationRootDir`, `getDataId`, `toStruct` | As dev's |
+
+A class method's `loadData`, `saveData`, `getDataFilePath` and `getTargetFolder` are those of its session, and `Options` holds its options, as in dev. What a method opens on screen (plots, dev's apps) needs those on the path, as in dev; its options and presets are edited in the dashboard's run dialog like any other method's, and code elsewhere in the dev project's `code` folder, which methods may call, must be put on the path by hand.
+
+**One method or folder at a time.** `methods.importLegacy` with a `.m` file or a folder (and the Data page's *Import dev method*) imports dev session methods into any project the same way (`project.importLegacyMethods(path)`, `project.import_legacy_methods(path)`). The methods run on sessions (on any entity type in a project without sessions), or on `entityType` when it is given.
+
 ## Not carried over
 
-- Session methods, table variable functions and custom file adapters. They are code: port them as module methods, computed fragments and adapters.
+- Table variable functions and custom file adapters. They are code: port them as computed fragments and adapters. Session methods that need more of dev than `nansen.legacy.SessionShim` and `matlab/devcompat` give (other classes of dev's `nansen`, such as its motion correction and segmentation bases) are left out; the ophys module has their equivalents.
 - Each session's pipeline progress (dev's `Progress` column), the task list and per-user preferences. Sessions start with no pipeline; a sync assigns one by its rules, or one can be assigned from the table.
 - Option presets: dev's options are not the methods' here (see above).
 - Local root path overrides. Set up the new project's per-machine roots with DSM environments.

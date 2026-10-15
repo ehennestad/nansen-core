@@ -792,6 +792,37 @@ def test_start_a_method_from_the_data_page(empty_app, page):
     assert method["entityType"] == "session"
 
 
+def test_import_a_dev_session_method_from_the_data_page(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    package = empty_app["folder"] / "dev" / "+lab" / "+sessionmethod" / "+process"
+    package.mkdir(parents=True)
+    (package / "countFiles.m").write_text(
+        "function varargout = countFiles(sessionObject, varargin)\n"
+        "%COUNTFILES Count the files of a session.\n"
+        "    params = getDefaultParameters();\n"
+        "    ATTRIBUTES = {'serial', 'queueable'};\n"
+        "    fcnAttributes = nansen.session.SessionMethod.setAttributes(params, ATTRIBUTES{:});\n"
+        "    if ~nargin && nargout > 0; varargout = {fcnAttributes}; return; end\n"
+        "end\n\n"
+        "function params = getDefaultParameters()\n"
+        "    params.Extension = '.tif'; % Which files\n"
+        "end\n")
+    (package / "helper.m").write_text("function x = helper(x)\nend\n")
+    page.goto(empty_app["server"].url + "#/data")
+    page.click(".methods-card .import-legacy-method")
+    page.fill(".dialog .field:has-text('File or folder') input", str(package))
+    page.click(".dialog-foot button:has-text('Import')")
+    page.wait_for_selector(".toast:has-text('legacy.count_files')")
+    page.wait_for_selector(".dialog:has-text('Not imported') li:has-text('helper.m')")
+    page.click(".dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".methods-card li[data-method='legacy.count_files'] .legacy-pill")
+    assert (empty_app["folder"] / "demo" / "matlab" / "+lab" / "+sessionmethod" / "+process" / "countFiles.m").is_file()
+    method = next(m for m in api.handle({"id": 2, "method": "methods.list"})["result"] if m["id"] == "legacy.count_files")
+    assert method["languages"] == ["matlab"] and method["legacy"] is True
+    assert method["options"]["properties"]["Extension"] == {"type": "string", "default": ".tif", "description": "Which files"}
+
+
 def test_lock_editing_and_keyboard_shortcuts(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})

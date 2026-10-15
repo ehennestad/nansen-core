@@ -1,0 +1,4 @@
+{
+  "description": "Importing NANSEN dev session methods (methods.importLegacy): a function method of dev's template and a class method subclassing nansen.session.SessionMethod become project methods of sessions with legacySessionMethod, their files copied into matlab/ in the same packages, run in MATLAB only. The title, description, category (the packages under +sessionmethod), batch mode, queueability and options are read from the file's text: plain defaults set field by field, with their comments as descriptions, dev's <name>_ choices as an enum, a.b as an object option, and defaults that are not plain values ([] or a call) left out. A file that is not a session method, a file that is not .m, a missing path, an unknown entity type and no path are refused; an id or file that is taken is refused, and nothing is written.",
+  "steps": 12
+}

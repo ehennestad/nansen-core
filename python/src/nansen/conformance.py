@@ -174,6 +174,9 @@ def _evaluate_legacy(case: Path) -> dict:
                 "notebooks": documents("notes/*.notebook.nansen.json"),
                 "views": documents("views/*.views.nansen.json"),
                 "pipelines": documents("pipelines/*.pipeline.nansen.json"),
+                "methods": documents("methods/*.method.nansen.json"),
+                "methodFiles": sorted(p.relative_to(folder / "matlab").as_posix()
+                                      for p in (folder / "matlab").rglob("*") if p.is_file()),
                 "tables": tables, "warnings": report["warnings"]}
 
 
