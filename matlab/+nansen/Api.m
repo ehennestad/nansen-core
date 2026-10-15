@@ -1363,6 +1363,11 @@ classdef Api < handle
                 if isfield(info, "choices")
                     entry.choices = nansen.internal.asCellstr(info.choices);
                 end
+                for hint = ["display", "action"]   % how the dashboard draws the cells, and what a double-click runs
+                    if isfield(info, hint)
+                        entry.(hint) = info.(hint);
+                    end
+                end
                 if column.Name == "pipeline" && column.Fragment == "core.pipeline"
                     entry.choices = cellfun(@(p) char(string(p.id)), project.pipelines(entityType), UniformOutput=false);
                 end

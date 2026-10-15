@@ -700,6 +700,137 @@
       "expect": {
         "error": "unknown-fragment"
       }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 31,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "qc",
+            "version": "2.0.0",
+            "columns": [
+              {
+                "name": "quality",
+                "dataType": "string",
+                "choices": [
+                  "good",
+                  "poor",
+                  "unsure",
+                  "bad"
+                ],
+                "display": {
+                  "as": "badge",
+                  "colors": {
+                    "good": "good",
+                    "bad": "bad"
+                  }
+                }
+              },
+              {
+                "name": "checked",
+                "dataType": "boolean",
+                "default": false,
+                "action": "core.file_stats"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "version": "2.0.1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "id": 32,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "columns": [
+            {
+              "name": "subject_id"
+            },
+            {
+              "name": "session_id"
+            },
+            {
+              "name": "ignore"
+            },
+            {
+              "name": "description"
+            },
+            {
+              "name": "quality",
+              "display": {
+                "as": "badge",
+                "colors": {
+                  "good": "good",
+                  "bad": "bad"
+                }
+              }
+            },
+            {
+              "name": "checked",
+              "action": "core.file_stats"
+            },
+            {
+              "name": "session_date",
+              "source": "attribute"
+            },
+            {
+              "name": "session_time",
+              "source": "attribute"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "fragments.save",
+        "id": 33,
+        "params": {
+          "document": {
+            "schemaType": "nansen.fragment",
+            "schemaVersion": "0.1.0",
+            "id": "qc",
+            "version": "2.0.0",
+            "columns": [
+              {
+                "name": "quality",
+                "dataType": "string",
+                "choices": [
+                  "good",
+                  "poor",
+                  "unsure",
+                  "bad"
+                ],
+                "display": {
+                  "as": "sparkline"
+                }
+              },
+              {
+                "name": "checked",
+                "dataType": "boolean",
+                "default": false,
+                "action": "core.file_stats"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "error": "schema-validation"
+      }
     }
   ]
 }

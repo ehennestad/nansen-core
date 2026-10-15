@@ -63,7 +63,7 @@ Not carried over, by choice or not yet:
 
 - **Add-on and toolbox management.** Out of scope for the core.
 - **The domain modules and viewer apps.** dev's `ophys.twophoton` methods (motion correction, suite2p, EXTRACT, CaImAn, signal extraction, dF/F, ROI curation), its ScanImage, SciScan and ROI file adapters, and the imviewer, fovmanager and roimanager apps are not part of the core. They belong in modules: a module declares methods, adapters and presets that wrap dev's code (the viewers as project tools or methods run by hand), with no change to the core.
-- **Per-column renderers and double-click actions.** Cells are drawn by data type; a fragment column cannot yet set its own renderer or action.
+
 
 ## Decisions recorded so far
 

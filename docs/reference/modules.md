@@ -85,6 +85,8 @@ A method with `entityType` `@project` is a **project tool**, as dev's project ap
 
 A project's own methods are documents in `methods/`, with code in `python/` and `matlab/`. Start one with `methods.create` (or `project.createMethod` / `project.create_method`, or the Methods card on the Data page): it writes the document and, per language, a file with an empty function to fill in, from `templates/`. With `computes`, it also writes a computed fragment of those columns that the method fills, and adds it to the entity type. Python code is imported again when its file changes, so an edited method runs without a restart, and no `__pycache__` is written next to it.
 
+A fragment column can also carry `display` (`progress` for a number from 0 to 1, `badge` with `colors` per value, or `link`) and `action` (a method id run on the row when one of its cells is double-clicked in the dashboard).
+
 **Presets** are named option sets saved in `options/<methodId>/<name>.options.nansen.json` (`nansen.options`). Use `savePreset` / `save_preset`, `presets` and `deletePreset` / `delete_preset`, or the run dialog. A module can ship presets too, listed under `presets` in `module.nansen.json`; they come after the project's own, and a project preset of the same name is used instead. Only the project's presets can be deleted. The `default` preset is always the method's schema defaults.
 
 ## Columns with choices

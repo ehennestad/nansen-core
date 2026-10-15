@@ -927,3 +927,19 @@ def test_move_and_size_columns(empty_app, page):
     page.click(".toolbar button:has-text('Columns')")
     page.click(".menu .item:has-text('Reset the column order and widths')")
     wait_until(lambda: headers() == before)
+
+
+def test_a_column_drawn_as_a_badge_with_an_action(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    call = lambda method, **params: api.handle({"id": 2, "method": method, "params": params})
+    call("fragments.create", entityType="session", document={
+        "schemaType": "nansen.fragment", "schemaVersion": "0.1.0", "id": "qc", "version": "1.0.0",
+        "columns": [{"name": "quality", "dataType": "string", "choices": ["good", "poor"],
+                     "display": {"as": "badge", "colors": {"good": "good", "poor": "bad"}}, "action": "core.file_stats"}]})
+    rows = call("entities.list", entityType="session")["result"]["rows"]
+    call("entities.update", entityType="session", key=rows[0]["key"], values={"quality": "poor"})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table td .pill.bad:has-text('poor')")
+    page.locator(".grid-table td.has-action").first.dblclick()
+    page.wait_for_selector(".toast:has-text('Done')")

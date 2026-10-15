@@ -36,8 +36,9 @@
   N.filterPasses = passes;
 
   class EntityGrid {
-    constructor({ onOpen, onEdit, onSelection, onColumnMenu }) {
+    constructor({ onOpen, onEdit, onSelection, onColumnMenu, onAction }) {
       this.onOpen = onOpen;
+      this.onAction = onAction;   // (row, column): a column's action, on double-click
       this.onColumnMenu = onColumnMenu;
       this.onEdit = onEdit;
       this.onSelection = onSelection;
@@ -316,9 +317,25 @@
         td.appendChild(box);
         return td;
       }
+      if (column.action && this.onAction) {
+        td.classList.add("has-action");
+        td.title = `Double-click to run ${column.action}`;
+        td.addEventListener("dblclick", (e) => { e.stopPropagation(); this.onAction(row, column); });
+      }
+      const display = column.display && column.display.as;
       if (value === null || value === undefined || value === "") {
         td.classList.add("missing");
         td.textContent = "—";
+      } else if (display === "progress" && typeof value === "number") {
+        const fraction = Math.max(0, Math.min(1, value));
+        td.title = `${Math.round(fraction * 100)}%`;
+        td.appendChild(h("div.progress-cell", h("div.progress-track", h("span" + (fraction >= 1 ? ".done" : ""), { style: { width: `${fraction * 100}%` } })),
+          h("span.progress-text", `${Math.round(fraction * 100)}%`)));
+      } else if (display === "badge") {
+        const color = (column.display.colors || {})[String(value)] || "plain";
+        td.appendChild(h(`span.pill.${["good", "warn", "bad", "info", "accent", "plain"].includes(color) ? color : "plain"}`, String(value)));
+      } else if (display === "link" && /^https?:\/\//i.test(String(value))) {
+        td.appendChild(h("a", { href: String(value), target: "_blank", rel: "noopener noreferrer", on: { click: (e) => e.stopPropagation() } }, String(value)));
       } else if (column.dataType === "number" || column.dataType === "integer") {
         td.textContent = N.fmt.number(value);
       } else {

@@ -123,6 +123,14 @@
     content.classList.add("flush");
     const grid = new N.EntityGrid({
       onOpen: (row) => N.views.entityDrawer(app, entityType, row.key),
+      onAction: async (row, column) => {
+        try {
+          N.toast("Running", `${app.methodTitle(column.action)} on ${N.fmt.key(row.key)}…`);
+          await app.client.request("methods.run", { methodId: column.action, entityType, keys: [row.key] });
+          N.toast("Done", app.methodTitle(column.action), "success");
+          app.reloadEntities();
+        } catch (error) { N.showError(error, `${app.methodTitle(column.action)} failed`); }
+      },
       onEdit: (row, column, value) => app.client.request("entities.update",
         { entityType, key: row.key, values: { [column.name]: value } }),
       onSelection: (rows) => renderSelection(rows),
@@ -366,7 +374,7 @@
             if (column.default !== undefined && !choices.includes(column.default)) throw new Error(`Default: ${column.default} is not one of the choices`);
             column.choices = choices;
           }
-          for (const key of ["format"]) if (current[key] !== undefined) column[key] = current[key];
+          for (const key of ["format", "display", "action"]) if (current[key] !== undefined) column[key] = current[key];
           const document = { schemaType: "nansen.fragment", schemaVersion: "0.1.0", id: fragment.id, version: fragment.version,
             columns: fragment.columns.map((c) => (c.name === name ? column : c)) };
           if (fragment.title && fragment.title !== fragment.id) document.title = fragment.title;

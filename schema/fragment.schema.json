@@ -58,6 +58,21 @@
           "uniqueItems": true,
           "items": { "type": "string" },
           "description": "For a string column: the values it may take (besides none). The app edits it with a list, and the API refuses other values. The CSV is read as written."
+        },
+        "display": {
+          "type": "object",
+          "required": ["as"],
+          "additionalProperties": false,
+          "description": "How the dashboard draws the column's cells, as dev's table variable renderers: progress (a bar for a number from 0 to 1), badge (the value as a coloured label), or link (a web address).",
+          "properties": {
+            "as": { "enum": ["progress", "badge", "link"] },
+            "colors": { "type": "object", "additionalProperties": { "enum": ["good", "warn", "bad", "info", "accent", "plain"] }, "description": "badge: a colour per value." }
+          }
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][A-Za-z0-9_]*)*$",
+          "description": "A method run on the row when one of the column's cells is double-clicked in the dashboard, as dev's table variable double-click functions."
         }
       },
       "allOf": [

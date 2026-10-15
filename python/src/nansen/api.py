@@ -470,6 +470,9 @@ class Api:
                             "editable": not is_key and column.fragment not in computed})
             if "choices" in info:
                 columns[-1]["choices"] = list(info["choices"])
+            for hint in ("display", "action"):  # how the dashboard draws the cells, and what a double-click runs
+                if hint in info:
+                    columns[-1][hint] = info[hint]
             if column.name == "pipeline" and column.fragment == "core.pipeline":
                 columns[-1]["choices"] = [p["id"] for p in project.pipelines(entity_type)]
         dataset = project.dataset
