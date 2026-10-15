@@ -260,7 +260,7 @@ def test_the_worker_starts_as_the_settings_say(tmp_path):
     catalog = Catalog(tmp_path / "catalog.json")
     project = create_demo(tmp_path / "demo")
     assert catalog.settings() == {"queue": {"autoStart": True, "worker": "thread"}, "addons": {"folder": ""},
-                                  "workers": {"python": "", "matlab": ""}}
+                                  "workers": {"python": "", "matlab": ""}, "tables": {"saveToDataFolders": False}}
     server = open_app(project, catalog=catalog, open_browser=False)
     try:
         assert server.api.queue.running
@@ -431,6 +431,30 @@ shutil.copyfile({str(export)!r}, re.search(r"File='([^']*)'", sys.argv[2]).group
         fake.write_text(f"#!{sys.executable}\nimport sys\nprint('Undefined function'); sys.exit(1)\n")
         error = call("legacy.import", source=str(dev), path=str(tmp_path / "c"))["error"]
         assert error["code"] == "invalid-data" and "Undefined function" in error["message"]
+    finally:
+        api.close()
+
+
+def test_edited_rows_are_saved_into_the_data_folders(tmp_path):
+    from nansen.demo import create_demo
+
+    catalog = Catalog(tmp_path / "catalog.json")
+    api = Api(catalog=catalog, project=create_demo(tmp_path / "demo"), start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    try:
+        row = call("entities.list", entityType="session")["result"]["rows"][0]
+        detail = call("entities.get", entityType="session", key=row["key"])["result"]
+        folders = [Path(call("files.resolve", dataLocation=loc["dataLocationIdentifier"], path=p)["result"]["path"])
+                   for loc in detail["locations"] for p in loc.get("paths", [])]
+        folders = [f for f in folders if f.is_dir()]
+        assert folders
+        call("entities.update", entityType="session", key=row["key"], values={"description": "first"})
+        assert not any((f / "session_info.json").exists() for f in folders)   # off unless asked for
+        catalog.save_settings({"tables": {"saveToDataFolders": True}})
+        call("entities.update", entityType="session", key=row["key"], values={"description": "second"})
+        for folder in folders:   # dev's AutosaveMetadataToDataFolders
+            saved = json.loads((folder / "session_info.json").read_text())
+            assert saved["description"] == "second" and all(saved[k] == v for k, v in row["key"].items())
     finally:
         api.close()
 

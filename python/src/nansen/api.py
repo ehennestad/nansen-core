@@ -740,7 +740,24 @@ class Api:
         table.write()
         self.emit("entities", {"entityTypes": [params["entityType"]], "keys": [key]})
         entity = project.entity(params["entityType"], key)
-        return self._row(entity, project.table(params["entityType"]))
+        row = self._row(entity, project.table(params["entityType"]))
+        if self.catalog is not None and self.catalog.settings()["tables"]["saveToDataFolders"]:
+            self._save_to_data_folders(entity, row)
+        return row
+
+    def _save_to_data_folders(self, entity, row: dict) -> None:
+        """The row as <entity type>_info.json in each of the entity's folders, as dev's AutosaveMetadataToDataFolders."""
+        values = dict(row["key"], **{k: v for k, v in row["values"].items() if k not in row["key"]})
+        text = json.dumps(values, indent=2, ensure_ascii=False) + "\n"
+        for location in entity.locations:
+            for path in location.get("paths", []):
+                try:
+                    folder = self.files__resolve({"dataLocation": location["dataLocationIdentifier"],
+                                                  "rootStoragePath": location.get("rootStoragePathIdentifier"), "path": path})
+                except NansenError:
+                    continue   # a root not on this computer
+                if folder["isFolder"]:
+                    (Path(folder["path"]) / f"{entity.entity_type}_info.json").write_text(text, encoding="utf-8")
 
     def entities__add(self, params: dict) -> dict:
         project = self._require_project()

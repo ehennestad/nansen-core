@@ -51,6 +51,13 @@
             "python": { "type": "string", "default": "", "description": "The Python a MATLAB app starts a worker with (queue.startWorker), for tasks only Python runs; empty for MATLAB's pyenv, else python3 (python on Windows)." },
             "matlab": { "type": "string", "default": "", "description": "The MATLAB a Python app starts a worker with, for tasks only MATLAB runs; empty for matlab on the PATH." }
           }
+        },
+        "tables": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "saveToDataFolders": { "type": "boolean", "default": false, "description": "When a row is edited in the app, write it as <entity type>_info.json into each of its entity's folders, as dev's AutosaveMetadataToDataFolders." }
+          }
         }
       }
     }

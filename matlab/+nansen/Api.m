@@ -676,7 +676,31 @@ classdef Api < handle
             table.updateRow(key, values);
             table.write();
             obj.emit("entities", struct("entityTypes", {{char(entityType)}}, "keys", {{key}}));
-            result = obj.row(project.entity(entityType, key), project.table(entityType));
+            entity = project.entity(entityType, key);
+            result = obj.row(entity, project.table(entityType));
+            if ~isempty(obj.Catalog) && obj.Catalog.settings().tables.saveToDataFolders
+                obj.saveToDataFolders(entity, result);
+            end
+        end
+
+        function saveToDataFolders(obj, entity, row)
+            % The row as <entity type>_info.json in each of the entity's folders, as dev's AutosaveMetadataToDataFolders
+            text = [jsonencode(row.values, PrettyPrint=true), newline];
+            locations = nansen.internal.asCellOfStructs(entity.locations());
+            for i = 1:numel(locations)
+                location = locations{i};
+                for path = reshape(string(location.paths), 1, [])
+                    try
+                        folder = obj.apiFilesResolve(struct("dataLocation", location.dataLocationIdentifier, ...
+                            "rootStoragePath", nansen.internal.getField(location, "rootStoragePathIdentifier", ""), "path", path));
+                    catch
+                        continue   % a root not on this computer
+                    end
+                    if folder.isFolder
+                        nansen.internal.writeText(fullfile(folder.path, entity.EntityType + "_info.json"), text);
+                    end
+                end
+            end
         end
 
         function result = apiEntitiesAdd(obj, params)

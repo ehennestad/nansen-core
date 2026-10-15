@@ -173,6 +173,36 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyFalse(isfolder(fullfile(folder, "archive", "two")));
         end
 
+        function editedRowsAreSavedIntoTheDataFolders(testCase)
+            folder = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
+            catalog = nansen.Catalog(fullfile(folder, "catalog.json"));
+            api = nansen.Api(Catalog=catalog, Project=nansen.demo.create(fullfile(folder, "demo")));
+            call = @(method, params) api.handle(struct("id", 1, "method", method, "params", params));
+            rows = nansen.internal.asCellOfStructs(call("entities.list", struct("entityType", "session")).result.rows);
+            key = rows{1}.key;
+            detail = call("entities.get", struct("entityType", "session", "key", key)).result;
+            locations = nansen.internal.asCellOfStructs(detail.locations);
+            folders = strings(1, 0);
+            for i = 1:numel(locations)
+                for p = reshape(string(locations{i}.paths), 1, [])
+                    resolved = call("files.resolve", struct("dataLocation", locations{i}.dataLocationIdentifier, "path", p)).result;
+                    if resolved.isFolder
+                        folders(end + 1) = string(resolved.path); %#ok<AGROW>
+                    end
+                end
+            end
+            testCase.assertNotEmpty(folders);
+            call("entities.update", struct("entityType", "session", "key", key, "values", struct("description", "first")));
+            testCase.verifyFalse(any(arrayfun(@(f) isfile(fullfile(f, "session_info.json")), folders)));   % off unless asked for
+            catalog.saveSettings(struct("tables", struct("saveToDataFolders", true)));
+            call("entities.update", struct("entityType", "session", "key", key, "values", struct("description", "second")));
+            for f = folders   % dev's AutosaveMetadataToDataFolders
+                saved = jsondecode(nansen.internal.readText(fullfile(f, "session_info.json")));
+                testCase.verifyEqual(string(saved.description), "second");
+                testCase.verifyEqual(string(saved.session_id), string(key.session_id));
+            end
+        end
+
         function anyFileGoesToTheWorkspace(testCase)
             fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
             project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
