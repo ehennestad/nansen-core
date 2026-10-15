@@ -1,0 +1,32 @@
+{
+  "schemaType": "nansen.table",
+  "schemaVersion": "0.1.0",
+  "entityType": "subject",
+  "file": "subject.csv",
+  "revision": 0,
+  "key": [
+    "subject_id"
+  ],
+  "columns": [
+    {
+      "name": "subject_id",
+      "dataType": "string"
+    },
+    {
+      "name": "ignore",
+      "dataType": "boolean",
+      "fragment": "notes"
+    },
+    {
+      "name": "description",
+      "dataType": "string",
+      "fragment": "notes"
+    }
+  ],
+  "fragments": [
+    {
+      "id": "notes",
+      "version": "1.0.0"
+    }
+  ]
+}

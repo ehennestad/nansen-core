@@ -240,6 +240,27 @@ class Api:
         self.emit("project", {"name": project.name})
         return self.project__info({})
 
+    def scan__unmatched(self, params: dict) -> dict:
+        """What the last scan found that no entity accounts for: each with its location, path, reason and detail."""
+        project = self._require_project()
+        scan = project.last_scan()
+        entries = sorted((u for u in (scan.unmatched if scan is not None else []) if u.get("reason") != "excluded"),
+                         # excluded entries were skipped on purpose; the readers emit the rest in their own order
+                         key=lambda u: (u.get("dataLocationIdentifier") or "", u.get("path") or ""))
+        limit = int(params.get("limit", 1000))
+        return {"scannedAt": scan.scanned_at if scan is not None else None, "total": len(entries),
+                "entries": [{"dataLocation": u.get("dataLocationIdentifier"), "rootStoragePath": u.get("rootStoragePathIdentifier"),
+                             "path": u.get("path", ""), "reason": u.get("reason", ""), "detail": u.get("detail", "")}
+                            for u in entries[:limit]]}
+
+    def dataset__exclude(self, params: dict) -> dict:
+        """Skip an unmatched entry in later scans, by its exact name at its level."""
+        project = self._require_project()
+        result = project.exclude_from_scan(params["dataLocation"], params["path"])
+        self._set_project(Project.open(project.folder, environment=project.environment))
+        self.emit("project", {"name": self.project.name})
+        return result
+
     def dataset__get(self, params: dict) -> dict:
         """The DSM config's text, for editing."""
         project = self._require_project()
@@ -314,7 +335,8 @@ class Api:
         counts: Dict[str, int] = {}
         for record in scan.records:
             counts[record["entityType"]] = counts.get(record["entityType"], 0) + 1
-        result = {"scannedAt": scan.scanned_at, "records": counts, "roots": scan.roots, "unmatched": len(scan.unmatched)}
+        result = {"scannedAt": scan.scanned_at, "records": counts, "roots": scan.roots,
+                  "unmatched": sum(1 for u in scan.unmatched if u.get("reason") != "excluded")}
         self.emit("scan", result)
         return result
 

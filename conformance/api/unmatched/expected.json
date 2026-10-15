@@ -1,0 +1,4 @@
+{
+  "description": "Reviewing what a scan did not match: the entries of the last scan, with their location, path and reason, and excluding one, which adds an excludePatterns entry for its exact name at its level of the DSM config (once) and drops it from the last scan, so the next scan skips it.",
+  "steps": 12
+}

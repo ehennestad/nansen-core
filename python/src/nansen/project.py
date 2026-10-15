@@ -43,6 +43,8 @@ class Fragment:
         return cls(read_document(path, "nansen.fragment"))
 
 
+EXCLUDE_ESCAPED = set("\\.^$|?*+()[]{}")  # characters escaped in an exclude pattern made from a name
+
 class Project:
     def __init__(self, folder: PathLike, document: dict, environment: Optional[str] = None):
         self.folder = Path(folder)
@@ -241,6 +243,41 @@ class Project:
             raise
         self._check_and_save()
         return dataset
+
+    def exclude_from_scan(self, data_location: str, path: str) -> Dict[str, Any]:
+        """Have scans skip an entry the last scan did not match: an excludePatterns entry for its exact name,
+        at its level in the data location, written into the DSM config's text. The last scan forgets it too."""
+        from . import jsontext
+
+        dataset = self.require_dataset()
+        parts = [p for p in str(path).replace("\\", "/").split("/") if p]
+        if not parts or any(p in (".", "..") for p in parts):
+            raise NansenError("invalid-params", f"{path!r} is not a path in the data location")
+        if data_location not in dataset.config.location_ids:
+            raise NansenError("unknown-location", f"the dataset has no data location {data_location!r}")
+        levels = dataset.config.layout(data_location)
+        if len(parts) > len(levels):
+            raise NansenError("invalid-params", f"{path!r} is deeper than the levels of {data_location!r}")
+        level = len(parts) - 1
+        pattern = "^" + "".join("\\" + c if c in EXCLUDE_ESCAPED else c for c in parts[-1]) + "$"
+        text = self.dataset_text()
+        config = json.loads(text)
+        index = [loc.get("identifier") for loc in config["dataLocations"]].index(data_location)
+        pointer = f"/dataLocations/{index}/filesystemSource/entityLayout/{level}"
+        existing = config["dataLocations"][index]["filesystemSource"]["entityLayout"][level].get("excludePatterns")
+        if existing is None:
+            text = jsontext.set_member(text, pointer, "excludePatterns", [pattern])
+        elif pattern not in existing:
+            text = jsontext.append(text, pointer + "/excludePatterns", pattern)
+        if text != self.dataset_text():
+            self.save_dataset_text(text)
+        scan = self.last_scan()
+        if scan is not None:
+            prefix = "/".join(parts) + "/"
+            scan.unmatched = [u for u in scan.unmatched if not (u.get("dataLocationIdentifier") == data_location
+                              and (u.get("path", "") + "/").replace("//", "/").startswith(prefix))]
+            scan.write(self.scan_path)
+        return {"dataLocation": data_location, "level": levels[level]["name"], "pattern": pattern}
 
     def dataset_text(self) -> str:
         """The DSM config as written, so it can be edited with its formatting."""

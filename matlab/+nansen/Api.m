@@ -37,7 +37,7 @@ classdef Api < handle
             obj.Catalog = options.Catalog;
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "workspace.send", "catalog.list", "catalog.remove", "project.open", "project.create", "project.info", ...
-                "project.setDataset", "project.update", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
+                "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "dataVariables.save", "dataVariables.delete", "data.status", "modules.list", "modules.add", "modules.remove", ...
                 "methods.list", "methods.create", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
@@ -232,6 +232,41 @@ classdef Api < handle
             result = obj.apiProjectInfo(struct());
         end
 
+        function result = apiScanUnmatched(obj, params)
+            % What the last scan found that no entity accounts for: each with its location, path, reason and detail
+            project = obj.requireProject();
+            scan = project.lastScan();
+            result = struct("scannedAt", NaN, "total", 0, "entries", {{}});
+            if isempty(scan)
+                return
+            end
+            entries = nansen.Api.unmatchedOf(scan);
+            keys = strings(1, numel(entries));   % the readers emit them in their own order
+            for i = 1:numel(entries)
+                keys(i) = string(nansen.internal.getField(entries{i}, "dataLocationIdentifier", "")) + char(0) + ...
+                    string(nansen.internal.getField(entries{i}, "path", ""));
+            end
+            [~, order] = sort(keys);
+            entries = entries(order);
+            limit = double(nansen.internal.getField(params, "limit", 1000));
+            shown = cell(1, min(limit, numel(entries)));
+            for i = 1:numel(shown)
+                u = entries{i};
+                shown{i} = struct("dataLocation", char(nansen.internal.getField(u, "dataLocationIdentifier", "")), ...
+                    "rootStoragePath", char(nansen.internal.getField(u, "rootStoragePathIdentifier", "")), ...
+                    "path", char(nansen.internal.getField(u, "path", "")), "reason", char(nansen.internal.getField(u, "reason", "")), ...
+                    "detail", char(nansen.internal.getField(u, "detail", "")));
+            end
+            result = struct("scannedAt", char(scan.ScannedAt), "total", numel(entries), "entries", {shown});
+        end
+
+        function result = apiDatasetExclude(obj, params)
+            % Skip an unmatched entry in later scans, by its exact name at its level
+            project = obj.requireProject();
+            result = project.excludeFromScan(string(nansen.Api.param(params, "dataLocation")), string(nansen.Api.param(params, "path")));
+            obj.reopen(project);
+        end
+
         function result = apiDatasetGet(obj, ~)
             % The DSM config's text, for editing
             project = obj.requireProject();
@@ -327,7 +362,7 @@ classdef Api < handle
                 counts.(name) = nansen.internal.getField(counts, name, 0) + 1;
             end
             result = struct("scannedAt", char(scan.ScannedAt), "records", counts, "roots", {scan.Roots}, ...
-                "unmatched", numel(scan.Unmatched));
+                "unmatched", numel(nansen.Api.unmatchedOf(scan)));
             obj.emit("scan", result);
         end
 
@@ -1114,6 +1149,15 @@ classdef Api < handle
     end
 
     methods (Static)
+        function entries = unmatchedOf(scan)
+            % The scan's unmatched entries, without those it skipped on purpose (reason excluded)
+            entries = scan.Unmatched;
+            if isempty(entries)
+                return
+            end
+            entries = entries(cellfun(@(u) string(nansen.internal.getField(u, "reason", "")) ~= "excluded", entries));
+        end
+
         function assignInBase(name, value)
             assignin("base", name, value);
         end

@@ -9,7 +9,9 @@
 
   N.views.overview = async function (app, content) {
     const project = app.project;
-    const tasks = await app.client.request("tasks.list").catch(() => []);
+    const [tasks, unmatched] = await Promise.all([
+      app.client.request("tasks.list").catch(() => []),
+      project.dataset ? app.client.request("scan.unmatched", { limit: 200 }).catch(() => null) : null]);
     const counts = {};
     await Promise.all(project.entityTypes.map(async (type) => {
       const data = await app.client.request("entities.list", { entityType: type.name }).catch(() => null);
@@ -51,6 +53,28 @@
         h("div.sub", `${task.entities.length} ${task.entities[0].entityType}(s) · ${N.fmt.ago(task.createdAt)}`))))) :
       h("div.card-body.muted", "No tasks yet. Select entities and run a method.");
 
+    const unmatchedCard = unmatched && unmatched.total ? (() => {
+      const list = h("ul.list.unmatched-list");
+      const draw = (all) => N.fill(list, (all ? unmatched.entries : unmatched.entries.slice(0, 6)).map((u) => h("li", { dataset: { path: u.path, location: u.dataLocation } },
+        h("span.dot.warn"),
+        h("div.grow", h("div.title.mono", { style: { fontSize: "12.5px" } }, u.path), h("div.sub", `${u.dataLocation} · ${u.detail || u.reason}`)),
+        h("button.btn.ghost.icon.small", { title: "Show in the file browser", on: { click: () => app.client.request("files.reveal",
+          { dataLocation: u.dataLocation, rootStoragePath: u.rootStoragePath, path: u.path }).catch((error) => N.showError(error, "Could not open the folder")) } }, N.icon("folder", 13)),
+        h("button.btn.small.ignore-entry", { title: "Have scans skip this name at its level (an exclude pattern in the dataset config)", on: { click: async () => {
+          try {
+            const result = await app.client.request("dataset.exclude", { dataLocation: u.dataLocation, path: u.path });
+            N.toast("Skipped in scans", `${result.pattern} at level ${result.level}`, "success");
+            app.render();
+          } catch (error) { N.showError(error, "Could not exclude it"); }
+        } } }, "Ignore"))),
+        !all && unmatched.entries.length > 6 ? h("li.more", h("button.btn.small.ghost", { on: { click: () => draw(true) } }, `Show all ${unmatched.entries.length}`)) : null);
+      draw(false);
+      return h("div.card.unmatched-card", h("div.card-head", N.icon("alert"), h("h3", "Not matched by the last scan"), h("div.spacer"),
+        h("span.pill.warn", String(unmatched.total))),
+        h("div.card-body.muted", { style: { paddingBottom: 0 } }, "Folders and files in the data locations that no subject or session accounts for. Fix the names, change the dataset config, or have scans ignore them."),
+        list);
+    })() : null;
+
     const tools = (app.methods || []).filter((m) => m.tool);
     const toolsCard = tools.length ? h("div.card.tools-card", h("div.card-head", N.icon("zap"), h("h3", "Tools")),
       h("ul.list", tools.map((m) => h("li", { dataset: { tool: m.id } },
@@ -75,8 +99,10 @@
       stats,
       h("div", { style: { height: "16px" } }),
       h("div.grid.two",
-        h("div.card", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
-          h("span.muted", dataset ? `Last scan ${N.fmt.ago(project.lastScan)}` : "")), roots),
+        h("div.grid",
+          h("div.card", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
+            h("span.muted", dataset ? `Last scan ${N.fmt.ago(project.lastScan)}` : "")), roots),
+          unmatchedCard),
         h("div.grid",
           h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Recent tasks"), h("div.spacer"),
             h("a", { href: "#/tasks" }, "All tasks")), taskList),

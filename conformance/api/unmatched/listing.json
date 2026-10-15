@@ -1,0 +1,41 @@
+{
+  "environmentIdentifier": "mac-analysis",
+  "roots": [
+    {
+      "dataLocationIdentifier": "raw",
+      "rootStoragePathIdentifier": "analysis-mac",
+      "entries": [
+        "2025_05_23/",
+        "2025_05_23/2025_05_23_10_00_00_m110-20250523-001/",
+        "2025_05_23/2025_05_23_10_00_00_m110-20250523-001/rec.ini",
+        "2025_05_23/2025_05_23_10_00_00_m110-20250523-001/rec.raw",
+        "2025_05_23/2025_05_23_14_30_00_m110-20250523-002/",
+        "2025_05_23/2025_05_23_14_30_00_m110-20250523-002/rec.raw",
+        "2025_05_23/notes.txt",
+        "2025_05_24/",
+        "2025_05_24/2025_05_24_09_00_00_m222-20250524-001/",
+        "2025_05_24/2025_05_24_09_00_00_m222-20250524-001/rec.raw",
+        "calibration/",
+        "calibration/dark.raw"
+      ]
+    },
+    {
+      "dataLocationIdentifier": "processed",
+      "rootStoragePathIdentifier": "analysis-mac",
+      "entries": [
+        "subject-m110/",
+        "subject-m110/scratch/",
+        "subject-m110/scratch/tmp.mat",
+        "subject-m110/session-m110-20250523-001/",
+        "subject-m110/session-m110-20250523-001/logs/",
+        "subject-m110/session-m110-20250523-001/logs/run.log",
+        "subject-m110/session-m110-20250523-001/m110-20250523-001_roi_signals_plane1.mat",
+        "subject-m110/session-m110-20250523-001/m110-20250523-001_roi_signals_plane2.mat",
+        "subject-m110/session-m110-20250523-001/m110-20250523-001_two_photon_motion_corrected.tif",
+        "subject-m110/session-m110-20250523-003/",
+        "subject-m110/session-m110-20250523-003/m110-20250523-003_two_photon_motion_corrected.tif",
+        "subject-m333/"
+      ]
+    }
+  ]
+}

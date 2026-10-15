@@ -710,3 +710,21 @@ def test_edit_the_project_details(empty_app, page):
     assert info["title"] == "Visual cortex study"
     assert [t.get("title") for t in info["entityTypes"] if t["name"] == "session"] == ["Imaging sessions"]
     assert [p["title"] for p in api.handle({"id": 3, "method": "catalog.list"})["result"]] == ["Visual cortex study"]
+
+
+def test_review_and_ignore_what_a_scan_did_not_match(empty_app, page):
+    from pathlib import Path
+
+    api = empty_app["api"]
+    folder = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(folder)}})
+    raw = Path(api.handle({"id": 2, "method": "files.resolve", "params": {"dataLocation": "raw", "path": ""}})["result"]["path"])
+    (raw / "junk_folder").mkdir()
+    api.handle({"id": 3, "method": "project.scan"})
+    page.goto(empty_app["server"].url + "#/overview")
+    page.wait_for_selector(".unmatched-card li[data-path='junk_folder/']")
+    page.click(".unmatched-card li[data-path='junk_folder/'] .ignore-entry")
+    page.wait_for_selector(".toast:has-text('^junk_folder$')")
+    page.wait_for_selector(".unmatched-card li[data-path='junk_folder/']", state="detached")
+    assert "^junk_folder$" in (folder / "dataset.dsm.json").read_text()
+    assert api.handle({"id": 4, "method": "project.scan"})["result"]["unmatched"] == 0

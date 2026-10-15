@@ -258,6 +258,69 @@ classdef Project < handle
             obj.writeDocument(document)
         end
 
+        function result = excludeFromScan(obj, dataLocation, path)
+            %excludeFromScan Have scans skip an entry the last scan did not match
+            %
+            %   Adds an excludePatterns entry for its exact name, at its level in
+            %   the data location, to the DSM config's text. The last scan forgets
+            %   it too.
+            dataLocation = string(dataLocation);
+            dataset = obj.requireDataset();
+            parts = split(replace(string(path), "\", "/"), "/")';
+            parts = parts(parts ~= "");
+            if isempty(parts) || any(ismember(parts, [".", ".."]))
+                nansen.internal.throwError("invalid-params", "'%s' is not a path in the data location", path)
+            end
+            if ~ismember(dataLocation, dataset.Config.locationIds())
+                nansen.internal.throwError("unknown-location", "the dataset has no data location '%s'", dataLocation)
+            end
+            levels = dataset.Config.layout(dataLocation);
+            if numel(parts) > numel(levels)
+                nansen.internal.throwError("invalid-params", "'%s' is deeper than the levels of '%s'", path, dataLocation)
+            end
+            level = numel(parts);
+            name = char(parts(end));
+            escaped = '';
+            for c = name
+                if any(c == '\.^$|?*+()[]{}')
+                    escaped = [escaped, '\', c]; %#ok<AGROW>
+                else
+                    escaped = [escaped, c]; %#ok<AGROW>
+                end
+            end
+            pattern = "^" + string(escaped) + "$";
+            text = obj.datasetText();
+            config = jsondecode(char(text));
+            locations = nansen.internal.asCellOfStructs(config.dataLocations);
+            index = find(cellfun(@(l) string(l.identifier) == dataLocation, locations), 1);
+            layout = nansen.internal.asCellOfStructs(locations{index}.filesystemSource.entityLayout);
+            pointer = sprintf("/dataLocations/%d/filesystemSource/entityLayout/%d", index - 1, level - 1);
+            changed = text;
+            if ~isfield(layout{level}, "excludePatterns")
+                changed = nansen.internal.JsonText.setMember(text, pointer, "excludePatterns", {char(pattern)});
+            elseif ~ismember(pattern, string(nansen.internal.asCellstr(layout{level}.excludePatterns)))
+                changed = nansen.internal.JsonText.append(text, pointer + "/excludePatterns", char(pattern));
+            end
+            if changed ~= text
+                obj.saveDatasetText(changed);
+            end
+            scan = obj.lastScan();
+            if ~isempty(scan)
+                prefix = strjoin(parts, "/") + "/";
+                keep = true(1, numel(scan.Unmatched));
+                for i = 1:numel(scan.Unmatched)
+                    entry = scan.Unmatched{i};
+                    entryPath = replace(string(nansen.internal.getField(entry, "path", "")) + "/", "//", "/");
+                    keep(i) = ~(string(nansen.internal.getField(entry, "dataLocationIdentifier", "")) == dataLocation ...
+                        && startsWith(entryPath, prefix));
+                end
+                scan.Unmatched = scan.Unmatched(keep);
+                scan.write(obj.scanPath());
+            end
+            levelName = string(levels{level}.name);
+            result = struct("dataLocation", char(dataLocation), "level", char(levelName), "pattern", char(pattern));
+        end
+
         function text = datasetText(obj)
             %datasetText The DSM config as written, so it can be edited with its formatting
             obj.requireDataset();

@@ -1,0 +1,190 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "scan.unmatched",
+        "id": 1,
+        "params": {}
+      },
+      "expect": {
+        "error": "no-project"
+      }
+    },
+    {
+      "request": {
+        "method": "project.open",
+        "id": 2,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhoton"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "scan.unmatched",
+        "id": 3,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "scannedAt": null,
+          "total": 0,
+          "entries": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 4,
+        "params": {
+          "listing": "${listing}"
+        }
+      },
+      "expect": {
+        "result": {
+          "unmatched": 3
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "scan.unmatched",
+        "id": 5,
+        "params": {
+          "limit": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "total": 3,
+          "entries": [
+            {
+              "dataLocation": "processed",
+              "path": "subject-m110/scratch/",
+              "reason": "no-match"
+            },
+            {
+              "dataLocation": "raw",
+              "path": "2025_05_23/notes.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.exclude",
+        "id": 6,
+        "params": {
+          "dataLocation": "raw",
+          "path": "calibration/"
+        }
+      },
+      "expect": {
+        "result": {
+          "dataLocation": "raw",
+          "level": "dates",
+          "pattern": "^calibration$"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "scan.unmatched",
+        "id": 7,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "total": 2,
+          "entries": [
+            {
+              "path": "subject-m110/scratch/"
+            },
+            {
+              "path": "2025_05_23/notes.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "project.scan",
+        "id": 8,
+        "params": {
+          "listing": "${listing}"
+        }
+      },
+      "expect": {
+        "result": {
+          "records": {
+            "subject": 3,
+            "session": 4
+          },
+          "unmatched": 2
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.exclude",
+        "id": 9,
+        "params": {
+          "dataLocation": "raw",
+          "path": "calibration/"
+        }
+      },
+      "expect": {
+        "result": {
+          "pattern": "^calibration$"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.exclude",
+        "id": 10,
+        "params": {
+          "dataLocation": "nowhere",
+          "path": "x/"
+        }
+      },
+      "expect": {
+        "error": "unknown-location"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.exclude",
+        "id": 11,
+        "params": {
+          "dataLocation": "raw",
+          "path": "../x"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "dataset.exclude",
+        "id": 12,
+        "params": {
+          "dataLocation": "raw",
+          "path": "a/b/c/d/e/"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    }
+  ]
+}
