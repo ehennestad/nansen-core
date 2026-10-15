@@ -785,9 +785,25 @@
       h("div.card.pipeline-card",
         h("div.card-head", N.icon("layers", 15), h("h3", detail.pipeline.title), h("div.spacer"),
           h("span.pill" + (detail.pipeline.done === detail.pipeline.total ? ".good" : ".plain"), `${detail.pipeline.done}/${detail.pipeline.total}`)),
-        h("ol.steps", detail.pipeline.steps.map((s) => h("li" + (s.done ? ".done" : ""),
-          h("span.step-mark", s.done ? N.icon("check", 12) : null), h("div.grow", h("div.title", s.title), h("div.sub", s.method + (s.queueable === false ? " · run by hand" : ""))),
-          s.done ? h("span.muted", N.fmt.ago(s.finishedAt)) : null))),
+        // dev's pipeline viewer: a step's mark is ticked or unticked by hand, and any step can be run (again)
+        h("ol.steps", detail.pipeline.steps.map((s, i) => h("li" + (s.done ? ".done" : ""), { dataset: { step: i } },
+          h("button.step-mark", { title: s.done ? "Mark as not done" : "Mark as done", on: { click: async () => {
+            try {
+              await app.client.request("pipelines.markStep", { entityType, keys: [detail.key], method: s.method, done: !s.done });
+              N.views.entityDrawer(app, entityType, detail.key);
+            } catch (error) { N.showError(error, "Could not mark the step"); }
+          } } }, s.done ? N.icon("check", 12) : null),
+          h("div.grow", h("div.title", s.title), h("div.sub", s.method + (s.queueable === false ? " · run by hand" : ""))),
+          s.done ? h("span.muted", N.fmt.ago(s.finishedAt)) : null,
+          h("button.btn.ghost.icon.small.run-this-step", { title: `Run ${s.title} now` + (s.done ? " (again)" : ""), on: { click: async () => {
+            try {
+              N.toast("Running", s.title);
+              const result = await app.client.request("pipelines.runNext", { entityType, keys: [detail.key], step: i });
+              if (result.ran.length) N.toast("Done", `${s.title} finished`, "success");
+              else N.toast("Not run", "Steps of this pipeline are in the queue", "info");
+              N.views.entityDrawer(app, entityType, detail.key);
+            } catch (error) { N.showError(error, `${s.title} failed`); }
+          } } }, N.icon("zap", 12))))),
         detail.pipeline.done < detail.pipeline.total ? (() => {
           const next = detail.pipeline.steps.find((s) => !s.done);
           const runNow = h("button.btn.small" + (next.queueable === false ? ".primary" : "") + ".run-step", { on: { click: async () => {

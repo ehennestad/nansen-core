@@ -3,6 +3,8 @@ function done = completedRuns(folder, entityType)
 %
 %   done is a containers.Map from runKeyId to a containers.Map from method id
 %   to finishedAt. Lines that cannot be read (a write cut short) are skipped.
+%   A line marked undone takes the method off the entity's until a later
+%   line (in the file's order) puts it back.
 %   As Python's nansen.runs.completed.
     done = containers.Map("KeyType", "char", "ValueType", "any");
     path = fullfile(folder, "runs", string(entityType) + ".runs.jsonl");
@@ -38,7 +40,11 @@ function done = completedRuns(folder, entityType)
         methods = done(id);   % a handle: changed in place
         methodId = char(run.method.id);
         finished = string(run.finishedAt);
-        if ~isKey(methods, methodId) || finished > string(methods(methodId))
+        if isfield(run, "mark") && string(run.mark) == "undone"
+            if isKey(methods, methodId)
+                remove(methods, methodId);
+            end
+        elseif ~isKey(methods, methodId) || finished > string(methods(methodId))
             methods(methodId) = char(finished);
         end
     end

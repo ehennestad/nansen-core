@@ -1342,6 +1342,18 @@ class Api:
         self.emit("entities", {"entityTypes": [params["entityType"]]})
         return {"assigned": count}
 
+    def pipelines__markStep(self, params: dict) -> dict:
+        """Mark a step (its method) done or not done for entities by hand, as dev's pipeline viewer's checkboxes."""
+        project = self._require_project()
+        method = project.method(params["method"])
+        keys = params.get("keys") or []
+        if not isinstance(params.get("done"), bool) or not keys:
+            raise NansenError("invalid-params", "markStep takes keys (one or more) and done (true or false)")
+        entities = [project.entity(params["entityType"], key) for key in keys]
+        runs.record(project.folder, method.id, method.version, entities, mark="done" if params["done"] else "undone")
+        self.emit("entities", {"entityTypes": [params["entityType"]]})
+        return {"marked": len(entities)}
+
     def pipelines__queueNext(self, params: dict) -> dict:
         """For each entity with a pipeline, queue the steps not done yet (from the first not done on)."""
         project = self._require_project()
@@ -1370,20 +1382,26 @@ class Api:
         return {"tasks": tasks, "skipped": skipped, "manual": manual}
 
     def pipelines__runNext(self, params: dict) -> dict:
-        """For each entity with a pipeline, run its next step not done now, in the foreground (manual steps too)."""
+        """For each entity with a pipeline, run its next step not done now, in the foreground (manual steps too); with step
+        (an index from 0), that step, done or not (dev's pipeline viewer runs any step)."""
         project = self._require_project()
         entity_type = params["entityType"]
         progress = project.pipeline_progress(entity_type)
         pipelines = {p["id"]: p for p in project.pipelines(entity_type)}
         in_flight = {runs.key_id(t["entities"][0]["key"]) for t in self._queue().list()
                      if t.get("pipeline") and t["status"] in ("queued", "running")}
+        chosen = params.get("step")
+        if chosen is not None and (isinstance(chosen, bool) or not isinstance(chosen, (int, float)) or chosen != int(chosen) or chosen < 0):
+            raise NansenError("invalid-params", "step is the index of a step, from 0")
         ran, skipped = [], []
         for entity in self._entities(params):
             state = progress.get(runs.key_id(entity.key))
-            if state is None or state["done"] == state["total"] or runs.key_id(entity.key) in in_flight:
+            if state is None or runs.key_id(entity.key) in in_flight or (chosen is None and state["done"] == state["total"]):
                 skipped.append(entity.key)
                 continue
-            first = next(i for i, s in enumerate(state["steps"]) if not s["done"])
+            if chosen is not None and chosen >= state["total"]:
+                raise NansenError("invalid-params", f"pipeline {state['pipeline']!r} has {state['total']} steps; step {int(chosen)} is not one")
+            first = int(chosen) if chosen is not None else next(i for i, s in enumerate(state["steps"]) if not s["done"])
             step = pipelines[state["pipeline"]]["steps"][first]
             method = project.method(step["method"])
             if method.languages and "python" not in method.languages:   # in a worker of the language it has

@@ -1,17 +1,19 @@
-function recordRuns(folder, methodId, methodVersion, entities, taskId)
+function recordRuns(folder, methodId, methodVersion, entities, taskId, mark)
 %recordRuns Append to the run journal that a method completed on each of the entities
 %
 %   nansen.internal.recordRuns(projectFolder, methodId, methodVersion,
 %   entities, taskId) writes one nansen.run line per entity to
 %   runs/<entityType>.runs.jsonl, in one write per entity type, so writers in
 %   other sessions (or Python) can append at the same time. As Python's
-%   nansen.runs.record; see that module for what the journal is for.
+%   nansen.runs.record; see that module for what the journal is for. mark
+%   ("done" or "undone") records a step marked by hand instead.
     arguments
         folder (1,1) string
         methodId (1,1) string
         methodVersion (1,1) string
         entities (1,:) cell
         taskId (1,1) string = ""
+        mark (1,1) string = ""
     end
     finished = char(datetime("now", Format="yyyy-MM-dd'T'HH:mm:ss"));
     entry = nansen.internal.schemaEntry("nansen.run");
@@ -23,6 +25,9 @@ function recordRuns(folder, methodId, methodVersion, entities, taskId)
             "key", entities{i}.Key, "finishedAt", finished);
         if taskId ~= ""
             line.task = char(taskId);
+        end
+        if mark ~= ""
+            line.mark = char(mark);
         end
         if i == 1   % every line is built the same way
             nansen.checkDocument(line, ExpectedType="nansen.run");

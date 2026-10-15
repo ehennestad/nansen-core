@@ -1012,6 +1012,13 @@ def test_a_pipeline_step_run_by_hand(empty_app, page):
     page.click(".drawer .pipeline-card .run-step")
     page.wait_for_selector(".drawer.open .pipeline-card .steps li.done")
     assert call("entities.get", entityType="session", key=rows[0]["key"])["result"]["pipeline"]["done"] == 1
+    page.click(".drawer .pipeline-card .steps li[data-step='0'] .step-mark")   # dev's pipeline viewer: untick it by hand ...
+    page.wait_for_selector(".drawer.open .pipeline-card .steps li:not(.done)[data-step='0']")
+    assert call("entities.get", entityType="session", key=rows[0]["key"])["result"]["pipeline"]["done"] == 0
+    page.click(".drawer .pipeline-card .steps li[data-step='0'] .step-mark")   # ... tick it again
+    page.wait_for_selector(".drawer.open .pipeline-card .steps li.done[data-step='0']")
+    page.click(".drawer .pipeline-card .steps li[data-step='0'] .run-this-step")   # and run a step that is done again
+    page.wait_for_selector(".toast:has-text('Curate by hand finished')")
 
 
 def test_leaving_the_table_while_it_is_due_to_reload(app, page):

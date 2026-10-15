@@ -21,6 +21,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 
 - The Python app server answers only the page it served: a random token in its `index.html`, needed by `POST /api` and `GET /events`, and Host and Origin checks, so another web page in the browser cannot drive it (cross-site requests, DNS rebinding).
 
+- A pipeline's steps can be ticked or unticked by hand and any step run (again) from the drawer, as dev's pipeline viewer (`pipelines.markStep`, `pipelines.runNext` with `step`).
 - Importing a dev project brings its pipelines across, with the tasks that have a method here and their rules for new sessions; tasks and option presets that cannot come across are named in the report.
 - dev's two-photon data comes across: its binary stacks (`ophys.binary_stack`, read and written), its RoiGroup files with their classifications (read and written, every plane and channel of a group of several: each ROI keeps its place, and the viewer and signal extraction use those of the plane and channel at hand), and its ROI signals and `Default` `.mat` variables, as named variables of a file (`variableInFile`, new on data variables), which the importer maps them to.
 

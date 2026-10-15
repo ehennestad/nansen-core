@@ -30,8 +30,8 @@ def runs_path(folder: Path, entity_type: str) -> Path:
 
 
 def record(folder: Path, method_id: str, method_version: str, entities: Iterable[Any],
-           task_id: Optional[str] = None) -> None:
-    """Append that the method completed on each of the entities."""
+           task_id: Optional[str] = None, mark: Optional[str] = None) -> None:
+    """Append that the method completed on each of the entities (or, with mark, that it was marked done or undone)."""
     finished = dt.datetime.now().isoformat(timespec="seconds")
     lines: Dict[str, list] = {}
     for entity in entities:
@@ -40,6 +40,8 @@ def record(folder: Path, method_id: str, method_version: str, entities: Iterable
                 "finishedAt": finished}
         if task_id:
             line["task"] = task_id
+        if mark:
+            line["mark"] = mark
         if not lines:  # every line is built the same way
             check_document(line, "nansen.run")
         lines.setdefault(entity.entity_type, []).append(json.dumps(line, ensure_ascii=False) + "\n")
@@ -51,7 +53,8 @@ def record(folder: Path, method_id: str, method_version: str, entities: Iterable
 
 
 def completed(folder: Path, entity_type: str) -> Dict[KeyId, Dict[str, str]]:
-    """For each entity key, the methods that completed on it and when they last did."""
+    """For each entity key, the methods that completed on it and when they last did; a line marked undone takes the
+    method off the entity's until a later line (in the file's order) puts it back."""
     path = runs_path(folder, entity_type)
     done: Dict[KeyId, Dict[str, str]] = {}
     if not path.is_file():
@@ -63,7 +66,10 @@ def completed(folder: Path, entity_type: str) -> Dict[KeyId, Dict[str, str]]:
                 if run.get("schemaType") != "nansen.run":
                     continue
                 methods = done.setdefault(key_id(run["key"]), {})
-                methods[run["method"]["id"]] = max(methods.get(run["method"]["id"], ""), run["finishedAt"])
+                if run.get("mark") == "undone":
+                    methods.pop(run["method"]["id"], None)
+                else:
+                    methods[run["method"]["id"]] = max(methods.get(run["method"]["id"], ""), run["finishedAt"])
             except (ValueError, KeyError, TypeError, AttributeError):
                 continue  # a line cut short, or not a run
     return done

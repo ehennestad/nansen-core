@@ -368,6 +368,195 @@
       "expect": {
         "error": "not-queueable"
       }
+    },
+    {
+      "request": {
+        "method": "pipelines.markStep",
+        "id": 16,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "method": "curate",
+          "done": false
+        }
+      },
+      "expect": {
+        "result": {
+          "marked": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 17,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "pipeline": {
+            "done": 2,
+            "total": 3,
+            "steps": [
+              {
+                "method": "core.file_stats",
+                "done": true
+              },
+              {
+                "method": "curate",
+                "done": false
+              },
+              {
+                "method": "core.wait",
+                "done": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.markStep",
+        "id": 18,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "method": "curate",
+          "done": true
+        }
+      },
+      "expect": {
+        "result": {
+          "marked": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.get",
+        "id": 19,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-20250523-001"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "pipeline": {
+            "done": 3,
+            "total": 3
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.markStep",
+        "id": 20,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "method": "curate"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.markStep",
+        "id": 21,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "method": "nope",
+          "done": true
+        }
+      },
+      "expect": {
+        "error": "unknown-method"
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.runNext",
+        "id": 22,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "step": 0
+        }
+      },
+      "expect": {
+        "result": {
+          "ran": [
+            {
+              "key": {
+                "subject_id": "m110",
+                "session_id": "m110-20250523-001"
+              },
+              "step": 0,
+              "method": "core.file_stats"
+            }
+          ],
+          "skipped": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "pipelines.runNext",
+        "id": 23,
+        "params": {
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m110",
+              "session_id": "m110-20250523-001"
+            }
+          ],
+          "step": 3
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
     }
   ]
 }

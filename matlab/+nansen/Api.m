@@ -45,7 +45,7 @@ classdef Api < handle
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.save", "presets.delete", ...
-                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
+                "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
             for name = names
                 % "entities.list" -> apiEntitiesList
@@ -1598,6 +1598,26 @@ classdef Api < handle
             result = struct("removed", char(pipelineId));
         end
 
+        function result = apiPipelinesMarkStep(obj, params)
+            % Mark a step (its method) done or not done for entities by hand, as dev's pipeline viewer's checkboxes
+            project = obj.requireProject();
+            entityType = string(nansen.Api.param(params, "entityType"));
+            method = project.method(string(nansen.Api.param(params, "method")));
+            keys = {};
+            if isfield(params, "keys")
+                keys = nansen.internal.asCellOfStructs(params.keys);
+            end
+            done = nansen.internal.getField(params, "done", []);
+            if ~(islogical(done) && isscalar(done)) || isempty(keys)
+                nansen.internal.throwError("invalid-params", "markStep takes keys (one or more) and done (true or false)")
+            end
+            entities = cellfun(@(key) project.entity(entityType, key), keys, UniformOutput=false);
+            marks = ["undone", "done"];
+            nansen.internal.recordRuns(project.Folder, method.Id, method.Version, reshape(entities, 1, []), "", marks(done + 1));
+            obj.emit("entities", struct("entityTypes", {{char(entityType)}}));
+            result = struct("marked", numel(entities));
+        end
+
         function result = apiPipelinesAssign(obj, params)
             project = obj.requireProject();
             entityType = string(nansen.Api.param(params, "entityType"));
@@ -1666,7 +1686,7 @@ classdef Api < handle
         end
 
         function result = apiPipelinesRunNext(obj, params)
-            %apiPipelinesRunNext For each entity with a pipeline, run its next step not done now, in the foreground
+            %apiPipelinesRunNext For each entity with a pipeline, run its next step not done now, in the foreground; with step (from 0), that step
             project = obj.requireProject();
             entityType = string(nansen.Api.param(params, "entityType"));
             progress = project.pipelineProgress(entityType);
@@ -1682,6 +1702,10 @@ classdef Api < handle
                     inFlight(end + 1) = nansen.internal.runKeyId(references{1}.key); %#ok<AGROW>
                 end
             end
+            chosen = nansen.internal.getField(params, "step", []);
+            if ~isempty(chosen) && ~(isnumeric(chosen) && isscalar(chosen) && chosen == round(chosen) && chosen >= 0)
+                nansen.internal.throwError("invalid-params", "step is the index of a step, from 0")
+            end
             ran = {};
             skipped = {};
             for entity = obj.entities(params)
@@ -1691,11 +1715,18 @@ classdef Api < handle
                     continue
                 end
                 state = progress(id);
-                if state.done == state.total
+                if isempty(chosen) && state.done == state.total
                     skipped{end + 1} = entity{1}.Key; %#ok<AGROW>
                     continue
                 end
-                first = find(~cellfun(@(s) s.done, state.steps), 1);
+                if ~isempty(chosen) && chosen >= state.total
+                    nansen.internal.throwError("invalid-params", "pipeline '%s' has %d steps; step %d is not one", state.pipeline, state.total, chosen)
+                end
+                if isempty(chosen)
+                    first = find(~cellfun(@(s) s.done, state.steps), 1);
+                else
+                    first = double(chosen) + 1;
+                end
                 pipeline = pipelines(char(state.pipeline));
                 stepList = nansen.internal.asCellOfStructs(pipeline.steps);
                 step = stepList{first};
