@@ -2206,12 +2206,12 @@
     formDialog({
       title: "Import from NANSEN",
       intro: python
-        ? "Python reads the export that MATLAB writes: run nansen.legacy.exportProject(folder, File=\"export.json\") in MATLAB, then give that file here."
+        ? "Give the folder of a project made with the existing NANSEN (MATLAB, on the PATH or set in Settings, reads it for Python), or an export of one (nansen.legacy.exportProject(folder, File=\"export.json\") in MATLAB). The old project is not changed."
         : "Give the folder of a project made with the existing NANSEN, or an export of one. The old project is not changed.",
       label: "Import",
       required: ["source", "path"],
       schema: { type: "object", properties: {
-        source: { type: "string", title: python ? "Export file" : "NANSEN project folder or export file" },
+        source: { type: "string", title: "NANSEN project folder or export file" },
         path: { type: "string", title: "New project folder", description: "A new or empty folder" },
       } },
       submit: async (values) => {

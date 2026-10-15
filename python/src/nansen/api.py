@@ -76,6 +76,7 @@ FILES_LIST_LIMIT = 500  # entries files.list gives at most, unless asked for mor
 FILES_INSPECT_LIMIT = 2000  # groups, datasets and links files.inspect gives at most
 FILES_READ_LIMIT = 65536  # bytes files.read gives at most, unless asked for more
 WORKER_START_SECONDS = 300  # how long methods.run waits for another language's worker to take a task
+LEGACY_EXPORT_SECONDS = 1800  # how long MATLAB may take to read a dev project folder
 
 def _frame_rate(params: dict, entity: Any) -> Optional[float]:
     """data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive number."""
@@ -93,6 +94,11 @@ def _frame_rate(params: dict, entity: Any) -> Optional[float]:
 def _open_url(url: str) -> None:
     import webbrowser
     webbrowser.open(url)
+
+
+def _matlab_text(text: Any) -> str:
+    """A MATLAB character vector literal."""
+    return "'" + str(text).replace("'", "''") + "'"
 
 
 class Api:
@@ -565,15 +571,38 @@ class Api:
 
         source = Path(params["source"])
         if source.is_dir():
-            raise NansenError("legacy-needs-matlab", "reading a NANSEN dev project folder needs MATLAB: export it "
-                                                     "with nansen.legacy.exportProject, then import the JSON file")
-        if not source.is_file():
+            exported = self._export_legacy(source)
+        elif not source.is_file():
             raise NansenError("file-not-found", f"no file {source}")
-        with open(source, encoding="utf-8") as f:
-            report = convert_legacy(json.load(f), params["path"])
+        else:
+            with open(source, encoding="utf-8") as f:
+                exported = json.load(f)
+        report = convert_legacy(exported, params["path"])
         self._set_project(Project.open(params["path"]))
         self.emit("project", {"name": self.project.name})
         return {"project": self.project__info({}), "warnings": report["warnings"]}
+
+    def _export_legacy(self, folder: Path) -> dict:
+        """A NANSEN dev project folder read by MATLAB (matlab -batch nansen.legacy.exportProject), as its JSON export:
+        dev's .mat files are MATLAB objects that only MATLAB reads."""
+        import subprocess
+        import tempfile
+
+        executable = self._matlab()
+        if not executable:
+            raise NansenError("legacy-needs-matlab", "reading a NANSEN dev project folder needs MATLAB: put matlab on the "
+                                                     "PATH or set it in Settings, or export it with nansen.legacy.exportProject "
+                                                     "and import the JSON file")
+        with tempfile.TemporaryDirectory() as scratch:
+            out = Path(scratch) / "export.json"
+            script = self._matlab_script(f"nansen.legacy.exportProject({_matlab_text(folder)}, File={_matlab_text(out)});")
+            done = subprocess.run([executable, "-batch", script], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                  timeout=LEGACY_EXPORT_SECONDS)
+            if done.returncode != 0 or not out.is_file():
+                raise NansenError("invalid-data",
+                                  f"MATLAB could not export {folder}: {(done.stdout + done.stderr).strip()[-600:]}")
+            with open(out, encoding="utf-8") as f:
+                return json.load(f)
 
     def project__info(self, params: dict) -> dict:
         project = self._require_project()
@@ -1386,27 +1415,34 @@ class Api:
             return self.queue__start(params)
         if language != "matlab":
             raise NansenError("invalid-params", "language is python or matlab")
-        import shutil
         import subprocess
 
         project = self._require_project()
-        settings = self.catalog.settings() if self.catalog is not None else {}
-        executable = settings.get("workers", {}).get("matlab") or shutil.which("matlab")
+        executable = self._matlab()
         if not executable:
             raise NansenError("dependency-missing", "no MATLAB found: put matlab on the PATH, or set its path in Settings")
-        quote = lambda text: "'" + str(text).replace("'", "''") + "'"
-        script = f"nansen.worker({quote(project.folder)}, UntilEmpty=true)"
-        own = Path(__file__).resolve().parents[3] / "matlab"   # nansen's MATLAB code, beside this package in a clone
-        if (own / "+nansen").is_dir():
-            script = f"addpath({quote(own)}); " + script
+        script = self._matlab_script(f"nansen.worker({_matlab_text(project.folder)}, UntilEmpty=true)")
         if project.environment:
-            script = script[:-1] + f", Environment={quote(project.environment)})"
+            script = script[:-1] + f", Environment={_matlab_text(project.environment)})"
         log = project.folder / "tasks" / "worker-matlab.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "ab") as out:
             subprocess.Popen([executable, "-batch", script], stdout=out, stderr=subprocess.STDOUT,
                              stdin=subprocess.DEVNULL, start_new_session=True)
         return {"language": "matlab", "started": True, "log": str(log)}
+
+    def _matlab(self) -> Optional[str]:
+        """The MATLAB to run: the one set in Settings, else matlab on the PATH; None when there is none."""
+        import shutil
+
+        settings = self.catalog.settings() if self.catalog is not None else {}
+        return settings.get("workers", {}).get("matlab") or shutil.which("matlab")
+
+    @staticmethod
+    def _matlab_script(script: str) -> str:
+        """A matlab -batch script, with nansen's MATLAB code on the path when this package is in a clone beside it."""
+        own = Path(__file__).resolve().parents[3] / "matlab"
+        return f"addpath({_matlab_text(own)}); " + script if (own / "+nansen").is_dir() else script
 
     def queue__start(self, params: dict) -> dict:
         self._queue().start()

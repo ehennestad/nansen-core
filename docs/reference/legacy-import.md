@@ -10,7 +10,7 @@ report.warnings      % what could not be carried over
 The import has two steps, because the dev MetaTables are MATLAB `table` objects in `.mat` files, which only MATLAB can read:
 
 1. **Export (MATLAB).** `nansen.legacy.exportProject(folder)` reads the dev files and returns a `nansen.legacyExport` document. This is plain JSON with no MATLAB types left in it ([schema](../../schema/legacy-export.schema.json)). Pass `File=` to save it.
-2. **Convert (MATLAB or Python).** `nansen.legacy.convert(export, folder)` writes the new project. In Python, `nansen import-legacy export.json folder` does the same, so the export can be made on a machine with MATLAB and converted anywhere. The cases in [`conformance/legacy`](../../conformance/legacy) hold both implementations to the same result.
+2. **Convert (MATLAB or Python).** `nansen.legacy.convert(export, folder)` writes the new project. In Python, `nansen import-legacy export.json folder` does the same, so the export can be made on a machine with MATLAB and converted anywhere. Given a dev project folder, the Python app (`legacy.import`) runs the export itself with `matlab -batch` when MATLAB is installed (on the PATH, or set in Settings). The cases in [`conformance/legacy`](../../conformance/legacy) hold both implementations to the same result.
 
 ## What is read
 

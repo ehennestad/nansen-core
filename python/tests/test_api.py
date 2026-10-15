@@ -404,6 +404,37 @@ def test_projects_are_renamed_moved_and_deleted(tmp_path):
         api.close()
 
 
+def test_a_dev_project_folder_is_read_by_matlab(tmp_path, monkeypatch):
+    import shutil
+    import sys
+
+    export = Path(__file__).resolve().parents[2] / "conformance" / "legacy" / "two-photon" / "export.json"
+    catalog = Catalog(tmp_path / "catalog.json")
+    api = Api(catalog=catalog, start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    dev = tmp_path / "dev_project"
+    dev.mkdir()
+    try:
+        monkeypatch.setattr(shutil, "which", lambda name: None)
+        assert call("legacy.import", source=str(dev), path=str(tmp_path / "a"))["error"]["code"] == "legacy-needs-matlab"
+        # a stand-in for matlab -batch "nansen.legacy.exportProject(folder, File=...)": it writes the export
+        fake = tmp_path / "matlab"
+        fake.write_text(f"""#!{sys.executable}
+import re, shutil, sys
+assert "nansen.legacy.exportProject('{dev}'" in sys.argv[2]
+shutil.copyfile({str(export)!r}, re.search(r"File='([^']*)'", sys.argv[2]).group(1))
+""")
+        fake.chmod(0o755)
+        catalog.save_settings({"workers": {"matlab": str(fake)}})
+        result = call("legacy.import", source=str(dev), path=str(tmp_path / "b"))["result"]
+        assert result["project"]["name"] and (tmp_path / "b" / "project.nansen.json").is_file()
+        fake.write_text(f"#!{sys.executable}\nimport sys\nprint('Undefined function'); sys.exit(1)\n")
+        error = call("legacy.import", source=str(dev), path=str(tmp_path / "c"))["error"]
+        assert error["code"] == "invalid-data" and "Undefined function" in error["message"]
+    finally:
+        api.close()
+
+
 def test_a_shared_project_is_installed_from_git(tmp_path):
     import shutil
     import subprocess

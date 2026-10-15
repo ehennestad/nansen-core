@@ -25,7 +25,7 @@ Error codes are those in [conventions](../conventions.md#error-codes), plus:
 | `unknown-api-method` | No such method |
 | `invalid-params` | A parameter is missing or has the wrong shape |
 | `no-project` | The method needs an open project |
-| `legacy-needs-matlab` | Python was asked to read a NANSEN dev project folder; export it from MATLAB first |
+| `legacy-needs-matlab` | Python was asked to read a NANSEN dev project folder and finds no MATLAB to read it with (set it in Settings, or export the project from MATLAB first) |
 | `internal-error` | An unexpected failure; the message says what happened |
 
 Events flow from the core to the frontend:
@@ -81,7 +81,7 @@ Events flow from the core to the frontend:
 | `dataset.get` | | `{path, text}`: the DSM config's file name in the project and its text as written |
 | `dataset.save` | `text` | `project.info`. The text is written as given, once DSM accepts it (`dataset-invalid` otherwise) and the key of each table still matches the identity it gives the entity type (`key-mismatch` otherwise); when refused, nothing changes. Scan again to see what the new config finds |
 | `demo.create` | `path` (an empty or new folder), `kind?` (`sessions`, the default, or `two-photon`) | `project.info` of the demo project, now open. `sessions`: the core module's demo, many sessions with placeholder files. `two-photon`: the quickstart tutorial (the ophys module's `tutorial/` folder): 2 subjects × 2 sessions, each a synthetic SciScan recording (64 × 64 pixels, 300 frames) of 12 cells with calcium activity, a background, whole-pixel motion and noise, made from 32-bit hashes so both languages write the same bytes; the project has the `core` and `ophys` modules, the ophys variables (`ophys.setup_variables` with raw file pattern `recording`), the frame rate and pixel size read from the recordings, and an `ophys.quicky` preset `tutorial`; it needs numpy in Python. Another kind is `invalid-params` |
-| `legacy.import` | `source` (a NANSEN dev project folder, MATLAB only, or a `nansen.legacyExport` JSON file), `path` | `{project: project.info, warnings}` |
+| `legacy.import` | `source` (a NANSEN dev project folder, or a `nansen.legacyExport` JSON file), `path`. Python reads a folder by running MATLAB (`matlab -batch nansen.legacy.exportProject`); `invalid-data` with MATLAB's output if that fails | `{project: project.info, warnings}` |
 | `project.info` | | `{name, title, description, folder, entityTypes[{name, title, fragments, rows, records}], modules, lastScan, dataset{environment, entityTypes, locations, roots}}` |
 | `project.scan` | `listing?` (a DSM DirectoryListing, instead of the file system) | `{scannedAt, records{type: count}, roots, unmatched}` |
 | `scan.unmatched` | `limit?` (default 1000) | `{scannedAt, total, entries[{dataLocation, rootStoragePath, path, reason, detail}]}`: what the last scan found that no entity accounts for, by location and path. Entries a scan skipped on purpose (reason `excluded`) are left out, here and in `project.scan`'s `unmatched` count |
