@@ -20,17 +20,20 @@ function result = deinterleave(entity, options, context)
         shape = [height, width, frames];
     end
     step = max(1, floor(ophys.internal.chunk() / per));
-    writer = context.Project.stackWriter(entity, options.output, shape, stack.ClassName);
-    for first = 1:step:frames
+    checkpoint = context.Project.checkpoint(entity, options.output, shape, stack.ClassName, options, stack, Method=context.Method);
+    writer = checkpoint.writer();   % a run that stopped goes on where it stopped (nansen.Checkpoint)
+    for first = checkpoint.FramesDone + 1:step:frames
         context.checkCancelled();
         last = min(first + step - 1, frames);
         n = last - first + 1;
         chunk = stack.frames((first - 1) * per + 1, last * per);
         % frame k of the chunk is channel c, plane p, volume v with k = ((v - 1) * planes + (p - 1)) * channels + c
         writer.write(first, reshape(chunk, [shape(1:end - 1), n]));
+        checkpoint.save(1, last);
         context.progress(last / frames, sprintf("frame %d/%d", last, frames));
     end
     writer.close();
+    checkpoint.finish();
     context.log("%s: %d frames of %d channel(s) and %d plane(s)", ophys.internal.entityName(entity), frames, channels, planes);
     result = struct("frames", frames, "channels", channels, "planes", planes);
 end

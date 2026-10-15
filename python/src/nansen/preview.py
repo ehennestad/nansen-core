@@ -64,6 +64,11 @@ class PreviewProject:
             return StackWriter(shape, dtype)
         return StackWriter(shape, dtype, finish=lambda data: self.saved.__setitem__(name, data.copy()))
 
+    def checkpoint(self, entity, name: str, shape: Any, dtype: Any, options: Any, source: Any, passes: int = 1, method=None):
+        """No progress is kept: a preview starts from the first frame, and its stacks are kept in memory."""
+        from .progress import Checkpoint
+        return Checkpoint(None, name, shape, dtype, {}, passes, create=lambda: self.stack_writer(entity, name, shape, dtype))
+
     def update_values(self, entity, values: Dict[str, Any]) -> list:
         """The columns the values would be written to; nothing is written."""
         table = self._project.table(entity.entity_type)

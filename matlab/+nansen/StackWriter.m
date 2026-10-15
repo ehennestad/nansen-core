@@ -6,13 +6,17 @@ classdef StackWriter < handle
 %   (npy) writes each chunk to the file as it comes, frames kept together;
 %   any other keeps the stack in memory and calls its finish function with
 %   it on close (an adapter's write). A writer to no file writes nothing.
-%   Frames never written are 0. Python's nansen.stacks.StackWriter is the same.
+%   Frames never written are 0. Reopen=true goes on writing a file a writer
+%   began (an adapter's reopen; nansen.Checkpoint), whose values start at
+%   Offset: FramesOnDisk is how many frames it held. Python's
+%   nansen.stacks.StackWriter is the same.
 
     properties (SetAccess = private)
         Size (1, :) double
         ClassName (1, 1) string
         Written (1, 1) double = 0
         Closed (1, 1) logical = false
+        FramesOnDisk (1, 1) double = 0   % frames the file held when it was reopened
     end
 
     properties (Access = private)
@@ -33,18 +37,35 @@ classdef StackWriter < handle
                 options.Finish = []
                 options.Path (1, 1) string = ""
                 options.Header (1, :) uint8 = uint8([])
+                options.Reopen (1, 1) logical = false
+                options.Offset (1, 1) double = 0
             end
             obj.Size = dimensions;
             obj.ClassName = className;
             if strlength(options.Path) > 0
                 obj.Mode = "file";
                 obj.Path = options.Path;
-                obj.Fid = fopen(options.Path, "w", "ieee-le");
+                if options.Reopen
+                    obj.Fid = fopen(options.Path, "r+", "ieee-le");
+                else
+                    obj.Fid = fopen(options.Path, "w", "ieee-le");
+                end
                 if obj.Fid < 0
                     nansen.internal.throwError("cannot-open", "cannot write %s", options.Path)
                 end
-                fwrite(obj.Fid, options.Header, "uint8");
-                obj.DataOffset = numel(options.Header);
+                if options.Reopen   % the frames in the file stay; writing goes on after them
+                    obj.DataOffset = options.Offset;
+                    listing = dir(options.Path);
+                    if obj.frameBytes() > 0
+                        obj.FramesOnDisk = min(obj.Size(end), max(0, floor((listing.bytes - obj.DataOffset) / obj.frameBytes())));
+                    else
+                        obj.FramesOnDisk = obj.Size(end);
+                    end
+                    obj.NextFrame = obj.FramesOnDisk + 1;
+                else
+                    fwrite(obj.Fid, options.Header, "uint8");
+                    obj.DataOffset = numel(options.Header);
+                end
             elseif ~isempty(options.Finish)
                 obj.Mode = "memory";
                 obj.Finish = options.Finish;
@@ -138,7 +159,7 @@ classdef StackWriter < handle
             if frame <= obj.NextFrame
                 return
             end
-            fseek(obj.Fid, 0, "eof");
+            fseek(obj.Fid, obj.DataOffset + (obj.NextFrame - 1) * obj.frameBytes(), "bof");   % the end of the whole frames
             for start = obj.NextFrame:100:frame - 1
                 n = min(100, frame - start);
                 fwrite(obj.Fid, zeros(n * obj.frameBytes(), 1, "uint8"), "uint8");

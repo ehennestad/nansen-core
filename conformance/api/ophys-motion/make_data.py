@@ -255,11 +255,22 @@ def main():
         # no zoom given and none in the files (an .npy); no profile for lines of 32 pixels
         {**run(19, "ophys.motion_correction", [S7], {"stretchCorrection": "sciscan"}), "expect": {"error": "invalid-options"}},
         {**run(20, "ophys.motion_correction", [S1], {"stretchCorrection": "sciscan", "zoomFactor": 1}), "expect": {"error": "invalid-options"}},
+        # with skipCompleted, the sessions it completed on whose outputs are there (s1, s2) are left out; s3 runs
+        {"request": {"method": "methods.run", "id": 21, "params": {"methodId": "ophys.motion_correction", "entityType": "session",
+                                                                   "keys": [S1, S2, S3], "options": {"referenceFrames": 1, "iterations": 1},
+                                                                   "skipCompleted": True}},
+         "expect": {"result": {"results": [{"frames": 2}], "skipped": [S1, S2]}}},
+        {"request": {"method": "methods.run", "id": 22, "params": {"methodId": "ophys.motion_correction", "entityType": "session",
+                                                                   "keys": [S3], "skipCompleted": True}},
+         "expect": {"result": {"results": [], "skipped": [S3]}}},
+        {"request": {"method": "methods.run", "id": 23, "params": {"methodId": "ophys.motion_correction", "entityType": "session",
+                                                                   "keys": [S3], "skipCompleted": "yes"}},
+         "expect": {"error": "invalid-params"}},
     ]
     (HERE / "session.json").write_text(json.dumps({"steps": steps}, indent=2) + "\n", encoding="utf-8")
     expected = {"description": "Motion correction finer than whole pixels: subpixel shifts on a texture moved by half pixels, piecewise rigid "
                                "correction (patches) of a texture whose quadrants move apart, and sessions aligned with a rotation, whose ROIs "
-                               "land where the ground truth puts them; and Quicky's shape detection finding somata that are never active. make_data.py writes the recordings and the steps from the ground truth.",
+                               "land where the ground truth puts them; and Quicky's shape detection finding somata that are never active; run again with skipCompleted, the sessions it already corrected are left out. make_data.py writes the recordings and the steps from the ground truth.",
                 "steps": len(steps)}
     (HERE / "expected.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
     print(json.dumps([first, second]))

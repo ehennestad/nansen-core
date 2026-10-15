@@ -305,9 +305,250 @@ classdef OphysTest < matlab.unittest.TestCase
                 testCase.verifyError(@() ophys.exportNwb(struct(), struct(), []), "nansen:DependencyMissing");
             end
         end
+
+        function motionCorrectionStoppedPartWayGoesOnToTheSameResult(testCase)
+            % As Python's test_progress.py: a run stopped part way (a crash, Cancel, the app closed) goes on
+            % where it stopped (nansen.Checkpoint), to the aligned stack and shifts of a run that never stopped
+            [project, entity] = testCase.longRecordingProject();   % 250 frames: 3 chunks per iteration
+            settings = {struct("referenceFrames", 50, "iterations", 2), ...
+                struct("referenceFrames", 30, "iterations", 3, "subpixel", true, "patches", 2, "maxShift", 4)};
+            for k = 1:numel(settings)
+                options = settings{k};
+                whole = project.run("ophys.motion_correction", {entity}, Options=options);
+                expected = OphysTest.outputBytes(project, entity, OphysTest.outputs());
+                testCase.removeOutputs(project, entity, OphysTest.outputs());
+                % stopped in the first iteration, after 2 of its 3 chunks
+                testCase.stopAfter(project, entity, "ophys.motion_correction", options, 2);
+                state = OphysTest.progressOf(project, entity, "TwoPhotonSeries_Corrected");
+                testCase.verifyEqual([state.pass, state.passes, state.framesDone], [1, options.iterations, 200]);
+                testCase.verifyEqual(sort(string(fieldnames(state.state)))', ["reference", "total"]);
+                testCase.verifyEqual(string(state.method.id), "ophys.motion_correction");
+                % going on, stopped again in the last iteration, after one chunk of it written
+                lines = testCase.stopAfter(project, entity, "ophys.motion_correction", options, 1 + 3 * (options.iterations - 2) + 1);
+                testCase.verifyTrue(any(contains(lines, "going on from frame 200 of iteration 1")));
+                state = OphysTest.progressOf(project, entity, "TwoPhotonSeries_Corrected");
+                testCase.verifyEqual([state.pass, state.framesDone], [options.iterations, 100]);
+                testCase.verifyEqual(sort(string(fieldnames(state.state)))', ["reference", "shifts"]);
+                % and to the end: the aligned stack and the shifts are those of the run that never stopped, byte for byte
+                context = nansen.MethodContext(Project=project);
+                result = project.run("ophys.motion_correction", {entity}, Options=options, Context=context);
+                testCase.verifyTrue(any(contains(context.Lines, "going on from frame 100 of iteration " + options.iterations)));
+                testCase.verifyEqual(result, whole);
+                testCase.verifyEqual(OphysTest.outputBytes(project, entity, OphysTest.outputs()), expected);
+                testCase.verifyEmpty(OphysTest.progressOf(project, entity, "TwoPhotonSeries_Corrected"));
+                % complete, a run starts from the first frame again
+                context = nansen.MethodContext(Project=project);
+                project.run("ophys.motion_correction", {entity}, Options=options, Context=context);
+                testCase.verifyFalse(any(contains(context.Lines, "going on")));
+                testCase.verifyEqual(OphysTest.outputBytes(project, entity, OphysTest.outputs()), expected);
+                testCase.removeOutputs(project, entity, OphysTest.outputs());
+            end
+        end
+
+        function aRunWithOtherOptionsStartsOver(testCase)
+            [project, entity] = testCase.longRecordingProject();
+            testCase.stopAfter(project, entity, "ophys.motion_correction", struct("referenceFrames", 50), 4);
+            state = OphysTest.progressOf(project, entity, "TwoPhotonSeries_Corrected");
+            testCase.verifyEqual(state.pass, 2);
+            context = nansen.MethodContext(Project=project);
+            other = project.run("ophys.motion_correction", {entity}, Options=struct("referenceFrames", 40), Context=context);
+            testCase.verifyFalse(any(contains(context.Lines, "going on")));
+            testCase.verifyEmpty(OphysTest.progressOf(project, entity, "TwoPhotonSeries_Corrected"));
+            expected = OphysTest.outputBytes(project, entity, OphysTest.outputs());
+            testCase.removeOutputs(project, entity, OphysTest.outputs());
+            testCase.verifyEqual(project.run("ophys.motion_correction", {entity}, Options=struct("referenceFrames", 40)), other);
+            testCase.verifyEqual(OphysTest.outputBytes(project, entity, OphysTest.outputs()), expected);
+        end
+
+        function anOutputCutShortIsWrittenAgain(testCase)
+            [project, entity] = testCase.longRecordingProject();
+            options = struct("iterations", 1);
+            project.run("ophys.motion_correction", {entity}, Options=options);
+            expected = OphysTest.outputBytes(project, entity, OphysTest.outputs());
+            testCase.removeOutputs(project, entity, OphysTest.outputs());
+            testCase.stopAfter(project, entity, "ophys.motion_correction", options, 2);   % 200 frames written
+            path = project.writePath(entity, "TwoPhotonSeries_Corrected");
+            bytes = OphysTest.outputBytes(project, entity, "TwoPhotonSeries_Corrected");
+            bytes = bytes{1};
+            header = numel(bytes) - 48 * 48 * 2 * 200;
+            fid = fopen(path, "w");
+            fwrite(fid, bytes(1:header + 48 * 48 * 2 * 150), "uint8");   % frames lost: 150 of the 200 there
+            fclose(fid);
+            context = nansen.MethodContext(Project=project);
+            project.run("ophys.motion_correction", {entity}, Options=options, Context=context);
+            testCase.verifyFalse(any(contains(context.Lines, "going on")));   % started over
+            testCase.verifyEqual(OphysTest.outputBytes(project, entity, OphysTest.outputs()), expected);
+        end
+
+        function arraysAreKeptExactly(testCase)
+            values = randn(3, 4, 2);
+            kept = nansen.Checkpoint.decode(jsondecode(jsonencode(nansen.Checkpoint.encode(values))));
+            testCase.verifyEqual(kept, values);
+            encoded = nansen.Checkpoint.encode(int32([1, 2, 3; 4, 5, 6]));
+            testCase.verifyEqual(encoded.shape, [2, 3]);
+            testCase.verifyEqual(string(encoded.dtype), "int32");
+            testCase.verifyEqual(typecast(matlab.net.base64decode(string(encoded.data)), 'int32'), int32([1, 4, 2, 5, 3, 6]));
+        end
+
+        function otherStackWritersGoOnWhereTheyStopped(testCase)
+            [project, entity] = testCase.longRecordingProject();
+            runs = {"ophys.denoise", struct("stack", "TwoPhotonSeries_Original", "temporalSigma", 2, "spatialSigma", 1), "TwoPhotonSeries_Denoised"; ...
+                "ophys.crop", struct("stack", "TwoPhotonSeries_Original", "firstRow", 3, "lastRow", 40, "firstFrame", 20, "lastFrame", 0), "TwoPhotonSeries_Cropped"; ...
+                "ophys.deinterleave", struct("channels", 2, "planes", 1), "TwoPhotonSeries_Deinterleaved"};
+            for k = 1:size(runs, 1)
+                [method, options, output] = runs{k, :};
+                whole = project.run(method, {entity}, Options=options);
+                expected = OphysTest.outputBytes(project, entity, output);
+                testCase.removeOutputs(project, entity, output);
+                testCase.stopAfter(project, entity, method, options, 1);
+                state = OphysTest.progressOf(project, entity, output);
+                testCase.verifyGreaterThan(state.framesDone, 0, method);
+                testCase.verifyEqual(project.run(method, {entity}, Options=options), whole, method);
+                testCase.verifyEqual(OphysTest.outputBytes(project, entity, output), expected, method);
+                testCase.verifyEmpty(OphysTest.progressOf(project, entity, output), method);
+            end
+        end
+
+        function skipCompletedLeavesOutEntitiesWhoseOutputsAreThere(testCase)
+            [project, entity] = testCase.longRecordingProject();
+            s4 = project.entity("session", struct("subject_id", "m1", "session_id", "s4"));
+            options = struct("referenceFrames", 10, "iterations", 1);
+            project.run("ophys.motion_correction", {entity}, Options=options);
+            testCase.verifyEqual(project.alreadyDone("ophys.motion_correction", {s4, entity}, options), [false, true]);
+            api = nansen.Api(Project=project);
+            keys = {struct("subject_id", "m1", "session_id", "s4"), struct("subject_id", "m1", "session_id", "s2")};
+            response = api.handle(struct("id", 1, "method", "methods.run", "params", struct("methodId", "ophys.motion_correction", ...
+                "entityType", "session", "keys", {keys}, "options", options, "skipCompleted", true)));
+            testCase.verifyEqual(numel(response.result.results), 1);
+            testCase.verifyEqual(string(response.result.skipped{1}.session_id), "s2");
+            testCase.verifyEqual(project.alreadyDone("ophys.motion_correction", {s4, entity}, options), [true, true]);
+            % an output gone, or still being written, is not done
+            shifts = project.writePath(entity, "MotionCorrectionShifts");
+            delete(shifts);
+            testCase.verifyFalse(project.alreadyDone("ophys.motion_correction", {entity}));
+            project.run("ophys.motion_correction", {entity}, Options=options);
+            marker = nansen.Checkpoint.progressPath(project.writePath(entity, "TwoPhotonSeries_Corrected"));
+            nansen.internal.writeText(marker, "{}");
+            testCase.verifyFalse(project.alreadyDone("ophys.motion_correction", {entity}));
+            delete(marker);
+            testCase.verifyTrue(project.alreadyDone("ophys.motion_correction", {entity}));
+            % a mark undone in the run journal takes it back
+            nansen.internal.recordRuns(project.Folder, "ophys.motion_correction", "1.0.0", {entity}, "", "undone");
+            testCase.verifyFalse(project.alreadyDone("ophys.motion_correction", {entity}));
+            response = api.handle(struct("id", 2, "method", "methods.run", "params", struct("methodId", "ophys.motion_correction", ...
+                "entityType", "session", "keys", {keys(2)}, "skipCompleted", "yes")));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+        end
+
+        function aTaskGoesOnWhereARunStoppedAndSkipsWhatIsDone(testCase)
+            [project, entity] = testCase.longRecordingProject();
+            s4 = project.entity("session", struct("subject_id", "m1", "session_id", "s4"));
+            options = struct("referenceFrames", 50, "iterations", 2);
+            project.run("ophys.motion_correction", {entity}, Options=options);
+            expected = OphysTest.outputBytes(project, entity, OphysTest.outputs());
+            testCase.removeOutputs(project, entity, OphysTest.outputs());
+            project.run("ophys.motion_correction", {s4}, Options=options);
+            testCase.stopAfter(project, entity, "ophys.motion_correction", options, 4);   % in its second iteration
+            queue = nansen.TaskQueue(project);
+            task = queue.submit("ophys.motion_correction", {s4, entity}, Options=options, SkipCompleted=true);
+            testCase.verifyTrue(task.skipCompleted);
+            done = queue.runNext();
+            testCase.verifyEqual(string(done.status), "completed");
+            skipped = nansen.internal.asCellOfStructs(done.skipped);
+            testCase.verifyEqual(numel(skipped), 1);
+            testCase.verifyEqual(string(skipped{1}.session_id), "s4");   % s4 had completed: left out
+            testCase.verifyTrue(contains(queue.log(string(done.id)), "going on from frame 100 of iteration 2"));
+            testCase.verifyEqual(OphysTest.outputBytes(project, entity, OphysTest.outputs()), expected);
+            testCase.verifyEmpty(OphysTest.progressOf(project, entity, "TwoPhotonSeries_Corrected"));
+            again = queue.retry(string(done.id));
+            testCase.verifyTrue(again.skipCompleted);
+            redo = queue.retry(string(done.id), SkipCompleted=false);
+            testCase.verifyFalse(isfield(redo, "skipCompleted"));
+            testCase.verifyEqual(numel(nansen.internal.asCellOfStructs(queue.runNext().skipped)), 2);   % both done now
+            testCase.verifyEqual(string(queue.runNext().status), "completed");
+        end
+    end
+
+    methods (Access = private)
+        function [project, entity] = longRecordingProject(testCase)
+            %longRecordingProject The ophys conformance project, with session s2's recording replaced by a longer one
+            %in three files (as StackTest's), read as TwoPhotonSeries_Original
+            folder = fullfile(testCase.Folder, "project");
+            copyfile(fullfile(nansen.internal.repoRoot(), "conformance", "api", "ophys", "project"), folder);
+            project = nansen.Project.open(folder);
+            project.scan();
+            project.sync("subject");
+            project.sync("session");
+            project.runTool("ophys.setup_variables", Options=struct("rawFilePattern", "tiff", "rawFileAdapter", "ophys.tiff_stack"));
+            rng(7);
+            frames = 250;
+            scene = 300 + 40 * randn(48, 48);
+            stack = repmat(scene, 1, 1, frames);
+            shifts = randi([-2, 2], frames, 2);
+            for t = 1:frames
+                stack(:, :, t) = circshift(stack(:, :, t), shifts(t, :));
+            end
+            stack = uint16(max(0, stack + 5 * randn(size(stack))));
+            raw = fullfile(project.Folder, "data", "raw", "sub-m1", "ses-s2");
+            delete(fullfile(raw, "*.tif"));
+            bounds = [0, 90, 170, frames];
+            for n = 1:3
+                ophys.TiffStack().write(fullfile(raw, "rec_" + n + ".tif"), stack(:, :, bounds(n) + 1:bounds(n + 1)));
+            end
+            project.scan();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+        end
+
+        function lines = stopAfter(testCase, project, entity, method, options, chunks)
+            %stopAfter Run the method, cancelled after it has done the given number of chunks (as a crash, Cancel or
+            %the app closed would stop it); its log lines
+            context = nansen.MethodContext(Project=project);
+            counter = containers.Map({'n'}, {0});
+            context.OnProgress = @(~, ~) OphysTest.tick(counter, context, chunks);
+            testCase.verifyError(@() project.run(method, {entity}, Options=options, Context=context), "nansen:Cancelled");
+            lines = context.Lines;
+        end
+
+        function removeOutputs(testCase, project, entity, names)
+            for name = string(names)
+                path = project.writePath(entity, name);
+                delete(path);
+                testCase.verifyFalse(isfile(nansen.Checkpoint.progressPath(path)), name);   % complete: no progress left
+            end
+        end
     end
 
     methods (Static)
+        function names = outputs()
+            names = ["TwoPhotonSeries_Corrected", "MotionCorrectionShifts"];
+        end
+
+        function tick(counter, context, limit)
+            counter('n') = counter('n') + 1;
+            if counter('n') >= limit
+                context.cancel();
+            end
+        end
+
+        function bytes = outputBytes(project, entity, names)
+            names = string(names);
+            bytes = cell(1, numel(names));
+            for i = 1:numel(names)
+                fid = fopen(project.writePath(entity, names(i)), "r");
+                bytes{i} = fread(fid, Inf, "*uint8");
+                fclose(fid);
+            end
+        end
+
+        function state = progressOf(project, entity, name)
+            %progressOf The progress document beside the variable's file, or [] when there is none
+            state = [];
+            path = nansen.Checkpoint.progressPath(project.writePath(entity, name));
+            if isfile(path)
+                state = jsondecode(fileread(path));
+            end
+        end
+
         function pixels = pixelsOf(mask)
             % [row, column] (0-based) of a mask's pixels, in row-major order as NumPy lists them
             [rows, columns] = find(mask);

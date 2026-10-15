@@ -12,7 +12,8 @@ function result = motionCorrection(entity, options, context)
 %   written the same way, so a recording need not fit in memory. In a stack
 %   with channels, the shifts are found in the options' channel and every
 %   channel is aligned by them; in one with planes, the options' plane is
-%   aligned (height x width x channels x frames).
+%   aligned (height x width x channels x frames). A run that stopped goes on
+%   where it stopped, to the same result (nansen.Checkpoint).
     stack = ophys.internal.openStack(context, entity, options.stack, options);
     whole = context.Project.openStack(entity, options.stack);
     whole.MaxFrames = stack.MaxFrames;
@@ -72,8 +73,23 @@ function result = motionCorrection(entity, options, context)
         high = ophys.internal.percentileOf(sample(:), 100 - saturation);
     end
     iterations = options.iterations;
-    for iteration = 1:iterations
+    if isempty(target)
+        dimensions = [height, width, frames];
+        className = outputClass(outputType, stack.ClassName);
+    else
+        dimensions = [height, width, target.Size(3:end)];
+        className = outputClass(outputType, target.ClassName);
+    end
+    % a run that stopped goes on where it stopped: from its iteration's reference and what it had found (nansen.Checkpoint)
+    checkpoint = context.Project.checkpoint(entity, options.output, dimensions, className, options, whole, ...
+        Passes=iterations, Method=context.Method);
+    if checkpoint.Resumed
+        reference = checkpoint.State.reference;
+        context.log("%s: going on from frame %d of iteration %d", ophys.internal.entityName(entity), checkpoint.FramesDone, checkpoint.PassNumber);
+    end
+    for iteration = checkpoint.PassNumber:iterations
         last = iteration == iterations;
+        first = checkpoint.firstFrame(iteration);
         shifts = zeros(frames, 2, patches, patches);
         referenceFft = ophys.internal.referenceFft(reference, tapered);
         patchFfts = cell(patches, patches);
@@ -83,14 +99,15 @@ function result = motionCorrection(entity, options, context)
             end
         end
         total = zeros(height, width);
-        if last
-            if isempty(target)
-                writer = context.Project.stackWriter(entity, options.output, [height, width, frames], outputClass(outputType, stack.ClassName));
-            else
-                writer = context.Project.stackWriter(entity, options.output, [height, width, target.Size(3:end)], outputClass(outputType, target.ClassName));
-            end
+        if first > 1 && last
+            shifts(1:first - 1, :, :, :) = reshape(checkpoint.State.shifts, first - 1, 2, patches, patches);
+        elseif first > 1
+            total = checkpoint.State.total;
         end
-        for start = 1:ophys.internal.chunk():frames
+        if last
+            writer = checkpoint.writer();
+        end
+        for start = first:ophys.internal.chunk():frames
             context.checkCancelled();
             stop = min(start + ophys.internal.chunk() - 1, frames);
             chunk = preparation.prepare(stack.frames(start, stop), start);
@@ -117,6 +134,11 @@ function result = motionCorrection(entity, options, context)
             else
                 total = total + sum(double(ophys.internal.alignFrames(chunk, here, weights, subpixel)), 3);
             end
+            if last
+                checkpoint.save(iteration, stop, struct("reference", reference, "shifts", shifts(1:stop, :, :, :)));
+            else
+                checkpoint.save(iteration, stop, struct("reference", reference, "total", total));
+            end
             context.progress(((iteration - 1) * frames + stop) / (iterations * frames), ...
                 sprintf("iteration %d: frame %d/%d", iteration, stop, frames));
         end
@@ -139,6 +161,7 @@ function result = motionCorrection(entity, options, context)
         saved = int32(saved);
     end
     ophys.internal.saveIf(context, entity, options.shiftsOutput, saved);
+    checkpoint.finish();
     distance = sqrt(shifts(:, 1, :, :) .^ 2 + shifts(:, 2, :, :) .^ 2);
     largest = max([0; abs(shifts(:))]);
     if subpixel   % found to 1/20 of a pixel, and good to about a tenth

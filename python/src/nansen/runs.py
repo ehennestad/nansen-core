@@ -1,10 +1,12 @@
 """The run journal: which methods have completed on which entities.
 
-Every time a method completes, in the queue or in the foreground, one line per entity is appended to
-runs/<entityType>.runs.jsonl in the project: a nansen.run record. The file is only appended to, in one
-write per run, so workers in other threads or processes (or MATLAB) can add to it at the same time. A
+Every time a method completes on an entity, in the queue or in the foreground, a line is appended to
+runs/<entityType>.runs.jsonl in the project: a nansen.run record. A serial method's line is written as soon as
+it is done with that entity, so a run over many that stops part way keeps those it finished (and a run with
+skipCompleted leaves them out); a batch method's lines when it is done with all. The file is only appended to,
+in one write each time, so workers in other threads or processes (or MATLAB) can add to it at the same time. A
 pipeline step is done for an entity once its method has completed on it; that is what the progress of
-an entity's pipeline is made of. nansen.internal.runs does the same in MATLAB.
+an entity's pipeline is made of. nansen.internal.recordRuns and completedRuns do the same in MATLAB.
 """
 
 from __future__ import annotations

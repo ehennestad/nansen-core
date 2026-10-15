@@ -35,20 +35,32 @@ function task = runTask(project, taskId, options)
         references = nansen.internal.asCellOfStructs(task.entities);
         entities = cellfun(@(r) project.entity(string(r.entityType), r.key), references, UniformOutput=false);
         context.log("%s %s on %d %s(s)", method.Id, method.Version, numel(entities), entities{1}.EntityType);
-        results = nansen.runMethod(method, entities, task.options.values, context);
-        nansen.internal.recordRuns(project.Folder, method.Id, method.Version, entities, string(taskId));
+        if isfield(task, "skipCompleted") && task.skipCompleted   % those it already ran on, with their outputs there, are left out
+            done = project.alreadyDone(method.Id, entities, task.options.values);
+            skipped = cellfun(@(e) e.Key, entities(done), UniformOutput=false);
+            task.skipped = skipped;
+            for i = find(done)
+                context.log("skipped %s: %s already ran on it and its outputs are there", jsonencode(entities{i}.Key), method.Id);
+            end
+            entities = entities(~done);
+        end
+        folder = project.Folder;
+        results = nansen.runMethod(method, entities, task.options.values, context, ...
+            OnDone=@(finished) nansen.internal.recordRuns(folder, method.Id, method.Version, finished, string(taskId)));
         task.status = 'completed';
         task.progress = 1;
-        if method.BatchMode == "batch"
-            results = results{1};
-        end
-        try
-            text = jsonencode(results);
-            if strlength(text) <= 64 * 1024
-                task.result = jsondecode(text);
+        if ~isempty(results)
+            if method.BatchMode == "batch"
+                results = results{1};
             end
-        catch
-            % not JSON; the task still completed
+            try
+                text = jsonencode(results);
+                if strlength(text) <= 64 * 1024
+                    task.result = jsondecode(text);
+                end
+            catch
+                % not JSON; the task still completed
+            end
         end
         context.log("completed");
     catch err

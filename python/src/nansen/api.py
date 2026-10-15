@@ -91,6 +91,14 @@ def _frame_rate(params: dict, entity: Any) -> Optional[float]:
     return float(rate)
 
 
+def _flag(params: dict, name: str) -> bool:
+    """A true-or-false parameter, false when not given."""
+    value = params.get(name, False)
+    if not isinstance(value, bool):
+        raise NansenError("invalid-params", f"{name} is true or false")
+    return value
+
+
 def _open_url(url: str) -> None:
     import webbrowser
     webbrowser.open(url)
@@ -1295,15 +1303,23 @@ class Api:
         return project.presets(params["methodId"])
 
     def methods__run(self, params: dict) -> dict:
-        """Run a method now and wait for it (for quick methods); long ones go through tasks.submit."""
+        """Run a method now and wait for it (for quick methods); long ones go through tasks.submit. With skipCompleted,
+        the entities it already completed on whose outputs are there are left out (skipped)."""
         project = self._require_project()
         method = project.method(params["methodId"])
         if method.languages and "python" not in method.languages:
             return self._run_in_worker(method, params)
-        results = project.run(params["methodId"], self._entities(params), params.get("options"), params.get("preset"))
-        self.emit("entities", {"entityTypes": [params["entityType"]]})
+        entities, skipped = self._entities(params), []
+        if _flag(params, "skipCompleted"):
+            values = project.preset(method.id, params["preset"]) if params.get("preset") else {}
+            done = project.already_done(method.id, entities, dict(values, **(params.get("options") or {})))
+            skipped = [dict(e.key) for e, d in zip(entities, done) if d]
+            entities = [e for e, d in zip(entities, done) if not d]
+        results = project.run(params["methodId"], entities, params.get("options"), params.get("preset")) if entities else []
+        if entities:
+            self.emit("entities", {"entityTypes": [params["entityType"]]})
         from .tasks import _json_result
-        return {"results": _json_result(results)}
+        return {"results": _json_result(results), "skipped": skipped}
 
     def _run_in_worker(self, method, params: dict) -> dict:
         """Run a method only another language has: queue it for that language, start a worker for it (queue.startWorker)
@@ -1313,7 +1329,8 @@ class Api:
 
         language = method.languages[0]
         queue = self._queue()
-        task = queue.submit(method.id, self._entities(params), params.get("options"), params.get("preset"), language)
+        task = queue.submit(method.id, self._entities(params), params.get("options"), params.get("preset"), language,
+                            _flag(params, "skipCompleted"))
         self.queue__startWorker({"language": language})
         started, timeout = time.monotonic(), float(params.get("startTimeout", WORKER_START_SECONDS))
         while task["status"] not in TERMINAL:
@@ -1328,7 +1345,11 @@ class Api:
             message = (task.get("error") or {}).get("message", "")
             raise NansenError("task-failed", f"{method.id} {task['status']} in a {language} worker" + (f": {message}" if message else ""))
         result = task.get("result")
-        return {"results": result if method.batch_mode == "serial" else [result], "taskId": task["id"], "language": language}
+        if len(task["entities"]) == len(task.get("skipped", [])):
+            results = []   # every entity was left out
+        else:
+            results = result if method.batch_mode == "serial" else [result]
+        return {"results": results, "skipped": task.get("skipped", []), "taskId": task["id"], "language": language}
 
     def methods__preview(self, params: dict) -> dict:
         """Run a method on the first frames of one entity's stacks, saving nothing (nansen.preview)."""
@@ -1345,7 +1366,7 @@ class Api:
 
     def tasks__submit(self, params: dict) -> dict:
         return self._queue().submit(params["methodId"], self._entities(params), params.get("options"),
-                                    params.get("preset"), params.get("language"))
+                                    params.get("preset"), params.get("language"), _flag(params, "skipCompleted"))
 
     def pipelines__list(self, params: dict) -> list:
         project = self._require_project()
@@ -1455,7 +1476,8 @@ class Api:
         return self._queue().cancel(params["id"])
 
     def tasks__retry(self, params: dict) -> dict:
-        return self._queue().retry(params["id"])
+        skip = params.get("skipCompleted")
+        return self._queue().retry(params["id"], None if skip is None else _flag(params, "skipCompleted"))
 
     def tasks__hold(self, params: dict) -> dict:
         return self._queue().hold(params["id"], params.get("hold", True))

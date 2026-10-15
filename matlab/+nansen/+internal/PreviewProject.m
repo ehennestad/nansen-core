@@ -90,6 +90,23 @@ classdef PreviewProject < handle
             end
         end
 
+        function progress = checkpoint(obj, entity, name, dimensions, className, options, source, settings) %#ok<INUSD>
+            %checkpoint No progress is kept: a preview starts from the first frame, and its stacks are kept in memory
+            arguments
+                obj
+                entity
+                name
+                dimensions (1, :) double
+                className (1, 1) string
+                options
+                source
+                settings.Passes (1, 1) double = 1
+                settings.Method = []
+            end
+            progress = nansen.Checkpoint("", string(name), dimensions, className, struct(), Passes=settings.Passes, ...
+                Create=@() obj.stackWriter(entity, name, dimensions, className));
+        end
+
         function names = updateValues(obj, entity, values)
             %updateValues The columns the values would be written to; nothing is written
             names = nansen.Project.writableNames(obj.Inner.table(entity.EntityType), values);

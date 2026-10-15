@@ -6,7 +6,7 @@ import json
 import re
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from .adapters import AdapterRegistry
 from .cache import DataCache
@@ -23,6 +23,9 @@ from . import runs
 from .schemas import current_version
 from .stacks import Stack, StackWriter, as_stack, natural_order
 from .tables import Column, EntityTable, TableSpec
+
+if TYPE_CHECKING:
+    from .progress import Checkpoint
 
 PROJECT_FILE = "project.nansen.json"
 SCAN_FILE = "cache/scan.nansen.json"
@@ -863,9 +866,41 @@ class Project:
         context = context or MethodContext(project=self, method=method)
         if context.project is None:
             context.project = self
-        results = run_method(method, entities, values, context)
-        runs.record(self.folder, method.id, method.version, entities)
-        return results
+        if context.method is None:
+            context.method = method
+        return run_method(method, entities, values, context,
+                          on_done=lambda done: runs.record(self.folder, method.id, method.version, done))
+
+    def already_done(self, method_id: str, entities: List[Entity], options: Optional[Dict[str, Any]] = None) -> List[bool]:
+        """For each entity, whether running the method on it again can be skipped (dev's RedoIfCompleted off): it has
+        completed on the entity (the run journal), and what it writes is there. That is, every data variable its
+        options name as an output (the option output, and those whose names end in Output; empty ones are left out)
+        has a file for the entity that is not still being written (no progress document beside it, nansen.progress).
+        A method with no such options is done once it has completed."""
+        from .progress import progress_path
+
+        method = self.method(method_id)
+        values = method.resolve_options(options)
+        outputs = [v for k, v in values.items() if (k == "output" or k.endswith("Output")) and isinstance(v, str) and v]
+        journals: Dict[str, Dict[runs.KeyId, Dict[str, str]]] = {}
+        done = []
+        for entity in entities:
+            if entity.entity_type not in journals:
+                journals[entity.entity_type] = runs.completed(self.folder, entity.entity_type)
+            if method.id not in journals[entity.entity_type].get(runs.key_id(entity.key), {}):
+                done.append(False)
+                continue
+            there = True
+            for name in outputs:
+                try:
+                    files = self.existing_files(entity, name)
+                except NansenError:
+                    files = []
+                if not files or any(progress_path(f).is_file() for f in files):
+                    there = False
+                    break
+            done.append(there)
+        return done
 
     def tools(self) -> List[Method]:
         """The project tools: methods that run once on the project (entityType @project)."""
@@ -1176,6 +1211,31 @@ class Project:
             forget()
             return writer
         return StackWriter(shape, dtype, finish=lambda data: (adapter.write(path, data), forget()))
+
+    def checkpoint(self, entity: Entity, name: str, shape: Any, dtype: Any, options: Any, source: Any,
+                   passes: int = 1, method: Optional[Method] = None) -> "Checkpoint":
+        """The progress of the variable as a stack being written a chunk at a time (nansen.progress.Checkpoint), so a
+        run that stopped goes on where it stopped: kept in <file>.progress.json beside the variable's file while it is
+        written. It goes on only from a run with the same options, input stack (source: its size and type) and method
+        version, into a file an adapter with ``reopen`` can go on writing; otherwise it starts over. An empty name
+        keeps nothing."""
+        from .progress import Checkpoint
+
+        source = as_stack(source)
+        inputs = {"options": options, "stack": {"shape": [int(n) for n in source.shape], "dtype": source.dtype.name}}
+        reference = {"id": method.id, "version": method.version} if method is not None else None
+        if not name:
+            return Checkpoint(None, "", shape, dtype, inputs, passes, reference)
+        variable = self.data_variable(name)
+        path = self.write_path(entity, name)
+        adapter = self.adapters.get(variable.file_adapter)
+        reopen = None
+        if hasattr(adapter, "reopen"):
+            def reopen():
+                self.data_cache.remove((variable.file_adapter, str(path.resolve())))
+                return adapter.reopen(path, shape, dtype)
+        return Checkpoint(path, name, shape, dtype, inputs, passes, reference,
+                          create=lambda: self.stack_writer(entity, name, shape, dtype), reopen=reopen)
 
     def save(self, entity: Entity, name: str, data: Any) -> Path:
         """Write the variable for the entity, creating folders as needed. Returns the path written.

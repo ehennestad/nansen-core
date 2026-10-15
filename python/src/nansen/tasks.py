@@ -150,8 +150,11 @@ class TaskQueue:
     # -- queueing -----------------------------------------------------------------------------
 
     def submit(self, method_id: str, entities: List[Any], options: Optional[Dict[str, Any]] = None,
-               preset: Optional[str] = None, language: Optional[str] = None) -> dict:
-        """Queue a method on entities. Options are resolved and validated now, so a queued task is runnable."""
+               preset: Optional[str] = None, language: Optional[str] = None, skip_completed: bool = False) -> dict:
+        """Queue a method on entities. Options are resolved and validated now, so a queued task is runnable.
+
+        With skip_completed, the task leaves out, when it runs, the entities the method already completed on whose
+        outputs are there (Project.already_done), and lists them as skipped."""
         method = self.project.method(method_id)
         if not method.queueable:
             raise NansenError("not-queueable", f"method {method_id!r} cannot run in the background")
@@ -161,6 +164,8 @@ class TaskQueue:
             if not method.applies_to(entity.entity_type):
                 raise NansenError("wrong-entity-type", f"{method.id} runs on {method.entity_type}")
         task = self._make(method, entities, options, preset, language)
+        if skip_completed:
+            task["skipCompleted"] = True
         self._save(task)
         self._wake.set()
         return task
@@ -237,13 +242,20 @@ class TaskQueue:
                 self.cancel_path(task_id).write_text(now())
             return task
 
-    def retry(self, task_id: str) -> dict:
-        """Queue a finished task again, as a new task with the same method, entities and options."""
+    def retry(self, task_id: str, skip_completed: Optional[bool] = None) -> dict:
+        """Queue a finished task again, as a new task with the same method, entities and options (dev's Restart).
+
+        A stack the task was writing when it stopped is gone on with where it stopped (nansen.progress). With
+        skip_completed (when given; else as the task had it), the entities it already completed on are left out."""
         old = self.get(task_id)
         if old["status"] not in TERMINAL:
             raise NansenError("task-active", f"task {task_id} is {old['status']}")
         task = {k: v for k, v in old.items() if k in ("schemaType", "schemaVersion", "method", "entities", "options",
-                                                       "language", "pipeline")}
+                                                       "language", "pipeline", "skipCompleted")}
+        if skip_completed is not None:
+            task.pop("skipCompleted", None)
+            if skip_completed:
+                task["skipCompleted"] = True
         task.update(id=str(uuid.uuid4()), status="queued", createdAt=self._created_at(), progress=0)
         self._save(task)
         self._wake.set()
@@ -520,10 +532,16 @@ def run_task(project, task_id: str, on_event: Optional[EventHandler] = None) -> 
             cancel_event.set()
         entities = [project.entity(ref["entityType"], ref["key"]) for ref in task["entities"]]
         context.log(f"{method.id} {method.version} on {len(entities)} {entities[0].entity_type}(s)")
-        results = run_method(method, entities, task["options"]["values"], context)
-        runs.record(project.folder, method.id, method.version, entities, task_id)
+        if task.get("skipCompleted"):   # those it already ran on, with their outputs there, are left out
+            done = project.already_done(method.id, entities, task["options"]["values"])
+            task["skipped"] = [dict(e.key) for e, d in zip(entities, done) if d]
+            for entity in (e for e, d in zip(entities, done) if d):
+                context.log(f"skipped {entity.key}: {method.id} already ran on it and its outputs are there")
+            entities = [e for e, d in zip(entities, done) if not d]
+        results = run_method(method, entities, task["options"]["values"], context,
+                             on_done=lambda finished: runs.record(project.folder, method.id, method.version, finished, task_id))
         task.update(status="completed", progress=1)
-        result = _json_result(results if method.batch_mode == "serial" else results[0])
+        result = _json_result(results if method.batch_mode == "serial" else results[0]) if results else None
         if result is not None:
             task["result"] = result
         context.log("completed")
