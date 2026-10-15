@@ -1582,6 +1582,7 @@ def test_fov_map_images_photos_undo_and_svg(empty_app, page):
     s1 = {"subject_id": "m1", "session_id": "s1"}
     run = lambda method, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": [s1], "options": options})
     api = ophys_project(empty_app, [run("ophys.motion_correction", referenceFrames=1), run("ophys.image_stats"),
+                                    run("ophys.detect_rois", threshold=0.25, border=4),
                                     ("entities.update", {"entityType": "session", "key": s1, "values": {"fov_ml": 2.3, "fov_ap": -3.6}}),
                                     ("entities.update", {"entityType": "subject", "key": {"subject_id": "m1"}, "values": {"window_ml": 2, "window_ap": -2}})])
     (empty_app["folder"] / "ophys" / "images").mkdir()
@@ -1593,6 +1594,8 @@ def test_fov_map_images_photos_undo_and_svg(empty_app, page):
     assert page.locator(".fov-image-variable").input_value() == "FovAverageProjection"
     page.check(".fov-images")   # each FOV's average image in its place
     page.wait_for_selector(".fov-canvas[data-images='1']")
+    page.check(".fov-rois")   # fovmanager's Show ROIs: its ROIs over it
+    page.wait_for_selector(".fov-canvas[data-rois='3']")
     page.click(".fov-list li[data-subject='m1']")
     page.click(".add-photo")
     page.fill(".photo-dialog input[name=path]", "images/window.png")
@@ -1624,7 +1627,7 @@ def test_fov_map_images_photos_undo_and_svg(empty_app, page):
         page.click(".fov-export-svg")
     assert download.value.suggested_filename == "fov_map_m1.svg"
     text = open(download.value.path()).read()
-    assert text.startswith("<svg") and text.count("<image") == 3 and "<path" in text and "<rect" in text   # atlas, photo, FOV image
+    assert text.startswith("<svg") and text.count("<image") == 4 and "<path" in text and "<rect" in text   # atlas, photo, FOV image, its ROIs
 
 
 def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):

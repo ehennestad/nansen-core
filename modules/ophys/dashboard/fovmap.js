@@ -266,7 +266,7 @@ N.registerPage({
       return;
     }
     const atlas = await loadAtlas(app);
-    const state = { subject: null, session: null, placing: null, labels: true, hover: null, images: false, imageVariable: "", opacity: 0.8 };
+    const state = { subject: null, session: null, placing: null, labels: true, hover: null, images: false, imageVariable: "", opacity: 0.8, rois: false, roiVariable: "" };
     const imageCache = new Map();   // FOV images and window photos, by what they were read from: a canvas, or null when unreadable
     const history = [], future = [];   // undo and redo: {undo, redo} of changes to the marks and to placements
     let sessions = [];
@@ -341,14 +341,17 @@ N.registerPage({
     }
     async function loadChoices() {
       try {
-        imageVariables = (await app.client.request("dataVariables.list", {}))
-          .filter((v) => v.entityType === fovType.name && ["Image", "ImageStack"].includes(v.dataType));
-      } catch (error) { imageVariables = []; }
+        const all = (await app.client.request("dataVariables.list", {})).filter((v) => v.entityType === fovType.name);
+        imageVariables = all.filter((v) => ["Image", "ImageStack"].includes(v.dataType));
+        roiVariables = all.filter((v) => v.dataType === "RoiArray");
+      } catch (error) { imageVariables = []; roiVariables = []; }
       try {
         const dataset = await app.client.request("dataset.get", {});
         locations = (JSON.parse(dataset.text).dataLocations || []).map((l) => l.identifier);
       } catch (error) { locations = []; }
       state.imageVariable = (imageVariables.find((v) => v.name === "FovAverageProjection") || imageVariables[0] || {}).name || "";
+      state.roiVariable = (roiVariables.find((v) => v.name === "RoiArray") || roiVariables[0] || {}).name || "";
+      roiToggle.disabled = !state.roiVariable || !imageVariables.length;
       N.fill(imagePick, imageVariables.map((v) => h("option", { value: v.name, selected: v.name === state.imageVariable }, v.title || v.name)));
       imageToggle.disabled = !imageVariables.length;
     }
@@ -372,7 +375,25 @@ N.registerPage({
       const colours = await Promise.all([0, 1, 2].map((channel) => app.client.request("files.frame", { ...where, channel, limits: [0, 255] })));
       return frameCanvas(colours);
     });
+    // An FOV's ROIs (fovmanager's Show ROIs), as data.frame gives them with its image: drawn once on a canvas of the image's size
+    const fovRois = (session) => cachedImage(`rois|${state.roiVariable}|${state.imageVariable}|${keyText(session.key)}`, async () => {
+      const variable = imageVariables.find((v) => v.name === state.imageVariable);
+      const frame = await app.client.request("data.frame", { entityType: fovType.name, key: session.key, variable: state.imageVariable,
+        rois: state.roiVariable, ...(variable && variable.dataType === "ImageStack" ? { projection: "mean" } : {}) });
+      const layer = document.createElement("canvas");
+      layer.width = frame.width;
+      layer.height = frame.height;
+      const ctx = layer.getContext("2d");
+      const colours = { accepted: "rgba(60, 200, 90, 0.85)", rejected: "rgba(220, 60, 60, 0.6)" };
+      (frame.rois || []).forEach((roi) => {
+        ctx.fillStyle = colours[roi.classification] || "rgba(0, 210, 255, 0.85)";
+        roi.pixels.forEach(([row, column]) => ctx.fillRect(column, row, 1, 1));
+      });
+      layer.dataset.count = String((frame.rois || []).length);
+      return layer;
+    });
     let imageVariables = [];
+    let roiVariables = [];
     let locations = [];
 
     // A session belongs to the subject whose key values it carries
@@ -396,6 +417,7 @@ N.registerPage({
     const updateHistory = () => { undoButton.disabled = !history.length; redoButton.disabled = !future.length; };
     const imageToggle = h("input.fov-images", { type: "checkbox", on: { change: () => { state.images = imageToggle.checked; draw(); } } });
     const imagePick = h("select.input.fov-image-variable", { title: "The FOVs' image", on: { change: () => { state.imageVariable = imagePick.value; draw(); } } });
+    const roiToggle = h("input.fov-rois", { type: "checkbox", disabled: true, on: { change: () => { state.rois = roiToggle.checked; draw(); } } });
     const opacityPick = h("input.fov-opacity", { type: "range", min: 0, max: 1, step: 0.05, value: state.opacity, title: "Opacity of the FOV images",
       on: { input: () => { state.opacity = Number(opacityPick.value); draw(); } } });
     const addPhoto = h("button.btn.small.add-photo", { title: "Show a photo of the subject's window on the map", on: { click: async () => {
@@ -421,7 +443,7 @@ N.registerPage({
     }
 
     function draw(ctx = canvas.getContext("2d")) {
-      let drawnImages = 0, drawnPhotos = 0;
+      let drawnImages = 0, drawnPhotos = 0, drawnRois = 0;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(atlasImage(atlas), 0, 0, canvas.width, canvas.height);
@@ -510,12 +532,22 @@ N.registerPage({
           ctx.fillStyle = selected ? "rgba(61, 90, 254, 0.45)" : "rgba(255, 170, 0, 0.35)";
           ctx.fillRect(x - w / 2, y - hgt / 2, w, hgt);
         }
+        const rois = state.rois && state.roiVariable && state.imageVariable ? fovRois(s) : null;
+        if (rois) {   // its ROIs over it, row and column scaled into the FOV
+          ctx.save();
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(rois, x - w / 2, y - hgt / 2, w, hgt);
+          ctx.restore();
+          drawnRois += Number(rois.dataset.count);
+        }
         ctx.strokeStyle = selected ? "#3d5afe" : "#b26a00";
         ctx.lineWidth = selected ? 2.5 : 1.5;
         ctx.setLineDash([]);
         ctx.strokeRect(x - w / 2, y - hgt / 2, w, hgt);
       });
-      if (ctx === canvas.getContext("2d")) { canvas.dataset.images = String(drawnImages); canvas.dataset.photos = String(drawnPhotos); }
+      if (ctx === canvas.getContext("2d")) {
+        canvas.dataset.images = String(drawnImages); canvas.dataset.photos = String(drawnPhotos); canvas.dataset.rois = String(drawnRois);
+      }
     }
 
     function renderLists() {
@@ -693,6 +725,7 @@ N.registerPage({
         h("div.card.fov-map",
           h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, addPhoto, h("div.spacer"), undoButton, redoButton),
           h("div.fov-bar.fov-view-bar", h("label.fov-labels", labels, "Region labels"), h("label.fov-labels", imageToggle, "FOV images"), imagePick, opacityPick,
+            h("label.fov-labels", { title: "Each FOV's ROIs in its place: accepted green, rejected red" }, roiToggle, "ROIs"),
             h("div.spacer"), exportButton, svgButton),
           canvas, where),
         h("div.fov-side-column",
