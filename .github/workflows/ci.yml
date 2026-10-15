@@ -46,7 +46,7 @@ jobs:
 
       - name: Install package, Playwright and Chromium
         run: |
-          pip install -e ".[test,ophys,hdf5]" playwright
+          pip install -e ".[test,ophys,hdf5,video]" playwright
           python -m playwright install --with-deps chromium
 
       - name: Check the frontend scripts parse
