@@ -28,7 +28,7 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             project.scan();
             project.sync("subject");
             project.sync("session");
-            project.runTool("ophys.setup_variables", struct("rawFilePattern", "tiff", "rawFileAdapter", "ophys.tiff_stack"));
+            project.runTool("ophys.setup_variables", Options=struct("rawFilePattern", "tiff", "rawFileAdapter", "ophys.tiff_stack"));
             testCase.Session = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
             project.save(testCase.Session, "TwoPhotonSeries_Corrected", clean);
             testCase.Project = project;

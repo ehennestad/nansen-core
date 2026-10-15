@@ -10,8 +10,7 @@
     "fragments/fov_position.fragment.nansen.json",
     "fragments/fov_region.fragment.nansen.json",
     "fragments/image_stats.fragment.nansen.json",
-    "fragments/imaging.fragment.nansen.json",
-    "fragments/injection.fragment.nansen.json"
+    "fragments/imaging.fragment.nansen.json"
   ],
   "methods": [
     "methods/align_sessions.method.nansen.json",
@@ -45,6 +44,109 @@
   ],
   "presets": [
     "presets/motion_correction.thorough.options.nansen.json"
+  ],
+  "addons": [
+    {
+      "id": "normcorre",
+      "title": "NoRMCorre",
+      "language": "matlab",
+      "source": {
+        "github": "flatironinstitute/NoRMCorre"
+      },
+      "check": "normcorre",
+      "description": "Rigid and piecewise rigid motion correction (ophys.normcorre)",
+      "url": "https://github.com/flatironinstitute/NoRMCorre"
+    },
+    {
+      "id": "caiman-matlab",
+      "title": "CaImAn (MATLAB)",
+      "language": "matlab",
+      "source": {
+        "github": "flatironinstitute/CaImAn-MATLAB"
+      },
+      "check": "deconvolveCa",
+      "description": "Deconvolution (ophys.caiman_deconvolution)",
+      "url": "https://github.com/flatironinstitute/CaImAn-MATLAB"
+    },
+    {
+      "id": "extract",
+      "title": "EXTRACT",
+      "language": "matlab",
+      "source": {
+        "github": "schnitzer-lab/EXTRACT-public"
+      },
+      "check": "extractor",
+      "description": "Cell extraction (ophys.extract); needs the Image Processing, Statistics, Signal Processing and Parallel Computing toolboxes",
+      "url": "https://github.com/schnitzer-lab/EXTRACT-public"
+    },
+    {
+      "id": "flow-registration",
+      "title": "Flow-Registration",
+      "language": "matlab",
+      "source": {
+        "github": "FlowRegSuite/flow_registration"
+      },
+      "check": "OF_options",
+      "description": "Non-rigid motion correction by optical flow (ophys.flowreg); its solver is compiled when it is installed",
+      "url": "https://github.com/FlowRegSuite/flow_registration",
+      "setup": "core/make.m"
+    },
+    {
+      "id": "nansen-dev",
+      "title": "NANSEN dev apps",
+      "language": "matlab",
+      "source": {
+        "github": "VervaekeLab/NANSEN"
+      },
+      "check": "imviewer",
+      "description": "imviewer and flufinder (ophys.open_in_imviewer, ophys.flufinder), put on the path after this NANSEN",
+      "url": "https://github.com/VervaekeLab/NANSEN",
+      "pathOrder": "end"
+    },
+    {
+      "id": "suite2p",
+      "title": "suite2p",
+      "language": "python",
+      "source": {
+        "pip": "suite2p"
+      },
+      "check": "suite2p",
+      "description": "Registration, cell detection and signals (ophys.suite2p)",
+      "url": "https://github.com/MouseLand/suite2p"
+    },
+    {
+      "id": "deepinterpolation",
+      "title": "DeepInterpolation",
+      "language": "python",
+      "source": {
+        "pip": "deepinterpolation @ git+https://github.com/AllenInstitute/deepinterpolation"
+      },
+      "check": "deepinterpolation",
+      "description": "Denoising with a trained network (ophys.deep_interpolation); also needs tensorflow and h5py",
+      "url": "https://github.com/AllenInstitute/deepinterpolation"
+    },
+    {
+      "id": "caiman",
+      "title": "CaImAn",
+      "language": "python",
+      "source": {
+        "conda": "caiman"
+      },
+      "check": "caiman",
+      "description": "Deconvolution (ophys.caiman_deconvolution)",
+      "url": "https://github.com/flatironinstitute/CaImAn"
+    },
+    {
+      "id": "tifffile",
+      "title": "tifffile",
+      "language": "python",
+      "source": {
+        "pip": "tifffile"
+      },
+      "check": "tifffile",
+      "description": "TIFF and ScanImage files (ophys.tiff_stack, ophys.scanimage_tiff)",
+      "url": "https://github.com/cgohlke/tifffile"
+    }
   ],
   "dashboard": [
     "dashboard/fovmap.js",

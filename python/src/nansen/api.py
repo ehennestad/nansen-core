@@ -20,7 +20,7 @@ import dsm
 from . import __version__
 from .catalog import Catalog
 from .dataset import Dataset
-from .documents import check_document
+from .documents import check_document, read_document, write_json
 from .entities import Entity
 from .errors import NansenError
 from .frames import image_frame, roi_outlines, update_rois
@@ -208,6 +208,41 @@ class Api:
         if not path.is_file():
             raise NansenError("file-not-found", f"module {module.id} has no {relative}")
         return {"module": module.id, "path": relative, "text": path.read_text(encoding="utf-8")}
+
+    def modules__data(self, params: dict) -> dict:
+        """A module's data in the project, as JSON text ("null" when there is none), and its revision (0 then)."""
+        path = self._module_data_path(params)
+        if not path.is_file():
+            return {"module": params["module"], "name": params["name"], "text": "null", "revision": 0}
+        document = read_document(path, "nansen.moduleData")
+        return {"module": document["module"], "name": document["name"], "text": document["text"], "revision": document["revision"]}
+
+    def modules__saveData(self, params: dict) -> dict:
+        """Save a module's data (JSON text); with revision, only when that is still the stored one (revision-conflict otherwise)."""
+        path = self._module_data_path(params)
+        current = read_document(path, "nansen.moduleData")["revision"] if path.is_file() else 0
+        if params.get("revision") is not None and params["revision"] != current:
+            raise NansenError("revision-conflict", f"{params['module']}/{params['name']} is at revision {current}, not {params['revision']}")
+        text = params.get("text")
+        try:
+            json.loads(text)
+        except (TypeError, ValueError):
+            raise NansenError("invalid-params", "text is not JSON text") from None
+        document = {"schemaType": "nansen.moduleData", "schemaVersion": "0.1.0", "module": params["module"],
+                    "name": params["name"], "revision": current + 1, "text": text}
+        check_document(document, "nansen.moduleData")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(path, document)
+        self.emit("moduleData", {"module": params["module"], "name": params["name"], "revision": current + 1})
+        return {"module": params["module"], "name": params["name"], "revision": current + 1}
+
+    def _module_data_path(self, params: dict) -> Path:
+        project = self._require_project()
+        if not any(m.id == params["module"] for m in project.modules):
+            raise NansenError("unknown-module", f"the project does not use a module {params['module']!r}")
+        if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]*$", str(params["name"])):
+            raise NansenError("invalid-params", f"{params['name']!r} is not a name for module data")
+        return project.folder / "module-data" / params["module"] / f"{params['name']}.json"
 
     def app__info(self, params: dict) -> dict:
         return {"name": "nansen", "language": "python", "version": __version__, "protocolVersion": PROTOCOL_VERSION,

@@ -18,10 +18,41 @@
     "methods": { "$ref": "#/definitions/paths" },
     "fileAdapters": { "$ref": "#/definitions/paths" },
     "pipelines": { "$ref": "#/definitions/paths" },
+    "addons": {
+      "type": "array",
+      "description": "Toolboxes and packages the module's methods use, which the add-on manager (addons.list, addons.install) lists and installs.",
+      "items": { "$ref": "#/definitions/addon" }
+    },
     "dashboard": { "$ref": "#/definitions/scripts", "description": "Scripts the dashboard runs when a project uses the module: each adds pages with N.registerPage. Files of the module they need are read with modules.resource." },
     "presets": { "$ref": "#/definitions/paths", "description": "Option presets (nansen.options documents) of the module's or other modules' methods. A project's own preset of the same name is used instead." }
   },
   "definitions": {
+    "addon": {
+      "type": "object",
+      "required": ["id", "title", "language", "source", "check"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "language": { "enum": ["matlab", "python"] },
+        "source": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Where it comes from: one of github, pip or conda",
+          "additionalProperties": false,
+          "properties": {
+            "github": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "description": "owner/repository: the default branch is downloaded into the add-ons folder" },
+            "pip": { "type": "string", "description": "A pip requirement, installed into the running Python" },
+            "conda": { "type": "string", "description": "A conda-forge package: not installed by NANSEN, which says how to" }
+          }
+        },
+        "check": { "type": "string", "description": "A function (MATLAB) or module (Python) that is there once the add-on is installed" },
+        "url": { "type": "string" },
+        "pathOrder": { "enum": ["begin", "end"], "description": "MATLAB: where the add-on goes on the path; end keeps it behind NANSEN's own functions" },
+        "setup": { "type": "string", "description": "MATLAB: a script in the add-on, run in its own folder after it is downloaded (to compile, for example)" }
+      }
+    },
     "scripts": {
       "type": "array",
       "uniqueItems": true,

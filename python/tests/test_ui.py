@@ -1032,9 +1032,24 @@ def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     page.mouse.click(*at(2, -2))
     wait_until(lambda: api.project.table("subject").get({"subject_id": "m1"}).get("window_ml") is not None)
     page.wait_for_selector(".fov-list li[data-subject='m1'] .pill")
-    page.click(".place-injection")
-    page.mouse.click(*at(1.5, -1.5))
-    wait_until(lambda: api.project.table("subject").get({"subject_id": "m1"}).get("injection_ml") is not None)
+    for material, where in (("AAV-GCaMP8m", (1.5, -1.5)), ("AAV-jRGECO1a", (2.5, -2.5))):
+        page.click(".place-injection")
+        page.mouse.click(*at(*where))
+        page.fill(".dialog.narrow input", material)
+        page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+        page.wait_for_selector(f".fov-marks li:has-text('{material}')")
+    page.click(".place-note")
+    page.mouse.click(*at(2, -3))
+    page.fill(".dialog.narrow input", "blood vessel")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".fov-marks li:has-text('blood vessel')")
+    stored = api.handle({"id": 9, "method": "modules.data", "params": {"module": "ophys", "name": "fovmap"}})["result"]
+    import json
+    marks = json.loads(stored["text"])
+    assert stored["revision"] == 3 and [m["material"] for m in marks["injections"]] == ["AAV-GCaMP8m", "AAV-jRGECO1a"]
+    assert marks["notes"][0]["text"] == "blood vessel" and marks["notes"][0]["subject"] == {"subject_id": "m1"}
+    page.click(".fov-marks li[data-mark='injections-1'] .remove-mark")
+    page.wait_for_selector(".fov-marks li[data-mark='injections-1']", state="detached")
 
 
 def test_review_rois_across_sessions(empty_app, page):

@@ -1,8 +1,9 @@
 /* The ophys module's FOV map: cranial windows and fields of view on the mouse dorsal cortex, as dev's fovmanager.
  *
  * Run by the dashboard with N (its toolkit) and module (this module's id). Positions are columns of the
- * ophys.cranial_window, ophys.injection and ophys.fov_position fragments, so they are edited, filtered and exported like any
- * other column; this page draws them on the atlas and places them with a click.
+ * ophys.cranial_window and ophys.fov_position fragments, so they are edited, filtered and exported like any other
+ * column; this page draws them on the atlas and places them with a click. Injection sites (any number per subject)
+ * and notes on the map are the module's data (modules.data, modules.saveData), in the project's module-data folder.
  */
 "use strict";
 const { h } = N;
@@ -73,6 +74,8 @@ if (!document.getElementById("ophys-fovmap-style")) {
   style.textContent = `
     .fov-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
     .fov-side { overflow: hidden; }
+    .fov-side-column { display: flex; flex-direction: column; gap: 16px; }
+    .fov-marks .btn { margin-left: auto; }
     .fov-list { list-style: none; margin: 0; padding: 6px; max-height: 70vh; overflow: auto; }
     .fov-list li { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 8px; cursor: pointer; font-size: 13px; }
     .fov-list li:hover { background: var(--surface-2); }
@@ -111,6 +114,31 @@ N.registerPage({
     const state = { subject: null, session: null, placing: null, labels: true, hover: null };
     let sessions = [];
     let subjects = [];
+    let marks = { injections: [], notes: [] };   // the module's data: injection sites and notes on the map
+    let revision = 0;
+
+    async function loadMarks() {
+      const stored = await app.client.request("modules.data", { module, name: "fovmap" });
+      const value = JSON.parse(stored.text);
+      marks = { injections: (value && value.injections) || [], notes: (value && value.notes) || [] };
+      revision = stored.revision;
+    }
+    // Change the marks and save them; if another window saved first, start again from what it saved
+    async function changeMarks(change) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        change(marks);
+        try {
+          const saved = await app.client.request("modules.saveData", { module, name: "fovmap", text: JSON.stringify(marks), revision });
+          revision = saved.revision;
+          return;
+        } catch (error) {
+          if (error.code !== "revision-conflict" || attempt) throw error;
+          await loadMarks();
+        }
+      }
+    }
+    const nextId = (list) => list.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+    const ofSubject = (mark) => !state.subject || (mark.subject && sameKey(mark.subject, state.subject));
 
     async function load() {
       const [fovs, owners] = await Promise.all([
@@ -118,6 +146,7 @@ N.registerPage({
         windowType ? app.client.request("entities.list", { entityType: windowType.name }) : Promise.resolve({ rows: [] })]);
       sessions = fovs.rows;
       subjects = owners.rows;
+      await loadMarks();
     }
     // A session belongs to the subject whose key values it carries
     const subjectOf = (session) => subjects.find((s) => Object.keys(s.key).every((k) => session.values[k] === s.key[k])) || null;
@@ -129,7 +158,9 @@ N.registerPage({
     const sessionList = h("ul.fov-list");
     const placeFov = h("button.btn.small.place-fov", { on: { click: () => setPlacing("fov") } }, N.icon("plus", 13), "Place FOV");
     const placeWindow = h("button.btn.small.place-window", { on: { click: () => setPlacing("window") } }, N.icon("plus", 13), "Place window");
-    const placeInjection = h("button.btn.small.place-injection", { on: { click: () => setPlacing("injection") } }, N.icon("plus", 13), "Place injection");
+    const placeInjection = h("button.btn.small.place-injection", { on: { click: () => setPlacing("injection") } }, N.icon("plus", 13), "Add injection");
+    const placeNote = h("button.btn.small.place-note", { on: { click: () => setPlacing("note") } }, N.icon("note", 13), "Add note");
+    const markList = h("ul.fov-list.fov-marks");
     const labels = h("input", { type: "checkbox", checked: true, on: { change: () => { state.labels = labels.checked; draw(); } } });
 
     const scale = () => canvas.width / (atlas.width / atlas.pixelsPerMm);   // px per mm
@@ -141,6 +172,7 @@ N.registerPage({
       placeFov.classList.toggle("active", state.placing === "fov");
       placeWindow.classList.toggle("active", state.placing === "window");
       placeInjection.classList.toggle("active", state.placing === "injection");
+      placeNote.classList.toggle("active", state.placing === "note");
       canvas.classList.toggle("placing", Boolean(state.placing));
     }
 
@@ -176,14 +208,19 @@ N.registerPage({
         ctx.stroke();
         ctx.restore();
       });
-      subjects.forEach((s) => {   // injection sites: a dot, and what was injected
-        const ml = number(s.values.injection_ml), ap = number(s.values.injection_ap);
-        if (ml === null || ap === null) return;
-        const [x, y] = toCanvas(ml, ap);
-        const selected = state.subject && sameKey(s.key, state.subject);
-        ctx.fillStyle = selected ? "#d81b60" : "rgba(216, 27, 96, 0.6)";
-        ctx.beginPath(); ctx.arc(x, y, selected ? 6 : 4.5, 0, 2 * Math.PI); ctx.fill();
-        if (s.values.injection_material) { ctx.fillStyle = "#880e4f"; ctx.fillText(s.values.injection_material, x, y - 9); }
+      marks.injections.filter(ofSubject).forEach((m) => {   // injection sites: a dot, and what was injected
+        const [x, y] = toCanvas(m.ml, m.ap);
+        ctx.fillStyle = "#d81b60";
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.fill();
+        if (m.material) { ctx.fillStyle = "#880e4f"; ctx.fillText(m.material, x, y - 9); }
+      });
+      marks.notes.filter(ofSubject).forEach((m) => {   // notes: a small flag and the text
+        const [x, y] = toCanvas(m.ml, m.ap);
+        ctx.fillStyle = "#1e3a8a";
+        ctx.fillRect(x - 3, y - 3, 6, 6);
+        ctx.textAlign = "left";
+        ctx.fillText(m.text, x + 6, y + 4);
+        ctx.textAlign = "center";
       });
       shown().forEach((s) => {
         const ml = number(s.values.fov_ml), ap = number(s.values.fov_ap);
@@ -216,7 +253,17 @@ N.registerPage({
       }));
       placeFov.disabled = !state.session;
       placeWindow.disabled = !state.subject || !windowType;
-      placeInjection.disabled = !state.subject || !windowType || !(windowType.fragments || []).includes("ophys.injection");
+      placeInjection.disabled = !state.subject;
+      const listed = [...marks.injections.filter(ofSubject).map((m) => ["injections", m, `Injection${m.material ? ": " + m.material : ""}`]),
+        ...marks.notes.filter(ofSubject).map((m) => ["notes", m, m.text])];
+      N.fill(markList, listed.length ? listed.map(([kind, m, label]) => h("li", { dataset: { mark: `${kind}-${m.id}` } },
+        h("span.dot." + (kind === "injections" ? "bad" : "plain")),
+        h("div.grow", h("div", label), h("div.sub.muted", `AP ${m.ap}, ML ${m.ml}` + (m.subject ? ` · ${keyText(m.subject)}` : ""))),
+        h("button.btn.ghost.icon.small.remove-mark", { title: "Remove", on: { click: async (event) => {
+          event.stopPropagation();
+          try { await changeMarks((all) => { all[kind] = all[kind].filter((x) => x.id !== m.id); }); refresh(); }
+          catch (error) { N.showError(error, "Could not remove it"); }
+        } } }, N.icon("trash", 12)))) : h("li.muted", "No injections or notes"));
     }
 
     function refresh() { renderLists(); draw(); }
@@ -239,7 +286,13 @@ N.registerPage({
         } else if (state.placing === "window" && state.subject) {
           await app.client.request("entities.update", { entityType: windowType.name, key: state.subject, values: { window_ml: round2(ml), window_ap: round2(ap) } });
         } else if (state.placing === "injection" && state.subject) {
-          await app.client.request("entities.update", { entityType: windowType.name, key: state.subject, values: { injection_ml: round2(ml), injection_ap: round2(ap) } });
+          const material = await N.prompt("Injection site", "What was injected (virus or tracer)", "");
+          if (material === null) return;
+          await changeMarks((all) => { all.injections.push({ id: nextId(all.injections), subject: state.subject, ml: round2(ml), ap: round2(ap), material }); });
+        } else if (state.placing === "note") {
+          const text = await N.prompt("Note on the map", "Note", "");
+          if (!text) return;
+          await changeMarks((all) => { all.notes.push({ id: nextId(all.notes), subject: state.subject, ml: round2(ml), ap: round2(ap), text }); });
         } else {
           // select the FOV under the cursor
           const hit = shown().find((s) => {
@@ -262,9 +315,11 @@ N.registerPage({
       h("div.fov-layout",
         h("div.card.fov-side", h("div.card-head", h("h3", windowType ? N.titleCase(windowType.name) : "Subjects")), subjectList),
         h("div.card.fov-map",
-          h("div.fov-bar", placeFov, placeWindow, placeInjection, h("div.spacer"), h("label.fov-labels", labels, "Region labels")),
+          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, h("div.spacer"), h("label.fov-labels", labels, "Region labels")),
           canvas, where),
-        h("div.card.fov-side", h("div.card-head", h("h3", N.titleCase(fovType.name))), sessionList)));
+        h("div.fov-side-column",
+          h("div.card.fov-side", h("div.card-head", h("h3", N.titleCase(fovType.name))), sessionList),
+          h("div.card.fov-side", h("div.card-head", h("h3", "Injections and notes")), markList))));
     refresh();
   },
 });

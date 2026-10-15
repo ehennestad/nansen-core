@@ -45,6 +45,7 @@ Events flow from the core to the frontend:
 | `task` | A task was queued, started, made progress or finished | The task document |
 | `removed` | A task was removed | `{id}` |
 | `log` | A running task logged a line | `{id, line}` |
+| `moduleData` | A module's data was saved | `{module, name, revision}` |
 
 ## Transports
 
@@ -108,6 +109,8 @@ Events flow from the core to the frontend:
 | `dataVariables.delete` | `name` | `{removed}` (`unknown-data-variable` if there is none) |
 | `modules.list` | | `[{id, version, title, description, ..., listed}]`: the modules in the project's `modules/` folder and the built-in ones, and any listed elsewhere; `listed` says whether the project lists it |
 | `modules.resource` | `module`, `path` (relative, inside the module's folder) | `{module, path, text}`: a text file of one of the project's modules, such as a dashboard page's data. `unknown-module` for a module the project does not use, `invalid-params` for a path that leaves the folder, `file-not-found` |
+| `modules.data` | `module`, `name` (letters, digits, `_` and `-`) | `{module, name, text, revision}`: data one of the project's modules keeps in the project (`module-data/<module>/<name>.json`, a `nansen.moduleData` document), as JSON text, given back exactly as it was saved; `"null"` and revision 0 when there is none |
+| `modules.saveData` | `module`, `name`, `text` (JSON text), `revision?` | `{module, name, revision}`: the data saved, with its revision one up. With `revision`, only when that is still the stored revision (`revision-conflict` otherwise), so two windows do not overwrite each other; `invalid-params` for text that is not JSON |
 | `modules.add` | `id`, `path?` | `project.info`: the project with the module listed (`unknown-module` if it cannot be found) |
 | `modules.remove` | `id` | `project.info`; `module-in-use` while a fragment, data variable or project pipeline of the project uses the module |
 | `data.status` | `entityType`, `key` | `[{name, dataLocation, fileAdapter, dataType, files}]`: `files` are those that exist, where a scan found the entity's folders or, for a folder made since, where `save` wrote |

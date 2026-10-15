@@ -42,7 +42,7 @@ classdef Api < handle
             names = ["app.info", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "settings.get", "settings.save", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.send", "rois.update", "modules.list", "modules.add", "modules.remove", "modules.resource", ...
+                "entities.remove", "columns.reset", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.open", "files.reveal", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.send", "rois.update", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.create", "methods.edit", "tools.list", "tools.run", "methods.run", "presets.list", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop"];
@@ -887,6 +887,51 @@ classdef Api < handle
             result = struct("module", char(found.Id), "path", char(relative), "text", nansen.internal.readText(path));
         end
 
+        function result = apiModulesData(obj, params)
+            % A module's data in the project, as JSON text ("null" when there is none), and its revision (0 then)
+            [path, module, name] = obj.moduleDataPath(params);
+            if ~isfile(path)
+                result = struct("module", module, "name", name, "text", 'null', "revision", 0);
+                return
+            end
+            document = nansen.readDocument(path, ExpectedType="nansen.moduleData");
+            result = struct("module", char(document.module), "name", char(document.name), ...
+                "text", char(document.text), "revision", document.revision);
+        end
+
+        function result = apiModulesSaveData(obj, params)
+            % Save a module's data (JSON text); with revision, only when that is still the stored one
+            [path, module, name] = obj.moduleDataPath(params);
+            current = 0;
+            if isfile(path)
+                current = nansen.readDocument(path, ExpectedType="nansen.moduleData").revision;
+            end
+            revision = nansen.internal.getField(params, "revision", []);
+            if ~isempty(revision) && revision ~= current
+                nansen.internal.throwError("revision-conflict", "%s/%s is at revision %d, not %d", module, name, current, revision)
+            end
+            text = nansen.internal.getField(params, "text", []);
+            try
+                jsondecode(char(text));
+                valid = ischar(text) || (isstring(text) && isscalar(text));
+            catch
+                valid = false;
+            end
+            if ~valid
+                nansen.internal.throwError("invalid-params", "text is not JSON text")
+            end
+            document = struct("schemaType", "nansen.moduleData", "schemaVersion", "0.1.0", "module", module, ...
+                "name", name, "revision", current + 1, "text", char(text));
+            nansen.checkDocument(document, ExpectedType="nansen.moduleData");
+            folder = fileparts(path);
+            if ~isfolder(folder)
+                mkdir(folder);
+            end
+            nansen.internal.writeJson(path, document);
+            obj.emit("moduleData", struct("module", module, "name", name, "revision", current + 1));
+            result = struct("module", module, "name", name, "revision", current + 1);
+        end
+
         function result = apiModulesList(obj, ~)
             %apiModulesList The modules that can be listed (in the project's modules/ folder or built in), and whether they are
             project = obj.requireProject();
@@ -1329,6 +1374,19 @@ classdef Api < handle
             if obj.StartQueue
                 obj.Queue.start();
             end
+        end
+
+        function [path, module, name] = moduleDataPath(obj, params)
+            project = obj.requireProject();
+            module = char(string(nansen.Api.param(params, "module")));
+            name = char(string(nansen.Api.param(params, "name")));
+            if ~any(arrayfun(@(m) m.Id == module, project.modules()))
+                nansen.internal.throwError("unknown-module", "the project does not use a module '%s'", module)
+            end
+            if isempty(regexp(name, '^[A-Za-z0-9][A-Za-z0-9_-]*$', "once"))
+                nansen.internal.throwError("invalid-params", "'%s' is not a name for module data", name)
+            end
+            path = fullfile(project.Folder, "module-data", module, name + ".json");
         end
 
         function project = requireProject(obj)

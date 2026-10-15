@@ -54,8 +54,8 @@ function result = setupVariables(project, options, context)
         owners = repmat(entityType, 1, 4);
         wanted = ["ophys.imaging", "ophys.image_stats", "ophys.fov_position", "ophys.fov_region"];
         if any(project.EntityTypes == string(options.subjectType))
-            owners(end + 1:end + 2) = string(options.subjectType);
-            wanted(end + 1:end + 2) = ["ophys.cranial_window", "ophys.injection"];
+            owners(end + 1) = string(options.subjectType);
+            wanted(end + 1) = "ophys.cranial_window";
         end
         for i = 1:numel(wanted)
             entry = project.entityType(owners(i));

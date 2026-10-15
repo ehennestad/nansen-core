@@ -131,8 +131,7 @@
               "ophys.image_stats",
               "ophys.fov_position",
               "ophys.fov_region",
-              "ophys.cranial_window",
-              "ophys.injection"
+              "ophys.cranial_window"
             ]
           }
         }
@@ -2255,8 +2254,114 @@
     },
     {
       "request": {
-        "method": "modules.resource",
+        "method": "modules.data",
         "id": 48,
+        "params": {
+          "module": "ophys",
+          "name": "fovmap"
+        }
+      },
+      "expect": {
+        "result": {
+          "module": "ophys",
+          "name": "fovmap",
+          "text": "null",
+          "revision": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "modules.saveData",
+        "id": 49,
+        "params": {
+          "module": "ophys",
+          "name": "fovmap",
+          "text": "{\"injections\": [{\"id\": 1, \"subject\": {\"subject_id\": \"m1\"}, \"ml\": 1.5, \"ap\": -1.5, \"material\": \"AAV1-syn-jGCaMP8m\"}], \"notes\": []}",
+          "revision": 0
+        }
+      },
+      "expect": {
+        "result": {
+          "revision": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "modules.saveData",
+        "id": 50,
+        "params": {
+          "module": "ophys",
+          "name": "fovmap",
+          "text": "[]",
+          "revision": 0
+        }
+      },
+      "expect": {
+        "error": "revision-conflict"
+      }
+    },
+    {
+      "request": {
+        "method": "modules.saveData",
+        "id": 51,
+        "params": {
+          "module": "ophys",
+          "name": "fovmap",
+          "text": "{not json"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "modules.data",
+        "id": 52,
+        "params": {
+          "module": "ophys",
+          "name": "fovmap"
+        }
+      },
+      "expect": {
+        "result": {
+          "text": "{\"injections\": [{\"id\": 1, \"subject\": {\"subject_id\": \"m1\"}, \"ml\": 1.5, \"ap\": -1.5, \"material\": \"AAV1-syn-jGCaMP8m\"}], \"notes\": []}",
+          "revision": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "modules.data",
+        "id": 53,
+        "params": {
+          "module": "core",
+          "name": "fovmap"
+        }
+      },
+      "expect": {
+        "error": "unknown-module"
+      }
+    },
+    {
+      "request": {
+        "method": "modules.data",
+        "id": 54,
+        "params": {
+          "module": "ophys",
+          "name": "../x"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "modules.resource",
+        "id": 55,
         "params": {
           "module": "ophys",
           "path": "atlas/dorsal_cortex.json"
@@ -2272,7 +2377,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 49,
+        "id": 56,
         "params": {
           "module": "ophys",
           "path": "../core/module.nansen.json"
@@ -2285,7 +2390,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 50,
+        "id": 57,
         "params": {
           "module": "ophys",
           "path": "atlas/nothing.json"
@@ -2298,7 +2403,7 @@
     {
       "request": {
         "method": "modules.resource",
-        "id": 51,
+        "id": 58,
         "params": {
           "module": "core",
           "path": "module.nansen.json"
@@ -2311,7 +2416,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 52,
+        "id": 59,
         "params": {
           "entityType": "session",
           "key": {
@@ -2332,7 +2437,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 53,
+        "id": 60,
         "params": {
           "entityType": "session",
           "key": {
@@ -2352,7 +2457,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 54,
+        "id": 61,
         "params": {
           "entityType": "subject",
           "key": {
@@ -2372,7 +2477,7 @@
     {
       "request": {
         "method": "entities.update",
-        "id": 55,
+        "id": 62,
         "params": {
           "entityType": "subject",
           "key": {
@@ -2390,7 +2495,7 @@
     {
       "request": {
         "method": "fragments.update",
-        "id": 56,
+        "id": 63,
         "params": {
           "entityType": "session",
           "fragmentId": "ophys.fov_region"
@@ -2406,7 +2511,7 @@
     {
       "request": {
         "method": "methods.run",
-        "id": 57,
+        "id": 64,
         "params": {
           "methodId": "ophys.fov_region",
           "entityType": "session",
@@ -2445,7 +2550,7 @@
     {
       "request": {
         "method": "entities.list",
-        "id": 58,
+        "id": 65,
         "params": {
           "entityType": "session"
         }
@@ -2498,7 +2603,7 @@
     {
       "request": {
         "method": "tools.run",
-        "id": 59,
+        "id": 66,
         "params": {
           "methodId": "ophys.setup_variables",
           "options": {
