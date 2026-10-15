@@ -43,7 +43,7 @@
 
   /** Decode a data.frame result onto a canvas of its own size, in a colormap, with ROIs filled over it.
    * Rejected ROIs are dimmed (or left out with hideRejected); selected ROIs are drawn in full color. */
-  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false, colormap = "gray", outlines = false) {
+  function paint(canvas, frame, rois, showRois, selected = new Set(), hideRejected = false, colormap = "gray", outlines = false, colorBy = "roi") {
     canvas.width = frame.width;
     canvas.height = frame.height;
     const ctx = canvas.getContext("2d");
@@ -65,7 +65,7 @@
       rois.forEach((roi, n) => {
         const rejected = roi.classification === "rejected";
         if (rejected && hideRejected) return;
-        const [r, g, b] = rejected ? [200, 60, 60] : roiColor(n);
+        const [r, g, b] = colorOf(roi, n, colorBy);
         const share = selected.has(roi.id) ? 1 : rejected ? 0.25 : outlines ? 0.9 : 0.5;
         (outlines ? edge(roi) : roi.pixels).forEach(([y, x]) => {
           if (y < 0 || y >= frame.height || x < 0 || x >= frame.width) return;
@@ -162,6 +162,17 @@
   }
   N.roiColor = roiColor;
 
+  // roimanager's roiColorScheme: each ROI its own colour (rejected ones red), or by classification or by cell type in dev's colours
+  const CLASSIFICATION_COLORS = { accepted: [44, 178, 125], rejected: [235, 86, 96], unresolved: [45, 95, 232] };
+  const CELL_TYPE_COLORS = { excitatory: [255, 0, 0], inhibitory: [0, 255, 0], axon: [245, 166, 7] };
+  const ROI_COLOR_SCHEMES = [["roi", "A colour each"], ["classification", "By classification"], ["cellType", "By cell type"], ["none", "One colour"]];
+  function colorOf(roi, n, colorBy = "roi") {
+    if (colorBy === "classification") return CLASSIFICATION_COLORS[roi.classification] || [204, 204, 204];
+    if (colorBy === "cellType") return CELL_TYPE_COLORS[roi.cellType] || [77, 175, 74];
+    if (colorBy === "none") return [204, 204, 204];
+    return roi.classification === "rejected" ? [200, 60, 60] : roiColor(n);
+  }
+
   /** Even-odd rule: is (px, py) inside the polygon of points [[x, y], ...]? */
   function inPolygon(points, px, py) {
     let inside = false;
@@ -247,6 +258,9 @@
     const roiToggle = h("input.viewer-rois", { type: "checkbox", checked: state.showRois, on: { change: () => { state.showRois = roiToggle.checked; show(); } } });
     const roiPick = roiVariables.length > 1 ? h("select.input", { on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; select(null); show(); } } },
       roiVariables.map((v) => h("option", { value: v }, v))) : null;
+    // roimanager's roiColorScheme: the ROIs' colours, in the image and the list
+    const roiColorPick = h("select.input.viewer-roi-colors", { title: "Colour of the ROIs", on: { change: () => { state.colorBy = roiColorPick.value; redraw(); renderList(); } } },
+      ROI_COLOR_SCHEMES.map(([value, label]) => h("option", { value }, label)));
     // channel and plane pickers, shown once the stack turns out to have more than one
     // ROIs with places belong to a plane and channel: another place has its own, read again, and its own undo
     const toPlace = (change) => { change(); state.rois = null; state.undo = []; state.redo = []; select(null); show(); };
@@ -848,7 +862,7 @@
     function renderList() {
       N.fill(roiList, visible().map((roi) => h("li" + (state.selection.has(roi.id) ? ".selected" : ""), { dataset: { roi: roi.id },
         on: { click: (event) => select(roi.id, several(event)) } },
-        h("span.swatch", { style: { background: roi.classification === "rejected" ? "rgb(200,60,60)" : `rgb(${roiColor(state.rois.indexOf(roi)).join(",")})` } }),
+        h("span.swatch", { style: { background: `rgb(${colorOf(roi, state.rois.indexOf(roi), state.colorBy).join(",")})` } }),
         h("span.grow", `ROI ${roi.id}`, roi.cellType ? h("span.muted.roi-cell-type", ` · ${roi.cellType}`) : null,
           roi.links && roi.links.length ? h("span.muted.roi-links", { title: `Linked with ${roi.links.map((i) => "ROI " + i).join(", ")}` }, ` ↔ ${roi.links.join(", ")}`) : null),
         h("span.muted", `${roi.pixels.length} px`),
@@ -862,7 +876,7 @@
       galleryButton.disabled = !state.rois || !state.rois.length;
       roiPanel.style.display = state.rois && roisOn() ? "" : "none";
     }
-    function redraw() { if (last) paint(canvas, last, state.rois, roisOn(),state.selection, state.hideRejected, state.colormap, state.outlines); drawOverlay(); }
+    function redraw() { if (last) paint(canvas, last, state.rois, roisOn(),state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy); drawOverlay(); }
     let onSelect = null;   // the gallery, while it is open
     /** Select an ROI (null for none); with add, add it to the selection, or take it out. */
     function select(id, add = false) {
@@ -1072,7 +1086,7 @@
       try {
         for (let f = first; f <= final; f++) {
           const frame = await fetchView({ frame: f }, false);   // as shown: channels in colour, planes side by side or projected
-          paint(frameCanvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines);
+          paint(frameCanvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy);
           ctx.fillStyle = "#000";
           ctx.fillRect(0, 0, out.width, out.height);
           ctx.imageSmoothingEnabled = false;
@@ -1358,7 +1372,7 @@
           : `${frame.frames} frames`;
         binPick.disabled = state.mode !== "frame";
         showTime();
-        paint(canvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines);
+        paint(canvas, frame, state.rois, roisOn(), state.selection, state.hideRejected, state.colormap, state.outlines, state.colorBy);
         if (resized) layout(); else { drawOverlay(); drawScalebar(); }
         renderList();
         if (tracePlot) tracePlot.cursor(state.mode === "frame" ? state.frame : null);
@@ -1394,7 +1408,7 @@
       h("div.viewer-bar",
         playButton, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high,
-        binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, mirrorLabel, measurement, measureButton, scaleButton,
+        binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, roiVariables.length ? roiColorPick : null, mirrorLabel, measurement, measureButton, scaleButton,
         exportButton),
       h("div.viewer-main", stage, roiVariables.length ? roiPanel : null),
       signalPanel,

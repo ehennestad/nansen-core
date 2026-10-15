@@ -1908,6 +1908,10 @@ def test_viewer_projections_and_roi_display_options(empty_app, page):
     page.keyboard.press("Control+Z")   # undo takes the link away again, the cell type stays
     page.wait_for_selector(".viewer-roi-list li[data-roi='3']:not(:has(.roi-links))")
     assert page.locator(".viewer-roi-list li[data-roi='1'] .roi-cell-type").count() == 1
+    page.select_option(".viewer-roi-colors", "cellType")   # roimanager's roiColorScheme: excitatory in red, no cell type in green
+    swatch = lambda roi: page.locator(f".viewer-roi-list li[data-roi='{roi}'] .swatch").evaluate("e => e.style.background")
+    wait_until(lambda: swatch(1) == "rgb(255, 0, 0)" and swatch(2) == "rgb(77, 175, 74)")
+    page.select_option(".viewer-roi-colors", "roi")
     page.select_option(".viewer-mode", "frame")
     page.click(".viewer-roi-list li[data-roi='1']")   # its signal goes under the frames
     page.click(".viewer-export")
