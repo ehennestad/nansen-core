@@ -117,14 +117,14 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             testCase.Centers = centers;
             result = testCase.Project.run("ophys.extract", {testCase.Session}, ...
                 Options=struct("stack", "TwoPhotonSeries_Corrected", "cellRadius", 5));
-            testCase.verifyGreaterThanOrEqual(result{1}.rois, 8);
+            testCase.verifyEqual(result{1}.rois, 12);   % every cell, and nothing else
             rois = ophys.internal.roiList(testCase.Project.load(testCase.Session, "RoiArray", Cached=false));
             centersFound = cell2mat(cellfun(@(r) reshape(double(r.center), 1, 2) + 1, rois(:), UniformOutput=false));
             matched = 0;
             for i = 1:size(testCase.Centers, 1)
                 matched = matched + any(vecnorm(centersFound - testCase.Centers(i, :), 2, 2) <= 4);
             end
-            testCase.verifyGreaterThanOrEqual(matched, 10, sprintf("EXTRACT's centres (row, column):%s\ntrue centres:%s", ...
+            testCase.verifyEqual(matched, 12, sprintf("EXTRACT's centres (row, column):%s\ntrue centres:%s", ...
                 sprintf(" (%.1f, %.1f)", centersFound.'), sprintf(" (%d, %d)", testCase.Centers.')));
             testCase.verifySize(testCase.Project.load(testCase.Session, "RoiSignals_MeanF", Cached=false), [size(stack, 3), numel(rois)]);
         end

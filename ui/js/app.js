@@ -117,7 +117,7 @@
       if (this.route && this.route.name === "entities" && this.reloadEntities &&
           (!data.entityTypes || data.entityTypes.includes(this.route.arg))) {
         clearTimeout(this.entitiesTimer);
-        this.entitiesTimer = setTimeout(() => this.reloadEntities(), 150);
+        this.entitiesTimer = setTimeout(() => { if (this.reloadEntities) this.reloadEntities(); }, 150);   // the table may be gone by then
       }
     },
 
@@ -166,11 +166,14 @@
       } } }, N.icon("moon"));
       this.topActions = h("div", { style: { display: "flex", gap: "8px" } });
       const helpButton = h("button.btn.ghost.icon.shortcuts-button", { title: "Keyboard shortcuts (?)", on: { click: () => N.showShortcuts() } }, N.icon("keyboard"));
-      root.appendChild(h("div.shell",
+      // below 860 px the sidebar slides in over the page, from this button
+      const menuButton = h("button.btn.ghost.icon.menu-button", { title: "Menu", on: { click: () => this.shellEl.classList.toggle("nav-open") } }, N.icon("menu"));
+      root.appendChild(this.shellEl = h("div.shell",
+        h("div.nav-backdrop", { on: { click: () => this.shellEl.classList.remove("nav-open") } }),
         h("aside.sidebar",
           h("div.brand", h("div.brand-mark", N.icon("compass", 18)), h("div", h("div.brand-name", "NANSEN"), h("div.brand-sub", "neuroscience data"))),
           this.switchEl, this.navEl, this.footEl),
-        h("main.main", h("header.topbar", this.crumbsEl, h("div.spacer"), this.topActions, helpButton, themeButton), this.contentEl)));
+        h("main.main", h("header.topbar", menuButton, this.crumbsEl, h("div.spacer"), this.topActions, helpButton, themeButton), this.contentEl)));
       this.bindShortcuts();
       this.renderNav();
       this.renderFooter();
@@ -251,6 +254,8 @@
       const arg = rest.join("/") || null;
       this.route = { name: name || "overview", arg };
       this.reloadEntities = null;
+      clearTimeout(this.entitiesTimer);
+      if (this.shellEl) this.shellEl.classList.remove("nav-open");
       clearInterval(this.viewTimer);
       this.viewTimer = null;
       this.onTaskEvent = null;

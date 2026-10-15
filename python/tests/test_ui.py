@@ -792,6 +792,29 @@ def test_a_pipeline_step_run_by_hand(empty_app, page):
     assert call("entities.get", entityType="session", key=rows[0]["key"])["result"]["pipeline"]["done"] == 1
 
 
+def test_leaving_the_table_while_it_is_due_to_reload(app, page):
+    # an entities event schedules a reload of the table; leaving it before that runs is no error
+    open_sessions(app, page)
+    page.evaluate("N.app.entitiesEvent({}); location.hash = '#/overview'")
+    page.wait_for_selector(".stat")
+    time.sleep(0.4)  # past the reload's delay; the page fixture fails on any page error
+
+
+def test_a_narrow_window_has_the_sidebar_behind_a_menu(app, page):
+    page.goto(app["server"].url + "#/overview")
+    page.wait_for_selector(".stat")
+    assert not page.locator(".menu-button").is_visible()   # wide: the sidebar is always there
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.locator(".menu-button").is_visible()
+    wait_until(lambda: page.evaluate("document.querySelector('.sidebar').getBoundingClientRect().right") <= 0)  # slid away
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390   # nothing wider than the window
+    page.click(".menu-button")
+    wait_until(lambda: page.evaluate("document.querySelector('.sidebar').getBoundingClientRect().left") >= 0)
+    page.click(".nav a:has-text('Sessions')")
+    page.wait_for_selector(".grid-table tbody td.key")
+    assert not page.locator(".shell.nav-open").count()   # going somewhere closes it
+
+
 def test_edit_a_column(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})

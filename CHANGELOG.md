@@ -63,6 +63,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - A root on a removable drive is found again where the drive is mounted now, as dev does when a disk comes back under another letter: when a root's folder is missing and the DSM root has a `volumeName`, the same path inside that volume is looked for under `/Volumes`, `/media`, `/run/media`, `/mnt`, the drive with that label on Windows, and the folders in `NANSEN_VOLUME_ROOTS`.
 - Data locations can be pointed somewhere else per machine (`setRoot` / `set_root`, `dataset.setRoot`, "Change path" on the Data page). Roots per environment live in the DSM config and the active environment in its `.local.json` overlay. The whole DSM config can be edited as text from the Data page (`dataset.get`, `dataset.save`): it is written as given, but only once DSM accepts it and the tables' keys still match it.
 - Shared JSON files, such as a DSM config, are edited as text (`nansen.jsontext`, `nansen.internal.JsonText`), so they keep their formatting and MATLAB does not change their arrays. A `jsontext` conformance kind holds both editors to the same bytes.
+- The dashboard fits narrow windows (a phone, a small `uihtml` figure): below 860 px the sidebar slides in from a menu button, and long paths and descriptions are cut with an ellipsis instead of widening the page.
 
 **Import**
 
