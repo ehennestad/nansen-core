@@ -1032,3 +1032,24 @@ def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     page.mouse.click(*at(2, -2))
     wait_until(lambda: api.project.table("subject").get({"subject_id": "m1"}).get("window_ml") is not None)
     page.wait_for_selector(".fov-list li[data-subject='m1'] .pill")
+
+
+def test_review_rois_across_sessions(empty_app, page):
+    s1, s3 = {"subject_id": "m1", "session_id": "s1"}, {"subject_id": "m1", "session_id": "s3"}
+    run = lambda method_id, keys, options=None: ("methods.run", {"methodId": method_id, "entityType": "session", "keys": keys, "options": options or {}})
+    api = ophys_project(empty_app, [
+        run("ophys.motion_correction", [s1, s3], {"referenceFrames": 1}),
+        run("ophys.image_stats", [s1, s3]),
+        run("ophys.detect_rois", [s1], {"threshold": 0.25, "border": 4}),
+        run("ophys.align_sessions", [s1, s3])])
+    page.goto(empty_app["server"].url + "#/page/ophys.roireview")
+    page.wait_for_selector(".rr-table tbody tr")
+    assert page.locator(".rr-table tbody tr").count() == 3
+    assert page.locator(".rr-table thead th").count() == 3  # ROI, s1, s3
+    assert page.locator(".rr-table tbody tr").first.locator("canvas.rr-crop").count() == 2
+    page.click(".rr-table tbody tr[data-roi='2']")
+    page.keyboard.press("r")
+    page.wait_for_selector(".rr-table tr[data-roi='2'] .pill:has-text('rejected')")
+    for key in (s1, s3):
+        document = api.project.load(api.project.entity("session", key), "RoiArray", cached=False)
+        assert [r.get("classification") for r in document["rois"]] == [None, "rejected", None]

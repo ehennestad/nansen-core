@@ -43,6 +43,7 @@
     "presets/motion_correction.thorough.options.nansen.json"
   ],
   "dashboard": [
-    "dashboard/fovmap.js"
+    "dashboard/fovmap.js",
+    "dashboard/roireview.js"
   ]
 }

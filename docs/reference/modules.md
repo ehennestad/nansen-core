@@ -58,6 +58,8 @@ A method that needs a package that is not installed fails with `dependency-missi
 
 The ophys module's **FOV map** page (dev's fovmanager) draws the subjects' cranial windows and the sessions' fields of view on the mouse dorsal cortex atlas from fovmanager, in mm from bregma, and places them with a click: select a session and Place FOV, or a subject and Place window. Positions are the columns of `ophys.fov_position` and `ophys.cranial_window`, so they can be typed in, filtered and exported as well; `ophys.fov_region` fills the brain region at each FOV, in both languages. `ophys.setup_variables` adds the columns.
 
+Its **ROI review** page (dev's classifyMultiSessionRois with roiclassifier) shows each ROI of the sessions that `ophys.align_sessions` copied ROIs to, side by side, cropped from each session's FOV image, and accepts or rejects an ROI in all of them at once.
+
 In the dashboard, an entity's image variables (data type `Image` or `ImageStack`, or arrays without a data type) have a View button in its drawer: frames one by one or played, the average or maximum over frames, contrast limits, and the ROIs of a variable of data type `RoiArray` drawn over them. ROIs are curated there, as in dev's roimanager and roiclassifier: select one in the image or the list, accept (a), reject (r), clear (u) or delete it, or add a round one by clicking (`rois.update`). `ophys.extract_signals` and `ophys.align_sessions` leave rejected ROIs out.
 
 ## Dashboard pages
