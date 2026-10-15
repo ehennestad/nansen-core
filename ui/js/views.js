@@ -126,6 +126,17 @@
       grid.setHideIgnored(!grid.hideIgnored);
       hideIgnored.classList.toggle("on", grid.hideIgnored);
     } } }, N.icon("eye-off"), "Hide ignored");
+    const lockButton = h("button.btn.icon.lock-edits", { on: { click: () => {
+      grid.setLocked(!grid.locked);
+      showLock();
+      N.toast(grid.locked ? "Editing locked" : "Editing unlocked", grid.locked ? "Values cannot be changed in the tables" : "");
+    } } });
+    function showLock() {
+      lockButton.classList.toggle("on", grid.locked);
+      lockButton.title = grid.locked ? "Editing is locked: click to allow changes" : "Lock editing, so values are not changed by accident";
+      N.fill(lockButton, N.icon(grid.locked ? "lock" : "unlock"));
+    }
+    showLock();
     let views = [];
     let activeView = null;
     const viewStoreKey = `nansen.view.${app.project.folder}.${entityType}`;
@@ -271,6 +282,7 @@
       viewsButton,
       type.fragments.includes("core.notes") ? hideIgnored : null,
       columnsButton,
+      lockButton,
       app.project.dataset ? h("button.btn", { on: { click: () => app.sync(entityType) } }, N.icon("sync"), "Sync") : null,
       h("button.btn.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play"), "Run method"));
 

@@ -49,6 +49,7 @@
       this.status = "all";
       this.hidden = new Set();
       this.hideIgnored = false;
+      this.locked = store("nansen.locked") === true;   // editing is off in every table until unlocked
       this.filters = [];       // [{column, op, ...}]: every one must pass
       this.viewKeys = null;    // a Set of key ids when a view with keys is shown
       this.lastClicked = null;
@@ -92,6 +93,12 @@
 
     setSearch(text) { this.search = text.trim().toLowerCase(); this.refresh(); }
     setStatus(status) { this.status = status; this.refresh(); }
+    setLocked(locked) {
+      this.locked = locked;
+      store("nansen.locked", locked);
+      this.refresh();
+    }
+
     setHideIgnored(hide) {
       this.hideIgnored = hide;
       store(`nansen.hideIgnored.${this.data.entityType}`, hide);
@@ -218,7 +225,7 @@
       if (column.source === "key") classes.push("key");
       if (column.source === "attribute") classes.push("attribute");
       if (column.dataType === "number" || column.dataType === "integer") classes.push("num");
-      const editable = column.editable && row.inTable;
+      const editable = column.editable && row.inTable && !this.locked;
       if (editable && column.dataType !== "boolean") classes.push("editable");
       const td = h(classes.join("."));
       if (column.source === "progress") {

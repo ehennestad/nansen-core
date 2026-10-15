@@ -41,6 +41,21 @@
     return { close, el: dialog, foot };
   };
 
+  /** The keyboard shortcuts, in a dialog. */
+  N.showShortcuts = function () {
+    const rows = [
+      ["/", "Search the table"], ["?", "These shortcuts"], ["Esc", "Close the drawer or a dialog, or leave the search box"],
+      ["g then o", "Overview"], ["g then 1…9", "The first, second, … entity table"], ["g then t", "Tasks"],
+      ["g then d", "Data"], ["g then p", "Pipelines"], ["g then n", "Notes"], ["g then j", "Projects"],
+      ["Shift + click", "Select a range of rows"],
+    ];
+    N.dialog({
+      title: "Keyboard shortcuts", narrow: true,
+      content: h("table.simple.shortcuts", h("tbody", rows.map(([keys, what]) => h("tr",
+        h("td", keys.split(" ").map((k) => (["then", "+"].includes(k) ? h("span.muted", ` ${k} `) : h("kbd", k)))), h("td", what))))),
+    });
+  };
+
   N.confirm = function (title, message, label = "Confirm", kind = "primary") {
     return new Promise((resolve) => {
       N.dialog({

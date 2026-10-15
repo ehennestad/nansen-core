@@ -147,13 +147,47 @@
         N.toast("Theme", next === "auto" ? "Follow the system" : next);
       } } }, N.icon("moon"));
       this.topActions = h("div", { style: { display: "flex", gap: "8px" } });
+      const helpButton = h("button.btn.ghost.icon.shortcuts-button", { title: "Keyboard shortcuts (?)", on: { click: () => N.showShortcuts() } }, N.icon("keyboard"));
       root.appendChild(h("div.shell",
         h("aside.sidebar",
           h("div.brand", h("div.brand-mark", N.icon("compass", 18)), h("div", h("div.brand-name", "NANSEN"), h("div.brand-sub", "neuroscience data"))),
           this.switchEl, this.navEl, this.footEl),
-        h("main.main", h("header.topbar", this.crumbsEl, h("div.spacer"), this.topActions, themeButton), this.contentEl)));
+        h("main.main", h("header.topbar", this.crumbsEl, h("div.spacer"), this.topActions, helpButton, themeButton), this.contentEl)));
+      this.bindShortcuts();
       this.renderNav();
       this.renderFooter();
+    },
+
+    bindShortcuts() {
+      if (this.shortcutsBound) return;
+      this.shortcutsBound = true;
+      let pending = null;   // "g", waiting for the second key
+      const pages = { o: "#/overview", t: "#/tasks", d: "#/data", p: "#/pipelines", n: "#/notes", j: "#/projects" };
+      document.addEventListener("keydown", (event) => {
+        const target = event.target;
+        const typing = target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+        if (typing && event.key === "Escape" && target.closest(".toolbar .search") && !document.querySelector(".backdrop")) {
+          target.blur();   // leave the search box, so the shortcuts work again
+          return;
+        }
+        if (typing || event.ctrlKey || event.metaKey || event.altKey || document.querySelector(".backdrop")) return;
+        if (pending === "g") {
+          pending = null;
+          const types = (this.project && this.project.entityTypes) || [];
+          const index = Number(event.key) - 1;
+          const hash = pages[event.key] || (Number.isInteger(index) && types[index] ? `#/entities/${types[index].name}` : null);
+          if (hash && (this.project || hash === "#/projects")) { event.preventDefault(); this.go(hash); }
+          return;
+        }
+        if (event.key === "g") { pending = "g"; setTimeout(() => { pending = null; }, 1500); return; }
+        if (event.key === "?") { event.preventDefault(); N.showShortcuts(); return; }
+        if (event.key === "/") {
+          const search = document.querySelector(".content .toolbar .search input, .content input[type=search]");
+          if (search) { event.preventDefault(); search.focus(); search.select(); }
+          return;
+        }
+        if (event.key === "Escape" && N.drawer.isOpen()) { N.drawer.close(); return; }
+      });
     },
 
     renderNav() {

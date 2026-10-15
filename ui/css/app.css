@@ -509,3 +509,10 @@ ul.notes li { margin: 4px 0; font-size: 13px; }
 .filter-options .item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; cursor: pointer; }
 .filter-options .item:hover { background: var(--surface-2); }
 .view-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* keyboard shortcuts */
+kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; background: var(--surface-3); font-family: var(--mono); font-size: 11.5px; text-align: center; }
+table.shortcuts { margin: 8px 0 14px; }
+table.shortcuts td { padding: 7px 20px; }
+table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
+.btn.lock-edits.on { color: var(--warn, #b54708); }

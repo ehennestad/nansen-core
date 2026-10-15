@@ -647,3 +647,35 @@ def test_start_a_method_from_the_data_page(empty_app, page):
     assert (empty_app["folder"] / "demo" / "matlab" / "count_frames.m").is_file()
     method = next(m for m in api.handle({"id": 2, "method": "methods.list"})["result"] if m["id"] == "count_frames")
     assert method["entityType"] == "session"
+
+
+def test_lock_editing_and_keyboard_shortcuts(empty_app, page):
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    assert page.locator(".grid-table tbody td.editable").count() > 0
+    page.click(".toolbar .lock-edits")
+    page.wait_for_selector(".toolbar .lock-edits.on")
+    assert page.locator(".grid-table tbody td.editable").count() == 0
+    assert page.locator(".grid-table tbody input[type=checkbox]:not([disabled])").count() == page.locator(".grid-table tbody td.sel input").count()
+    page.reload()  # remembered
+    page.wait_for_selector(".toolbar .lock-edits.on")
+    page.click(".toolbar .lock-edits")
+    page.wait_for_selector(".grid-table tbody td.editable")
+
+    page.evaluate("document.activeElement.blur()")
+    page.keyboard.press("/")
+    assert page.evaluate("document.activeElement.closest('.search') !== null")
+    page.keyboard.press("Escape")
+    assert page.evaluate("document.activeElement.closest('.search') === null")
+    page.keyboard.press("g")
+    page.keyboard.press("t")
+    page.wait_for_selector(".hero h1:has-text('Tasks')")
+    page.keyboard.press("g")
+    page.keyboard.press("1")
+    page.wait_for_selector(".grid-table tbody td.key")
+    assert page.url.endswith("#/entities/subject")
+    page.keyboard.press("Escape")  # out of the search box, which has the focus
+    page.keyboard.press("?")
+    page.wait_for_selector(".dialog .shortcuts")
