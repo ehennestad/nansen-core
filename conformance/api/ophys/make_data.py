@@ -138,6 +138,31 @@ def percentile(values, p):
     return ordered[low] + (position - low) * (ordered[high] - ordered[low])
 
 
+def scaled_bytes(image, low, high):
+    """data.frame's pixels: values from low to high scaled to 0..255, rounded half up, cut at both ends, row after row."""
+    import base64
+    scaled = np.clip(np.floor((image - low) / (high - low) * 255 + 0.5), 0, 255).astype(np.uint8)
+    return base64.b64encode(scaled.tobytes()).decode("ascii")
+
+
+def projections_expected(aligned):
+    """The viewer's std and correlation projections of the aligned recording, from their definitions: each pixel's
+    standard deviation over time, and its average Pearson correlation over time with its in-frame 8 neighbours."""
+    std = aligned.std(axis=2)
+    z = np.divide(aligned - aligned.mean(axis=2, keepdims=True), std[:, :, None], out=np.zeros_like(aligned), where=std[:, :, None] > 0)
+    total, count = np.zeros(std.shape), np.zeros(std.shape)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            if dy or dx:
+                for y in range(HEIGHT):
+                    for x in range(WIDTH):
+                        if 0 <= y + dy < HEIGHT and 0 <= x + dx < WIDTH:
+                            total[y, x] += (z[y, x] * z[y + dy, x + dx]).mean()
+                            count[y, x] += 1
+    correlation = total / count
+    return {"std": scaled_bytes(std, 0, 200), "correlation": scaled_bytes(correlation, -1, 1)}
+
+
 def preview_expected(first):
     stats = lambda image: {"size": list(image.shape), "min": round_to(image.min(), 4), "max": round_to(image.max(), 4), "mean": round_to(image.mean(), 4)}
     average, maximum = first.astype(float).mean(axis=2), first.max(axis=2).astype(float)
@@ -181,6 +206,7 @@ def main():
         "corrected": {"mean_intensity": round_to(aligned.mean(), 4), "max_intensity": float(aligned.max())},
         # methods.preview of image_stats on the first 5 frames: the stats of those, and the projections kept in memory
         "preview": preview_expected(recording[:, :, :5]),
+        "projections": projections_expected(aligned.astype(np.float64)),
         "rois": {"rois": len(disks), "areas": [int(d.sum()) for d in disks]},
         "signals": {"rois": len(disks), "frames": FRAMES,
                     "meanSignal": [round_to(v, 4) for v in signals.mean(axis=0)],

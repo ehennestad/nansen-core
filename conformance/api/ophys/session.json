@@ -1018,6 +1018,58 @@
     {
       "request": {
         "method": "data.frame",
+        "id": 2601,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "std",
+          "limits": [
+            0,
+            200
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "frame": null,
+          "frames": 40,
+          "pixels": "h4aZiIVvg4WEc25kYm58h5mLqZyWa29scG6LlGBYXoGEjJx9gm54eXBsZmBfaoGHjG1/dXVZW2VoX3t4cWdnfIF0gE5dTWBiY2VcU1Jlb2JdUVBGSFVbaGNdaVhdXHZudnFgBAQEBAQEBQMEBAUDBAQDAwMDBQQDBAMFBARTanSAgW8FBAQEBAQDBAQEBAQDBAQEBAQEBAQDBAQDA09QaYR+egMDAwMDBQQEBAMDBAQEBAQEBAQEBAQFBAQEXlJypJSGBAQDAwQEAwMEBAMDBAQEBAMEAwMDBAQEBARKRGutnI4EAwMFAwMEAwQEBAMEBAMEAwMEBAUEAwQEA0lBc7yngwQEBAMEBAQDBNkEAwMEBQQDAwMEAwQDBAQEN0eLqJmNBAMDAwUDBATZ19kDBAMEBAMEAwQFBAQDBAMsNW2ljYgDAwQEBQQF2NjZ19gEBAQEBAMEAwQDAwQEBCZAaoJfXgMEBAQEBAQD2NnYAwQEBAQEBAQEBAQEAwQDKDlXm25TBAQEBAMEBAQF2AQDAwMDBAQEBATQAwMDBARATl+DSzYDBAQEBAMEBAQEBAQDBAQDBAQDz9DPAwQEA05OYIhxdAMEAwMEBAQEAwQDAwQEBQQEBM/P0M/QBAQDZWNebnlyBAMEBAQDAwQEAwQEBAQEAwQEBNDP0AQDBARtZ2iMqpEEAwQDBAUEBAQDBAQFBAQDAwQDBNEDAwQDBWJqdqTEnQMEBAQEBAQEBAMDBAMEBAQDAwQEBAQEAwMFTFt0rMe8BAQEBQQEBAQEBAQEBAQDBAQEBAMDBAMDBAREYYmPq6YDBAQEBQUEBAQEAwMEAwMEBAQEBAQDAwQEBEphbWuEgwQEBAUEBN0EAwMEBAMEBAQDBAMEBAMEBAQEXWqIWINqBAMDBATd3d4EAwQEBAQEBAQEAwQEBAQEBARTYHthmXkEBAUD3dzd3d4DAwQEBAQEBAUEBQQEAwQEBFlljXephwMEBAMD3d3dBAQEBAMEAwQDAwQEAwMDBAQERlZ9nqmZBAQFBAQD3AQDBAQDBAMEBAMEAwUEBAQEAwRVaIGEh5IEBAQDAwQFBAQDBQMDAwMDBAQEAwQEBQQEA0JWf3+BggQEBAQEBQQEAwQEAwQEBAQEAwQEAwQEAwQEUl98R1RjBAQDBAMDBAMEBAQDBAQEAwQDBAMEBAQEBQRIVHpEY2oEAwQDAwQDBAQDAwMEBAMEBAQEAwQEBAQDBFNogz9ldGRhcF9aSVpAREtoYmphZVVPVl1sWltNVEpXU21sRXVofoWPd19QTlNYXWptfXVrW1Z0cpyBlltPKjxWXWFgak51h5hlWl1mbn2OgWt5bl5VU3FrmoyecmtDOEFARQ=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 2602,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "projection": "correlation",
+          "limits": [
+            -1,
+            1
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "frame": null,
+          "frames": 40,
+          "pixels": "5tzT3unp6enp6enp6enp6enp6enp6enp6enp6eXl5+fj2s/T4uPi4uLi4uLi4uLi4uPi4uLi4uLi4uLi3N/j5ebbwa22t72/v7y9wMC7t7zAwr6+wsHFxcC7t7myzNne7t++e3h8gYR/fH+Dfnd+hZF+eoF7enyKjWh+e3q72drx58d5coOQh3l9fHyBeJGah3t4eXxxeX2Cf3x/ecbk4/Hnw4x9gYJ8jIF/eoCAg4N4f4Z7gnSAfICGiXh8xOTk8efBe4V2f4iFg3WDhHp+dod6g4Bzf4iJioV6gYDG5OTx58B2f4qIiIZ5gnd5enl3foyBfIF6iJaBgIR8fsfk5PHnw31/fol/g3V2caVueYhzen19g4eMf4l5eYJ9xuTj8efJgIKCfoaAdHvO2MmCd310e4GEgH56hn2Cg3vH4+Px58aTe4eHjHh1rN7/2aV+gHx5f4eKdouAhImGi8vj4/HnxHp6e4uHe3d1y+HIan1wgHGDhXyEfX6Mg4KLy+Pj8efAdXOBjn6CkYZ2q4GBgXmBc3l9dH+zfn2Cf4jG5OPx58CEhYKCgXuChYOAdH5/jnxzfXd8zuLQjIl8e8Tj4/Hnwol+hH+AfIN+gXp2dYeNiHV5e7Xg/+S2dH2Cy+Tj8ee/g4F7gn+BgoKHfH17hIiIf396gdDdzIiAhJfL5OPx58B0fXt7iXqEfHKDd4aGfXl9fIJ3f7BwgoyBgcvk4/HnvIJsc4OGgoSCdYKDgHuEe3+BhIR3fX6KiYGBweTj8efBeXd5dHZ3gYN2gYF/dIeSd36TeH2Gl352gHHD5OTx58ONjoeHg4V4gYp6c4l4hIR7eoSReH2KgHxzj8Dk5PHnxIuNhnV8e7KBfn1wfYB+e3qCc4SNgnV3c4qAxeTj8efEfn2FgIPR4dWEiIJ+f3qDgnx3cYVtiHuCg4bH4+Px57+Cf36AueT/4bF4fnpzeHV9h4eGeoJ7bYl+gcjk4/HowHhzd3l71uXTgIKIe4SEe3J+gIl6c3p+e4eHxOTk8efDf4B+fYaGuo6Nf3R8doh6hnh0dYCIfn9xe3vE5OTx6MKPjoZ/kox9jpB/gW56g4J+enh5doqSh3l6f8Xk5PHoxH2ChoSKeoKEipV9dX56hnt0gneLiXqEhnd/x+Tk8efAg357gHuEg3h9hXd2hoV+h4FzhYGCb4R6fYHH4+Pp47l8doNpfYV7d3+AjIyJdoB4e3lseYF+gIlxisPX2eXgyK2+trm1vbq8vcPExsG+urm5uLi6uby+vr++y9DU7ezd2Ono6Ojo6Ojo6Ojp6Ojo6Ojo6Ojo6eno6OPg3t/y8+jn9/f39/f39/f39/f39/f39/f39/f39/j38u3q6Q=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
         "id": 27,
         "params": {
           "entityType": "session",
@@ -3366,6 +3418,387 @@
               "id": 2,
               "rows": 100,
               "columns": 0
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7701,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray"
+        }
+      },
+      "expect": {
+        "result": {
+          "added": []
+        }
+      },
+      "keep": {
+        "before": "/rois"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7702,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "pixels": [
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  5,
+                  6
+                ],
+                [
+                  6,
+                  5
+                ],
+                [
+                  99,
+                  99
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": []
+        }
+      },
+      "keep": {
+        "reshaped": "/rois"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7703,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "restore": "${before}"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": "${before}",
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7704,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "restore": "${reshaped}"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": "${reshaped}"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7710,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "restore": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  1
+                ]
+              ]
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  3,
+                  3
+                ]
+              ],
+              "classification": "rejected"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  3,
+                  3
+                ]
+              ],
+              "classification": "rejected"
+            }
+          ],
+          "added": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7711,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "pixels": [
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  3,
+                  2
+                ],
+                [
+                  3,
+                  4
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ]
+              ],
+              "classification": null
+            },
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  2,
+                  3
+                ],
+                [
+                  3,
+                  2
+                ],
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ]
+              ],
+              "classification": "rejected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7712,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "add": [
+            {
+              "pixels": [
+                [
+                  9,
+                  9
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7705,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "restore": "${before}"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": "${before}"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7706,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "restore": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  1,
+                  1
+                ]
+              ]
+            },
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  2,
+                  2
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 7707,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray",
+          "pixels": [
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  99,
+                  99
+                ]
+              ]
             }
           ]
         }

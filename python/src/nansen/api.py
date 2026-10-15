@@ -885,7 +885,8 @@ class Api:
         project = self._require_project()
         entity = self._entity(params)
         document, added = update_rois(project.load(entity, params["variable"], cached=False), params.get("classify"),
-                                      params.get("remove"), params.get("add"), params.get("move"), params.get("merge"))
+                                      params.get("remove"), params.get("add"), params.get("move"), params.get("merge"),
+                                      params.get("pixels"), params.get("restore"))
         project.save(entity, params["variable"], document)
         return {"rois": roi_outlines(document), "added": added}
 

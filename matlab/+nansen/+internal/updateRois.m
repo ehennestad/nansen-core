@@ -1,6 +1,10 @@
-function [document, added] = updateRois(document, classify, remove, add, move, merge)
-%updateRois The ROI file with ROIs classified, moved, merged, removed and added, as Python's nansen.frames.update_rois
+function [document, added] = updateRois(document, classify, remove, add, move, merge, pixelChanges, restore)
+%updateRois The ROI file with ROIs restored, classified, reshaped, moved, merged, removed and added, as Python's nansen.frames.update_rois
 %
+%   restore (missing when not given) is a list of id, pixels and
+%   classification: the ROIs, all of them, as they were (the viewer's undo),
+%   their ids kept. pixelChanges is a list of id and pixels: the ROI's
+%   pixels from now on (grow and shrink), id and classification kept.
 %   classify is a struct array of id and classification (accepted,
 %   rejected, or [] for none); move a struct array of id, rows and columns
 %   (whole-pixel shifts; pixels leaving the image are left out); merge a
@@ -16,6 +20,12 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
     end
     if nargin < 6
         merge = [];
+    end
+    if nargin < 7
+        pixelChanges = [];
+    end
+    if nargin < 8
+        restore = missing;
     end
     nansen.internal.roiOutlines(document);   % checks the shape
     rois = {};
@@ -36,6 +46,23 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
     if isfield(document, "imageSize")
         size_ = reshape(double(document.imageSize), 1, []);
     end
+    if ~isa(restore, "missing")
+        items = cellOf(restore);
+        rois = cell(1, numel(items));
+        ids = zeros(1, numel(items));
+        for i = 1:numel(items)
+            id = nansen.internal.getField(items{i}, "id", NaN);
+            if ~(isnumeric(id) && isscalar(id) && id >= 1 && id == round(id)) || ismember(id, ids(1:i - 1))
+                nansen.internal.throwError("invalid-params", "restored ROIs have different whole-number ids from 1")
+            end
+            rois{i} = measure(struct("id", double(id)), inside(round(nansen.internal.roiPixels(items{i})), size_));
+            label = string(nansen.internal.getField(items{i}, "classification", ""));
+            if any(label == ["accepted", "rejected"])
+                rois{i}.classification = char(label);
+            end
+            ids(i) = double(id);
+        end
+    end
 
     for change = asStructs(classify, ["id", "classification"])
         match = find_(ids, nansen.internal.getField(change, "id", NaN));
@@ -49,6 +76,10 @@ function [document, added] = updateRois(document, classify, remove, add, move, m
         else
             nansen.internal.throwError("invalid-params", "an ROI is accepted or rejected, not '%s'", string(label))
         end
+    end
+    for change = cellOf(pixelChanges)
+        match = find_(ids, nansen.internal.getField(change{1}, "id", NaN));
+        rois{match} = measure(rois{match}, inside(round(nansen.internal.roiPixels(change{1})), size_));
     end
     for change = asStructs(move, ["id", "rows", "columns"])
         match = find_(ids, nansen.internal.getField(change, "id", NaN));
@@ -134,5 +165,16 @@ function out = asStructs(value, ~)
         out = [value{:}];
     else
         out = reshape(value, 1, []);
+    end
+end
+
+function items = cellOf(value)
+    % A JSON list of objects as jsondecode gives it (a struct array, or a cell when they differ) as a 1 x n cell
+    if isempty(value)
+        items = {};
+    elseif iscell(value)
+        items = reshape(value, 1, []);
+    else
+        items = num2cell(reshape(value, 1, []));
     end
 end

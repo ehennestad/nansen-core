@@ -423,38 +423,10 @@ def detect_rois(entity, options, context):
 
 
 def correlation_image(stack):
-    """Each pixel's average Pearson correlation with its in-frame 8 neighbours over time.
-
-    Read a chunk of frames at a time, in three passes: each pixel's mean, its spread (the root mean square of
-    its deviations from the mean), and the sums over time of its normalised deviations times each neighbour's.
-    """
-    stack = as_stack(stack)
-    height, width, frames = stack.shape
-    chunks = lambda: (stack.frames(start, start + CHUNK).astype(np.float64) for start in range(0, frames, CHUNK))
-    total = np.zeros((height, width))
-    for chunk in chunks():
-        total += chunk.sum(axis=2)
-    mean = (total / frames)[:, :, None]
-    squares = np.zeros((height, width))
-    for chunk in chunks():
-        squares += ((chunk - mean) ** 2).sum(axis=2)
-    spread = np.sqrt(squares / frames)[:, :, None]
-    offsets = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx]
-    span = lambda d, size: slice(max(0, d), min(size, size + d))
-    products = {offset: np.zeros((height, width)) for offset in offsets}
-    for chunk in chunks():
-        data = np.divide(chunk - mean, spread, out=np.zeros_like(chunk), where=spread > 0)
-        for dy, dx in offsets:
-            here = (span(-dy, height), span(-dx, width))
-            there = (span(dy, height), span(dx, width))
-            products[(dy, dx)][here] += (data[here] * data[there]).sum(axis=2)
-    total = np.zeros((height, width))
-    count = np.zeros((height, width))
-    for dy, dx in offsets:
-        here = (span(-dy, height), span(-dx, width))
-        total[here] += products[(dy, dx)][here] / frames
-        count[here] += 1
-    return np.divide(total, count, out=np.zeros_like(total), where=count > 0)
+    """Each pixel's average Pearson correlation with its in-frame 8 neighbours over time, read a chunk of frames at a
+    time (nansen.frames.local_correlation, the viewer's correlation projection)."""
+    from nansen.frames import local_correlation
+    return local_correlation(stack)
 
 
 NEIGHBOURS = {4: ((-1, 0), (1, 0), (0, -1), (0, 1)),

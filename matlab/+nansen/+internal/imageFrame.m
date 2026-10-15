@@ -4,8 +4,8 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
 %   data is height x width (x frames), height x width x channels x frames,
 %   or height x width x channels x planes x frames: an array, or a
 %   nansen.Stack read a chunk of frames at a time. frame, channel and
-%   plane are 0-based; projection is "", "mean" or
-%   "max"; limits is [] or [low, high]. Values from low to high are scaled
+%   plane are 0-based; projection is "", "mean", "max",
+%   "std" or "correlation" (each pixel's with its 8 neighbours); limits is [] or [low, high]. Values from low to high are scaled
 %   to 0..255 as floor((v - low) / (high - low) * 255 + 0.5), cut at both
 %   ends; NaN is 0. low and high are the limits given, or else the smallest
 %   and largest finite value of the frame. pixels is base64 of the bytes,
@@ -32,13 +32,19 @@ function result = imageFrame(data, frame, channel, projection, limits, plane)
             end
             image = double(image);
             frame = [];
+        case "std"
+            image = nansen.internal.stdImage(stack);
+            frame = [];
+        case "correlation"
+            image = nansen.internal.localCorrelation(stack);
+            frame = [];
         case ""
             if frame < 0 || frame >= frames || frame ~= round(frame)
                 nansen.internal.throwError("invalid-params", "there are %d frames; frame %d is not one", frames, frame)
             end
             image = double(stack.frames(frame + 1, frame + 1));
         otherwise
-            nansen.internal.throwError("invalid-params", "projection is mean or max, not '%s'", projection)
+            nansen.internal.throwError("invalid-params", "projection is mean, max, std or correlation, not '%s'", projection)
     end
     if isempty(limits)
         finite = image(isfinite(image));

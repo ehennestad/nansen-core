@@ -36,12 +36,16 @@ def image_frame(data: Any, frame: int = 0, channel: int = 0, projection: Optiona
             peak = stack.frames(start, start + CHUNK).max(axis=2)
             image = peak if image is None else np.maximum(image, peak)
         image, frame = image.astype(np.float64), None
+    elif projection == "std":
+        image, frame = _std(stack), None
+    elif projection == "correlation":
+        image, frame = local_correlation(stack), None
     elif projection is None:
         if not 0 <= frame < frames:
             raise NansenError("invalid-params", f"there are {frames} frames; frame {frame} is not one")
         image = stack.frames(frame, frame + 1)[:, :, 0].astype(np.float64)
     else:
-        raise NansenError("invalid-params", f"projection is mean or max, not {projection!r}")
+        raise NansenError("invalid-params", f"projection is mean, max, std or correlation, not {projection!r}")
     if limits is not None:
         low, high = float(limits[0]), float(limits[1])
     else:
@@ -90,6 +94,48 @@ def _pick(data: Any, channel: int = 0, plane: int = 0):
     return stack, channels, planes
 
 
+def _std(stack) -> Any:
+    """Each pixel's standard deviation over the frames (the root mean square of its deviations from its mean), a
+    chunk at a time, in two passes."""
+    import numpy as np
+    height, width, frames = stack.shape
+    mean = _mean(stack)[:, :, None]
+    squares = np.zeros((height, width))
+    for start in range(0, frames, CHUNK):
+        squares += ((stack.frames(start, start + CHUNK).astype(np.float64) - mean) ** 2).sum(axis=2)
+    return np.sqrt(squares / frames)
+
+
+def local_correlation(stack) -> Any:
+    """Each pixel's average Pearson correlation over time with its in-frame 8 neighbours, read a chunk of frames at
+    a time in three passes: each pixel's mean, its spread (the root mean square of its deviations), and the sums over
+    time of its normalised deviations times each neighbour's. A pixel that does not change correlates 0."""
+    import numpy as np
+    from .stacks import as_stack
+    stack = as_stack(stack)
+    height, width, frames = stack.shape
+    chunks = lambda: (stack.frames(start, start + CHUNK).astype(np.float64) for start in range(0, frames, CHUNK))
+    mean = _mean(stack)[:, :, None]
+    squares = np.zeros((height, width))
+    for chunk in chunks():
+        squares += ((chunk - mean) ** 2).sum(axis=2)
+    spread = np.sqrt(squares / frames)[:, :, None]
+    offsets = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx]
+    span = lambda d, size: slice(max(0, d), min(size, size + d))
+    products = {offset: np.zeros((height, width)) for offset in offsets}
+    for chunk in chunks():
+        data = np.divide(chunk - mean, spread, out=np.zeros_like(chunk), where=spread > 0)
+        for dy, dx in offsets:
+            here, there = (span(-dy, height), span(-dx, width)), (span(dy, height), span(dx, width))
+            products[(dy, dx)][here] += (data[here] * data[there]).sum(axis=2)
+    total, count = np.zeros((height, width)), np.zeros((height, width))
+    for dy, dx in offsets:
+        here = (span(-dy, height), span(-dx, width))
+        total[here] += products[(dy, dx)][here] / frames
+        count[here] += 1
+    return np.divide(total, count, out=np.zeros_like(total), where=count > 0)
+
+
 def _mean(stack) -> Any:
     """The mean over the frames of a height x width x frames stack, a chunk at a time."""
     import numpy as np
@@ -118,10 +164,14 @@ CLASSES = ("accepted", "rejected")
 
 
 def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[list] = None,
-                add: Optional[list] = None, move: Optional[list] = None, merge: Optional[list] = None) -> Any:
-    """The ROI file with ROIs classified, moved, merged, removed and added; returns (document, ids of the added ROIs).
+                add: Optional[list] = None, move: Optional[list] = None, merge: Optional[list] = None,
+                pixels: Optional[list] = None, restore: Optional[list] = None) -> Any:
+    """The ROI file with ROIs restored, classified, reshaped, moved, merged, removed and added, in that order;
+    returns (document, ids of the added ROIs).
 
-    classify is [{id, classification}] with classification accepted, rejected or null (none). move is
+    restore is [{id, pixels, classification?}]: the ROIs, all of them, as they were (the viewer's undo); their ids
+    are kept. classify is [{id, classification}] with classification accepted, rejected or null (none). pixels is
+    [{id, pixels}]: the ROI's pixels from now on (the viewer's grow and shrink), id and classification kept. move is
     [{id, rows, columns}]: the ROI's pixels shifted by whole pixels, those leaving the image left out. merge is
     [[id, id, ...]]: the first ROI of each group takes the pixels of all of them (and keeps its id and
     classification), the others are removed. An added ROI is {pixels}; it gets the next free id. A changed or
@@ -148,6 +198,18 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
     def pixels_of(roi):
         return [(int(p[0]), int(p[1])) for p in roi_outlines({"rois": [roi]})[0]["pixels"]]
 
+    if restore is not None:
+        rois = []
+        for item in restore:
+            roi_id = item.get("id")
+            if not isinstance(roi_id, int) or isinstance(roi_id, bool) or roi_id < 1 or any(r["id"] == roi_id for r in rois):
+                raise NansenError("invalid-params", "restored ROIs have different whole-number ids from 1")
+            roi = {"id": roi_id}
+            measure(roi, [(int(p[0]), int(p[1])) for p in item.get("pixels", []) if inside(p)])
+            if item.get("classification") in CLASSES:
+                roi["classification"] = item["classification"]
+            rois.append(roi)
+        by_id = {roi["id"]: roi for roi in rois}
     for change in classify or []:
         roi = find(change.get("id"))
         label = change.get("classification")
@@ -157,6 +219,9 @@ def update_rois(value: Any, classify: Optional[list] = None, remove: Optional[li
             roi["classification"] = label
         else:
             raise NansenError("invalid-params", f"an ROI is accepted or rejected, not {label!r}")
+    for change in pixels or []:
+        roi = find(change.get("id"))
+        measure(roi, [(int(p[0]), int(p[1])) for p in change.get("pixels", []) if inside(p)])
     for change in move or []:
         roi = find(change.get("id"))
         dy, dx = int(change.get("rows", 0)), int(change.get("columns", 0))

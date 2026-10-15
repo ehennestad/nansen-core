@@ -1079,10 +1079,14 @@ classdef Api < handle
             project = obj.requireProject();
             entity = obj.entity(params);
             variable = string(nansen.Api.param(params, "variable"));
+            restore = missing;   % absent, as opposed to an empty list, which restores no ROIs
+            if isfield(params, "restore")
+                restore = params.restore;
+            end
             [document, added] = nansen.internal.updateRois(project.load(entity, variable, Cached=false), ...
                 nansen.internal.getField(params, "classify", []), nansen.internal.getField(params, "remove", []), ...
                 nansen.internal.getField(params, "add", []), nansen.internal.getField(params, "move", []), ...
-                nansen.internal.getField(params, "merge", []));
+                nansen.internal.getField(params, "merge", []), nansen.internal.getField(params, "pixels", []), restore);
             project.save(entity, variable, document);
             result = struct("rois", {nansen.internal.roiOutlines(document)}, "added", {added});
         end
