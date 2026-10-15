@@ -7,16 +7,10 @@ function result = exportStack(entity, options, context)
 %   the first frames). Frames count from 1; lastFrame 0 is the last. A
 %   relative path is in the project's folder; {field} tokens are the
 %   entity's values. As Python's ophys_methods.export_stack.
-    stack = ophys.internal.openStack(context, entity, options.stack, options);
+    stack = ophys.internal.openStack(context, entity, options.stack, options);   % frames firstFrame..lastFrame
     frames = size(stack, 3);
     first = double(nansen.internal.getField(options, "firstFrame", 1));
-    last = double(nansen.internal.getField(options, "lastFrame", 0));
-    if last == 0
-        last = frames;
-    end
-    if ~(1 <= first && first <= last && last <= frames)
-        nansen.internal.throwError("invalid-options", "frames %d to %d are not frames of the stack's %d", first, last, frames)
-    end
+    last = first + frames - 1;
     form = string(nansen.internal.getField(options, "format", "tiff"));
     if ~any(form == ["tiff", "binary", "npy", "video"])
         nansen.internal.throwError("invalid-options", "format is one of tiff, binary, npy, video")
@@ -28,7 +22,7 @@ function result = exportStack(entity, options, context)
     if ~isfolder(fileparts(path))
         mkdir(fileparts(path));
     end
-    dimensions = [size(stack, 1), size(stack, 2), last - first + 1];
+    dimensions = [size(stack, 1), size(stack, 2), frames];
     step = ophys.internal.chunk();
     scale = [];
     switch form
@@ -42,7 +36,7 @@ function result = exportStack(entity, options, context)
             low = double(nansen.internal.getField(options, "low", 0));
             high = double(nansen.internal.getField(options, "high", 0));
             if low == 0 && high == 0
-                sample = double(stack.frames(first, min(first + step - 1, last)));
+                sample = double(stack.frames(1, step));
                 low = ophys.internal.percentileOf(sample(:), 0.5);
                 high = ophys.internal.percentileOf(sample(:), 99.5);
             end
@@ -56,21 +50,21 @@ function result = exportStack(entity, options, context)
             open(writer);
     end
     closer = onCleanup(@() close(writer));
-    for start = first:step:last
+    for start = 1:step:frames
         context.checkCancelled();
-        stop = min(start + step - 1, last);
+        stop = min(start + step - 1, frames);
         chunk = stack.frames(start, stop);
         if isempty(scale)
-            writer.write(start - first + 1, chunk);
+            writer.write(start, chunk);
         else
             scaled = uint8(min(255, max(0, floor((double(chunk) - scale(1)) / (scale(2) - scale(1)) * 255 + 0.5))));
             writeVideo(writer, reshape(scaled, size(scaled, 1), size(scaled, 2), 1, []));
         end
-        context.progress((stop - first + 1) / (last - first + 1), sprintf("frame %d/%d", stop, last));
+        context.progress(stop / frames, sprintf("frame %d/%d", first + stop - 1, last));
     end
     clear closer   % closes the file
     context.log("%s: frames %d to %d written to %s", ophys.internal.entityName(entity), first, last, path);
-    result = struct("frames", last - first + 1, "path", char(path), "format", char(form));
+    result = struct("frames", frames, "path", char(path), "format", char(form));
 end
 
 function text = fillTokens(text, values)

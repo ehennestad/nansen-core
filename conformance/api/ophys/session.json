@@ -6166,6 +6166,1906 @@
           ]
         }
       }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9301,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "averageOutput": "",
+            "maximumOutput": "",
+            "frameStatsOutput": "",
+            "stack": "TwoPhotonSeries_Original",
+            "firstFrame": 11,
+            "lastFrame": 30
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "n_frames": 20,
+              "height": 32,
+              "width": 32,
+              "mean_intensity": 203.0551,
+              "max_intensity": 820.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9302,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "averageOutput": "",
+            "maximumOutput": "",
+            "frameStatsOutput": "",
+            "stack": "TwoPhotonSeries_Original",
+            "firstFrame": 41
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9303,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "averageOutput": "",
+            "maximumOutput": "",
+            "frameStatsOutput": "",
+            "stack": "TwoPhotonSeries_Original",
+            "lastFrame": 41
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9304,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "averageOutput": "",
+            "maximumOutput": "",
+            "frameStatsOutput": "",
+            "stack": "TwoPhotonSeries_Original",
+            "firstFrame": 12,
+            "lastFrame": 11
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 9305,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "TwoPhotonSeries_Range",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "subfolder": "ophys",
+            "fileName": "two_photon_series_range.npy",
+            "fileAdapter": "npy",
+            "dataType": "ImageStack"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhotonSeries_Range"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9306,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Original",
+            "maxShift": 8,
+            "referenceFrames": 1,
+            "firstFrame": 1,
+            "lastFrame": 25,
+            "output": "TwoPhotonSeries_Range",
+            "shiftsOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 25,
+              "maxShift": 3,
+              "meanShift": 2.7108
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9307,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Range",
+          "frame": 3,
+          "limits": [
+            0,
+            1000
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 25,
+          "frame": 3,
+          "low": 0.0,
+          "high": 1000.0,
+          "pixels": "AAAANzYuNjc1Ly0qKSwyNz44Rj88LC4rLSw3OyYjJTQAAAA4OTE2NjEuLiorLzs8PjA4NDQnKCwuKzc2MisqMQAAACw0LTU3ODkzLiw4Pzc0Ly4oJy4zOjgzOjI0KzYrAAAAJTIxPT05Ojc3Ozw9LjEmJyQtOjU8OTk2LDg4PDYAAAAqLz4/OzY1MjE9PD4uODE2LTQ5PDw7PDo4NjUsLQAAADU1PTYwKycqM0E4Nyw8MjoxODY3NzU/OT83Py4yAAAAPT1DNywqIycsPj9DQUVDRDw2MjQ4Mz04Py8yJi4AAABCPi8qKTEoKjE1ODY7Pjg5LDEvMzI2NzA4LDEkMwAAADc0JCUpMDEqLDY+Qj1EOjooMzA1LTQvJyUcJyg9AAAAPCgSHi89OyolHjAyNDovMR8wLioeKCEbGB0dHjEAAAAtHxoiMy4xKiYpN0NCQjkxJzAuMCwxJSUYHBkkLgAAACIjLTI2KickHxwpLDUrMyUfISo2NjUhIhkgGSAlAAAAGRooKS0mKC4pKSIlKyMfDwsbKDx4PSs1LjQsKikAAAAgKDMwMTEpKSUiHxYdFBUJECE1dmhnHi8yPTMrKwAAADIoKy88NSkmJh0aDhogIBwaKGprX25hNjVJQjgpAAAAMzg6PDYsJiQmHyMZIykxMjAyM3JyeCwsLD9IOy0AAAA2KCkvNjgxLSooLyk6PkM6NzouNXVLQzgpL0A6MgAAADg2NzcyOz8/OzE2Mj89PTY9PjcvNUFAPTEtMTIyAAAAQDczNDc3OjY2NEEzQjo8NTxCPjc9Rjo4LSstNTwAAAA8PjU6LSgxN0E1QjEyJC82QUVCMzI8OUA0NjE3MAAAADoyLTMqJYIgLzVGNz0uOzQ+RENAP0k+OTY4PTw7AAAANSssLSKIiIswMUU/PDI1Nz9KR0U5QUJFQTU3NTUAAAA6LzMth4qHgoMoOjc4Ojk3PUFGQ0E8QUJEOzs5PQAAADkwLiYmlZqULzE2Ni4uLTZAREo+QjdBQj0sLjA3AAAAPDksLis0ljk5OC8xOTU5KTkoPjc/MTo6NTI3OjgAAAA2NiUoKjQzNjpAMDQ1OTkuNys0ND8+PjctIiswNwAAAC4oISQpMy8zOEJARUZBOCUuJzU1NTw7OzIrODQ2AAAALyUkHzI4PS0xQk9NQDs0NDY1NjAxN0JDPzExMDQAAAAxKiorMDMwISMxTlBNPzQpLjEzNC4xLjU1OzY5OgAAADYyOzQwJTAhIyg3NTc0NiwpLjE5MC8pLiYtKDEtAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9308,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Original",
+            "maxShift": 8,
+            "referenceFrames": 1,
+            "firstFrame": 11,
+            "lastFrame": 30,
+            "output": "",
+            "shiftsOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 20,
+              "maxShift": 6,
+              "meanShift": 4.5819
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9309,
+        "params": {
+          "methodId": "ophys.detect_rois",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Range",
+            "threshold": 0.2,
+            "border": 4,
+            "minSize": 10,
+            "firstFrame": 6,
+            "lastFrame": 25,
+            "output": "RoiArray_Range"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "areas": [
+                13,
+                13,
+                13
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9310,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Range",
+            "rois": "RoiArray_Range",
+            "firstFrame": 6,
+            "lastFrame": 25,
+            "output": "RoiSignals_Range",
+            "neuropilOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 3,
+              "frames": 20,
+              "ids": [
+                1,
+                2,
+                3
+              ],
+              "meanSignal": [
+                367.1923,
+                312.9654,
+                331.8462
+              ],
+              "meanNeuropil": [
+                179.975,
+                184.835,
+                207.2725
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9311,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "RoiSignals_Range"
+          ],
+          "columns": [],
+          "maxPoints": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "traces": [
+            {
+              "variable": "RoiSignals_Range",
+              "count": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 9312,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "frames": 5,
+          "options": {
+            "stack": "TwoPhotonSeries_Original",
+            "firstFrame": 11,
+            "lastFrame": 30
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 5,
+          "results": [
+            {
+              "n_frames": 5,
+              "mean_intensity": 202.6139,
+              "max_intensity": 673.0
+            }
+          ],
+          "outputs": [
+            {
+              "name": "FovAverageProjection",
+              "size": [
+                32,
+                32
+              ]
+            },
+            {
+              "name": "FovMaximumProjection",
+              "size": [
+                32,
+                32
+              ]
+            },
+            {
+              "name": "FrameStats",
+              "size": [
+                5,
+                4
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 9313,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "frames": 5,
+          "options": {
+            "stack": "TwoPhotonSeries_Original",
+            "lastFrame": 41
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 9314,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "TwoPhotonSeries_Pairs",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "subfolder": "ophys",
+            "fileName": "two_photon_series_pairs.npy",
+            "fileAdapter": "npy",
+            "dataType": "ImageStack"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhotonSeries_Pairs"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9315,
+        "params": {
+          "methodId": "ophys.deinterleave",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "channels": 2,
+            "firstFrame": 3,
+            "lastFrame": 6,
+            "output": "TwoPhotonSeries_Pairs"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 4,
+              "channels": 2,
+              "planes": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9316,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Pairs",
+          "channel": 1,
+          "frame": 0
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 32,
+          "width": 32,
+          "frames": 4,
+          "channels": 2,
+          "planes": 1,
+          "frame": 0,
+          "low": 37.0,
+          "high": 360.0,
+          "pixels": "tp+kjodxiIaJbWxiXWiBiaOUuqSfa3Brb2yUl1xNWYeYnaCOmHmKin5+cmdodpidpnqUhodeXW52ZJKNe2tjfIlzhmeDbImNjpOAb26Up4uBb2pbY3R+mI2FmH+DZoZweW1jW3p+nJ6Qlo2MkZyfbHpUWlVpkoealJSQapOPmH+Bf3lgcZ+nnI+KfnWhn6JykHqEb4SSop+bn5yPiIFtb4eAhYuOoot1a19rf6yShmuafpd4jImNj4mhi6WUonV6rJeUnKOxjWtlS11moauqq7axupyHeIeThZ+SpHp+W3W6p6Ouo3ZqYXtcZIF/jIuWnpSUbHl1h3+Cj3GSbH5Vf82tlJCBUlRldoBja5mlsaC0kpVfgXqEcIJ0XVM8VF+ctZ+dm2QdOHmjmWFnToGAi5l2f019cWM8XEE3Lj1CPnavlJxzRTFSfHJ6dmdynLyrq5h2Wnpxd2V5WlQrOjFXcoVcZEhRbn6JWWBUVUlsaYxoe1dBS2CGj4lGRi9JM0VUqGxTMzlfY21YXGxacU5OZ1E+Fwc2ZZrMoGmGb4FkbGCFPipCXIR2enlga1VNQik7Gh8AEkeJy6ehQW19oH9rX4l0fnRcaXiZhV5WXD0vDTBDSj4xY6Crha6Dj4fFso1gb3p3gY2an4RvWU9WQE0xTVt7eHuCgby6y2hqc6fHmHCSuaeJYmB8i5N+b2NfcmeSo7aYjZhzicnKrYxldKmWfrDYupKJjJJ/mKexmnqLgaafmpChp4x6iLarontuf4B8t9jeqYl+ho2QlouNfqyGr5Wcgp6zn4+fupyNa2drjZ2UtcigoIWSdWZ6jauGsXp+V3OLrrmxgYGfkKSFin6NdmiGl5J7cX9nVa5CcoPAiKN4m4ehsrGsqL+rk4aPopufUIFwiWprbEnGydB1e7mhnHuLjqXHwbCRqrC1r4eOh41Zn4aUcn5txtHBrbdfkpGSjZCOo7S/q6qbrra4mZqRoXqzm5N2cllZ7//yeHiMh29zcoiotcakq4uurZ1pdXiOrLSxm5FrcmKE74+UhnR8loaTXJBnpYeqfpKXiXyQlI2Gi6mLjFxaY4B+iJqnfoGHlJR1i2eChZ+gp4x2TWt6kYGFk3JhSFZnhHCCja2uur+ulFRtWoWIjaCdmH9miIiKPEllclBURn6Unmx8rdjLqpiBhouJiX2Ckayxn4J6coI2YHJ+ZGNrdHl5S1h81trUoINicH6BgW53cIeDmpGUjTZgdYWAmHp6WnJLU16QgZOFiWtmbnqUd31jalxtW31uP3xmhpKgf2BES01YXWxshXlvWVF6dq6LpllKGC5VWFlmZ0V0kKZjUVZlcISXhGh6b1hNS3FrppKrcmg2KjA1Ng=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 9317,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "TwoPhotonSeries_Planes",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "subfolder": "ophys",
+            "fileName": "two_photon_series_planes.npy",
+            "fileAdapter": "npy",
+            "dataType": "ImageStack"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhotonSeries_Planes"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.save",
+        "id": 9318,
+        "params": {
+          "document": {
+            "schemaType": "nansen.dataVariable",
+            "schemaVersion": "0.1.0",
+            "name": "TwoPhotonSeries_PlanesCorrected",
+            "entityType": "session",
+            "dataLocation": "processed",
+            "subfolder": "ophys",
+            "fileName": "two_photon_series_planes_corrected.npy",
+            "fileAdapter": "npy",
+            "dataType": "ImageStack"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "TwoPhotonSeries_PlanesCorrected"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9319,
+        "params": {
+          "methodId": "ophys.deinterleave",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "channels": 1,
+            "planes": 2,
+            "output": "TwoPhotonSeries_Planes"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 20,
+              "channels": 1,
+              "planes": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9320,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Planes",
+          "plane": 1,
+          "frame": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "channels": 1,
+          "planes": 2,
+          "frame": 2,
+          "low": 37.0,
+          "high": 360.0,
+          "pixels": "tp+kjodxiIaJbWxiXWiBiaOUuqSfa3Brb2yUl1xNWYeYnaCOmHmKin5+cmdodpidpnqUhodeXW52ZJKNe2tjfIlzhmeDbImNjpOAb26Up4uBb2pbY3R+mI2FmH+DZoZweW1jW3p+nJ6Qlo2MkZyfbHpUWlVpkoealJSQapOPmH+Bf3lgcZ+nnI+KfnWhn6JykHqEb4SSop+bn5yPiIFtb4eAhYuOoot1a19rf6yShmuafpd4jImNj4mhi6WUonV6rJeUnKOxjWtlS11moauqq7axupyHeIeThZ+SpHp+W3W6p6Ouo3ZqYXtcZIF/jIuWnpSUbHl1h3+Cj3GSbH5Vf82tlJCBUlRldoBja5mlsaC0kpVfgXqEcIJ0XVM8VF+ctZ+dm2QdOHmjmWFnToGAi5l2f019cWM8XEE3Lj1CPnavlJxzRTFSfHJ6dmdynLyrq5h2Wnpxd2V5WlQrOjFXcoVcZEhRbn6JWWBUVUlsaYxoe1dBS2CGj4lGRi9JM0VUqGxTMzlfY21YXGxacU5OZ1E+Fwc2ZZrMoGmGb4FkbGCFPipCXIR2enlga1VNQik7Gh8AEkeJy6ehQW19oH9rX4l0fnRcaXiZhV5WXD0vDTBDSj4xY6Crha6Dj4fFso1gb3p3gY2an4RvWU9WQE0xTVt7eHuCgby6y2hqc6fHmHCSuaeJYmB8i5N+b2NfcmeSo7aYjZhzicnKrYxldKmWfrDYupKJjJJ/mKexmnqLgaafmpChp4x6iLarontuf4B8t9jeqYl+ho2QlouNfqyGr5Wcgp6zn4+fupyNa2drjZ2UtcigoIWSdWZ6jauGsXp+V3OLrrmxgYGfkKSFin6NdmiGl5J7cX9nVa5CcoPAiKN4m4ehsrGsqL+rk4aPopufUIFwiWprbEnGydB1e7mhnHuLjqXHwbCRqrC1r4eOh41Zn4aUcn5txtHBrbdfkpGSjZCOo7S/q6qbrra4mZqRoXqzm5N2cllZ7//yeHiMh29zcoiotcakq4uurZ1pdXiOrLSxm5FrcmKE74+UhnR8loaTXJBnpYeqfpKXiXyQlI2Gi6mLjFxaY4B+iJqnfoGHlJR1i2eChZ+gp4x2TWt6kYGFk3JhSFZnhHCCja2uur+ulFRtWoWIjaCdmH9miIiKPEllclBURn6Unmx8rdjLqpiBhouJiX2Ckayxn4J6coI2YHJ+ZGNrdHl5S1h81trUoINicH6BgW53cIeDmpGUjTZgdYWAmHp6WnJLU16QgZOFiWtmbnqUd31jalxtW31uP3xmhpKgf2BES01YXWxshXlvWVF6dq6LpllKGC5VWFlmZ0V0kKZjUVZlcISXhGh6b1hNS3FrppKrcmg2KjA1Ng=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9321,
+        "params": {
+          "methodId": "ophys.motion_correction",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_Planes",
+            "plane": 0,
+            "maxShift": 8,
+            "referenceFrames": 1,
+            "output": "TwoPhotonSeries_PlanesCorrected",
+            "shiftsOutput": "PlaneShifts"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "frames": 20,
+              "maxShift": 5,
+              "meanShift": 2.8837,
+              "planes": [
+                {
+                  "plane": 1,
+                  "maxShift": 3,
+                  "meanShift": 2.8679
+                },
+                {
+                  "plane": 2,
+                  "maxShift": 5,
+                  "meanShift": 2.8996
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9322,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_PlanesCorrected",
+          "plane": 0,
+          "frame": 1,
+          "limits": [
+            0,
+            1000
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "channels": 1,
+          "planes": 2,
+          "frame": 1,
+          "low": 0.0,
+          "high": 1000.0,
+          "pixels": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJTI0PTw5Ozc3Ojs9LTAlJyQsODY8Ojo4LDo3OjMAAAArLz5AOzY2MzE+PT4tNzA0LDQ4Ozw7Ozw5NTQuLQAAADU3PDYvLCcsND86Niw6MzkxNzY3ODY/OT85Py0xAAAAPD5ENispIygsPEFCQURDRDo1MDU5NTw4PjExJS4AAABCPjAsKTAoKjMzODc8Pjo6Li8vNTQ2Ny43LTEkMQAAADgzJSUqLzApK0A+QT1COTkoNDA2LTQvJiQcJCg8AAAAOykTHDE+OiotKDgxNjkwMiAwLSofKh8dGRwdHTAAAAAtHxslNC0wNC80QUtEQjoxJzAvMCsxJiUWHBkkLgAAACIjLjI2KSgjKScyKjYrMicfICk1ODUiIBgfGh8mAAAAGxsqKS4oKC0oMyQjKyMfEAwaKjw+PSs1LTQrKioAAAAfKDQwMS8nKiUhHxcdEhUKDyA1PDAuHC8yPTUtKgAAADAoLC87NCklJhwbDhshIBsaKTAzJzUoNjZIRDcqAAAAMjc8PTUsJSMmHiMYIigyMC8yMjk3PSwsLz5IOS0AAAA1KCkvNzw0LignLyo6PkI5NzgtNjxLQTcrL0E8NQAAADc2NzcyOz9BOzI2Mj89PDc+PzYuNEI/PTEuMjIzAAAAPzUzNDY5Ozg3M0E0Qzo8NTtDPTc9RDs4LCktODsAAAA8PDQ6LykxNkE0QjE0JC41QURDMzI9OT8zNjE3LgAAADk0LDMqJiMiLzVINz8vOTU9Q0NAP0g/OjU4PTw7AAAANSwsLCEtLC8uMUQ+PDI1OEFJR0M5QUNEQjY3NTYAAAA6LjMtKi4rJScoOTg4ODo3PkJHQkA9QUNFOz04PQAAADkvLSgmOUE5MTE2Ni0wLDZBQ0k+QDhAQz0sMDA2AAAAPDgtLik1Ojg5Ni4yOjY5KDcpPzVCMjc6NTI7OzgAAAA3NycnKzU0Nzs/MTQ2ODguNiozMz89PzguIywwNwAAAC0pICMqNDE1OEJBRUdCNiUtJzU3Nzs8OzEqNjU2AAAALiQkIDM5PS0wQVBNQTszMjc0NjIyN0JEPjQvLzUAAAAzKiosLzAwIiQyT1FNPTMpKzEzMy4yLjU0Ozc6OgAAADU0OzIvJzEhJCY3NDczNi4qLjE3MC8oLSYtJTAtAAAANTk7MCgiISMlJy4tNDEtJSQxL0I2PyYfERoiJSkAAAAwNz4pJCcqLTM6NCwwLCUjIi0rPTpBLy0aFxoaHQ=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9323,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_PlanesCorrected",
+          "plane": 1,
+          "frame": 2,
+          "limits": [
+            0,
+            1000
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "channels": 1,
+          "planes": 2,
+          "frame": 2,
+          "low": 0.0,
+          "high": 1000.0,
+          "pixels": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD43NS41NTYtLCkoKzM2PjlFPj0sLiwtLDk6JyImNQAAPTc6MDY2MjIuKyswOjw/MTk1NSgoLS8qOTcxLCoxAAA1KzQsNjc3OTMtLTk/NjMtLCcqLzI6NzQ7MjQqNS4AAConMTI8PDg6Nzc4PD0sMSUnJSs5NTs5OTgsOTg7MgAAMCkuPT88ODYyLz09Pi44MTQtNDk+PTs9PDg1My0tAAA0Njc+Ni8sKCwyQTk1LDsyOjA3Njc4Nj02Pzk+LzEAADk8PkM3LCoiKCo9QUBBRENFPDUwNTk1PTk+MTInLwAAPkI+MCwpMScqMzI3Njo8OTksMC81MjQ4LjksMiUyAAA5ODMkJCovMyksOz9DPUQ5OigzMTQuNC8oJB0lKDwAADw7KhMcMD47KSsjMzM2OzAyIjIuKR0nHhsYHR8dLwAAPC8gGSQxLjEvKy48RkFBOjAnMS4wKjAnJBccGSUuAAAqISMtMjYmKCUlISwrNysxJR4iKDU4NiAgGCEaICQAACQaHCgqLSYnLCcuIyMrJB0RDBsqO0s9KzUtMyosKAAAFx8nNC8xMCgsJSIfFx0SEwkPIDZLPz0eLTI9MiwoAAAyLycrMDs1KCUnHRkOGR8hHRkpPUE1QjQ4NUlDNykAADAzNzs9NC0mIyUeIhkiJzEwMTQzRkZLKywvP0o7LgAAPzYpKDE2OTItKiguKzk+RDo3Oi82SktBNyovQDoyAABFOTY3OTI6P0M7MTYzPz07OD0/NzE1REE+MS0yMzEAAFFANjI1Nzg6NjcyQTVCOjw0PEM9OD1FPDcsKyw3PAAASj09NDkvKjE3QTVDMTIlLzZCRUMzMz04PjU2MjcwAAA6OTEuMislQh8uNEc1PjA7NT1DQ0FAR0E5NTg+Oz0AAC42LCwsIUlKTS8xRT08MTY3P0pIQjhAQkRCNTc1NwAANTkuMi1JTUhBRSg5ODk3ODc+REdBQDtCREU7Ozg9AAA7OTAuJiZXXFcwMDc1LS8uNUBEST5BNkJBPCsvMDcAAEM7OCwuKTRXODk1LzE6NTknOCs/NUAyOTo2MTg5NwAAQDY3JycpMzI1Oz8yMzU5OS82KzQ0PT0/NzAiLDE4AAA5LikhJSs0LjQ3QUJFR0I5JS0nNDU3PTw6Mio1NTYAACouIyQgMjk8LDFBT0tAOjM1NjY2MjQ4QUM9NDEuNAAALjIqKSwvMDAiJjFPUE49NCkuMjMzLTAuNTQ7ODk3AAAvNTM6MTEnLiIkKDgzOTQ2LCotMTkwMiksJy0nMi0AAA=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9324,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "PlaneShifts"
+          ],
+          "columns": [
+            0,
+            3
+          ],
+          "maxPoints": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "start": 0,
+          "step": 4,
+          "points": 5,
+          "traces": [
+            {
+              "variable": "PlaneShifts",
+              "count": 4,
+              "columns": [
+                {
+                  "column": 0,
+                  "values": [
+                    0.0,
+                    2.0,
+                    0.0,
+                    -3.0,
+                    3.0
+                  ]
+                },
+                {
+                  "column": 3,
+                  "values": [
+                    0.0,
+                    1.0,
+                    -1.0,
+                    -1.0,
+                    0.0
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9325,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_PlanesCorrected",
+            "plane": 0,
+            "averageOutput": "PlaneAverage",
+            "maximumOutput": "",
+            "frameStatsOutput": "PlaneFrameStats"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "n_frames": 20,
+              "height": 32,
+              "width": 32,
+              "mean_intensity": 181.5143,
+              "max_intensity": 820.0,
+              "planes": [
+                {
+                  "plane": 1,
+                  "mean_intensity": 180.1865,
+                  "max_intensity": 820.0
+                },
+                {
+                  "plane": 2,
+                  "mean_intensity": 182.8421,
+                  "max_intensity": 812.0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9326,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "PlaneAverage",
+          "plane": 1,
+          "limits": [
+            0,
+            1000
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 1,
+          "channels": 1,
+          "planes": 2,
+          "frame": 0,
+          "low": 0.0,
+          "high": 1000.0,
+          "pixels": "ERQXGBgXFRgSEw8RDw4VFRcWFxYTFRQXFRQTERcODQYVGRkYGxoaFxQTERMVFxsZICAgGBMVFxcYGRUSEhARDBwhIBsgICAcGxgYGx4hJSIpJiQaGxobGyIkFxMVGBYQHyosJSkpJSQiICAkKy0vJSsnJx4fIiMgKSgmHh4eGxkfJy8nMDEyMy4qKTM4MS8pKCMkKi41Mi81LC8kLR0bEx0nMjI9PTk6Njc6Oz4tMCUmJC06Njs5OTcsODU4Jh8VIikuPkA8NjYyMT49Pi44MTUsMzk8PDs8PDk2MiojGxUlNzY9NjArKCwzQDk2LDsyOjE2NjY3NT44Pjg8KyUdGSk8PkM3KyojJys+QEFAREJEOzUxNTk1PTg+MC8kIyAZK0I+LysqMSgqMTQ3Njo+OTktMDA0MzU4LzcsLiImJBwoODQlJSowMiksaj5CPUQ5OSgzMTQtNDAnJB0jJi0oHis8KRIcMD06KllSYzI1OjExITAtKR4oIBwYHRwcJCYeKS4fGiMyLjBfWl1rdkJBOjEmMC4wKzElJRcbGCIjIBodISMtMjYoKCRTUVwrNiszJR8hKTU3NSEhGCAZHh0cGBkaGygoLiYoLShdIyQqJB8QCxopPGU+KzYtNCgpHxoVEB8nMzAyMCgrJSEfFh0SFAoQITZjV1UeLzI+MSofGxQjMSksLzw1KSYnHBoOGiAgGxooV1lMWk43NkhANB8TEiMzNzs8Ni0mJCYfIxkiKDExMDM0X11kLCwtP0U3IhATLDUpKTA2OTIuKScvKjk+Qzs3OS01YktBNyovPjgmFBUwODY3ODI6QEA6MTYzPz08Nz0+Ny81QkA9MS0wMCYcFDk/NjI0Nzg7NzgzQDRCOTw1PEM9NzxFOzcsKiszLScYMz09NTkuKTA2QTRDMTMlLjZBRUIzMzw5PzQ2LzMkIxQoOjMuNColVx8vNEc2Pi87NT5DQkA/Rz45NTg7OCwmGCA2LCwsIV5eYS8xRT48MjU4P0pIQzlBQkVBNjQzKB4XJTouMi1dYV1XWic5ODk4OTg+QkdBQDxCQkU7ODYuIx4pOTAtJyZscWswMjY1LS8uNUFDSj9AN0FCPCwsLikcHC88OSwuKjRsODk3LzE5NDgoOSk+NkEyOTo1MjY3KhgVLTc2JicqNTI2Oz8xMzU5OS44KjQ0Pz4/OC4jKi0pFxMoLSggJCs0MDQ4Q0FFRkE5Ji0nNDU2PDs7MSs0MykbGB4uJCQgMjk9LTJCT0xAOzM0NjU1MTI4QUM+My4tKCQeIDEqKiwwMTAhJTJPUU4+MyksMjM0LTIuNTQ7NTcrJx0XKikvKCYfJhsdICwpLSkrJCEkJy0mJiAjHyQgJx0cFQ=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9327,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "PlaneFrameStats"
+          ],
+          "columns": [
+            0,
+            4
+          ],
+          "maxPoints": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "traces": [
+            {
+              "variable": "PlaneFrameStats",
+              "count": 8,
+              "columns": [
+                {
+                  "column": 0,
+                  "values": [
+                    203.625,
+                    196.6641,
+                    178.4795,
+                    173.6328,
+                    170.749
+                  ]
+                },
+                {
+                  "column": 4,
+                  "values": [
+                    206.7607,
+                    194.9492,
+                    181.751,
+                    185.5127,
+                    195.5488
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9328,
+        "params": {
+          "methodId": "ophys.detect_rois",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_PlanesCorrected",
+            "plane": 0,
+            "threshold": 0.25,
+            "border": 5,
+            "minSize": 10,
+            "output": "RoiArray_Planes"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 6,
+              "planes": [
+                {
+                  "plane": 1,
+                  "rois": 3
+                },
+                {
+                  "plane": 2,
+                  "rois": 3
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9329,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_PlanesCorrected",
+          "plane": 0,
+          "rois": "RoiArray_Planes"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1
+            },
+            {
+              "id": 2
+            },
+            {
+              "id": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9330,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_PlanesCorrected",
+          "plane": 1,
+          "rois": "RoiArray_Planes"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 4,
+              "pixels": [
+                [
+                  10,
+                  10
+                ],
+                [
+                  11,
+                  9
+                ],
+                [
+                  11,
+                  10
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  12,
+                  8
+                ],
+                [
+                  12,
+                  9
+                ],
+                [
+                  12,
+                  10
+                ],
+                [
+                  12,
+                  11
+                ],
+                [
+                  12,
+                  12
+                ],
+                [
+                  13,
+                  9
+                ],
+                [
+                  13,
+                  10
+                ],
+                [
+                  13,
+                  11
+                ],
+                [
+                  14,
+                  10
+                ]
+              ]
+            },
+            {
+              "id": 5,
+              "pixels": [
+                [
+                  14,
+                  21
+                ],
+                [
+                  15,
+                  20
+                ],
+                [
+                  15,
+                  21
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  16,
+                  19
+                ],
+                [
+                  16,
+                  20
+                ],
+                [
+                  16,
+                  21
+                ],
+                [
+                  16,
+                  22
+                ],
+                [
+                  16,
+                  23
+                ],
+                [
+                  17,
+                  20
+                ],
+                [
+                  17,
+                  21
+                ],
+                [
+                  17,
+                  22
+                ],
+                [
+                  18,
+                  21
+                ]
+              ]
+            },
+            {
+              "id": 6,
+              "pixels": [
+                [
+                  22,
+                  7
+                ],
+                [
+                  23,
+                  6
+                ],
+                [
+                  23,
+                  7
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  24,
+                  5
+                ],
+                [
+                  24,
+                  6
+                ],
+                [
+                  24,
+                  7
+                ],
+                [
+                  24,
+                  8
+                ],
+                [
+                  24,
+                  9
+                ],
+                [
+                  25,
+                  6
+                ],
+                [
+                  25,
+                  7
+                ],
+                [
+                  25,
+                  8
+                ],
+                [
+                  26,
+                  7
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "rois.update",
+        "id": 9331,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "RoiArray_Planes",
+          "plane": 0,
+          "pixels": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "added": [],
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  8,
+                  12
+                ],
+                [
+                  9,
+                  11
+                ],
+                [
+                  9,
+                  12
+                ],
+                [
+                  9,
+                  13
+                ],
+                [
+                  10,
+                  10
+                ],
+                [
+                  10,
+                  11
+                ],
+                [
+                  10,
+                  12
+                ],
+                [
+                  10,
+                  13
+                ],
+                [
+                  10,
+                  14
+                ],
+                [
+                  11,
+                  11
+                ],
+                [
+                  11,
+                  12
+                ],
+                [
+                  11,
+                  13
+                ],
+                [
+                  12,
+                  12
+                ]
+              ]
+            },
+            {
+              "id": 2,
+              "pixels": [
+                [
+                  12,
+                  23
+                ],
+                [
+                  13,
+                  22
+                ],
+                [
+                  13,
+                  23
+                ],
+                [
+                  13,
+                  24
+                ],
+                [
+                  14,
+                  21
+                ],
+                [
+                  14,
+                  22
+                ],
+                [
+                  14,
+                  23
+                ],
+                [
+                  14,
+                  24
+                ],
+                [
+                  14,
+                  25
+                ],
+                [
+                  15,
+                  22
+                ],
+                [
+                  15,
+                  23
+                ],
+                [
+                  15,
+                  24
+                ],
+                [
+                  16,
+                  23
+                ]
+              ]
+            },
+            {
+              "id": 3,
+              "pixels": [
+                [
+                  20,
+                  9
+                ],
+                [
+                  21,
+                  8
+                ],
+                [
+                  21,
+                  9
+                ],
+                [
+                  21,
+                  10
+                ],
+                [
+                  22,
+                  7
+                ],
+                [
+                  22,
+                  8
+                ],
+                [
+                  22,
+                  9
+                ],
+                [
+                  22,
+                  10
+                ],
+                [
+                  22,
+                  11
+                ],
+                [
+                  23,
+                  8
+                ],
+                [
+                  23,
+                  9
+                ],
+                [
+                  23,
+                  10
+                ],
+                [
+                  24,
+                  9
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9332,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_PlanesCorrected",
+            "plane": 0,
+            "rois": "RoiArray_Planes",
+            "output": "RoiSignals_Planes",
+            "neuropilOutput": "RoiNeuropil_Planes"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 6,
+              "frames": 20,
+              "ids": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "meanSignal": [
+                338.6769,
+                331.2346,
+                321.6615,
+                369.9231,
+                355.3654,
+                382.4269
+              ],
+              "meanNeuropil": [
+                179.97,
+                184.78,
+                207.4092,
+                179.97,
+                186.3167,
+                207.3062
+              ],
+              "planes": [
+                {
+                  "plane": 1,
+                  "rois": 3
+                },
+                {
+                  "plane": 2,
+                  "rois": 3
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9333,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "RoiSignals_Planes"
+          ],
+          "columns": [
+            0,
+            3
+          ],
+          "maxPoints": 5,
+          "rois": "RoiArray_Planes"
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 20,
+          "start": 0,
+          "step": 4,
+          "points": 5,
+          "traces": [
+            {
+              "variable": "RoiSignals_Planes",
+              "count": 6,
+              "columns": [
+                {
+                  "column": 0,
+                  "values": [
+                    516.3077,
+                    446.6923,
+                    214.0,
+                    179.3077,
+                    154.1538
+                  ]
+                },
+                {
+                  "column": 3,
+                  "values": [
+                    259.7692,
+                    328.1538,
+                    341.7692,
+                    545.6154,
+                    520.4615
+                  ]
+                }
+              ]
+            }
+          ],
+          "rois": [
+            {
+              "id": 1
+            },
+            {
+              "id": 2
+            },
+            {
+              "id": 3
+            },
+            {
+              "id": 4
+            },
+            {
+              "id": 5
+            },
+            {
+              "id": 6
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9334,
+        "params": {
+          "methodId": "ophys.compute_dff",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "signals": "RoiSignals_Planes",
+            "neuropil": "RoiNeuropil_Planes",
+            "output": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "rois": 6,
+              "frames": 20,
+              "baseline": [
+                59.3064,
+                86.5656,
+                71.5472,
+                59.022,
+                73.7715,
+                76.8269
+              ],
+              "maxDff": [
+                9.1371,
+                5.6446,
+                6.6809,
+                8.014,
+                7.6392,
+                6.809
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.preview",
+        "id": 9335,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "frames": 4,
+          "options": {
+            "stack": "TwoPhotonSeries_PlanesCorrected",
+            "plane": 0,
+            "averageOutput": "",
+            "maximumOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 4,
+          "results": [
+            {
+              "n_frames": 4,
+              "mean_intensity": 182.8535,
+              "max_intensity": 812.0,
+              "planes": [
+                {
+                  "plane": 1,
+                  "mean_intensity": 177.5171
+                },
+                {
+                  "plane": 2,
+                  "mean_intensity": 188.1899
+                }
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "name": "FrameStats",
+              "size": [
+                4,
+                8
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9336,
+        "params": {
+          "methodId": "ophys.image_stats",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s4"
+            }
+          ],
+          "options": {
+            "averageOutput": "",
+            "maximumOutput": "",
+            "frameStatsOutput": "",
+            "stack": "TwoPhotonSeries_ScanImage",
+            "plane": 0,
+            "channel": 2
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "n_frames": 3,
+              "height": 16,
+              "width": 64,
+              "mean_intensity": 2011.709,
+              "max_intensity": 3999.0,
+              "planes": [
+                {
+                  "plane": 1,
+                  "mean_intensity": 2011.9466,
+                  "max_intensity": 3999.0
+                },
+                {
+                  "plane": 2,
+                  "mean_intensity": 2011.4714,
+                  "max_intensity": 3999.0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9337,
+        "params": {
+          "methodId": "ophys.downsample",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_PlanesCorrected",
+            "plane": 0
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 9338,
+        "params": {
+          "methodId": "ophys.extract_signals",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "stack": "TwoPhotonSeries_PlanesCorrected",
+            "plane": 0,
+            "rois": "RoiArray_Range",
+            "output": "",
+            "neuropilOutput": ""
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-data"
+      }
     }
   ]
 }

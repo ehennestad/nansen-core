@@ -46,6 +46,20 @@
         "title": "Output",
         "description": "Variable the images and statistics are saved to."
       },
+      "firstFrame": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "title": "First frame",
+        "description": "The first frame to process, from 1 (dev's frame interval): the method works on frames firstFrame..lastFrame only, and its outputs have that many frames."
+      },
+      "lastFrame": {
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "title": "Last frame",
+        "description": "The last frame to process; 0 for the last frame of the stack."
+      },
       "channel": {
         "type": "integer",
         "default": 1,

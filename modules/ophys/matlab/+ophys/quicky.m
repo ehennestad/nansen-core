@@ -8,7 +8,35 @@ function result = quicky(entity, options, context)
 %   same place in several bins make an ROI. With useShapeDetection, somata
 %   found by their shape in the mean image (ophys.internal.shapeRois) come
 %   first, and activity ROIs overlapping one by more than 75 % are left out.
-    stack = ophys.internal.openStack(context, entity, options.stack, options);   % read a chunk of bins at a time
+%   With plane 0, each plane's ROIs are found on their own (maxRois in
+%   each) and saved in one file with their places, as detectRois does.
+    [~, stacks, every] = ophys.internal.planeStacks(context, entity, options.stack, options);   % read a chunk of bins at a time
+    [height, width, ~] = size(stacks{1});
+    found = cell(1, numel(stacks));
+    shaped = 0;
+    areas = 0;
+    bins = 0;
+    for p = 1:numel(stacks)
+        [found{p}, shapes, count, binned] = planeRois(stacks{p}, options, context);
+        shaped = shaped + min(shapes, numel(found{p}));
+        areas = areas + count;
+        bins = bins + binned;
+    end
+    rois = ophys.internal.placedRois(found, every, options);
+    ophys.internal.saveIf(context, entity, options.output, struct("imageSize", [height, width], "rois", {rois}));
+    context.log("%s: %d ROIs from %d areas in %d bins", ophys.internal.entityName(entity), numel(rois), areas, bins);
+    result = struct("rois", numel(rois), "areas", {cellfun(@(r) r.area, rois, UniformOutput=false)});
+    if logical(nansen.internal.getField(options, "useShapeDetection", false))
+        result.shapeRois = shaped;
+    end
+    if every
+        result.planes = cellfun(@(f, p) struct("plane", p, "rois", numel(f)), found, num2cell(1:numel(found)), UniformOutput=false);
+    end
+end
+
+function [rois, shapes, areaCount, bins] = planeRois(stack, options, context)
+    % Quicky's ROIs of a height x width x frames stack (a cell array of their 1-based pixels), the number of them found
+    % by their shape, the areas they were made from and the bins
     [height, width, ~] = size(stack);
     diameter = options.roiDiameter;
     useShape = logical(nansen.internal.getField(options, "useShapeDetection", false));
@@ -48,13 +76,7 @@ function result = quicky(entity, options, context)
         rois = [reshape(shaped, 1, []), reshape(rois(keep), 1, [])];
         rois = rois(1:min(numel(rois), options.maxRois));
     end
-    rois = reshape(rois, 1, []);   % 1 x 0 when none were found, as num2cell(1:0) is
-    document = struct("imageSize", [height, width], "rois", {cellfun(@(p, n) ophys.internal.makeRoi(n, p), ...
-        rois, num2cell(1:numel(rois)), UniformOutput=false)});
-    ophys.internal.saveIf(context, entity, options.output, document);
-    context.log("%s: %d ROIs from %d areas in %d bins", ophys.internal.entityName(entity), numel(rois), numel(areas), bins);
-    result = struct("rois", numel(rois), "areas", {cellfun(@(p) size(p, 1), rois, UniformOutput=false)});
-    if useShape
-        result.shapeRois = min(numel(shaped), numel(rois));
-    end
+    rois = reshape(rois, 1, []);
+    shapes = numel(shaped);
+    areaCount = numel(areas);
 end

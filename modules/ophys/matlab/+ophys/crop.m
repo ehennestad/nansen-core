@@ -4,20 +4,19 @@ function result = crop(entity, options, context)
 %   firstRow..lastRow, firstColumn..lastColumn and firstFrame..lastFrame,
 %   from 1, 0 for the last. Read and written a chunk at a time. As Python's
 %   ophys_methods.crop.
-    stack = ophys.internal.openStack(context, entity, options.stack, options);
+    stack = ophys.internal.openStack(context, entity, options.stack, options);   % frames firstFrame..lastFrame
     [height, width, frames] = size(stack);
     [top, bottom] = span(options.firstRow, options.lastRow, height, "rows");
     [left, right] = span(options.firstColumn, options.lastColumn, width, "columns");
-    [first, last] = span(options.firstFrame, options.lastFrame, frames, "frames");
-    dimensions = [bottom - top + 1, right - left + 1, last - first + 1];
+    dimensions = [bottom - top + 1, right - left + 1, frames];
     writer = context.Project.stackWriter(entity, options.output, dimensions, stack.ClassName);
     closer = onCleanup(@() writer.close());
-    for start = first:ophys.internal.chunk():last
+    for start = 1:ophys.internal.chunk():frames
         context.checkCancelled();
-        stop = min(start + ophys.internal.chunk() - 1, last);
+        stop = min(start + ophys.internal.chunk() - 1, frames);
         part = stack.frames(start, stop);
-        writer.write(start - first + 1, part(top:bottom, left:right, :));
-        context.progress((stop - first + 1) / (last - first + 1), sprintf("frame %d/%d", stop, last));
+        writer.write(start, part(top:bottom, left:right, :));
+        context.progress(stop / frames, sprintf("frame %d/%d", stop, frames));
     end
     writer.close();
     context.log("%s: %d x %d x %d kept", ophys.internal.entityName(entity), dimensions(1), dimensions(2), dimensions(3));

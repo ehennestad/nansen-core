@@ -305,6 +305,188 @@ classdef OphysTest < matlab.unittest.TestCase
                 testCase.verifyError(@() ophys.exportNwb(struct(), struct(), []), "nansen:DependencyMissing");
             end
         end
+
+        function cutsAStackToARangeOfFrames(testCase)
+            data = reshape(0:59, 2, 3, 10);
+            stack = nansen.Stack.fromArray(data);
+            cut = stack.cut(4, 7);
+            testCase.verifyEqual(size(cut), [2, 3, 4]);
+            testCase.verifyEqual(cut.all(), data(:, :, 4:7));
+            testCase.verifyEqual(cut.frames(2, 3), data(:, :, 5:6));
+            later = cut.cut(2, Inf);
+            testCase.verifyEqual(later.frames(1, 10), data(:, :, 5:7));
+            testCase.verifyError(@() stack.cut(8, 7), "nansen:InvalidParams");
+            testCase.verifyError(@() stack.cut(0, 3), "nansen:InvalidParams");
+            testCase.verifyError(@() stack.cut(10, 11), "nansen:InvalidParams");
+        end
+
+        function methodsWorkOnARangeOfFrames(testCase)
+            % as test_ophys.py's test_methods_work_on_a_range_of_frames
+            project = testCase.ophysProject();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+            fetch = @(name) project.load(entity, name, Cached=false);
+            raw = double(project.load(entity, "TwoPhotonSeries_Original"));
+            none = struct("stack", "TwoPhotonSeries_Original", "averageOutput", "", "maximumOutput", "", "frameStatsOutput", "");
+            withRange = @(varargin) nansen.internal.mergeStructs(none, struct(varargin{:}));
+            stats = project.run("ophys.image_stats", {entity}, Options=withRange("firstFrame", 5, "lastFrame", 24));
+            part = raw(:, :, 5:24);
+            testCase.verifyEqual(stats{1}.n_frames, 20);
+            testCase.verifyEqual(stats{1}.mean_intensity, ophys.internal.roundTo(mean(part, "all"), 4));
+            testCase.verifyEqual(stats{1}.max_intensity, max(part, [], "all"));
+            stats = project.run("ophys.image_stats", {entity}, Options=withRange("firstFrame", 31));
+            testCase.verifyEqual(stats{1}.n_frames, 10);   % lastFrame 0: to the last
+            wrong = {{"firstFrame", 41}, {"lastFrame", 41}, {"firstFrame", 6, "lastFrame", 5}, {"firstFrame", 0}};
+            for i = 1:numel(wrong)
+                testCase.verifyError(@() project.run("ophys.image_stats", {entity}, Options=withRange(wrong{i}{:})), "nansen:InvalidOptions");
+            end
+            % the outputs have the frames processed
+            moved = project.run("ophys.motion_correction", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", ...
+                "firstFrame", 11, "lastFrame", 30, "referenceFrames", 5));
+            testCase.verifyEqual(moved{1}.frames, 20);
+            testCase.verifyEqual(size(fetch("TwoPhotonSeries_Corrected")), [32, 32, 20]);
+            testCase.verifyEqual(size(fetch("MotionCorrectionShifts")), [20, 2]);
+            project.save(entity, "RoiArray", struct("imageSize", [32, 32], "rois", {{struct("id", 1, "pixels", {{[10, 10], [10, 11], [11, 10]}})}}));
+            signals = project.run("ophys.extract_signals", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "firstFrame", 3, "lastFrame", 9));
+            testCase.verifyEqual(signals{1}.frames, 7);
+            testCase.verifyEqual(size(fetch("RoiSignals_MeanF")), [7, 1]);
+            values = [squeeze(raw(11, 11, 3:9)); squeeze(raw(11, 12, 3:9)); squeeze(raw(12, 11, 3:9))];
+            testCase.verifyEqual(signals{1}.meanSignal{1}, ophys.internal.roundTo(mean(values), 4));
+            smoothed = project.run("ophys.denoise", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "firstFrame", 2, "lastFrame", 13));
+            testCase.verifyEqual(smoothed{1}.frames, 12);
+            testCase.verifyEqual(size(fetch("TwoPhotonSeries_Denoised")), [32, 32, 12]);
+            binned = project.run("ophys.downsample", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "firstFrame", 9, "temporalFactor", 4));
+            testCase.verifyEqual(binned{1}.frames, 8);
+            % deinterleaving counts the frames put together: pairs 3..6 are frames 5..12
+            pairs = project.run("ophys.deinterleave", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "channels", 2, "firstFrame", 3, "lastFrame", 6));
+            testCase.verifyEqual(pairs{1}.frames, 4);
+            both = fetch("TwoPhotonSeries_Deinterleaved");
+            testCase.verifyEqual(size(both), [32, 32, 2, 4]);
+            testCase.verifyEqual(double(both(:, :, 2, 1)), raw(:, :, 6));
+            % crop and export, which had a range of their own, keep it
+            cropped = project.run("ophys.crop", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "firstFrame", 4, "lastFrame", 8));
+            testCase.verifyEqual(cropped{1}.frames, 5);
+            testCase.verifyEqual(double(fetch("TwoPhotonSeries_Cropped")), raw(:, :, 4:8));
+            % a preview runs on the first frames of the range, and refuses a range outside the whole recording
+            preview = nansen.internal.previewMethod(project, "ophys.image_stats", entity, withRange("firstFrame", 21, "lastFrame", 40), "", 5);
+            testCase.verifyEqual(preview.results{1}.n_frames, 5);
+            testCase.verifyEqual(preview.results{1}.mean_intensity, ophys.internal.roundTo(mean(raw(:, :, 21:25), "all"), 4));
+            preview = nansen.internal.previewMethod(project, "ophys.image_stats", entity, withRange("firstFrame", 39), "", 5);
+            testCase.verifyEqual(preview.results{1}.n_frames, 2);
+            testCase.verifyError(@() nansen.internal.previewMethod(project, "ophys.image_stats", entity, withRange("lastFrame", 41), "", 5), ...
+                "nansen:InvalidOptions");
+            % an image is one frame
+            project.run("ophys.image_stats", {entity}, Options=struct("stack", "TwoPhotonSeries_Original"));
+            image = project.run("ophys.image_stats", {entity}, Options=withRange("stack", "FovAverageProjection", "lastFrame", 1));
+            testCase.verifyEqual(image{1}.n_frames, 1);
+            testCase.verifyError(@() project.run("ophys.image_stats", {entity}, Options=withRange("stack", "FovAverageProjection", "firstFrame", 2)), ...
+                "nansen:InvalidOptions");
+        end
+
+        function processesEveryPlaneInOneRunAsEachAlone(testCase)
+            % as test_ophys.py's test_every_plane_is_processed_in_one_run_as_each_would_be_alone
+            project = testCase.ophysProject();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+            fetch = @(name) project.load(entity, name, Cached=false);
+            run = @(method, options) project.run(method, {entity}, Options=options);
+            raw = project.load(entity, "TwoPhotonSeries_Original");
+            planes = reshape(cat(3, reshape(raw, 32, 32, 1, 40), reshape(circshift(raw(end:-1:1, :, :), 3, 3), 32, 32, 1, 40)), 32, 32, 1, 2, 40);
+            project.save(entity, "Planes", planes);   % 32 x 32 x 1 channel x 2 planes x 40
+            for name = ["Aligned", "Aligned1", "Aligned2"]   % the variables written a chunk at a time, as .npy
+                project.save(entity, name, zeros(2, 2));
+            end
+            motion = struct("stack", "Planes", "referenceFrames", 5, "patches", 2, "subpixel", true, "bidirectionalCorrection", "constant");
+            alone = cell(1, 2);
+            for p = 1:2
+                result = run("ophys.motion_correction", nansen.internal.mergeStructs(motion, struct("plane", p, "output", "Aligned" + p, "shiftsOutput", "Shifts" + p)));
+                alone{p} = result{1};
+            end
+            every = run("ophys.motion_correction", nansen.internal.mergeStructs(motion, struct("plane", 0, "output", "Aligned", "shiftsOutput", "Shifts")));
+            every = every{1};
+            for p = 1:2
+                testCase.verifyEqual(every.planes{p}, struct("plane", p, "maxShift", alone{p}.maxShift, "meanShift", alone{p}.meanShift, ...
+                    "bidirectionalOffset", alone{p}.bidirectionalOffset));
+            end
+            testCase.verifyEqual(every.maxShift, max(alone{1}.maxShift, alone{2}.maxShift));
+            aligned = fetch("Aligned");
+            testCase.verifyEqual(size(aligned), [32, 32, 1, 2, 40]);   % as the recording: height x width x channels x planes x frames
+            for p = 1:2
+                testCase.verifyEqual(aligned(:, :, :, p, :), reshape(fetch("Aligned" + p), 32, 32, 1, 1, 40));
+            end
+            shifts = fetch("Shifts");
+            testCase.verifyEqual(size(shifts), [40, 2, 8]);   % the planes' shifts joined along their last dimension
+            testCase.verifyEqual(shifts(:, :, 5:8), fetch("Shifts2"));
+            % image statistics: of them all and of each, the projections a frame per plane
+            each = cell(1, 2);
+            for p = 1:2
+                result = run("ophys.image_stats", struct("stack", "Aligned", "plane", p, "averageOutput", "Average" + p, ...
+                    "frameStatsOutput", "Stats" + p, "maximumOutput", ""));
+                each{p} = result{1};
+            end
+            stats = run("ophys.image_stats", struct("stack", "Aligned", "plane", 0, "averageOutput", "Average", "frameStatsOutput", "Stats", "maximumOutput", ""));
+            for p = 1:2
+                testCase.verifyEqual([stats{1}.planes{p}.mean_intensity, stats{1}.planes{p}.max_intensity], [each{p}.mean_intensity, each{p}.max_intensity]);
+            end
+            average = fetch("Average");
+            testCase.verifyEqual(size(project.openStack(entity, "Average")), [32, 32, 1, 2, 1]);   % the file keeps the frame
+            testCase.verifyEqual(average(:, :, 1, 2), fetch("Average2"));
+            frameStats = fetch("Stats");
+            testCase.verifyEqual(frameStats(:, 5:8), fetch("Stats2"));
+            frame = nansen.internal.imageFrame(project.openStack(entity, "Average"), 0, 0, "", [], 1);
+            testCase.verifyEqual([frame.frames, frame.planes], [1, 2]);
+            % ROIs of every plane in one file, with their places; the signals of each from its own plane
+            options = struct("stack", "Aligned", "threshold", 0.3, "border", 3, "minSize", 4);
+            found = cell(1, 2);
+            for p = 1:2
+                run("ophys.detect_rois", nansen.internal.mergeStructs(options, struct("plane", p)));
+                found{p} = ophys.internal.roiList(fetch("RoiArray"));
+            end
+            detected = run("ophys.detect_rois", nansen.internal.mergeStructs(options, struct("plane", 0)));
+            rois = ophys.internal.roiList(fetch("RoiArray"));
+            testCase.verifyEqual(detected{1}.rois, numel(found{1}) + numel(found{2}));
+            testCase.assertNotEmpty(found{1});
+            testCase.assertNotEmpty(found{2});
+            places = zeros(1, numel(rois));
+            n = 0;
+            for p = 1:2
+                for i = 1:numel(found{p})
+                    n = n + 1;
+                    testCase.verifyEqual([rois{n}.id, rois{n}.plane, rois{n}.channel], [n, p, 1]);
+                    testCase.verifyEqual(rois{n}.pixels, found{p}{i}.pixels);
+                    places(n) = p;
+                end
+            end
+            signals = run("ophys.extract_signals", struct("stack", "Aligned", "plane", 0));
+            together = fetch("RoiSignals_MeanF");
+            for p = 1:2
+                testCase.verifyEqual(signals{1}.planes{p}, struct("plane", p, "rois", numel(found{p})));
+                one = run("ophys.extract_signals", struct("stack", "Aligned", "plane", p, "output", "Signals" + p, "neuropilOutput", ""));
+                testCase.verifyEqual(cell2mat(one{1}.ids), find(places == p));   % the ROIs of the plane, by their place
+                testCase.verifyEqual(together(:, places == p), fetch("Signals" + p));
+            end
+            quick = run("ophys.quicky", struct("stack", "Aligned", "plane", 0, "roiDiameter", 4, "output", "Quick"));
+            testCase.verifyEqual(cellfun(@(q) q.plane, quick{1}.planes), [1, 2]);
+            testCase.verifyEqual(quick{1}.rois, sum(cellfun(@(q) q.rois, quick{1}.planes)));
+            % ROIs without places are of every plane: not one plane's to extract
+            project.save(entity, "Unplaced", struct("imageSize", [32, 32], "rois", {{struct("id", 1, "pixels", {{[3, 3]}})}}));
+            testCase.verifyError(@() run("ophys.extract_signals", struct("stack", "Aligned", "plane", 0, "rois", "Unplaced")), "nansen:InvalidData");
+            % of a stack without planes, plane 0 is its one plane
+            testCase.verifyEqual(run("ophys.image_stats", struct("stack", "TwoPhotonSeries_Original", "plane", 0, "averageOutput", "")), ...
+                run("ophys.image_stats", struct("stack", "TwoPhotonSeries_Original", "plane", 1, "averageOutput", "")));
+            testCase.verifyError(@() run("ophys.denoise", struct("stack", "Aligned", "plane", 0)), "nansen:InvalidOptions");   % one plane at a time
+        end
+    end
+
+    methods (Access = private)
+        function project = ophysProject(testCase)
+            %ophysProject The ophys conformance project, its TIFF recordings read as TwoPhotonSeries_Original (s2: 32 x 32 x 40)
+            folder = fullfile(testCase.Folder, "project");
+            copyfile(fullfile(nansen.internal.repoRoot(), "conformance", "api", "ophys", "project"), folder);
+            project = nansen.Project.open(folder);
+            project.scan();
+            project.sync("subject");
+            project.sync("session");
+            project.runTool("ophys.setup_variables", Options=struct("rawFilePattern", "tiff", "rawFileAdapter", "ophys.tiff_stack"));
+        end
     end
 
     methods (Static)

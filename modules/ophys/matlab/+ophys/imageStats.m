@@ -3,8 +3,45 @@ function result = imageStats(entity, options, context)
 %
 %   Each frame's mean, minimum, maximum and standard deviation (frames x
 %   4, the population's), as dev's per-frame image stats, for plotting.
-%   Reads a chunk at a time. As Python's ophys_methods.image_stats.
-    stack = ophys.internal.openStack(context, entity, options.stack, options);
+%   Reads a chunk at a time. With plane 0, of every plane: the intensity of
+%   them all and of each, the projections as height x width x 1 x planes x
+%   1 (a stack of one frame per plane) and the frame statistics of the
+%   planes joined (frames x 4 planes). As Python's ophys_methods.image_stats.
+    [~, stacks, every] = ophys.internal.planeStacks(context, entity, options.stack, options);
+    [height, width, frames] = size(stacks{1});
+    count = numel(stacks);
+    averages = cell(1, count);
+    maxima = cell(1, count);
+    perFrame = cell(1, count);
+    totals = zeros(1, count);
+    for p = 1:count
+        [averages{p}, maxima{p}, perFrame{p}, totals(p)] = planeStats(stacks{p});
+    end
+    ophys.internal.savePlanes(context, entity, options.averageOutput, averages, every);
+    ophys.internal.savePlanes(context, entity, options.maximumOutput, maxima, every);
+    ophys.internal.saveIf(context, entity, nansen.internal.getField(options, "frameStatsOutput", ""), cat(2, perFrame{:}));
+    if every
+        context.log("%s: %d frames of %d x %d in %d planes", ophys.internal.entityName(entity), frames, height, width, count);
+    else
+        context.log("%s: %d frames of %d x %d", ophys.internal.entityName(entity), frames, height, width);
+    end
+    pixels = height * width * frames;
+    peaks = cellfun(@(m) double(max(m, [], "all")), maxima);
+    result = struct("n_frames", frames, "height", height, "width", width, ...
+        "mean_intensity", ophys.internal.roundTo(sum(totals) / (pixels * count), 4), ...
+        "max_intensity", max(peaks));
+    if every
+        planes = cell(1, count);
+        for p = 1:count
+            planes{p} = struct("plane", p, "mean_intensity", ophys.internal.roundTo(totals(p) / pixels, 4), "max_intensity", peaks(p));
+        end
+        result.planes = planes;
+    end
+end
+
+function [average, maximum, perFrame, total] = planeStats(stack)
+    % The average and maximum projections of a height x width x frames stack, each frame's mean, minimum, maximum
+    % and standard deviation, and the sum of its values, read a chunk at a time
     [height, width, frames] = size(stack);
     average = zeros(height, width);
     maximum = [];
@@ -23,11 +60,4 @@ function result = imageStats(entity, options, context)
     end
     total = sum(average, "all");
     average = average / frames;
-    ophys.internal.saveIf(context, entity, options.averageOutput, average);
-    ophys.internal.saveIf(context, entity, options.maximumOutput, maximum);
-    ophys.internal.saveIf(context, entity, nansen.internal.getField(options, "frameStatsOutput", ""), perFrame);
-    context.log("%s: %d frames of %d x %d", ophys.internal.entityName(entity), frames, height, width);
-    result = struct("n_frames", frames, "height", height, "width", width, ...
-        "mean_intensity", ophys.internal.roundTo(total / prod(size(stack)), 4), ...
-        "max_intensity", double(max(maximum, [], "all")));
 end
