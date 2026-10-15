@@ -67,6 +67,16 @@ DEV_METHODS = {"motioncorrection.normcorre": "ophys.normcorre", "motioncorrectio
                "data.backup": "core.backup"}
 
 
+# dev's option presets of those methods, by name (any case; spaces and hyphens as _), and the module preset that holds
+# the same values here: dev's Default of Quicky is its Soma values, of NoRMCorre its 4 x 4 nonrigid
+DEV_PRESETS = {"ophys.quicky": {"default": "soma", "soma": "soma", "soma_virus": "soma_virus", "axon": "axon"},
+               "ophys.normcorre": {"default": "nonrigid", "nonrigid": "nonrigid", "rigid": "rigid"}}
+
+
+def _dev_preset(method: str, name: str) -> Optional[str]:
+    return DEV_PRESETS.get(method, {}).get(re.sub(r"[\s-]+", "_", name.strip().lower()))
+
+
 def convert_legacy(export: dict, folder: PathLike) -> dict:
     """Write a project into ``folder`` from a ``nansen.legacyExport`` document; returns a report."""
     export = check_document(export, "nansen.legacyExport")
@@ -148,7 +158,9 @@ def _pipelines(export: dict, warnings: List[str]) -> List[dict]:
                 continue
             step = {"method": method, "title": str(task.get("name") or method)}
             preset = str(task.get("preset") or "")
-            if preset and preset.lower() != "default":
+            if _dev_preset(method, preset or "default"):   # the module's preset of dev's values
+                step["preset"] = _dev_preset(method, preset or "default")
+            elif preset and preset.lower() != "default":
                 warnings.append(f"pipeline '{label}': task '{task.get('name', '')}' used dev's option preset '{preset}', "
                                 "which is not carried over; the method's defaults are used")
             steps.append(step)

@@ -390,7 +390,6 @@
     "table 'Sessions': 1 note(s) with no time; left out",
     "table 'Subjects': 1 BiologicalSex value(s) not among female, male, not detected; kept as written",
     "table 'Sessions (curated)': 1 row(s) not found in the session table; left out of its view",
-    "pipeline 'Two-photon preprocessing': task 'Autosegmentation' used dev's option preset 'Soma', which is not carried over; the method's defaults are used",
     "pipeline 'Two-photon preprocessing': task 'Plot stats' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
     "pipeline 'Plots only': task 'Plot stats' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
     "pipeline 'Plots only': none of its tasks has a method here; left out",
@@ -518,11 +517,13 @@
       "steps": [
         {
           "method": "ophys.normcorre",
-          "title": "Motion correction"
+          "title": "Motion correction",
+          "preset": "nonrigid"
         },
         {
           "method": "ophys.quicky",
-          "title": "Autosegmentation"
+          "title": "Autosegmentation",
+          "preset": "soma"
         },
         {
           "method": "ophys.extract_signals",

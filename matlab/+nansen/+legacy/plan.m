@@ -81,11 +81,15 @@ function [pipelines, warnings] = buildPipelines(export, warnings)
                 stepTitle = method;
             end
             preset = textOf(task, "preset");
-            if preset ~= "" && lower(preset) ~= "default"
+            step = struct("method", char(method), "title", char(stepTitle));
+            shipped = devPreset(method, preset);
+            if shipped ~= ""   % the module's preset of dev's values
+                step.preset = char(shipped);
+            elseif preset ~= "" && lower(preset) ~= "default"
                 warnings{end + 1} = sprintf("pipeline '%s': task '%s' used dev's option preset '%s', which is not carried over; the method's defaults are used", ...
                     label, textOf(task, "name"), preset); %#ok<AGROW>
             end
-            steps{end + 1} = struct("method", char(method), "title", char(stepTitle)); %#ok<AGROW>
+            steps{end + 1} = step; %#ok<AGROW>
         end
         if isempty(steps)
             warnings{end + 1} = sprintf("pipeline '%s': none of its tasks has a method here; left out", label); %#ok<AGROW>
@@ -129,6 +133,31 @@ function [pipelines, warnings] = buildPipelines(export, warnings)
         warnings{end + 1} = sprintf("option presets of %s (%s) are not carried over: dev's options are not the methods' here", ...
             textOf(presets{i}, "function"), strjoin(names, ", ")); %#ok<AGROW>
     end
+end
+
+function name = devPreset(method, preset)
+    % The module preset with the values of dev's preset of the method ("" for none), as Python's legacy.DEV_PRESETS:
+    % dev's Default of Quicky is its Soma values, of NoRMCorre its 4 x 4 nonrigid
+    if preset == ""
+        preset = "default";
+    end
+    key = string(regexprep(lower(strtrim(char(preset))), '[\s-]+', '_'));
+    name = "";
+    switch string(method)
+        case "ophys.quicky"
+            names = dictionaryOf(["default", "soma", "soma_virus", "axon"], ["soma", "soma", "soma_virus", "axon"]);
+        case "ophys.normcorre"
+            names = dictionaryOf(["default", "nonrigid", "rigid"], ["nonrigid", "nonrigid", "rigid"]);
+        otherwise
+            return
+    end
+    if isKey(names, char(key))
+        name = string(names(char(key)));
+    end
+end
+
+function map = dictionaryOf(keys, values)
+    map = containers.Map(cellstr(keys), cellstr(values));
 end
 
 function items = listOf(value)
