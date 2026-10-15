@@ -3245,6 +3245,184 @@
     },
     {
       "request": {
+        "method": "rois.update",
+        "id": 4005,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "HandRois",
+          "imageSize": [
+            32,
+            32
+          ],
+          "add": [
+            {
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  4
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  4
+                ]
+              ],
+              "classification": null
+            }
+          ],
+          "added": [
+            1
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 4006,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "HandRois"
+        }
+      },
+      "expect": {
+        "result": {
+          "width": 32,
+          "rois": [
+            {
+              "id": 1,
+              "pixels": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  4
+                ]
+              ],
+              "classification": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 4007,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s3"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0,
+          "rois": "HandRois"
+        }
+      },
+      "expect": {
+        "result": {
+          "rois": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "dataVariables.list",
+        "id": 4008,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": [
+          {},
+          {},
+          {},
+          {
+            "name": "HandRois",
+            "dataType": "RoiArray",
+            "fileName": "HandRois.json",
+            "fileAdapter": "json"
+          },
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "request": {
         "method": "methods.run",
         "id": 41,
         "params": {

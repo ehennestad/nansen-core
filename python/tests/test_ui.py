@@ -1272,6 +1272,22 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     assert [(r["id"], r.get("classification")) for r in document["rois"]] == [(1, None), (2, "rejected"), (3, None)]
 
 
+def test_rois_drawn_on_a_stack_that_has_none(empty_app, page):   # roimanager on any stack: the first ROI makes the file
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    api = ophys_project(empty_app)
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.click(".drawer.open li[data-variable='TwoPhotonSeries_Original'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('0 ROIs')")
+    page.click(".viewer-add")
+    box = page.locator(".viewer-canvas").bounding_box()
+    page.mouse.click(box["x"] + box["width"] * 10.5 / 32, box["y"] + box["height"] * 12.5 / 32)
+    page.wait_for_selector(".viewer-roi-list li[data-roi='1']")
+    document = api.project.load(api.project.entity("session", s1), "RoiArray", cached=False)
+    assert document["imageSize"] == [32, 32] and [r["id"] for r in document["rois"]] == [1]
+
+
 def test_draw_detect_merge_and_move_rois_in_the_viewer(empty_app, page):
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     api = ophys_project(empty_app, [

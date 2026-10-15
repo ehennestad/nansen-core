@@ -1101,8 +1101,8 @@ class Api:
         result = image_frame(stack, int(params.get("frame", 0)), int(params.get("channel", 0)), params.get("projection"), limits,
                              int(params.get("plane", 0)), params.get("filter"))
         result["metadata"] = dict(stack.metadata)
-        if params.get("rois"):   # those of the plane and channel shown, when they have places
-            result["rois"] = roi_outlines(rois_at(project.load(entity, params["rois"]), int(params.get("plane", 0)) + 1,
+        if params.get("rois"):   # those of the plane and channel shown, when they have places; none before the first is saved
+            result["rois"] = roi_outlines(rois_at(self._rois_of(project, entity, params["rois"]), int(params.get("plane", 0)) + 1,
                                                   int(params.get("channel", 0)) + 1))
         return result
 
@@ -1151,12 +1151,27 @@ class Api:
         project = self._require_project()
         entity = self._entity(params)
         plane, channel = int(params.get("plane", 0)) + 1, int(params.get("channel", 0)) + 1
-        document, added = update_rois_at(project.load(entity, params["variable"], cached=False), plane, channel,
+        if not project.data_variable_path(params["variable"]).is_file():   # a new ROI variable, as roimanager's Save Rois as
+            project.add_data_variable(dict(project.new_variable_document(entity, params["variable"], {}), dataType="RoiArray"))
+        current = self._rois_of(project, entity, params["variable"], cached=False)
+        if params.get("imageSize") and "imageSize" not in current:
+            current = dict(current, imageSize=params["imageSize"])
+        document, added = update_rois_at(current, plane, channel,
                                          classify=params.get("classify"), remove=params.get("remove"), add=params.get("add"),
                                          move=params.get("move"), merge=params.get("merge"), pixels=params.get("pixels"),
                                          restore=params.get("restore"), cell_type=params.get("cellType"), link=params.get("link"))
         project.save(entity, params["variable"], document)
         return {"rois": roi_outlines(rois_at(document, plane, channel)), "added": added}
+
+    @staticmethod
+    def _rois_of(project, entity, name, cached=True):
+        """An ROI variable's value, or no ROIs when the entity has no file of it yet (or the project no such variable)."""
+        try:
+            return project.load(entity, name, cached=cached)
+        except NansenError as error:
+            if error.code not in ("data-not-found", "unknown-data-variable"):
+                raise
+            return {"rois": []}
 
     def rois__detect(self, params: dict) -> dict:
         """The pixels of an ROI found around a point of an image variable (a stack's mean projection)."""

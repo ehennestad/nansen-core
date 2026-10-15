@@ -748,8 +748,7 @@
       h("div.grow", h("div.title", d.name), h("div.sub", `${d.dataLocation} · ${d.fileAdapter}`)),
       h("span.pill.plain", d.files.length ? `${d.files.length} file(s)` : "not written"),
       N.isImageVariable(d) ? h("button.btn.ghost.icon.small.view-data", {
-        title: "View", on: { click: () => N.views.stackViewer(app, entityType, detail.key, d.name,
-          (detail.data || []).filter((r) => r.dataType === "RoiArray" && r.files.length).map((r) => r.name),
+        title: "View", on: { click: () => N.views.stackViewer(app, entityType, detail.key, d.name, roiVariablesOf(detail.data || []),
           (detail.data || []).filter(N.isSignalVariable).map((r) => r.name)) } }, N.icon("image", 13)) : null,
       N.isSignalVariable(d) ? h("button.btn.ghost.icon.small.plot-data", {
         title: "Plot the signals", on: { click: () => N.views.traces(app, entityType, detail.key,
@@ -1827,6 +1826,14 @@
         read.truncated && !read.binary ? h("p.muted", `The first ${N.fmt.bytes(65536)} of ${N.fmt.bytes(read.size)}`) : null),
         buttons: [{ label: "Close" }] }).el.classList.add("preview-dialog");
     } catch (error) { N.showError(error, "Could not read the file"); }
+  }
+
+  /** The ROI variables the viewer offers for an entity: those it has files of first, then the others; with none, RoiArray,
+   * which the first ROI drawn makes (roimanager on any stack, its Save Rois as). */
+  function roiVariablesOf(data) {
+    const rois = data.filter((r) => r.dataType === "RoiArray");
+    const names = rois.filter((r) => r.files.length).concat(rois.filter((r) => !r.files.length)).map((r) => r.name);
+    return names.length ? names : ["RoiArray"];
   }
 
   // ADAPTERS_BY_EXTENSION: what a new variable of a file of that extension is likely read with

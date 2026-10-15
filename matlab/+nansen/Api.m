@@ -1310,8 +1310,8 @@ classdef Api < handle
                 double(nansen.internal.getField(params, "plane", 0)), string(nansen.internal.getField(params, "filter", "")));
             result.metadata = stack.Metadata;
             rois = string(nansen.internal.getField(params, "rois", ""));
-            if rois ~= ""   % those of the plane and channel shown, when they have places
-                result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(project.load(entity, rois), ...
+            if rois ~= ""   % those of the plane and channel shown, when they have places; none before the first is saved
+                result.rois = nansen.internal.roiOutlines(nansen.internal.roisAt(nansen.Api.roisOf(project, entity, rois, true), ...
                     double(nansen.internal.getField(params, "plane", 0)) + 1, double(nansen.internal.getField(params, "channel", 0)) + 1));
             end
         end
@@ -1382,7 +1382,17 @@ classdef Api < handle
             end
             plane = double(nansen.internal.getField(params, "plane", 0)) + 1;
             channel = double(nansen.internal.getField(params, "channel", 0)) + 1;
-            [document, added] = nansen.internal.updateRoisAt(project.load(entity, variable, Cached=false), plane, channel, ...
+            if ~isfile(project.dataVariablePath(variable))   % a new ROI variable, as roimanager's Save Rois as
+                document = project.newVariableDocument(entity, variable, struct());
+                document.dataType = 'RoiArray';
+                project.addDataVariable(document);
+            end
+            current = nansen.Api.roisOf(project, entity, variable, false);
+            imageSize = nansen.internal.getField(params, "imageSize", []);
+            if ~isempty(imageSize) && ~isfield(current, "imageSize")
+                current.imageSize = double(reshape(imageSize, 1, []));
+            end
+            [document, added] = nansen.internal.updateRoisAt(current, plane, channel, ...
                 nansen.internal.getField(params, "classify", []), nansen.internal.getField(params, "remove", []), ...
                 nansen.internal.getField(params, "add", []), nansen.internal.getField(params, "move", []), ...
                 nansen.internal.getField(params, "merge", []), nansen.internal.getField(params, "pixels", []), restore, ...
@@ -2143,6 +2153,18 @@ classdef Api < handle
                 if ismember("core", modules) && ismember("subject", added)   % as dev's subject table: date of birth, sex, species
                     project.attachFragment("subject", "core.subject");
                 end
+            end
+        end
+
+        function value = roisOf(project, entity, name, cached)
+            % An ROI variable's value, or no ROIs when the entity has no file of it yet (or the project no such variable)
+            try
+                value = project.load(entity, name, Cached=cached);
+            catch err
+                if ~ismember(err.identifier, ["nansen:DataNotFound", "nansen:UnknownDataVariable"])
+                    rethrow(err)
+                end
+                value = struct("rois", {{}});
             end
         end
 

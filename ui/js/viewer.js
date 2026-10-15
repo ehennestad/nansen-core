@@ -642,7 +642,8 @@
     async function apply(change, history) {
       const before = snapshot();
       try {
-        const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, channel: state.channel, plane: state.plane, ...change });
+        const result = await app.client.request("rois.update", { entityType, key, variable: state.roiVariable, channel: state.channel, plane: state.plane,
+          ...(last ? { imageSize: [last.height, last.width] } : {}), ...change });   // the size, for a variable's first ROIs
         if (history === "record") { state.undo.push(before); state.redo = []; }
         else if (history === "undo") state.redo.push(before);
         else if (history === "redo") state.undo.push(before);
