@@ -271,6 +271,8 @@ def main():
         {"variable": "FrameStats", "count": 4, "columnNames": ["mean", "min", "max", "std"],
          "columns": [{"column": c, "values": [four(stats[t, c]) for t in range(0, FRAMES, 10)]} for c in (0, 3)]}]}
     expected["frame3"] = {"frame": 3, **frame_bytes(aligned[:, :, 3], (0, 1000))}
+    # crop of rows 3..20, columns 5..30 and frames 2..10 (from 1): its frame 0 is frame 1 (from 0) cut
+    expected["cropped"] = {"height": 18, "width": 26, "frames": 9, "frame": 0, **frame_bytes(aligned[2:20, 4:30, 1], (0, 1000))}
     # export_tiff of frames 3..7 (from 1), read back through a data variable: its frame 2 (from 0) is frame 4 (from 0)
     expected["exported"] = {"height": HEIGHT, "width": WIDTH, "frames": 5, "frame": 2, **frame_bytes(aligned[:, :, 4], (0, 1000))}
     expected["maxProjection"] = {"frame": None, **frame_bytes(aligned.max(axis=2)),

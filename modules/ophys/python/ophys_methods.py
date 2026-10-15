@@ -1320,6 +1320,30 @@ def denoise(entity, options, context):
     return {"frames": frames, "height": height, "width": width, "meanIntensity": round_to(total / (height * width * frames), 4)}
 
 
+def crop(entity, options, context):
+    """Rows firstRow..lastRow, columns firstColumn..lastColumn and frames firstFrame..lastFrame of the stack (from 1;
+    0 for the last), saved as a new stack, as dev's StackCropper. Read and written a chunk at a time."""
+    stack = _open_stack(entity, options["stack"], context, options)
+    height, width, frames = stack.shape
+    def span(first, last, size, what):
+        first, last = int(first), int(last) or size
+        if not 1 <= first <= last <= size:
+            raise NansenError("invalid-options", f"{what} {first} to {last} are not within the stack's {size}")
+        return first - 1, last
+    top, bottom = span(options["firstRow"], options["lastRow"], height, "rows")
+    left, right = span(options["firstColumn"], options["lastColumn"], width, "columns")
+    start, stop = span(options["firstFrame"], options["lastFrame"], frames, "frames")
+    shape = (bottom - top, right - left, stop - start)
+    with context.project.stack_writer(entity, options["output"], shape, stack.dtype) as out:
+        for first in range(start, stop, CHUNK):
+            context.check_cancelled()
+            last = min(first + CHUNK, stop)
+            out.write(first - start, stack.frames(first, last)[top:bottom, left:right])
+            context.progress((last - start) / (stop - start), f"frame {last}/{stop}")
+    context.log(f"{_name(entity)}: {shape[0]} x {shape[1]} x {shape[2]} kept")
+    return {"height": shape[0], "width": shape[1], "frames": shape[2]}
+
+
 def gaussian_along(data, axis, sigma):
     """data smoothed along one axis by a Gaussian of sigma samples, cut at 3 sigma; at the ends the weights that
     fall inside are renormalised. Offsets are added from -radius to radius, as in MATLAB."""
@@ -1481,6 +1505,7 @@ VARIABLES = [
     ("RoiSignals_Denoised", "Denoised calcium", "roi_signals_denoised.npy", "npy", "RoiSignals"),
     ("TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack"),
     ("TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"),
+    ("TwoPhotonSeries_Cropped", "Cropped stack", "two_photon_series_cropped.npy", "npy", "ImageStack"),
 ]
 
 COLUMN_NAMES = {"MotionCorrectionShifts": ["rows", "columns"], "FrameStats": ["mean", "min", "max", "std"]}

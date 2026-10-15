@@ -123,6 +123,21 @@ def test_videos_read_in_colour_or_gray():
         assert (stack.frames(1, 3) == data[..., 1:3]).all(), name   # a chunk reads the same
 
 
+def test_thorimage_frames_read_as_channels():
+    paths = sorted((FILES / "thorlabs").glob("*.tif"), reverse=True)   # any order: natural order inside
+    expected = EXPECTED["thorlabs"]
+    stack = adapter("ThorLabsTiffs").open(paths)
+    assert list(stack.shape) == expected["size"] and stack.dtype == np.uint16
+    data = np.asarray(stack)
+    assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]
+    assert int(data.astype(np.int64).sum()) == expected["sum"]
+    assert (stack.frames(1, 3) == data[..., 1:3]).all()
+    one = adapter("ThorLabsTiffs").open([p for p in paths if p.name.startswith("ChanA")])
+    assert list(one.shape) == [6, 5, 3] and (np.asarray(one) == data[:, :, 0, :]).all()
+    with pytest.raises(NansenError):
+        adapter("ThorLabsTiffs").open([FILES / "binary" / "stack.raw"])
+
+
 def test_a_dev_binary_stack_reads_and_writes(tmp_path):
     stack = adapter("BinaryStack").open([FILES / "binary" / "stack.raw"])
     expected = EXPECTED["devBinary"]

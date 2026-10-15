@@ -125,7 +125,8 @@
               "RoiSignals_Deconvolved",
               "RoiSignals_Denoised",
               "TwoPhotonSeries_Denoised",
-              "TwoPhotonSeries_Deinterleaved"
+              "TwoPhotonSeries_Deinterleaved",
+              "TwoPhotonSeries_Cropped"
             ],
             "existing": [],
             "fragments": [
@@ -889,6 +890,11 @@
             ]
           },
           {
+            "name": "TwoPhotonSeries_Cropped",
+            "dataLocation": "processed",
+            "files": []
+          },
+          {
             "name": "TwoPhotonSeries_Deinterleaved",
             "dataLocation": "processed",
             "files": []
@@ -1506,6 +1512,93 @@
           "options": {
             "firstFrame": 8,
             "lastFrame": 7
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid-options"
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 2607,
+        "params": {
+          "methodId": "ophys.crop",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "firstRow": 3,
+            "lastRow": 20,
+            "firstColumn": 5,
+            "lastColumn": 30,
+            "firstFrame": 2,
+            "lastFrame": 10
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "results": [
+            {
+              "height": 18,
+              "width": 26,
+              "frames": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 2608,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Cropped",
+          "frame": 0,
+          "limits": [
+            0,
+            1000
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 18,
+          "width": 26,
+          "frames": 9,
+          "frame": 0,
+          "low": 0.0,
+          "high": 1000.0,
+          "pixels": "NCs1Njg5NC4vOT42NC8tJycvMzs3NDowNSwyND4+ODo3Nzk6Pi4wJSYjLjk2PDk4Ni03OC09QDw1NzIyPj4/LzkyNCw0ODs7Ozw7OTY2Nj03MCsoLjNBOjctOjE6Mjc2Njc1PTg9OD8+QzYqKiIoKz5AQT9EQkQ7NTE0OTQ8Oj4wMj4vKygxKCoxNTY4Oz86OCwxMTUyNTgvNiwwMiQlKi8xKSxNP0I9RTk5KTIxMy41LyclHSUoEhwuPTwqPDVIMTU5MDAhMCwpHSghHBcdHR4aIzEtL0M9QFBaQ0E6MScvLjArMiQlGBsZJC0zNikpJDY2QCs2KzQlHiIoNTc0ICEYIBsaKSgvJiguJ0IjIysjIBAJGio7zz4qNi01Kig0MDIvJyolIB8WHRITChIhNczBvh4vMj4zKC0vPDMqJycdGQ8aHyAdGyrAwrbEtzc2SEQ3PDw3LCYkJx8iGSEpMjEvMzPIxc8sLS4/SCgnLzY5MC4oKC8rOj5COjY5LTTLTEE4Ky5BNTc3Mzo/QDsxNzQ/PD04PD44MDZBPz0wLTI1MTI4Nzs4NzJANUI6PDY9Qz03PEY7OC0rLjw2Oi0oLzdANEMyMiYvNUFGRDIzPTo+NDYy"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "methods.run",
+        "id": 2609,
+        "params": {
+          "methodId": "ophys.crop",
+          "entityType": "session",
+          "keys": [
+            {
+              "subject_id": "m1",
+              "session_id": "s1"
+            }
+          ],
+          "options": {
+            "firstRow": 40
           }
         }
       },
@@ -3328,7 +3421,8 @@
               "RoiSignals_Deconvolved",
               "RoiSignals_Denoised",
               "TwoPhotonSeries_Denoised",
-              "TwoPhotonSeries_Deinterleaved"
+              "TwoPhotonSeries_Deinterleaved",
+              "TwoPhotonSeries_Cropped"
             ],
             "fragments": []
           }

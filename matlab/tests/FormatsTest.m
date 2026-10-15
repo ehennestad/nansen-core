@@ -67,6 +67,21 @@ classdef FormatsTest < matlab.unittest.TestCase
             end
         end
 
+        function readsThorImageFramesAsChannels(testCase)
+            listing = dir(fullfile(testCase.Files, "thorlabs", "*.tif"));
+            paths = flip(string(fullfile({listing.folder}, {listing.name})));   % any order: natural order inside
+            expected = testCase.Expected.thorlabs;
+            stack = ophys.ThorLabsTiffs().open(paths);
+            testCase.verifyEqual(size(stack), expected.size');
+            data = stack.all();
+            at = num2cell(expected.pixel.at' + 1);
+            testCase.verifyEqual(double(data(at{:})), expected.pixel.value);
+            testCase.verifyEqual(sum(double(data), "all"), expected.sum);
+            testCase.verifyEqual(stack.frames(2, 3), data(:, :, :, 2:3));
+            one = ophys.ThorLabsTiffs().open(paths(startsWith(string({listing(end:-1:1).name}), "ChanA")));
+            testCase.verifyEqual(one.all(), squeeze(data(:, :, 1, :)));
+        end
+
         function readsAndWritesDevBinaryStacks(testCase)
             raw = fullfile(testCase.Files, "binary", "stack.raw");
             stack = ophys.BinaryStack().open(raw);

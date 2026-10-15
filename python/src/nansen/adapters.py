@@ -10,7 +10,7 @@ import importlib
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from .documents import PathLike
 from .errors import NansenError
@@ -135,7 +135,103 @@ def _optional(module: str, adapter: str):
         raise NansenError("adapter-unavailable", f"the {adapter} adapter needs {module.split('.')[0]}") from None
 
 
-BUILT_IN = {"json": JsonAdapter, "text": TextAdapter, "mat": MatAdapter, "npy": NpyAdapter}
+def _columns(header: List[str], rows: List[List[Any]]) -> Dict[str, List[Any]]:
+    """A table's rows as columns: a column whose filled cells are all numbers is floats, NaN where empty, as
+    MATLAB's readtable reads it; any other column is strings, empty where empty."""
+    out: Dict[str, List[Any]] = {}
+    for c, name in enumerate(header):
+        cells = [row[c] if c < len(row) else None for row in rows]
+        def number(cell):
+            if isinstance(cell, bool):
+                return None
+            if isinstance(cell, (int, float)):
+                return float(cell)
+            try:
+                return float(str(cell).strip())
+            except ValueError:
+                return None
+        filled = [cell for cell in cells if cell is not None and str(cell).strip() != ""]
+        if filled and all(number(cell) is not None for cell in filled):
+            out[str(name)] = [number(cell) if cell is not None and str(cell).strip() != "" else float("nan") for cell in cells]
+        else:
+            out[str(name)] = ["" if cell is None else str(cell) for cell in cells]
+    return out
+
+
+def _rows(data: Any) -> Tuple[List[str], List[List[Any]]]:
+    """Header and rows of a table given as columns ({name: values}), records ([{name: value}]) or a pandas
+    DataFrame. NaN and None are empty cells."""
+    if hasattr(data, "to_dict") and hasattr(data, "columns"):
+        data = data.to_dict("list")
+    if isinstance(data, list):
+        header = list(dict.fromkeys(name for record in data for name in record))
+        data = {name: [record.get(name) for record in data] for name in header}
+    if not isinstance(data, dict) or not all(isinstance(v, (list, tuple)) for v in data.values()):
+        raise NansenError("invalid-params", "a table is columns ({name: [values]}) or records ([{name: value}])")
+    header = [str(name) for name in data]
+    count = max((len(v) for v in data.values()), default=0)
+    def cell(value):
+        if value is None or (isinstance(value, float) and value != value):
+            return None
+        return value
+    return header, [[cell(column[i]) if i < len(column) else None for column in data.values()] for i in range(count)]
+
+
+class CsvAdapter:
+    """A table in a CSV file, read as columns ({name: [values]}): numeric columns as floats (NaN where empty),
+    others as strings. Written from columns or records. MATLAB reads and writes it as a table."""
+
+    extensions = [".csv"]
+
+    def read(self, path: Path) -> Dict[str, List[Any]]:
+        import csv
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.reader(f))
+        if not rows:
+            return {}
+        return _columns(rows[0], rows[1:])
+
+    def write(self, path: Path, data: Any) -> None:
+        import csv
+        header, rows = _rows(data)
+        text = lambda v: "" if v is None else repr(float(v)).removesuffix(".0") if isinstance(v, float) else str(v)
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f, lineterminator="\n")
+            writer.writerow(header)
+            writer.writerows([[text(v) for v in row] for row in rows])
+
+
+class ExcelAdapter:
+    """A table in the first sheet of an Excel workbook (.xlsx), as CsvAdapter reads a CSV file. Needs openpyxl."""
+
+    extensions = [".xlsx"]
+
+    def read(self, path: Path) -> Dict[str, List[Any]]:
+        openpyxl = _optional("openpyxl", "excel")
+        book = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+        try:
+            rows = [list(row) for row in book.worksheets[0].iter_rows(values_only=True)]
+        finally:
+            book.close()
+        while rows and all(v is None for v in rows[-1]):
+            rows.pop()
+        if not rows:
+            return {}
+        return _columns(["" if v is None else str(v) for v in rows[0]], rows[1:])
+
+    def write(self, path: Path, data: Any) -> None:
+        openpyxl = _optional("openpyxl", "excel")
+        header, rows = _rows(data)
+        book = openpyxl.Workbook()
+        sheet = book.active
+        sheet.append(header)
+        for row in rows:
+            sheet.append(row)
+        book.save(str(path))
+
+
+BUILT_IN = {"json": JsonAdapter, "text": TextAdapter, "mat": MatAdapter, "npy": NpyAdapter, "csv": CsvAdapter,
+            "excel": ExcelAdapter}
 
 
 class AdapterRegistry:
@@ -173,7 +269,7 @@ class AdapterRegistry:
         adapter = self.get(adapter_id)
         return {"id": adapter_id, "title": (type(adapter).__doc__ or adapter_id).strip().split("\n")[0],
                 "extensions": list(getattr(adapter, "extensions", [])),
-                "languages": ["matlab", "python"] if adapter_id in ("json", "text", "mat") else ["python"],
+                "languages": ["matlab", "python"],
                 "builtIn": adapter_id in BUILT_IN}
 
     def get(self, adapter_id: str) -> Any:

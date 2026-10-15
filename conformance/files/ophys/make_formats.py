@@ -154,6 +154,22 @@ def video(expected):
                  "sum": int(gray[..., 0].astype(np.int64).sum())}}
 
 
+def thorlabs(expected):
+    """A ThorImage recording: a TIFF file per frame and channel, ChanA_001_001_001_0001.tif and so on; 2 channels
+    of 3 frames, 6 x 5 uint16, written out of order so natural order matters (frame 10 after frame 2)."""
+    rng = np.random.default_rng(19)
+    stack = rng.integers(0, 4000, (6, 5, 2, 3)).astype(np.uint16)   # height x width x channels x frames
+    folder = HERE / "thorlabs"
+    folder.mkdir(exist_ok=True)
+    for old in folder.glob("*.tif"):
+        old.unlink()
+    for c, letter in enumerate("AB"):
+        for t, number in enumerate((1, 2, 10)):
+            tifffile.imwrite(folder / f"Chan{letter}_001_001_001_{number:04d}.tif", stack[:, :, c, t], photometric="minisblack")
+    expected["thorlabs"] = {"size": [6, 5, 2, 3], "pixel": {"at": [4, 3, 1, 2], "value": int(stack[4, 3, 1, 2])},
+                            "sum": int(stack.astype(np.int64).sum())}
+
+
 def suite2p_rois(expected):
     """suite2p's Fall.mat: stat (a cell array of structs with 0-based ypix, xpix), iscell and ops (Ly, Lx)."""
     cells = [([2, 2, 3, 3], [7, 8, 7, 8], 1), ([10, 11, 11, 12, 12, 12], [3, 3, 4, 3, 4, 5], 0), ([17, 18], [20, 21], 1)]
@@ -285,6 +301,7 @@ def main():
     dev_binary(expected)
     suite2p_binary(expected)
     video(expected)
+    thorlabs(expected)
     suite2p_rois(expected)
     caiman_rois(expected)
     extract_rois(expected)

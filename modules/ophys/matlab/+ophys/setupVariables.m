@@ -20,7 +20,8 @@ function result = setupVariables(project, options, context)
         "RoiSignals_Deconvolved", "Deconvolved spikes", "roi_signals_deconvolved.npy", "npy", "RoiSignals"
         "RoiSignals_Denoised", "Denoised calcium", "roi_signals_denoised.npy", "npy", "RoiSignals"
         "TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack";
-        "TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"};
+        "TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"
+        "TwoPhotonSeries_Cropped", "Cropped stack", "two_photon_series_cropped.npy", "npy", "ImageStack"};
     columnNames = struct("MotionCorrectionShifts", {{'rows', 'columns'}}, "FrameStats", {{'mean', 'min', 'max', 'std'}});
     documents = {};
     if strlength(string(options.rawFilePattern)) > 0

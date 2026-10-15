@@ -1,0 +1,17 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.thorlabs_tiffs",
+  "version": "1.0.0",
+  "title": "ThorImage TIFF files",
+  "description": "A ThorImage recording, as dev's ThorLabsTiffs: a TIFF file per frame and channel (ChanA_001_001_001_0001.tif, ChanB_..., ...), matched by a file pattern with cardinality many. Each channel letter's files are its frames in natural order; with more than one channel the stack is height x width x channels x frames. Read a chunk at a time; read only.",
+  "extensions": [
+    ".tif",
+    ".tiff"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:ThorLabsTiffs",
+    "matlab": "ophys.ThorLabsTiffs"
+  }
+}

@@ -186,3 +186,27 @@ def test_cached_arrays_are_read_only():
     with pytest.raises(ValueError):
         array[0] = 1
     assert cache.get_or_load("m", 1, lambda: None)["frames"] is array
+
+
+@pytest.mark.parametrize("adapter_id, name", [("csv", "table.csv"), ("excel", "table.xlsx")])
+def test_tables_read_as_columns_and_write_back(tmp_path, adapter_id, name):
+    import math
+    from nansen.adapters import AdapterRegistry
+    if adapter_id == "excel":
+        pytest.importorskip("openpyxl")
+    adapter = AdapterRegistry().get(adapter_id)
+    table = adapter.read(Path(__file__).resolve().parents[2] / "testdata" / "tables" / name)   # as DataTest reads it
+    assert list(table) == ["name", "count", "rate"]
+    assert table["name"] == ["a", "b", "c, d"] and table["rate"] == [0.5, 2.25, -1.0]
+    assert table["count"][0] == 1.0 and math.isnan(table["count"][1]) and table["count"][2] == 3.0
+    out = tmp_path / ("out" + Path(name).suffix)
+    adapter.write(out, [{"name": "x", "n": 1}, {"name": "y, z", "n": None}])   # records too
+    back = adapter.read(out)
+    assert back["name"] == ["x", "y, z"] and back["n"][0] == 1.0 and math.isnan(back["n"][1])
+    adapter.write(out, table)
+    again = adapter.read(out)
+    assert again["name"] == table["name"] and again["rate"] == table["rate"]
+    if adapter_id == "csv":
+        assert out.read_text() == "name,count,rate\na,1,0.5\nb,,2.25\n\"c, d\",3,-1\n"
+    with pytest.raises(NansenError):
+        adapter.write(out, 42)

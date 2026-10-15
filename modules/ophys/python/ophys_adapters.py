@@ -316,6 +316,38 @@ class TiffStack:
         return TiffPageWriter(path, shape, dtype)
 
 
+class ThorLabsTiffs:
+    """A ThorImage recording: a TIFF file per frame and channel, named ChanA_001_001_001_0001.tif and so on, as dev's
+    ThorLabsTiffs reads them. The files of each channel letter are its frames, in natural order; with more than
+    one channel the stack is height x width x channels x frames, channels in letter order. Read a chunk at a time."""
+
+    extensions = [".tif", ".tiff"]
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import Stack
+        groups = {}
+        for path in paths:
+            match = re.match(r"Chan([A-Z])_", Path(path).name)
+            if not match:
+                raise NansenError("invalid-data", f"{Path(path).name} is not a ThorImage frame (ChanA_..., ChanB_...)")
+            groups.setdefault(match.group(1), []).append(path)
+        channels = [TiffStack().open(groups[letter]) for letter in sorted(groups)]
+        if len(channels) == 1:
+            return channels[0]
+        first = channels[0]
+        if any(c.shape != first.shape or c.dtype != first.dtype for c in channels):
+            raise NansenError("invalid-data", "the channels of the recording differ in size, frames or type")
+        height, width, frames = first.shape
+        return Stack((height, width, len(channels), frames), first.dtype,
+                     lambda start, stop: np.stack([c.frames(start, stop) for c in channels], axis=2))
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "ThorImage files are written by ThorImage; save stacks as TIFF")
+
+
 class TiffPageWriter:
     """Writes a height x width x frames stack to a TIFF file a chunk of frames at a time, as nansen.stacks.StackWriter
     does for other files: write(start, chunk), close(). Frames must come in order; BigTIFF from 4 GB."""

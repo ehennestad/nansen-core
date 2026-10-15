@@ -24,6 +24,8 @@ classdef AdapterRegistry < handle
                 obj.Adapters("text") = nansen.adapters.Text();
                 obj.Adapters("mat") = nansen.adapters.Mat();
                 obj.Adapters("npy") = nansen.adapters.Npy();
+                obj.Adapters("csv") = nansen.adapters.Csv();
+                obj.Adapters("excel") = nansen.adapters.Excel();
             end
         end
 
@@ -63,7 +65,8 @@ classdef AdapterRegistry < handle
                     "languages", {sort(fieldnames(doc.implementations))'}, "builtIn", false);
                 return
             end
-            builtIn = struct("json", {{".json"}}, "text", {{".txt", ".log", ".md"}}, "mat", {{".mat"}}, "npy", {{".npy"}});
+            builtIn = struct("json", {{".json"}}, "text", {{".txt", ".log", ".md"}}, "mat", {{".mat"}}, "npy", {{".npy"}}, ...
+                "csv", {{".csv"}}, "excel", {{".xlsx"}});
             if ~isfield(builtIn, adapterId)
                 nansen.internal.throwError("unknown-file-adapter", "no file adapter '%s'", adapterId)
             end

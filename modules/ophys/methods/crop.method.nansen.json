@@ -1,0 +1,29 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.crop",
+  "version": "1.0.0",
+  "title": "Crop",
+  "category": "Two-photon/Image processing",
+  "entityType": "*",
+  "description": "Keeps rows, columns and frames of a stack and saves them as a new stack, as dev's StackCropper: to leave out the edges a scanner distorts, or the frames before a recording settles. Read and written a chunk at a time.",
+  "implementations": {
+    "python": "ophys_methods:crop",
+    "matlab": "ophys.crop"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "stack": { "type": "string", "default": "TwoPhotonSeries_Corrected", "title": "Stack" },
+      "output": { "type": "string", "default": "TwoPhotonSeries_Cropped", "title": "Output", "description": "Variable the cropped stack is saved to." },
+      "firstRow": { "type": "integer", "default": 1, "minimum": 1, "title": "First row" },
+      "lastRow": { "type": "integer", "default": 0, "minimum": 0, "title": "Last row", "description": "0 for the last row." },
+      "firstColumn": { "type": "integer", "default": 1, "minimum": 1, "title": "First column" },
+      "lastColumn": { "type": "integer", "default": 0, "minimum": 0, "title": "Last column", "description": "0 for the last column." },
+      "firstFrame": { "type": "integer", "default": 1, "minimum": 1, "title": "First frame" },
+      "lastFrame": { "type": "integer", "default": 0, "minimum": 0, "title": "Last frame", "description": "0 for the last frame." },
+      "channel": { "type": "integer", "default": 1, "minimum": 1, "title": "Channel" },
+      "plane": { "type": "integer", "default": 1, "minimum": 1, "title": "Plane" }
+    }
+  }
+}

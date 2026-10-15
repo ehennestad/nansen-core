@@ -16,6 +16,7 @@
     "methods/align_sessions.method.nansen.json",
     "methods/caiman_deconvolution.method.nansen.json",
     "methods/compute_dff.method.nansen.json",
+    "methods/crop.method.nansen.json",
     "methods/deconvolve.method.nansen.json",
     "methods/deep_interpolation.method.nansen.json",
     "methods/deinterleave.method.nansen.json",
@@ -47,6 +48,7 @@
     "adapters/sciscan_raw.fileAdapter.nansen.json",
     "adapters/suite2p_binary.fileAdapter.nansen.json",
     "adapters/suite2p_rois.fileAdapter.nansen.json",
+    "adapters/thorlabs_tiffs.fileAdapter.nansen.json",
     "adapters/tiff_stack.fileAdapter.nansen.json",
     "adapters/video_file.fileAdapter.nansen.json"
   ],

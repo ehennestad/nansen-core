@@ -162,6 +162,25 @@ classdef DataTest < matlab.unittest.TestCase
             testCase.verifyClass(adapter.read(fullfile(folder, "mask_bool.npy")), "logical");
         end
 
+        function tablesReadAsTablesAndWriteBack(testCase)
+            % The fixtures Python's test_data.py reads too: a CSV file and the same table in an Excel workbook
+            folder = fullfile(nansen.internal.repoRoot(), "testdata", "tables");
+            for pair = {["csv", "table.csv"], ["excel", "table.xlsx"]}
+                adapter = testCase.Project.adapters().get(pair{1}(1));
+                data = adapter.read(fullfile(folder, pair{1}(2)));
+                testCase.verifyEqual(string(data.Properties.VariableNames), ["name", "count", "rate"], pair{1}(1));
+                testCase.verifyEqual(data.name, ["a"; "b"; "c, d"], pair{1}(1));
+                testCase.verifyEqual(data.count, [1; NaN; 3], pair{1}(1));
+                testCase.verifyEqual(data.rate, [0.5; 2.25; -1], pair{1}(1));
+                out = fullfile(testCase.Folder, "out" + extractAfter(pair{1}(2), "table"));
+                adapter.write(out, struct("name", ["x"; "y, z"], "n", [1; NaN]));
+                back = adapter.read(out);
+                testCase.verifyEqual(back.name, ["x"; "y, z"], pair{1}(1));
+                testCase.verifyEqual(back.n, [1; NaN], pair{1}(1));
+                testCase.verifyError(@() adapter.write(out, 42), "nansen:InvalidParams");
+            end
+        end
+
         function npyRoundTrips(testCase)
             adapter = testCase.Project.adapters().get("npy");
             path = fullfile(testCase.Folder, "a.npy");

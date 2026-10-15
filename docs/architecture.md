@@ -52,7 +52,7 @@ Each step was usable without a GUI before the next one started.
 | Extra metatables | Saved views of a table: rows (keys), column filters, hidden columns, a search |
 | Session context menu (copy, remove, open folder, send to workspace) | The selection bar and the drawer: copy keys, remove rows, show or copy folders, browse an entity's files, `workspace.send` (MATLAB's base workspace, or a Python namespace) |
 | Session method templates, project apps | `methods.create` from `templates/`; project tools (`entityType` `@project`) on the overview |
-| File adapters | File adapters: built-in `json`, `text`, `mat` and `npy` in both languages, others from modules |
+| File adapters | File adapters: built-in `json`, `text`, `mat`, `npy`, `csv` and `excel` in both languages, others from modules |
 | `nansen.cache.DataCache`, one per MATLAB session | A data cache per project (`project.data_cache`, `project.DataCache`): the same 2 GiB least-recently-used budget, and an entry is read again when its file changes on disk |
 | Modules (`module.nansen.json`) | Modules listing fragments, methods, adapters and pipelines by path; code for either language; added and removed from the overview |
 | `AddonManager` (toolboxes from GitHub and the File Exchange) | Add-ons declared by modules (`addons` in `module.nansen.json`): listed, downloaded from GitHub into an add-ons folder put on MATLAB's path, or installed with pip, from the Settings page in either language |
