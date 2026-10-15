@@ -163,6 +163,25 @@ def video(expected):
                  "sum": int(gray[..., 0].astype(np.int64).sum()), "metadata": {"frameRate": 10.0}}}
 
 
+def image_files(expected):
+    """Image sequences, a file per frame: 3 grayscale 16-bit PNG files (written out of order so natural order
+    matters: frame_10 after frame_2), and 2 colour BMP files."""
+    import imageio.v2 as iio
+    rng = np.random.default_rng(23)
+    folder = HERE / "images"
+    folder.mkdir(exist_ok=True)
+    gray = rng.integers(0, 60000, (3, 7, 9)).astype(np.uint16)   # frames x height x width
+    for t, name in enumerate(["frame_1.png", "frame_2.png", "frame_10.png"]):
+        iio.imwrite(folder / name, gray[t])
+    colour = rng.integers(0, 256, (2, 5, 6, 3)).astype(np.uint8)
+    for t in range(2):
+        iio.imwrite(folder / f"colour_{t + 1}.bmp", colour[t])
+    expected["images"] = {
+        "gray": {"size": [7, 9, 3], "pixel": {"at": [6, 8, 2], "value": int(gray[2, 6, 8])}, "sum": int(gray.astype(np.int64).sum())},
+        "colour": {"size": [5, 6, 3, 2], "pixel": {"at": [4, 5, 1, 1], "value": int(colour[1, 4, 5, 1])},
+                   "sum": int(colour.astype(np.int64).sum())}}
+
+
 def thorlabs(expected):
     """A ThorImage recording: a TIFF file per frame and channel, ChanA_001_001_001_0001.tif and so on; 2 channels
     of 3 frames, 6 x 5 uint16, written out of order so natural order matters (frame 10 after frame 2), and the
@@ -383,6 +402,7 @@ def main():
     dev_binary(expected)
     suite2p_binary(expected)
     video(expected)
+    image_files(expected)
     thorlabs(expected)
     tsm(expected)
     suite2p_rois(expected)

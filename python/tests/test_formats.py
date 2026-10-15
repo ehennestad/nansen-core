@@ -132,6 +132,21 @@ def test_videos_read_in_colour_or_gray():
         assert stack.metadata == expected["metadata"], name
 
 
+@pytest.mark.parametrize("kind, pattern", [("gray", "*.png"), ("colour", "*.bmp")])
+def test_image_files_read_as_frames(kind, pattern):
+    pytest.importorskip("imageio")
+    paths = sorted((FILES / "images").glob(pattern), reverse=True)   # any order: natural order inside
+    expected = EXPECTED["images"][kind]
+    stack = adapter("ImageFiles").open(paths)
+    assert list(stack.shape) == expected["size"] and stack.dtype == (np.uint16 if kind == "gray" else np.uint8)
+    data = np.asarray(stack)
+    assert int(data[tuple(expected["pixel"]["at"])]) == expected["pixel"]["value"]
+    assert int(data.astype(np.int64).sum()) == expected["sum"]
+    assert (stack.frames(1, 2) == data[..., 1:2]).all()
+    with pytest.raises(NansenError):   # frames of different sizes
+        np.asarray(adapter("ImageFiles").open(paths[:1] + sorted((FILES / "images").glob("*.bmp" if kind == "gray" else "*.png"))))
+
+
 def test_thorimage_frames_read_as_channels():
     paths = sorted((FILES / "thorlabs").glob("*.tif"), reverse=True)   # any order: natural order inside
     expected = EXPECTED["thorlabs"]

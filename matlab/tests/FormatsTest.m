@@ -79,6 +79,28 @@ classdef FormatsTest < matlab.unittest.TestCase
             end
         end
 
+        function readsImageFilesAsFrames(testCase)
+            for kind = ["gray", "colour"]
+                pattern = "*.png";
+                other = "*.bmp";
+                if kind == "colour"
+                    [pattern, other] = deal(other, pattern);
+                end
+                listing = dir(fullfile(testCase.Files, "images", pattern));
+                paths = flip(string(fullfile({listing.folder}, {listing.name})));   % any order: natural order inside
+                expected = testCase.Expected.images.(kind);
+                stack = ophys.ImageFiles().open(paths);
+                testCase.verifyEqual(size(stack), expected.size', kind);
+                data = stack.all();
+                at = num2cell(expected.pixel.at' + 1);
+                testCase.verifyEqual(double(data(at{:})), expected.pixel.value, kind);
+                testCase.verifyEqual(sum(double(data), "all"), expected.sum, kind);
+                otherListing = dir(fullfile(testCase.Files, "images", other));
+                mixed = ophys.ImageFiles().open([paths(1), string(fullfile({otherListing.folder}, {otherListing.name}))]);
+                testCase.verifyError(@() mixed.all(), "nansen:InvalidData", kind);   % frames of different sizes
+            end
+        end
+
         function readsThorImageFramesAsChannels(testCase)
             listing = dir(fullfile(testCase.Files, "thorlabs", "*.tif"));
             paths = flip(string(fullfile({listing.folder}, {listing.name})));   % any order: natural order inside

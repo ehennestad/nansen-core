@@ -1,0 +1,20 @@
+{
+  "schemaType": "nansen.fileAdapter",
+  "schemaVersion": "0.1.0",
+  "id": "ophys.image_files",
+  "version": "1.0.0",
+  "title": "Image files",
+  "description": "A sequence of image files (PNG, JPEG, BMP, ...), one frame per file in natural order, as dev's virtual Image stack, matched by a file pattern with cardinality many. Grayscale images are height x width x frames, colour ones height x width x 3 x frames (RGB; an alpha channel is left out). Read a chunk at a time; read only.",
+  "extensions": [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".bmp",
+    ".gif"
+  ],
+  "dataType": "ImageStack",
+  "implementations": {
+    "python": "ophys_adapters:ImageFiles",
+    "matlab": "ophys.ImageFiles"
+  }
+}

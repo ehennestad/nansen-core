@@ -450,6 +450,52 @@ class ThorLabsTiffs:
         raise NansenError("invalid-params", "ThorImage files are written by ThorImage; save stacks as TIFF")
 
 
+class ImageFiles:
+    """A sequence of image files (PNG, JPEG, BMP, ...), one frame per file in natural order, as dev's virtual Image
+    stack: matched by a file pattern with cardinality many. Grayscale images are height x width x frames, colour ones
+    height x width x 3 x frames (RGB; an alpha channel is left out). Read a chunk at a time; read only."""
+
+    extensions = [".png", ".jpg", ".jpeg", ".bmp", ".gif"]
+
+    def read(self, path):
+        return np.ascontiguousarray(np.asarray(self.open([path])))
+
+    def open(self, paths):
+        from nansen.stacks import Stack, natural_order
+        paths = [Path(p) for p in natural_order(paths)]
+        read_image = _image_reader()
+        first = read_image(paths[0])
+
+        def read(start, stop):
+            frames = [first if t == 0 else read_image(paths[t]) for t in range(start, stop)]
+            for t, frame in zip(range(start, stop), frames):
+                if frame.shape != first.shape or frame.dtype != first.dtype:
+                    raise NansenError("invalid-data", f"{paths[t].name} differs in size or type from {paths[0].name}")
+            return np.stack(frames, axis=-1)
+
+        return Stack(first.shape + (len(paths),), first.dtype, read)
+
+    def write(self, path, data):
+        raise NansenError("invalid-params", "image files are read as a stack; save stacks as TIFF")
+
+
+def _image_reader():
+    """A function that reads an image file as height x width (grayscale) or height x width x 3 (RGB)."""
+    try:
+        import imageio.v2 as iio
+    except ImportError:
+        raise NansenError("adapter-unavailable", 'image files need imageio: pip install "nansen-core[video]"') from None
+
+    def read(path):
+        image = np.asarray(iio.imread(path))
+        if image.ndim == 3:
+            image = image[:, :, :3]   # an alpha channel left out
+            if image.shape[2] == 1:
+                image = image[:, :, 0]
+        return image
+    return read
+
+
 def thorlabs_metadata(path):
     """frameRate and pixelSizeUM of the LSM element of a ThorImage Experiment.xml, as dev's getScanParameters; {} without one."""
     if not path.is_file():
