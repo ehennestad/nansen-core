@@ -225,6 +225,22 @@
       "fileAdapter": "WhiskTracker"
     },
     {
+      "name": "MotionStack",
+      "dataLocation": "Processed",
+      "subfolder": "",
+      "fileNameExpression": "motion_stack",
+      "fileType": ".tif",
+      "fileAdapter": "MotionStack"
+    },
+    {
+      "name": "CuratedRois",
+      "dataLocation": "Processed",
+      "subfolder": "roi_data",
+      "fileNameExpression": "curated_rois",
+      "fileType": ".mat",
+      "fileAdapter": "CuratedRois"
+    },
+    {
       "name": "SessionData",
       "dataLocation": "Processed",
       "isInternal": true
@@ -271,6 +287,10 @@
         {
           "name": "Reviewed",
           "dataType": "boolean"
+        },
+        {
+          "name": "Rig",
+          "dataType": "string"
         }
       ],
       "skippedColumns": [
@@ -321,7 +341,8 @@
           "Description": "Good",
           "NumRois": 120,
           "Quality": 0.8,
-          "Reviewed": true
+          "Reviewed": true,
+          "Rig": "Rig A"
         },
         {
           "sessionID": "m110-002",
@@ -332,7 +353,8 @@
           "Description": "",
           "NumRois": null,
           "Quality": null,
-          "Reviewed": false
+          "Reviewed": false,
+          "Rig": "Rig C"
         },
         {
           "sessionID": "m111-001",
@@ -343,7 +365,8 @@
           "Description": "",
           "NumRois": null,
           "Quality": null,
-          "Reviewed": false
+          "Reviewed": false,
+          "Rig": null
         },
         {
           "sessionID": "m110-001",
@@ -354,7 +377,8 @@
           "Description": "copy",
           "NumRois": null,
           "Quality": null,
-          "Reviewed": false
+          "Reviewed": false,
+          "Rig": null
         }
       ],
       "notes": [
@@ -406,7 +430,8 @@
           "title": "Order",
           "text": "Same second as the first note"
         }
-      ]
+      ],
+      "isDefault": false
     },
     {
       "name": "Sessions (curated)",
@@ -428,7 +453,8 @@
         {
           "sessionID": "m999-001"
         }
-      ]
+      ],
+      "isDefault": true
     },
     {
       "name": "Subjects",
@@ -552,12 +578,153 @@
       "text": "function data = read(filename)\n%READ Lick times, one per line.\n    data = sscanf(fileread(filename), '%f');\nend\n"
     },
     {
+      "file": "code/+RatNav/+fileadapter/CuratedRois.m",
+      "text": "classdef CuratedRois < nansen.module.ophys.twophoton.fileadapter.RoiGroup\n%CURATEDROIS The ROIs a curator kept.\n\n    methods (Access = protected)\n        function roiGroup = readData(obj, varargin)\n            roiGroup = readData@nansen.module.ophys.twophoton.fileadapter.RoiGroup(obj, varargin{:});\n        end\n    end\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+fileadapter/MotionStack.m",
+      "text": "classdef MotionStack < nansen.dataio.fileadapter.imagestack.ImageStack\n%MOTIONSTACK A motion-corrected recording, opened in the lab's viewer.\n\n    methods\n        function open(obj)\n            labviewer.open(obj.Filename)\n        end\n    end\nend\n"
+    },
+    {
       "file": "code/+RatNav/+fileadapter/SpeedTrace.m",
       "text": "classdef SpeedTrace < nansen.dataio.FileAdapter\n%SPEEDTRACE Running speed, one sample per line.\n\n    properties (Constant)\n        DataType = 'double'\n        Description = 'Running speed in cm/s, one sample per line'\n    end\n\n    properties (Constant, Hidden, Access = protected)\n        SUPPORTED_FILE_TYPES = {'speed'}\n    end\n\n    methods (Access = protected)\n        function data = readData(obj, varargin)\n            data = reshape(sscanf(fileread(obj.Filename), '%f'), 1, []);\n        end\n\n        function writeData(obj, data, varargin)\n            fid = fopen(obj.Filename, 'w');\n            fprintf(fid, '%g\\n', data);\n            fclose(fid);\n        end\n    end\nend\n"
     },
     {
+      "file": "code/+RatNav/+fileadapter/WhiskTracker.m",
+      "text": "classdef WhiskTracker < nansen.dataio.DynamicFileAdapter\n%WHISKTRACKER Whisker angles.\nend\n"
+    },
+    {
       "file": "code/+RatNav/+fileadapter/parseHeader.m",
       "text": "function header = parseHeader(text)\n%PARSEHEADER The first line of a rig file; not a file adapter.\n    header = strtok(text, newline);\nend\n"
+    }
+  ],
+  "tableVariables": [
+    {
+      "file": "code/+RatNav/+tablevariable/+experiment/Arena.m",
+      "text": "function value = Arena(experimentObject)\n    value = '';\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+tablevariable/+session/Date.m",
+      "text": "function value = Date(sessionObject)\n    value = NaT;\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+tablevariable/+session/NumRois.m",
+      "text": "function numRois = NumRois(sessionObject)\n%NUMROIS The number of ROIs the session has.\n    numRois = nan;\n    if ~nargin; return; end\n    rois = sessionObject.loadData('RoiArray');\n    numRois = numel(rois);\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+tablevariable/+session/Reviewed.m",
+      "text": "classdef Reviewed < nansen.metadata.abstract.TableVariable\n    properties (Constant)\n        IS_EDITABLE = true\n        DEFAULT_VALUE = true\n    end\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+tablevariable/+session/Rig.m",
+      "text": "classdef Rig < nansen.metadata.abstract.TableVariable\n    properties (Constant)\n        IS_EDITABLE = true\n        DEFAULT_VALUE = 'Rig A'\n        LIST_ALTERNATIVES = {'Rig A', 'Rig B'}\n    end\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+tablevariable/+session/Stage.m",
+      "text": "classdef Stage < nansen.metadata.abstract.TableVariable\n    properties (Constant)\n        DEFAULT_VALUE = 'none'\n        LIST_ALTERNATIVES = {'none', 'trained', 'expert'}\n    end\nend\n"
+    },
+    {
+      "file": "code/+RatNav/+tablevariable/+session/notes.m",
+      "text": "% scratch notes\n"
+    }
+  ],
+  "columnSettings": [
+    {
+      "variable": "sessionID",
+      "label": "Session",
+      "show": true,
+      "width": 90,
+      "order": 1
+    },
+    {
+      "variable": "subjectID",
+      "label": "subjectID",
+      "show": true,
+      "width": 80,
+      "order": 2
+    },
+    {
+      "variable": "Date",
+      "label": "Date",
+      "show": true,
+      "width": 100,
+      "order": 3
+    },
+    {
+      "variable": "Time",
+      "label": "Time",
+      "show": false,
+      "width": 60,
+      "order": 4
+    },
+    {
+      "variable": "Ignore",
+      "label": "Ignore",
+      "show": false,
+      "width": 50,
+      "order": 5
+    },
+    {
+      "variable": "Description",
+      "label": "Description",
+      "show": true,
+      "width": 240,
+      "order": 9
+    },
+    {
+      "variable": "NumRois",
+      "label": "ROIs",
+      "show": true,
+      "width": 60,
+      "order": 6
+    },
+    {
+      "variable": "Quality",
+      "label": "Quality",
+      "show": false,
+      "width": null,
+      "order": 7
+    },
+    {
+      "variable": "Reviewed",
+      "label": "Reviewed?",
+      "show": true,
+      "width": 0,
+      "order": 8
+    },
+    {
+      "variable": "DataLocation",
+      "label": "DataLocation",
+      "show": true,
+      "width": 100,
+      "order": 10
+    },
+    {
+      "variable": "Notebook",
+      "label": "Notebook",
+      "show": true,
+      "width": 100
+    },
+    {
+      "variable": "SubjectID",
+      "label": "Subject",
+      "show": true,
+      "width": 80,
+      "order": 1
+    },
+    {
+      "variable": "BiologicalSex",
+      "label": "Sex",
+      "show": true,
+      "width": 50,
+      "order": 3
+    },
+    {
+      "variable": "DateOfBirth",
+      "label": "Born",
+      "show": false,
+      "width": 90,
+      "order": 2
     }
   ],
   "presets": [
@@ -838,7 +1005,7 @@
   },
   "settings": {
     "MetadataTable": {
-      "ShowIgnoredEntries": true,
+      "ShowIgnoredEntries": false,
       "AllowTableEdits": true,
       "AutosaveMetaTable": true,
       "AutosaveMetadataToDataFolders": true,

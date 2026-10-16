@@ -236,6 +236,88 @@ classdef LegacyTest < matlab.unittest.TestCase
                 "TaskProcessor", struct("RunTasksWhenQueued", false, "RunTasksOnStartup", true));
             save(fullfile(userFolder, "settings", "nansen_app_settings.mat"), "settings");
         end
+
+        function writeDevViews(folder)
+            % dev's metadata and view features: a filtered table, which the catalog says dev opens first; the column
+            % layout dev's table viewer saved; and the project's table variables, a function and a class
+            tables = fullfile(folder, "metadata", "tables");
+            entries = table();
+            entries.sessionID = {'m110-001'};
+            S = struct("MetaTableMembers", {entries.sessionID}, "MetaTableEntries", entries, ...
+                "MetaTableVariables", {entries.Properties.VariableNames}, "IsMaster", false, ...
+                "MetaTableName", 'Curated', "MetaTableClass", 'nansen.metadata.type.Session', ...
+                "ItemClassName", 'nansen.metadata.type.Session', "MetaTableIdVarname", 'sessionID', ...
+                "MetaTableKey", 'k1', "FileName", 'curated.mat');
+            save(fullfile(tables, "curated.mat"), "-struct", "S");
+            metaTableCatalog = table({'Sessions'; 'Curated'}, {'nansen.metadata.type.Session'; 'nansen.metadata.type.Session'}, ...
+                [true; false], {'sessions.mat'; 'curated.mat'}, [false; true], ...
+                VariableNames=["MetaTableName", "MetaTableClass", "IsMaster", "FileName", "IsDefault"]);
+            save(fullfile(tables, "metatable_catalog.mat"), "metaTableCatalog");
+            layout = struct("VariableName", {'sessionID', 'Ignore', 'NumRois', 'Reviewed'}, ...
+                "ColumnLabel", {'Session', 'Ignore', 'ROIs', 'Reviewed'}, "ShowColumn", {true, false, true, true}, ...
+                "SkipColumn", {false, false, false, false}, "ColumnWidth", {90, 50, 60, 70}, ...
+                "IsEditable", {false, true, true, true}, "ColumnOrder", {1, 4, 2, 3});
+            nansen.internal.writeText(fullfile(tables, "metatable_column_settings.json"), jsonencode(layout));   % as dev saves it
+            variables = fullfile(folder, "code", "+RatNav", "+tablevariable", "+session");
+            mkdir(variables);
+            lines = [
+                "function numRois = NumRois(sessionObject)"
+                "    numRois = nan;"
+                "    if ~nargin; return; end"
+                "    numRois = numel(sessionObject.loadData('RoiArray'));"
+                "end"
+                ];
+            nansen.internal.writeText(fullfile(variables, "NumRois.m"), strjoin(lines', newline) + newline);
+            lines = [
+                "classdef Reviewed < nansen.metadata.abstract.TableVariable"
+                "    properties (Constant)"
+                "        IS_EDITABLE = true"
+                "        DEFAULT_VALUE = true"
+                "    end"
+                "end"
+                ];
+            nansen.internal.writeText(fullfile(variables, "Reviewed.m"), strjoin(lines', newline) + newline);
+        end
+
+        function writeOlderTaskList(folder, userFolder)
+            % The task list older versions of dev kept in the user's settings, for all the user's projects: a queued
+            % task of two of dev's session objects, and a finished task that kept its session in the history. The
+            % objects are of dev's class, which is then gone from the path, as when dev is not installed.
+            classes = fullfile(folder, "devclasses");
+            mkdir(fullfile(classes, "+nansen", "+metadata", "+type"));
+            lines = [
+                "classdef Session < dynamicprops"
+                "    properties"
+                "        subjectID"
+                "        sessionID char"
+                "        Ignore = false"
+                "        Date"
+                "        DataLocation struct"
+                "    end"
+                "end"
+                ];
+            nansen.internal.writeText(fullfile(classes, "+nansen", "+metadata", "+type", "Session.m"), strjoin(lines', newline) + newline);
+            addpath(classes);
+            sessions = [feval("nansen.metadata.type.Session"), feval("nansen.metadata.type.Session")];
+            [sessions.subjectID] = deal('m110', 'm110');
+            [sessions.sessionID] = deal('m110-001', 'm110-002');
+            [sessions.Date] = deal(datetime(2025, 5, 23), datetime(2025, 5, 24));
+            taskListQueue = struct("name", 'Multisession', "method", str2func('RatNav.sessionmethod.process.noteZoom'), ...
+                "methodName", 'Note Zoom', "status", 'Uninitialized', "numOut", 0, ...
+                "args", {{sessions, struct("Factor", 3)}}, "timeCreated", '2025.06.02 09:00:00', "timeStarted", '', ...
+                "elapsedTime", '', "timeFinished", '', "parameters", '', "comments", '', "Diary", '', "ErrorStack", []);
+            taskListHistory = taskListQueue;
+            taskListHistory.name = 'm110-002';
+            taskListHistory.method = str2func('nansen.module.ophys.twophoton.sessionmethod.process.signalExtraction.extractSignals');
+            taskListHistory.args = {sessions(2), struct()};
+            taskListHistory.status = 'Completed';
+            taskListHistory.timeFinished = '2025.06.02 10:00:00';
+            mkdir(fullfile(userFolder, "settings"));
+            save(fullfile(userFolder, "settings", "task_list.mat"), "taskListQueue", "taskListHistory");
+            clear sessions taskListQueue taskListHistory
+            rmpath(classes);
+            rmdir(classes, "s");
+        end
     end
 
     methods (Test)
@@ -409,6 +491,121 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyEqual(string({runs.finishedAt}), ["2025-05-24T08:00:00", "2025-05-30T12:00:00"]);
             testCase.verifyEqual(string(arrayfun(@(r) r.method.id, runs, UniformOutput=false))', ...
                 ["ophys.extract_signals", "ophys.extract_signals"]);
+        end
+
+        function exportReadsTheLayoutTableVariablesAndTheOlderTaskList(testCase)
+            user = fullfile(testCase.Folder, "prefs");
+            LegacyTest.writeDevViews(testCase.Legacy);
+            LegacyTest.writeOlderTaskList(testCase.Folder, user);
+            export = nansen.legacy.exportProject(testCase.Legacy, UserFolder=user);
+            tables = nansen.internal.asCellOfStructs(export.tables);   % curated.mat, sessions.mat
+            testCase.verifyEqual(string(cellfun(@(t) t.name, tables, UniformOutput=false)), ["Curated", "Sessions"]);
+            testCase.verifyTrue(tables{1}.isDefault);   % the catalog's IsDefault: dev opened the curated table first
+            testCase.verifyFalse(tables{2}.isDefault);
+            settings = nansen.internal.asCellOfStructs(export.columnSettings);
+            testCase.verifyEqual(string(cellfun(@(s) s.variable, settings, UniformOutput=false)), ...
+                ["sessionID", "Ignore", "NumRois", "Reviewed"]);
+            testCase.verifyFalse(settings{2}.show);
+            testCase.verifyEqual(settings{3}.width, 60);
+            testCase.verifyEqual(string(settings{3}.label), "ROIs");
+            variables = nansen.internal.asCellOfStructs(export.tableVariables);
+            testCase.verifyEqual(string(cellfun(@(v) v.file, variables, UniformOutput=false)), ...
+                ["code/+RatNav/+tablevariable/+session/NumRois.m", "code/+RatNav/+tablevariable/+session/Reviewed.m"]);
+            % the older task list (settings/task_list.mat), with dev's session objects, which load without dev
+            queue = nansen.internal.asCellOfStructs(export.tasks.queue);
+            testCase.verifyNumElements(queue, 1);
+            testCase.verifyEqual(string(queue{1}.name), "Multisession");
+            testCase.verifyEqual(string(queue{1}.entities)', ["m110-001", "m110-002"]);
+            history = nansen.internal.asCellOfStructs(export.tasks.history);
+            testCase.verifyEqual(string(history{1}.entities), "m110-002");   % kept in the history, as older versions did
+            testCase.verifyEqual(string(history{1}.finishedAt), "2025-06-02T10:00:00");
+        end
+
+        function importBringsTheLayoutTableVariablesAndTheOlderTaskList(testCase)
+            user = fullfile(testCase.Folder, "prefs");
+            LegacyTest.writeDevViews(testCase.Legacy);
+            LegacyTest.writeOlderTaskList(testCase.Folder, user);
+            target = fullfile(testCase.Folder, "imported");
+            report = nansen.legacy.importProject(testCase.Legacy, target, UserFolder=user);
+            testCase.verifyEqual(string(report.methods), ["legacy.note_zoom", "num_rois"]);
+            testCase.verifyEqual(report.tasks, 1);
+            testCase.verifyEqual(report.runs, 1);
+            project = nansen.Project.open(target);
+            % dev's column layout on a view of the whole table, and on the curated table's view, which opens first
+            views = project.views("session").list();
+            testCase.verifyEqual(string(cellfun(@(v) v.name, views, UniformOutput=false)), ["Sessions", "Curated"]);
+            testCase.verifyEqual(string(views{1}.hiddenColumns), "ignore");
+            testCase.verifyEqual(reshape(string(views{1}.columnOrder), 1, []), ["session_id", "NumRois", "Reviewed", "ignore"]);
+            testCase.verifyEqual(views{2}.columnWidths.NumRois, 60);
+            testCase.verifyTrue(views{2}.default);
+            testCase.verifyFalse(isfield(views{1}, "default") && views{1}.default);
+            % the table variables: a class is its column, with its default; a function makes it computed, keeping dev's values
+            columns = nansen.internal.asCellOfStructs(project.fragment("legacy.session").Document.columns);
+            reviewed = columns{cellfun(@(c) string(c.name) == "Reviewed", columns)};
+            testCase.verifyTrue(reviewed.default);
+            computed = project.fragment("num_rois").Document;
+            testCase.verifyEqual(string(computed.compute.method), "num_rois");
+            testCase.verifyEqual(string(computed.columns.title), "ROIs");
+            entities = project.entities("session", project.scan());
+            ids = string(cellfun(@(e) e.Key.session_id, entities, UniformOutput=false));
+            testCase.verifyEqual(entities{ids == "m110-001"}.Row.NumRois, 120);
+            testCase.verifyTrue(isfile(fullfile(target, "matlab", "num_rois_value.m")));
+            % the older task list's task of two sessions waits on hold; its finished task is in the run journal
+            listing = dir(fullfile(target, "tasks", "*.task.nansen.json"));
+            task = nansen.internal.readJson(fullfile(listing(1).folder, listing(1).name));
+            testCase.verifyNumElements(task.entities, 2);
+            testCase.verifyTrue(task.onHold);
+        end
+
+        function adaptersOnDevsAdaptersReadWithTheAdapterHere(testCase)
+            adapters = fullfile(testCase.Legacy, "code", "+RatNav", "+fileadapter");
+            mkdir(adapters);
+            lines = [   % its own readData, on dev's: read through dev's class
+                "classdef DoubledSignals < nansen.module.ophys.twophoton.fileadapter.RoiSignalArray"
+                "    methods (Access = protected)"
+                "        function data = readData(obj, varargin)"
+                "            data = 2 * readData@nansen.module.ophys.twophoton.fileadapter.RoiSignalArray(obj, 'dff');"
+                "        end"
+                "    end"
+                "end"];
+            nansen.internal.writeText(fullfile(adapters, "DoubledSignals.m"), strjoin(lines', newline) + newline);
+            lines = [   % none of its own: its files are read by the adapter here of their type
+                "classdef MotionStack < nansen.dataio.fileadapter.imagestack.ImageStack"
+                "    methods"
+                "        function view(obj)"
+                "            disp(obj.Filename)"
+                "        end"
+                "    end"
+                "end"];
+            nansen.internal.writeText(fullfile(adapters, "MotionStack.m"), strjoin(lines', newline) + newline);
+            S = load(fullfile(testCase.Legacy, "configurations", "filepath_settings.mat"));
+            added = S.Data(1:2);
+            [added.VariableName] = deal('Doubled', 'Stack');
+            [added.DataLocation] = deal('Rawdata', 'Rawdata');
+            [added.Subfolder] = deal('', '');
+            [added.FileNameExpression] = deal('doubled', 'stack');
+            [added.FileType] = deal('.mat', '.tif');
+            [added.FileAdapter] = deal('DoubledSignals', 'MotionStack');
+            S.Data = [S.Data, added];
+            save(fullfile(testCase.Legacy, "configurations", "filepath_settings.mat"), "-struct", "S");
+            session = fullfile(testCase.Folder, "raw", "m110", "2025_05_23", "session-m110-001");
+            dff = [1, 2, 3];
+            save(fullfile(session, "m110-001_doubled.mat"), "dff");
+            target = fullfile(testCase.Folder, "imported");
+            report = nansen.legacy.importProject(testCase.Legacy, target);
+            testCase.verifyEqual(string(report.fileAdapters), ["legacy.doubled_signals", "legacy.motion_stack"]);
+            project = nansen.Project.open(target);
+            testCase.verifyEqual(string(project.dataVariable("Stack").Document.fileAdapter), "ophys.tiff_stack");
+            testCase.verifyEqual(string(project.dataVariable("Doubled").Document.fileAdapter), "legacy.doubled_signals");
+            entities = project.entities("session", project.scan());
+            ids = string(cellfun(@(e) e.Key.session_id, entities, UniformOutput=false));
+            testCase.verifyEqual(project.load(entities{ids == "m110-001"}, "Doubled"), [2, 4, 6]);
+            % dev's ImageStack here writes and reads a TIFF stack with the ophys module's adapter
+            stack = project.adapters().get("legacy.motion_stack");
+            file = fullfile(testCase.Folder, "frames.tif");
+            frames = uint16(reshape(1:24, 2, 3, 4));
+            stack.write(file, frames);
+            testCase.verifyEqual(stack.read(file), frames);
         end
 
         function importNeedsAnEmptyFolder(testCase)

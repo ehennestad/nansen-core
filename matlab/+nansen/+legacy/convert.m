@@ -18,7 +18,13 @@ function report = convert(export, folder)
 %   - file path settings become data variables when their file adapter has
 %     a built-in equivalent;
 %   - the notes of a Notebook column go into the entity type's notebook;
-%   - filtered (non-master) tables become views of their entity type;
+%   - filtered (non-master) tables become views of their entity type, and
+%     dev's column layout (shown, order, widths) and ShowIgnoredEntries go
+%     onto them and onto a view of each whole table; the labels become the
+%     titles of the project's own columns;
+%   - the project's own table variables (tableVariables) come in as
+%     columns.import brings them: a class as the column, with its choices,
+%     a function as a computed column filled by dev's function;
 %   - the project's own session methods (sessionMethods) become methods of
 %     sessions that run dev's code unchanged (nansen.legacy.SessionShim),
 %     and pipeline tasks that call them become steps;
@@ -89,7 +95,23 @@ function report = convert(export, folder)
         names{end + 1} = plan.dataVariables{i}.name; %#ok<AGROW>
     end
     nansen.legacy.writeSessionMethods(folder, plan.methods);
-    methodIds = cellfun(@(m) m.document.id, plan.methods, UniformOutput=false);
+    for i = 1:numel(plan.columnMethods)   % the methods of dev's table variable functions, with dev's function
+        entry = plan.columnMethods{i};
+        for k = 1:numel(entry.files)
+            if ~isfolder(fullfile(folder, "matlab"))
+                mkdir(fullfile(folder, "matlab"));
+            end
+            nansen.internal.writeText(fullfile(folder, "matlab", entry.files{k}.path), entry.files{k}.text);
+        end
+        if ~isfolder(fullfile(folder, "methods"))
+            mkdir(fullfile(folder, "methods"));
+        end
+        nansen.internal.writeJson(fullfile(folder, "methods", string(entry.document.id) + ".method.nansen.json"), entry.document)
+    end
+    if ~isempty(plan.columnMethods)
+        rehash   % new files in a folder already on the path are seen at once
+    end
+    methodIds = cellfun(@(m) m.document.id, [plan.methods, plan.columnMethods], UniformOutput=false);
     warnings = plan.warnings;
     presets = {};
     for i = 1:numel(plan.presets)

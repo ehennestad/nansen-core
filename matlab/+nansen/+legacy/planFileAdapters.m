@@ -11,7 +11,11 @@ function [entries, warnings] = planFileAdapters(sources, taken)
 %   the others, with legacyFileAdapter), name (dev's name of it, which
 %   dev's variables give as their FileAdapter) and files (a cell of structs
 %   with path, under the project's matlab/ folder in the same packages,
-%   and text). A file that is not a file adapter is named in warnings. As
+%   and text). A class on one of dev's own adapters (its ImageStack,
+%   RoiGroup, ...) also has base (that adapter's class) and reads (per row
+%   an extension and the adapter here that reads such a file as the class
+%   does, when the class has no readData or writeData of its own; else
+%   none). A file that is not a file adapter is named in warnings. As
 %   Python's nansen.legacyadapters.plan.
     arguments
         sources (1,:) cell
@@ -86,6 +90,13 @@ function [entries, warnings] = planFileAdapters(sources, taken)
                 continue
             end
             legacy = struct("kind", 'class');
+            if isfield(info, "base")   % dev's class reads and writes with the adapter here of each file type
+                legacy.base = char(info.base);
+                legacy.builtIn = cell(1, size(info.builtIn, 1));
+                for k = 1:size(info.builtIn, 1)
+                    legacy.builtIn{k} = struct("extension", char(info.builtIn(k, 1)), "fileAdapter", char(info.builtIn(k, 2)));
+                end
+            end
             name = parts(end);
             files = {struct("path", strjoin(["+" + parts(1:end - 1), parts(end) + ".m"], "/"), "text", texts(i))};
         end
@@ -112,7 +123,15 @@ function [entries, warnings] = planFileAdapters(sources, taken)
         document.implementations = struct("matlab", char(implementation));
         document.legacyFileAdapter = legacy;
         nansen.checkDocument(document, ExpectedType="nansen.fileAdapter");
-        entries{end + 1} = struct("document", document, "name", string(name), "files", {files}); %#ok<AGROW>
+        entry = struct("document", document, "name", string(name), "files", {files});
+        if isfield(info, "base")
+            entry.base = string(info.base);
+            entry.reads = strings(0, 2);   % its own readData or writeData reads and writes its files
+            if ~info.overrides
+                entry.reads = info.builtIn;
+            end
+        end
+        entries{end + 1} = entry; %#ok<AGROW>
     end
 end
 

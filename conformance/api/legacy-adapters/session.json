@@ -31,7 +31,7 @@
         "method": "adapters.import",
         "id": 3,
         "params": {
-          "path": "${scratch}/data/+other/+fileadapter/TiffPlus.m"
+          "path": "${scratch}/data/+lab/+fileadapter/Whisker.m"
         }
       },
       "expect": {
@@ -187,10 +187,64 @@
                 "file-adapters/legacy.bin_trace.fileAdapter.nansen.json",
                 "matlab/+other/+fileadapter/BinTrace.m"
               ]
+            },
+            {
+              "schemaType": "nansen.fileAdapter",
+              "schemaVersion": "0.1.0",
+              "id": "legacy.tiff_plus",
+              "version": "1.0.0",
+              "title": "TiffPlus",
+              "description": "A stack adapter built on dev's own ImageStack adapter, whose file types and data type it keeps.",
+              "extensions": [
+                ".ini",
+                ".raw",
+                ".tif",
+                ".tiff",
+                ".avi",
+                ".h5",
+                ".tsm"
+              ],
+              "dataType": "ImageStack",
+              "implementations": {
+                "matlab": "other.fileadapter.TiffPlus"
+              },
+              "legacyFileAdapter": {
+                "kind": "class",
+                "base": "nansen.dataio.fileadapter.imagestack.ImageStack",
+                "builtIn": [
+                  {
+                    "extension": ".raw",
+                    "fileAdapter": "ophys.binary_stack"
+                  },
+                  {
+                    "extension": ".tif",
+                    "fileAdapter": "ophys.tiff_stack"
+                  },
+                  {
+                    "extension": ".tiff",
+                    "fileAdapter": "ophys.tiff_stack"
+                  },
+                  {
+                    "extension": ".avi",
+                    "fileAdapter": "ophys.video_file"
+                  },
+                  {
+                    "extension": ".h5",
+                    "fileAdapter": "ophys.hdf5_stack"
+                  },
+                  {
+                    "extension": ".tsm",
+                    "fileAdapter": "ophys.tsm_stack"
+                  }
+                ]
+              },
+              "files": [
+                "file-adapters/legacy.tiff_plus.fileAdapter.nansen.json",
+                "matlab/+other/+fileadapter/TiffPlus.m"
+              ]
             }
           ],
           "warnings": [
-            "file adapter +other/+fileadapter/TiffPlus.m: TiffPlus.m is a class that does not subclass nansen.dataio.FileAdapter, so it is not a dev file adapter; left out",
             "file adapter +other/+fileadapter/helper.m: helper.m is not a class, so it is not a dev file adapter; left out"
           ]
         }
@@ -240,6 +294,10 @@
             },
             {
               "name": "legacy.speed_trace.fileAdapter.nansen.json",
+              "isFolder": false
+            },
+            {
+              "name": "legacy.tiff_plus.fileAdapter.nansen.json",
               "isFolder": false
             }
           ]

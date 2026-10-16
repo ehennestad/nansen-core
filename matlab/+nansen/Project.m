@@ -2828,7 +2828,9 @@ classdef Project < handle
             closer = onCleanup(@() fclose(fid));
             bytes = fread(fid, Inf, "*uint8");
         end
+    end
 
+    methods (Static, Hidden)   % importColumn's reading of dev's table variables, which the legacy importer shares
         function shape = columnCodeShape(text, name, extension)
             % What a code file importColumn is given is: kind devFunction, devClass, matlabMethod or pythonMethod, with
             % the default value's expression and the choices of dev's. invalid-params for any other file. The regular

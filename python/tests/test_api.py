@@ -430,8 +430,9 @@ shutil.copyfile({str(export)!r}, re.search(r"File='([^']*)'", sys.argv[2]).group
         result = call("legacy.import", source=str(dev), path=str(tmp_path / "b"),
                       userFolder="/home/ana/prefs/Nansen/ana")["result"]
         assert result["project"]["name"] and (tmp_path / "b" / "project.nansen.json").is_file()
-        # dev's preferences that are settings here are saved: AutosaveMetadataToDataFolders, Run tasks when queued / on startup
-        assert result["settings"] == {"tables": {"saveToDataFolders": True}, "queue": {"autoStart": False}}
+        # dev's preferences that are settings here are saved: AutosaveMetadataToDataFolders, Run tasks when queued / on
+        # startup, SessionTaskDebug
+        assert result["settings"] == {"tables": {"saveToDataFolders": True}, "queue": {"autoStart": False, "debug": False}}
         assert catalog.settings()["tables"]["saveToDataFolders"] is True and catalog.settings()["queue"]["autoStart"] is False
         fake.write_text(f"#!{sys.executable}\nimport sys\nprint('Undefined function'); sys.exit(1)\n")
         error = call("legacy.import", source=str(dev), path=str(tmp_path / "c"))["error"]

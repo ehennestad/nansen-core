@@ -41,11 +41,25 @@
       "type": "object",
       "required": ["kind"],
       "additionalProperties": false,
-      "description": "The MATLAB implementation is a file adapter of NANSEN dev, imported unchanged (adapters.import, the legacy importer): a subclass of nansen.dataio.FileAdapter (kind class), read with load and written with save, or dev's function-based adapter (kind function), a folder with fileadapter.json whose read and write functions are named here. Only MATLAB reads and writes with it (nansen.legacy.FileAdapterShim); elsewhere it is adapter-unavailable.",
+      "description": "The MATLAB implementation is a file adapter of NANSEN dev, imported unchanged (adapters.import, the legacy importer): a subclass of nansen.dataio.FileAdapter or of one of dev's adapters (kind class), read with load and written with save, or dev's function-based adapter (kind function), a folder with fileadapter.json whose read and write functions are named here. Only MATLAB reads and writes with it (nansen.legacy.FileAdapterShim); elsewhere it is adapter-unavailable.",
       "properties": {
         "kind": { "type": "string", "enum": ["class", "function"] },
         "read": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]*$", "description": "kind function: the function that reads a file, data = read(filename)." },
-        "write": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]*$", "description": "kind function: the function that writes one, write(filename, data); none: the adapter only reads." }
+        "write": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]*$", "description": "kind function: the function that writes one, write(filename, data); none: the adapter only reads." },
+        "base": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]*$", "description": "kind class: the class of dev's that the class subclasses instead of nansen.dataio.FileAdapter, one of dev's readers of a known format (its ImageStack, RoiGroup, RoiSignalArray, ...). matlab/devcompat's class of that name reads and writes a file with the adapter of builtIn for its extension, and the class's own code runs on top of it." },
+        "builtIn": {
+          "type": "array",
+          "description": "With base: the adapter here that reads and writes a file of each extension in place of dev's base class (the ophys module's, or a built-in one).",
+          "items": {
+            "type": "object",
+            "required": ["extension", "fileAdapter"],
+            "additionalProperties": false,
+            "properties": {
+              "extension": { "type": "string", "pattern": "^\\.[A-Za-z0-9.]+$" },
+              "fileAdapter": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][A-Za-z0-9_]*)*$" }
+            }
+          }
+        }
       }
     }
   },

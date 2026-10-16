@@ -37,13 +37,36 @@ def test_a_class_adapter_reads_its_constants():
     ("function data = read(f)\nend\n", "is not a class"),
     ("% only comments\n", "holds no code"),
     ("classdef Trace < handle\nend\n", "does not subclass nansen.dataio.FileAdapter"),
-    ("classdef Trace < nansen.dataio.FileAdapter & nansen.dataio.fileadapter.imagestack.ImageStack\nend\n",
-     "also subclasses nansen.dataio.fileadapter.imagestack.ImageStack"),
+    ("classdef Trace < nansen.dataio.FileAdapter & nansen.dataio.DynamicFileAdapter\nend\n",
+     "also subclasses nansen.dataio.DynamicFileAdapter, which nansen-core does not have"),
+    ("classdef Trace < nansen.dataio.DynamicFileAdapter\nend\n", "Trace.m subclasses nansen.dataio.DynamicFileAdapter"),
+    ("classdef Trace < nansen.dataio.fileadapter.roi.RoiGroup & nansen.dataio.fileadapter.numpy\nend\n",
+     "subclasses several of dev's file adapters"),
 ])
 def test_files_that_are_not_class_adapters(text, reason):
     with pytest.raises(NansenError) as error:
         analyze_class("Trace", text)
     assert error.value.code == "unsupported-file" and reason in error.value.message
+
+
+def test_a_class_on_one_of_devs_adapters_keeps_its_constants_and_reads_with_the_adapter_here():
+    plain = "classdef Stack < nansen.module.general.core.fileadapter.ImageStack\n%STACK A stack.\n" \
+            "    methods\n        function view(obj)\n        end\n    end\nend\n"
+    info = analyze_class("Stack", plain)
+    assert info["dataType"] == "ImageStack" and info["base"] == "nansen.module.general.core.fileadapter.ImageStack"
+    assert info["extensions"][:3] == [".ini", ".raw", ".tif"] and not info["overrides"]
+    assert (".tif", "ophys.tiff_stack") in info["builtIn"] and (".raw", "ophys.binary_stack") in info["builtIn"]
+    own = "classdef Signals < nansen.dataio.fileadapter.timeseries.RoiSignalArray\n    methods (Access = protected)\n" \
+          "        function data = readData(obj, varargin)\n            data = 1;\n        end\n    end\nend\n"
+    assert analyze_class("Signals", own)["overrides"]
+    entries, warnings = plan([("code/+P/+fileadapter/Stack.m", plain), ("code/+P/+fileadapter/Signals.m", own)])
+    assert not warnings
+    signals, stack = entries
+    assert signals["document"]["legacyFileAdapter"] == {
+        "kind": "class", "base": "nansen.dataio.fileadapter.timeseries.RoiSignalArray",
+        "builtIn": [{"extension": ".mat", "fileAdapter": "mat"}]}
+    assert signals["reads"] == {}   # its own readData reads them: through dev's class, in MATLAB
+    assert stack["reads"][".tif"] == "ophys.tiff_stack" and ".ini" not in stack["reads"]
 
 
 def test_a_function_adapter_reads_its_definition():
@@ -125,9 +148,13 @@ def test_legacy_import_brings_the_dev_projects_adapters_presets_tasks_and_progre
 
     export = json.loads((REPO / "conformance" / "legacy" / "two-photon" / "export.json").read_text())
     report = convert_legacy(export, tmp_path / "project")
-    assert report["fileAdapters"] == ["legacy.lick_log", "legacy.speed_trace"]
+    assert report["fileAdapters"] == ["legacy.lick_log", "legacy.curated_rois", "legacy.motion_stack", "legacy.speed_trace"]
     project = Project.open(tmp_path / "project")
     assert project.data_variable("RunningSpeed").document["fileAdapter"] == "legacy.speed_trace"
+    # built on dev's adapters: read by the adapter here of the file type, unless the class reads them its own way
+    assert project.data_variable("MotionStack").document["fileAdapter"] == "ophys.tiff_stack"
+    assert project.data_variable("CuratedRois").document["fileAdapter"] == "legacy.curated_rois"
+    assert "ophys" in [m["id"] for m in project.document["modules"]]
     assert project.preset("legacy.count_trials", "Strict")["MinDuration"] == 4
     assert project.preferred_preset("ophys.normcorre") == "thorough"
     from nansen.tasks import TaskQueue
