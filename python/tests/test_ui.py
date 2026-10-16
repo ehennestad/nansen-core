@@ -2508,6 +2508,15 @@ def test_the_viewer_shows_a_scalebar_and_the_time_the_files_give(empty_app, page
     page.select_option(".viewer-mode", "mean")
     page.wait_for_selector(".viewer-frame:text-is('40 frames')")
     assert page.locator(".viewer-time").inner_text() == ""
+    page.select_option(".viewer-mode", "frame")
+    # dev's Edit Stack Properties overrode what the files say: so does the frame rate edited here
+    page.click(".viewer-dialog .viewer-properties")
+    page.wait_for_selector(".viewer-properties-form:has-text('The files say 30.9')")
+    page.fill(".viewer-properties-form input[data-column='frame_rate']", "10")
+    page.click(".dialog .dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".toast:has-text('Stack properties saved')")
+    page.locator(".viewer-slider").fill("9")
+    page.wait_for_selector(".viewer-time:text-is('0.90 s')")   # frame 9 at 10 per second, not the files' 30.9
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 

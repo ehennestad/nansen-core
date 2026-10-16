@@ -102,9 +102,9 @@ def test_a_recording_takes_what_its_files_do_not_say_from_devs_metadata_file(api
     project = api.project
     assert project.open_stack(project.entity("session", S2), "TwoPhotonSeries_Original").metadata == \
         {"frameRate": 16.0, "pixelSize": [2.0, 2.0]}
-    # dev's file before the entity's columns, which give what neither file does
+    # the entity's columns over dev's file (the viewer's stack properties, as dev's Edit Stack Properties wrote that file)
     call(api, "entities.update", entityType="session", key=S2, values={"frame_rate": 10, "z_step_um": 3})
-    assert frame() == {"frameRate": 16.0, "pixelSize": [2.0, 2.0], "zStep": 3.0}
+    assert frame() == {"frameRate": 10.0, "pixelSize": [2.0, 2.0], "zStep": 3.0}
 
 
 def test_signals_take_their_frame_rate_from_devs_metadata_file(api):
@@ -118,5 +118,6 @@ def test_signals_take_their_frame_rate_from_devs_metadata_file(api):
     path = project.existing_files(entity, name)[0]
     path.with_suffix(".yaml").write_text("File:\n  FileAdapter: nansen.dataio.fileadapter.timeseries.RoiSignalArray\n"
                                          "Data:\n  SampleRate: 30.9\n")
-    call(api, "entities.update", entityType="session", key=S2, values={"frame_rate": 10})
     assert traces() == 30.9
+    call(api, "entities.update", entityType="session", key=S2, values={"frame_rate": 10})   # the column, edited, wins
+    assert traces() == 10

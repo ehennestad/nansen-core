@@ -1835,7 +1835,7 @@
     if (options.file) document.addEventListener("paste", onPaste);
 
     /** The entity's frame rate, pixel size and z step, in its columns (frame_rate, pixel_size_um, z_step_um), which the
-     * stack's metadata takes what its files do not give from. */
+     * stack's metadata takes over what its files give, as dev's Edit Stack Properties set the stack's metadata. */
     async function editProperties() {
       let detail;
       try { detail = await app.client.request("entities.get", { entityType, key }); } catch (error) { N.showError(error); return; }
@@ -1851,13 +1851,13 @@
         const value = detail.values[column];
         inputs[column] = h("input.input", { type: "number", step: "any", min: "0", value: value === null || value === undefined ? "" : String(value), dataset: { column } });
         const given = Array.isArray(metadata[meta]) ? metadata[meta][0] : metadata[meta];
-        const note = given !== undefined && Number(given) !== Number(value) ? `The files say ${given}, which comes first` : unit;
+        const note = given !== undefined && Number(given) !== Number(value) ? `The files say ${given}; a value here is used instead` : unit;
         return h("label.field", h("span", label), inputs[column], h("span.muted", { style: { fontSize: "12px" } }, note));
       });
       N.dialog({
         title: "Stack properties", narrow: true,
         content: h("div.viewer-properties-form", { style: { padding: "12px 16px", display: "grid", gap: "10px" } },
-          h("p.muted", { style: { margin: 0 } }, `Kept in the ${entityType}'s columns; the stack's metadata takes from them what its files do not give.`), rows),
+          h("p.muted", { style: { margin: 0 } }, `Kept in the ${entityType}'s columns, which the stack's metadata takes over what its files give (empty: the files' value).`), rows),
         buttons: [{ label: "Cancel" }, { label: "Save", kind: "primary", onClick: async (close) => {
           const values = {};
           for (const [column] of fields) {

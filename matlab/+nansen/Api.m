@@ -1613,7 +1613,7 @@ classdef Api < handle
 
         function result = apiDataFrame(obj, params)
             % A frame (or a projection) of an image variable, scaled to 8 bits, with the ROIs of another variable and
-            % the stack's metadata (frameRate, pixelSize, zStep, as its files give them)
+            % the stack's metadata (frameRate, pixelSize, zStep, as its files give them, the entity's columns over them)
             project = obj.requireProject();
             entity = obj.entity(params);
             limits = nansen.internal.getField(params, "limits", []);
@@ -2740,8 +2740,10 @@ classdef Api < handle
         end
 
         function rate = frameRate(params, entity, sidecar)
-            % data.traces' frames per second: the frameRate given, else the one dev's metadata file of the signals
-            % says (sidecar, [] for none), else the entity's frame_rate when it is a positive number; [] (null) when none
+            % data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive
+            % number (what the viewer's stack properties edit, which wins over the files as dev's Edit Stack
+            % Properties did), else the one dev's metadata file of the signals says (sidecar, [] for none); [] (null)
+            % when none. As Python's _frame_rate
             if nargin < 3
                 sidecar = [];
             end
@@ -2753,15 +2755,13 @@ classdef Api < handle
                 rate = double(given);
                 return
             end
-            if ~isempty(sidecar)
-                rate = double(sidecar);
-                return
-            end
             rate = entity.get("frame_rate", []);
-            if ~(isnumeric(rate) && isscalar(rate) && isfinite(rate) && rate > 0)
-                rate = [];
-            else
+            if isnumeric(rate) && isscalar(rate) && isfinite(rate) && rate > 0
                 rate = double(rate);
+            elseif ~isempty(sidecar)
+                rate = double(sidecar);
+            else
+                rate = [];
             end
         end
     end
@@ -2835,19 +2835,25 @@ classdef Api < handle
         end
 
         function metadata = entityMetadata(metadata, entity)
-            % A stack's metadata, with what its files do not give taken from the entity's columns (dev's Edit Stack
-            % Properties): frameRate from frame_rate, pixelSize from pixel_size_um, zStep from z_step_um; as Python's
+            % A stack's metadata with the entity's columns over what its files give (dev's Edit Stack Properties,
+            % which set the stack's metadata): frameRate from frame_rate, pixelSize from pixel_size_um, zStep from
+            % z_step_um, each when it is a positive number, rounded to 6 decimals. pixel_size_um is the pixel's
+            % width: the files' [width, height] stay when it is their width, else the pixels are square. As Python's
             keys = ["frameRate", "pixelSize", "zStep"];
             columns = ["frame_rate", "pixel_size_um", "z_step_um"];
             for i = 1:3
                 value = entity.get(columns(i), []);
-                if ~isfield(metadata, keys(i)) && isnumeric(value) && isscalar(value) && isfinite(value) && value > 0
-                    value = floor(double(value) * 1e6 + 0.5) / 1e6;
-                    if keys(i) == "pixelSize"
-                        value = [value, value];
-                    end
-                    metadata.(keys(i)) = value;
+                if ~(isnumeric(value) && isscalar(value) && isfinite(value) && value > 0)
+                    continue
                 end
+                value = floor(double(value) * 1e6 + 0.5) / 1e6;
+                if keys(i) == "pixelSize"
+                    if isfield(metadata, "pixelSize") && ~isempty(metadata.pixelSize) && double(metadata.pixelSize(1)) == value
+                        continue
+                    end
+                    value = [value, value];
+                end
+                metadata.(keys(i)) = value;
             end
         end
 

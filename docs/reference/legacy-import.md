@@ -140,7 +140,7 @@ and `MetadataTable.ShowIgnoredEntries`, when false, is a filter of the tables' v
 
 ### dev's metadata files
 
-dev's adapters and image stacks keep metadata in a YAML file beside the data, `<name>.yaml` beside `<name>.<ext>` (or `<name>.yaml.txt`, with dev's `SaveYamlAsTxt`), written with dev's YAML toolbox: an adapter's `setMetadata` (groups `File`, `Data`, `Custom`), and an image stack's `StackMetadata` (as dev's Edit Stack Properties set them). They stay where they are and are read when the data is: what a recording's own files do not say of it comes from the file beside its first file (in natural order), before the entity's columns (`frame_rate`, `pixel_size_um`, `z_step_um`), in both languages (`Project.open_stack`, `openStack`, and so `data.frame`, the methods, `files.frame` and `view.frame`):
+dev's adapters and image stacks keep metadata in a YAML file beside the data, `<name>.yaml` beside `<name>.<ext>` (or `<name>.yaml.txt`, with dev's `SaveYamlAsTxt`), written with dev's YAML toolbox: an adapter's `setMetadata` (groups `File`, `Data`, `Custom`), and an image stack's `StackMetadata` (as dev's Edit Stack Properties set them). They stay where they are and are read when the data is: what a recording's own files do not say of it comes from the file beside its first file (in natural order), in both languages (`Project.open_stack`, `openStack`, and so `data.frame`, the methods, `files.frame` and `view.frame`); `data.frame` and `data.traces` then take the entity's columns (`frame_rate`, `pixel_size_um`, `z_step_um`, which the viewer's stack properties edit) over both, as dev's Edit Stack Properties overrode them:
 
 | dev (at the top, else in `Data`, else in `Custom`) | Here (the stack's metadata) |
 |---|---|

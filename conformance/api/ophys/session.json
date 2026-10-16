@@ -8615,7 +8615,7 @@
           "width": 32,
           "frames": 40,
           "metadata": {
-            "frameRate": 30.9,
+            "frameRate": 31.25,
             "pixelSize": [
               16.0,
               12.0
@@ -14740,13 +14740,81 @@
       "expect": {
         "result": {
           "metadata": {
-            "frameRate": 30.9,
+            "frameRate": 12.5,
+            "pixelSize": [
+              2.25,
+              2.25
+            ],
+            "zStep": 3
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 9804,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "values": {
+            "pixel_size_um": 16
+          }
+        }
+      },
+      "expect": {
+        "result": {}
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9805,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0
+        }
+      },
+      "expect": {
+        "result": {
+          "metadata": {
+            "frameRate": 12.5,
             "pixelSize": [
               16.0,
               12.0
             ],
             "zStep": 3
           }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 9806,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "FrameStats"
+          ],
+          "maxPoints": 2
+        }
+      },
+      "expect": {
+        "result": {
+          "frameRate": 12.5
         }
       }
     }
