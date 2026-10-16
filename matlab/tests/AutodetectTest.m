@@ -70,6 +70,30 @@ classdef AutodetectTest < matlab.unittest.TestCase
             testCase.verifyTrue(all(pixels(:) >= 0 & pixels(:) < 40));
         end
 
+        function imviewersFilters(testCase)
+            % dev's imviewer Filter Images (stack.process.filter2), as Python's test_imviewers_filters
+            flat = repmat(5, 6, 7);
+            testCase.verifyEqual(nansen.internal.filterImage(flat, "gauss2d"), flat, "AbsTol", 1e-12);
+            testCase.verifyEqual(nansen.internal.filterImage(flat, "gaussian"), flat, "AbsTol", 1e-12);
+            spike = zeros(9, 9);
+            spike(5, 5) = 1;
+            blurred = nansen.internal.filterImage(spike, "gaussian");
+            testCase.verifyEqual(sum(blurred(:)), 1, "AbsTol", 1e-12);
+            testCase.verifyEqual(blurred, blurred', "AbsTol", 1e-15);
+            sharper = nansen.internal.filterImage(spike, "gauss2d");   % sigma 0.5 keeps more of it in the middle
+            testCase.verifyGreaterThan(sharper(5, 5), blurred(5, 5));
+            ramp = repmat((0:9) .^ 2, 4, 1);   % the derivative along the rows grows to the right
+            out = nansen.internal.filterImage(ramp, "absGradient");
+            testCase.verifyEqual([min(out(:)), max(out(:))], [0, 255]);
+            testCase.verifyTrue(all(diff(out(1, :)) >= 0) && isequal(out, repmat(out(1, :), 4, 1)));
+            testCase.verifyEqual(nansen.internal.filterImage(repmat(0:4, 3, 1), "absGradient"), zeros(3, 5));
+            frame = mod(reshape(0:40 * 40 - 1, 40, 40)', 37);   % row after row, as Python's
+            testCase.verifyEqual(nansen.internal.filterImage(frame, "clahe"), nansen.internal.meanClahe(frame));
+            small = frame(1:20, :);
+            testCase.verifyEqual(nansen.internal.filterImage(small, "clahe"), (small - min(small(:))) / (max(small(:)) - min(small(:))), "AbsTol", 1e-12);
+            testCase.verifyError(@() nansen.internal.filterImage(frame, "sharpen"), "nansen:InvalidParams");
+        end
+
         function meanClaheIsTheNormalisedMeanWhenSmallAndTheMeanWhenFlat(testCase)
             data = AutodetectTest.recording();
             small = data(1:20, :, :);

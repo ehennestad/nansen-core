@@ -2280,6 +2280,14 @@ def test_viewer_projections_and_roi_display_options(empty_app, page):
     plain = page.evaluate(pixels)
     page.select_option(".viewer-filter", "gradient")   # imviewer's 2-D filters
     wait_until(lambda: page.evaluate(pixels) != plain)
+    # its Filter Images menu: dev's stack.process.filter2 (absgradient, clahe, gauss2d, gauss2dtest, gradient), and smooth
+    assert page.locator(".viewer-filter option").evaluate_all("os => os.map(o => o.value)") == [
+        "", "smooth", "gauss2d", "gaussian", "gradient", "absGradient", "clahe"]
+    seen = {page.evaluate(pixels)}
+    for name in ("smooth", "gauss2d", "gaussian", "absGradient", "clahe"):
+        page.select_option(".viewer-filter", name)
+        wait_until(lambda: page.evaluate(pixels) not in seen)
+        seen.add(page.evaluate(pixels))
     page.select_option(".viewer-filter", "")
     wait_until(lambda: page.evaluate(pixels) == plain)
     page.select_option(".viewer-mode", "frame")   # imviewer's binning: the mean of the frames around this one

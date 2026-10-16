@@ -354,9 +354,10 @@
     const binPick = h("select.input.viewer-bin", { title: "Binning: the mean or maximum of the frames around this one (Shift+B)",
       on: { change: () => { state.bin = binPick.value; show(); } } },
       h("option", { value: "" }, "No binning"), [5, 10, 20, 50].map((n) => [h("option", { value: `mean:${n}` }, `Mean of ${n}`), h("option", { value: `max:${n}` }, `Max of ${n}`)]));
-    // imviewer's 2-D filters, applied to the frame or projection shown
+    // imviewer's 2-D filters (its Filter Images menu: dev's stack.process.filter2), applied to the frame or projection shown
     const filterPick = h("select.input.viewer-filter", { title: "Filter", on: { change: () => { state.filter = filterPick.value; show(); } } },
-      h("option", { value: "" }, "No filter"), h("option", { value: "smooth" }, "Smooth"), h("option", { value: "gradient" }, "Gradient"));
+      [["", "No filter"], ["smooth", "Smooth"], ["gauss2d", "Gauss 2D (σ 0.5)"], ["gaussian", "Gauss 2D (σ 1)"], ["gradient", "Gradient"],
+        ["absGradient", "Absolute gradient"], ["clahe", "CLAHE"]].map(([value, label]) => h("option", { value }, label)));
     const colormapPick = h("select.input.viewer-colormap", { title: "Colormap", on: { change: () => { state.colormap = colormapPick.value; redraw(); } } },
       N.colormaps.map((name) => h("option", { value: name }, name)));
     const low = h("input.input.viewer-low", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.low = Number(low.value); show(); } } });
