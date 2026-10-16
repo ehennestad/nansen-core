@@ -33,14 +33,14 @@ Test notation: py `name` is in `python/tests`, m `Class/method` in `matlab/tests
 | Status | Features |
 |---|---|
 | Both languages | 193 |
-| Improved | 30 |
-| Equivalent | 55 |
+| Improved | 31 |
+| Equivalent | 54 |
 | MATLAB only | 4 |
 | Python only | 0 |
 | Not carried | 4 |
 | **Total** | **286** |
 
-The Improved and Equivalent rows have an **Assessment**: why the rebuild's way is an improvement or equivalent, judged against what dev's code does. Twelve of them were weaker than dev, something a dev user could do and then could not, or less well, and were made good in both languages, the dashboard and the tests; they say *weaker → fixed* and what was added. Three differ in a way inherent in the languages (the NoRMCorre and flufinder toolboxes and dev's imviewer are MATLAB code), and say so. One gap stays: dev's fovmanager inventory files (.mat) are not imported (row 210).
+The Improved and Equivalent rows have an **Assessment**: why the rebuild's way is an improvement or equivalent, judged against what dev's code does. Thirteen of them were weaker than dev, something a dev user could do and then could not, or less well, and were made good in both languages, the dashboard and the tests; they say *weaker → fixed* and what was added. Three differ in a way inherent in the languages (the NoRMCorre and flufinder toolboxes and dev's imviewer are MATLAB code), and say so.
 
 No dev feature is carried over to Python alone. The four MATLAB-only rows are dev's own MATLAB code (a dev project's MetaTables, session methods and file adapters, and the EXTRACT toolbox); Python lists, queues and converts all of them and hands the run to a MATLAB worker.
 
@@ -62,7 +62,7 @@ By area:
 | imviewer | 15 | 3 | 4 | 0 | 0 | 1 | 23 |
 | roimanager | 19 | 2 | 4 | 0 | 0 | 0 | 25 |
 | roiclassifier and the signal viewer | 5 | 0 | 4 | 0 | 0 | 0 | 9 |
-| fovmanager | 12 | 0 | 5 | 0 | 0 | 0 | 17 |
+| fovmanager | 12 | 1 | 4 | 0 | 0 | 0 | 17 |
 | Data variables, file adapters and the data cache | 8 | 3 | 0 | 0 | 0 | 0 | 11 |
 | Recording and ROI formats | 22 | 0 | 2 | 0 | 0 | 1 | 25 |
 | Migrating a dev project (legacy import) | 12 | 0 | 0 | 3 | 0 | 1 | 16 |
@@ -353,7 +353,7 @@ By area:
 |---|---|---|---|---|---|---|---|---|
 | 208 | The dorsal cortex map with its atlas regions | `apps/+fovmanager/+utility/+atlas/getRegionAtPoint.m`<br>`apps/+fovmanager/+view/openAtlas.m` | `api.py` modules__resource | `matlab/+nansen/Api.m` apiModulesResource | `ophys/dashboard/fovmap.js` regionAt | conf `ophys` modules.resource #60-63<br>ui `test_place_fovs_and_windows_on_the_fov_map` | Both languages |  |
 | 209 | Region of a FOV (atlas lookup) | `apps/+fovmanager/+fileio/loadRegionIndexMap.m` | `ophys/python/ophys_methods.py` fov_region | `ophys/matlab/+ophys/fovRegion.m` | `ophys/dashboard/fovmap.js` ophys.fov_region | conf `ophys` methods.run ophys.fov_region #69<br>ui `test_place_fovs_and_windows_on_the_fov_map` | Both languages |  |
-| 210 | Load / Save / Open Recent Fov Inventory, Set as Default | `apps/+fovmanager/@App/App.m` 'Load Fov Inventory'<br>`apps/+fovmanager/@App/App.m` 'Save Fov Inventory' | `api.py` modules__data<br>`api.py` modules__saveData | `matlab/+nansen/Api.m` apiModulesData<br>`matlab/+nansen/Api.m` apiModulesSaveData | `ophys/dashboard/fovmap.js` modules.saveData | conf `ophys` modules.saveData #54-56<br>ui `test_place_fovs_and_windows_on_the_fov_map` | Equivalent: kept in the project (module data with a revision check) and in the tables' columns; saved at each change | equivalent: one inventory per project, saved at each change, does what Load, Save, Recent and Default did for a project's map; dev's .mat inventories are not imported (the legacy import does not read fovmanager files) |
+| 210 | Load / Save / Open Recent Fov Inventory, Set as Default | `apps/+fovmanager/@App/App.m` 'Load Fov Inventory'<br>`apps/+fovmanager/@App/App.m` 'Save Fov Inventory' | `api.py` modules__data<br>`api.py` modules__saveData<br>`api.py` legacy__importFovInventory<br>`fovinventory.py` read_inventory<br>`fovinventory.py` plan | `matlab/+nansen/Api.m` apiModulesData<br>`matlab/+nansen/Api.m` apiModulesSaveData<br>`matlab/+nansen/Api.m` apiLegacyImportFovInventory<br>`matlab/+nansen/+legacy/exportFovInventory.m` exportFovInventory<br>`matlab/+nansen/+legacy/planFovInventory.m` planFovInventory | `ophys/dashboard/fovmap.js` modules.saveData<br>`ophys/dashboard/fovmap.js` import-inventory | conf `ophys` modules.saveData #54-56<br>conf `fov-inventory` legacy.importFovInventory #9902, 9908-9912<br>conf `legacy/fov-inventory`<br>py `test_the_app_imports_an_inventory_onto_the_fov_map`<br>m `FovInventoryTest/theAppImportsAnInventoryAndKeepsTheOtherMarks`<br>ui `test_import_a_dev_fov_inventory_onto_the_fov_map` | Improved: kept in the project (module data with a revision check) and in the tables' columns, saved at each change and undoable; dev's inventories (.mat) come onto it with Import dev FOV inventory… (`legacy.importFovInventory`) and with the legacy import (`fovInventory`), in both languages: the windows with their outlines and photos, the FOVs with their images, the injections, annotations and headbar labels | weaker → fixed: dev's .mat inventories were not imported; they are read (MATLAB with stand-ins of fovmanager's classes; Python from plain structs with SciPy, or through MATLAB for a file of fovmanager's objects) and mapped the same way in both languages, and the map draws what they hold that it had no place for: window outlines (ellipses, polygons), FOV images, headbar labels |
 | 211 | Add Cranial Window / Set Cranial Window Position | `apps/+fovmanager/@App/App.m` 'Add Cranial Window'<br>`apps/+fovmanager/@App/App.m` 'Set Cranial Window Position' | `api.py` entities__update | `matlab/+nansen/Api.m` apiEntitiesUpdate | `ophys/dashboard/fovmap.js` place-window | ui `test_place_fovs_and_windows_on_the_fov_map` | Both languages |  |
 | 212 | Add Field of View / Add Session to Field of View | `apps/+fovmanager/@App/App.m` 'Add Field of View'<br>`apps/+fovmanager/@App/App.m` 'Add Session to Field of View' | `api.py` entities__update | `matlab/+nansen/Api.m` apiEntitiesUpdate | `ophys/dashboard/fovmap.js` place-fov | conf `ophys` entities.update #64-67, 9003, 9420<br>ui `test_place_fovs_and_windows_on_the_fov_map` | Equivalent: each session's FOV is its position in the session table | equivalent: a session's FOV is placed on the map and kept in its row |
 | 213 | Add RoIs to Session/FoV; Show All FoVs (their images) | `apps/+fovmanager/@App/App.m` 'Add RoIs to Session/FoV'<br>`apps/+fovmanager/@App/App.m` 'Show All FoVs' | `api.py` data__frame | `matlab/+nansen/Api.m` apiDataFrame | `ophys/dashboard/fovmap.js` fov-rois<br>`ophys/dashboard/fovmap.js` fov-images | ui `test_fov_map_images_photos_undo_and_svg` | Both languages |  |
@@ -507,6 +507,7 @@ Where both languages implement an algorithm, they must give the same result: the
 | A stack's metadata: the files', dev's metadata file, and the entity's edited columns over them | `api.py` _entity_metadata<br>`matlab/+nansen/Api.m` entityMetadata | conf `ophys` data.frame metadata #9201, 9802-9803, 9805<br>conf `ophys` data.traces frameRate #9806 |
 | An HDF5 group to the workspace: its fields, named alike | `hdf5.py` field_name<br>`matlab/+nansen/+internal/hdf5FieldName.m` | conf `files` files.send group #55, 61-62 |
 | Which files a file method is for | `methods.py` takes_file<br>`matlab/+nansen/Method.m` takesFile | conf `files` files.run #47, 59-60 |
+| dev's FOV inventory on the FOV map: a .mat file of plain structs read, images as fovmanager showed them, the mapping (positions, sizes, rotations, outlines, marks) and the BMP files | `fovinventory.py` normalize<br>`fovinventory.py` plan<br>`matlab/+nansen/+legacy/exportFovInventory.m` imageOf<br>`matlab/+nansen/+legacy/planFovInventory.m` outlineOf | conf `fov-inventory` legacy.importFovInventory #9902, 9908<br>conf `fov-inventory` files.frame #9905-9906<br>conf `legacy/fov-inventory` |
 | Recording and ROI file formats | `ophys/python/ophys_adapters.py` class ScanImageTiff<br>`ophys/matlab/+ophys/ScanImageTiff.m` | conf `files/ophys` |
 | Scanning folders and joining tables (DSM) | `entities.py`<br>`matlab/+nansen/+internal/joinEntities.m` | conf `entities/raw-processed`<br>conf `basic-session` project.scan #4 |
 | Where data is read and written | `project.py` save<br>`matlab/+nansen/Project.m` path = save | conf `data/raw-processed` |

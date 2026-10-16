@@ -3,7 +3,7 @@
     {
       "request": {
         "method": "project.open",
-        "id": 9701,
+        "id": 9901,
         "params": {
           "path": "${project}"
         }
@@ -17,7 +17,7 @@
     {
       "request": {
         "method": "legacy.importFovInventory",
-        "id": 9702,
+        "id": 9902,
         "params": {
           "path": "${scratch}/data/inventory.mat"
         }
@@ -64,7 +64,7 @@
     {
       "request": {
         "method": "entities.list",
-        "id": 9703,
+        "id": 9903,
         "params": {
           "entityType": "session"
         }
@@ -123,7 +123,7 @@
     {
       "request": {
         "method": "entities.list",
-        "id": 9704,
+        "id": 9904,
         "params": {
           "entityType": "subject"
         }
@@ -160,7 +160,7 @@
     {
       "request": {
         "method": "files.frame",
-        "id": 9705,
+        "id": 9905,
         "params": {
           "path": "fovmap/window-1234.bmp"
         }
@@ -177,7 +177,7 @@
     {
       "request": {
         "method": "files.frame",
-        "id": 9706,
+        "id": 9906,
         "params": {
           "path": "fovmap/fov-m1234-s1.bmp",
           "limits": [
@@ -198,7 +198,7 @@
     {
       "request": {
         "method": "modules.data",
-        "id": 9707,
+        "id": 9907,
         "params": {
           "module": "ophys",
           "name": "fovmap"
@@ -213,7 +213,7 @@
     {
       "request": {
         "method": "legacy.importFovInventory",
-        "id": 9708,
+        "id": 9908,
         "params": {
           "path": "${scratch}/data/inventory.mat"
         }
@@ -260,7 +260,7 @@
     {
       "request": {
         "method": "legacy.importFovInventory",
-        "id": 9709,
+        "id": 9909,
         "params": {
           "path": "${scratch}/data/not_an_inventory.mat"
         }
@@ -272,7 +272,7 @@
     {
       "request": {
         "method": "legacy.importFovInventory",
-        "id": 9710,
+        "id": 9910,
         "params": {
           "path": "${scratch}/data/nothing.mat"
         }
@@ -284,7 +284,7 @@
     {
       "request": {
         "method": "legacy.importFovInventory",
-        "id": 9711,
+        "id": 9911,
         "params": {
           "path": "project.nansen.json"
         }
@@ -296,7 +296,7 @@
     {
       "request": {
         "method": "legacy.importFovInventory",
-        "id": 9712,
+        "id": 9912,
         "params": {
           "path": "tables/session.csv"
         }
