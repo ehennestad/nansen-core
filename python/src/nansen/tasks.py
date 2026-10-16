@@ -3,7 +3,9 @@
 A task file describes everything a worker needs, so a task can run in a
 thread of this process, in a separate Python process, or in MATLAB. While a
 task runs its worker owns the file; anyone else asks it to stop by creating
-tasks/<id>.cancel.
+tasks/<id>.cancel. A worker of the other language or another process writes
+task files without telling this app, so an app that shows the queue watches
+the folder (TaskQueue.watch) and reports what changed there as events.
 """
 
 from __future__ import annotations
@@ -74,6 +76,13 @@ class TaskQueue:
         self._last_created = ""
         self._created_lock = threading.Lock()  # creation times this queue gives out only grow, so tasks keep the order they were queued in
         self._lock = threading.Lock()
+        # Watching the folder (watch, poll_changes): each task file's stat at the last look (None before the first), the
+        # last document reported of each task (None once it was reported removed), and the thread that looks
+        self._seen: Optional[Dict[str, tuple]] = None
+        self._known: Dict[str, Optional[str]] = {}
+        self._watch_lock = threading.Lock()
+        self._watcher: Optional[threading.Thread] = None
+        self._unwatch = threading.Event()
 
     # -- documents ----------------------------------------------------------------------------
 
@@ -138,6 +147,11 @@ class TaskQueue:
         return path.read_text(encoding="utf-8") if path.is_file() else ""
 
     def _emit(self, kind: str, data: dict) -> None:
+        # what was reported, so a look at the folder does not report this queue's own changes again
+        if kind == "task":
+            self._known[data["id"]] = json.dumps(data, sort_keys=True)
+        elif kind == "removed":
+            self._known[data["id"]] = None
         if self.on_event is not None:
             self.on_event(kind, data)
 
@@ -429,7 +443,7 @@ class TaskQueue:
         if self.executor == "process":
             self._run_in_process(task["id"])
         else:
-            run_task(self.project, task["id"], on_event=self.on_event)
+            run_task(self.project, task["id"], on_event=self._emit)
         return self.get(task["id"])
 
     def run_all(self) -> List[dict]:
@@ -485,6 +499,81 @@ class TaskQueue:
     @property
     def running(self) -> bool:
         return self._worker is not None and self._worker.is_alive()
+
+    # -- watching the folder ------------------------------------------------------------------
+
+    def _stats(self) -> Dict[str, tuple]:
+        """Each task file's modification time, size and inode (a file replaced atomically is a new inode)."""
+        found = {}
+        for path in self.folder.glob("*.task.nansen.json") if self.folder.is_dir() else []:
+            try:
+                stat = path.stat()
+            except OSError:
+                continue  # removed meanwhile
+            found[path.name[: -len(".task.nansen.json")]] = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+        return found
+
+    def poll_changes(self) -> List[str]:
+        """Report the task files changed by others since the last look: a worker of the other language, a headless
+        worker (nansen worker) or a task run in another process writes them without telling this app. Emits a task
+        event for each task file that is new or changed and whose document differs from the one last reported, and
+        removed for each one gone; returns their ids. The first look only takes stock."""
+        with self._watch_lock:
+            current = self._stats()
+            if self._seen is None:
+                self._seen = current
+                return []
+            changed = []
+            for task_id, stat in list(current.items()):
+                if self._seen.get(task_id) == stat:
+                    continue
+                try:
+                    document = read_document(self.path(task_id), "nansen.task")
+                except NansenError:   # being replaced, or broken: looked at again next time
+                    if task_id in self._seen:
+                        current[task_id] = self._seen[task_id]
+                    else:
+                        del current[task_id]
+                    continue
+                if self._known.get(task_id) != json.dumps(document, sort_keys=True):
+                    self._emit("task", document)
+                    changed.append(task_id)
+            for task_id in set(self._seen) - set(current):
+                if not (task_id in self._known and self._known[task_id] is None):   # not reported removed already
+                    self._emit("removed", {"id": task_id})
+                    changed.append(task_id)
+                self._known.pop(task_id, None)
+            self._seen = current
+            return changed
+
+    def watch(self, period: float = 0.5) -> None:
+        """Look at the task files every period seconds in a background thread (poll_changes), until unwatch(): what
+        others change there reaches on_event as this queue's own changes do. A look is a stat of each file; a file is
+        read only when it changed."""
+        if self._watcher is not None and self._watcher.is_alive():
+            return
+        self._unwatch.clear()
+        self.poll_changes()   # take stock now: changes from here on are reported
+
+        def loop():
+            while not self._unwatch.wait(period):
+                try:
+                    self.poll_changes()
+                except Exception:  # the folder unreadable for a moment; look again next time
+                    pass
+
+        self._watcher = threading.Thread(target=loop, name="nansen-task-watch", daemon=True)
+        self._watcher.start()
+
+    def unwatch(self, timeout: Optional[float] = None) -> None:
+        self._unwatch.set()
+        if self._watcher is not None:
+            self._watcher.join(timeout)
+        self._watcher = None
+
+    @property
+    def watching(self) -> bool:
+        return self._watcher is not None and self._watcher.is_alive()
 
 
 def run_worker(queue: "TaskQueue", until_empty: bool = False, poll_seconds: float = 1.0,

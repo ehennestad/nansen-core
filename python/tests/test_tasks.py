@@ -264,3 +264,59 @@ def test_queued_tasks_are_held_changed_and_reordered(tmp_path):
     with pytest.raises(NansenError) as error:
         queue.hold("00000000-0000-4000-8000-000000000000")
     assert error.value.code == "unknown-task"
+
+
+def test_changes_others_make_to_the_task_files_are_reported(project):
+    """A worker of the other language or another process writes task files without telling this app: a look at the
+    folder (poll_changes) reports them as task and removed events, and not the changes this queue made itself."""
+    events = []
+    app = TaskQueue(project, on_event=lambda kind, data: events.append((kind, data["id"], data.get("status"))))
+    other = TaskQueue(project)   # another process: its own queue on the same folder, telling no one
+    assert app.poll_changes() == []   # the first look takes stock
+    ours = app.submit("core.wait", project.entities("session")[:1], {"seconds": 0, "steps": 1})
+    events.clear()
+    assert app.poll_changes() == [] and events == []   # its own change was reported when it made it
+    theirs = other.submit("core.wait", project.entities("session")[:1], {"seconds": 0, "steps": 1})
+    assert app.poll_changes() == [theirs["id"]]
+    assert events == [("task", theirs["id"], "queued")]
+    assert app.poll_changes() == []   # once
+    events.clear()
+    other.run_next()   # runs ours, the oldest: running, progress, completed, all written by the other
+    assert app.poll_changes() == [ours["id"]] and events[-1] == ("task", ours["id"], "completed")
+    events.clear()
+    other.remove(ours["id"])
+    app.remove(theirs["id"])
+    assert app.poll_changes() == [ours["id"]]
+    assert events == [("removed", theirs["id"], None), ("removed", ours["id"], None)]   # theirs once, when this queue removed it
+
+
+def test_a_watched_folder_reports_changes_on_its_own(project):
+    events = []
+    app = TaskQueue(project, on_event=lambda kind, data: events.append((kind, data["id"])))
+    app.watch(period=0.05)
+    try:
+        assert app.watching
+        task = TaskQueue(project).submit("core.wait", project.entities("session")[:1], {"seconds": 0})
+        assert wait_for(lambda: ("task", task["id"]) in events, timeout=5)
+    finally:
+        app.unwatch()
+    assert not app.watching
+
+
+def test_the_served_app_watches_the_task_folder(project):
+    from nansen.api import Api
+    from nansen.server import serve
+
+    api = Api(project=project, start_queue=False)
+    assert not api.queue.watching
+    server = serve(api)
+    try:
+        assert api.queue.watching
+        events = []
+        api.subscribe(events.append)
+        task = TaskQueue(project).submit("core.wait", project.entities("session")[:1], {"seconds": 0})
+        assert wait_for(lambda: any(e["event"] == "task" and e["data"]["id"] == task["id"] for e in events), timeout=5)
+    finally:
+        server.shutdown()
+        api.close()
+    assert not api.queue.watching

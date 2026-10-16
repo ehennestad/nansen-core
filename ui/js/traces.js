@@ -166,6 +166,11 @@
         const a = Math.min(drag.from, drag.to), b = Math.max(drag.from, drag.to);
         ctx.fillRect(a, 0, b - a, total - pad.bottom);
       }
+      if (keyMark !== null && hover !== null) {   // an event being marked from the keyboard
+        ctx.fillStyle = "rgba(255, 170, 0, 0.3)";
+        const a = xOf(Math.min(keyMark, hover), width), b = xOf(Math.max(keyMark, hover), width);
+        ctx.fillRect(a, 0, Math.max(2, b - a), total - pad.bottom);
+      }
       for (const [frame, color] of [[cursorFrame, "rgba(220, 60, 60, 0.8)"], [hover, "rgba(120, 120, 120, 0.6)"]]) {
         if (frame === null || frame < data.start || frame > lastFrame()) continue;
         ctx.strokeStyle = color;
@@ -227,6 +232,46 @@
       draw();
     });
     canvas.addEventListener("dblclick", () => { if (onRange) onRange(null, null); });
+
+    // The keyboard (WCAG 2.1.1): the plot takes the focus; ← → move a cursor over the frames (Shift: a tenth of those
+    // shown; Home, End), Enter goes to its frame (as a click), + and - zoom in and out around it (as a drag across), 0
+    // shows every frame (as a double click); while marking events, Space marks where one starts, then where it ends.
+    let keyMark = null;
+    canvas.tabIndex = 0;
+    canvas.setAttribute("role", "application");
+    canvas.setAttribute("aria-roledescription", "plot");
+    canvas.setAttribute("aria-label", "Signal plot. Left and right arrows move a cursor over the frames, Enter goes to its frame, " +
+      "plus and minus zoom around it, 0 shows every frame; while marking, Space marks an event's start and end");
+    canvas.addEventListener("keydown", (event) => {
+      if (!data || event.altKey || event.ctrlKey || event.metaKey) return;
+      const first = data.start, end = lastFrame(), span = Math.max(1, end - first);
+      const at = hover !== null ? hover : cursorFrame !== null && cursorFrame >= first && cursorFrame <= end ? cursorFrame : first;
+      const total = data.frames || end + 1;
+      const key = event.key;
+      const show = (frame) => { hover = frame; readout.textContent = read(frame); canvas.dataset.hover = String(frame); };
+      if (key === "ArrowLeft" || key === "ArrowRight") {
+        const step = event.shiftKey ? Math.max(1, Math.round(span / 10)) : Math.max(1, data.step);
+        show(Math.min(end, Math.max(first, at + (key === "ArrowLeft" ? -step : step))));
+      } else if (key === "Home" || key === "End") show(key === "Home" ? first : end);
+      else if (key === "Enter" && onPick) onPick(at);
+      else if ((key === "+" || key === "=") && onRange) {
+        const half = Math.max(2, Math.round(span / 4));
+        const a = Math.max(0, Math.min(at - half, total - 2 * half)), b = Math.min(total - 1, a + 2 * half);
+        if (b > a) onRange(a, b + 1);
+      } else if (key === "-" && onRange) {
+        const a = Math.max(0, at - span), b = Math.min(total - 1, at + span);
+        if (a === 0 && b === total - 1) onRange(null, null); else onRange(a, b + 1);
+      } else if (key === "0" && onRange) onRange(null, null);
+      else if (key === " " && marking && onMark) {
+        if (keyMark === null) { keyMark = at; show(at); }
+        else { const a = Math.min(keyMark, at), b = Math.max(keyMark, at); keyMark = null; onMark(a, b); }
+      } else return;
+      event.preventDefault();
+      event.stopPropagation();
+      draw();
+    });
+    canvas.addEventListener("focus", () => { if (data && hover === null) { hover = cursorFrame !== null ? cursorFrame : data.start; readout.textContent = read(hover); draw(); } });
+    canvas.addEventListener("blur", () => { keyMark = null; hover = null; readout.textContent = ""; draw(); });
 
     return {
       el, canvas,
@@ -311,7 +356,7 @@
       await changeEvents((all) => all.push(Object.assign({ entityType, key, column, start, stop, label: label.trim() },
         roi ? { roi: roi[0] } : {}, state.variables.length === 1 ? { variable: state.variables[0] } : {})));
     }
-    const list = h("ul.trace-roi-list");
+    const list = N.listbox(h("ul.trace-roi-list"), "Columns shown", true);
     const pickers = signalVariables.map((name) => {
       const box = h("input", { type: "checkbox", checked: state.variables.includes(name), on: { change: () => {
         state.variables = signalVariables.filter((n, i) => pickers[i].querySelector("input").checked);
@@ -328,11 +373,11 @@
       return `Column ${column + 1}`;
     }
     function renderList() {
-      N.fill(list, Array.from({ length: state.count }, (_, c) => h("li" + (state.columns.includes(c) ? ".selected" : ""), {
+      N.listbox.fill(list, Array.from({ length: state.count }, (_, c) => N.option(h("li" + (state.columns.includes(c) ? ".selected" : ""), {
         dataset: { column: c },
         on: { click: (event) => pick(c, event.ctrlKey || event.metaKey || event.shiftKey) } },
         state.columns.includes(c) ? h("span.swatch", { style: { background: N.traceColor(state.columns.indexOf(c)) } }) : h("span.swatch.unpicked"),
-        labelOf(c))));
+        labelOf(c)), state.columns.includes(c))));
     }
     function pick(c, add) {
       if (add) {
@@ -381,7 +426,7 @@
         h("label.trace-option", h("input.trace-stack", { type: "checkbox", on: { change: (e) => plot.stack(e.target.checked) } }), "Stack"),
         h("label.trace-option", h("input.trace-legend", { type: "checkbox", on: { change: (e) => plot.showLegend(e.target.checked) } }), "Legend"),
         markButton, status),
-      h("div.trace-main", h("div.trace-side", h("div.trace-hint.muted", "Click an ROI; Ctrl-click to add more. ↑ and ↓ move."), list),
+      h("div.trace-main", h("div.trace-side", h("div.trace-hint.muted", "Click an ROI; Ctrl-click (Ctrl + Space) adds more. ↑ and ↓ move, Shift + ↓ adds the next."), list),
         h("div.trace-stage", plot.el, eventList)));
     const dialog = N.dialog({ title: viewable ? `Signals · ${viewable.name}` : `Signals · ${N.fmt.key(key)}`, content, onClose: () => document.removeEventListener("keydown", onKey) });
     dialog.el.classList.add("traces-dialog");

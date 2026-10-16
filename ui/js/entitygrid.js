@@ -58,11 +58,16 @@
       this.viewKeys = null;    // a Set of key ids when a view with keys is shown
       this.lastClicked = null;
       this.el = h("div.grid-wrap", { on: { scroll: () => this.renderBody() } });
-      this.table = h("table.grid-table");
+      // A grid, as WAI-ARIA's grid pattern: one cell in the page's Tab order (the keyboard's), the arrows move between
+      // cells, Enter or F2 edits one, Space selects its row (cellKey)
+      this.table = h("table.grid-table", { role: "grid" });
       this.thead = h("thead");
       this.tbody = h("tbody");
       this.table.append(this.thead, this.tbody);
       this.el.appendChild(this.table);
+      this.active = null;      // the keyboard's cell: {id, column}, the column "__sel" for the tick boxes
+      this.tbody.addEventListener("keydown", (event) => this.cellKey(event));
+      this.tbody.addEventListener("focusin", (event) => { const td = event.target.closest("td[data-col]"); if (td) this.activate(td); });
       new ResizeObserver(() => this.renderBody()).observe(this.el);
     }
 
@@ -115,6 +120,20 @@
       if (width) this.widths[name] = Math.max(48, Math.round(width)); else delete this.widths[name];
       store(`nansen.widths.${this.data.entityType}`, this.widths);
       this.refresh();
+    }
+
+    /** A column a place to the left (-1) or right (1): dragging its header, from the keyboard (its menu). */
+    moveColumnBy(name, by) {
+      const names = this.columns.map((c) => c.name);
+      const at = names.indexOf(name) + by;
+      if (at < 0 || at >= names.length) return;
+      this.moveColumn(name, by < 0 ? names[at] : names[at + 1] || null);
+    }
+
+    /** A column wider or narrower by some pixels: dragging its edge, from the keyboard (its menu). */
+    sizeColumnBy(name, pixels) {
+      const th = this.thead.querySelector(`th[data-column="${CSS.escape(name)}"]`);
+      this.setWidth(name, (this.widths[name] || (th ? th.getBoundingClientRect().width : 120)) + pixels);
     }
 
     resetLayout() {
@@ -186,7 +205,7 @@
 
     renderHead() {
       const all = this.view.length > 0 && this.view.every((r) => this.selected.has(N.keyId(r.key)));
-      const check = h("input", { type: "checkbox", checked: all, on: { click: (e) => { e.stopPropagation(); this.selectAll(e.target.checked); } } });
+      const check = h("input", { type: "checkbox", checked: all, "aria-label": "Select all rows shown", on: { click: (e) => { e.stopPropagation(); this.selectAll(e.target.checked); } } });
       N.clear(this.thead).appendChild(h("tr",
         h("th.sel", check),
         h("th.status", ""),
@@ -277,32 +296,114 @@
       const last = Math.min(this.view.length, Math.ceil((top + height) / ROW) + 10);
       if (!force && this.rendered && this.rendered[0] === first && this.rendered[1] === last) return;
       this.rendered = [first, last];
+      const focused = this.tbody.contains(document.activeElement) || this.refocus;   // the keyboard stays on its cell
+      this.refocus = false;
       const span = this.columns.length + 2;
       const rows = [];
-      if (first > 0) rows.push(h("tr", h("td", { colSpan: span, style: { height: first * ROW + "px", padding: 0, border: 0 } })));
-      for (let i = first; i < last; i++) rows.push(this.renderRow(this.view[i]));
-      if (last < this.view.length) rows.push(h("tr", h("td", { colSpan: span, style: { height: (this.view.length - last) * ROW + "px", padding: 0, border: 0 } })));
+      const spacer = (height) => h("tr", { "aria-hidden": "true" }, h("td", { colSpan: span, style: { height: height + "px", padding: 0, border: 0 } }));
+      if (first > 0) rows.push(spacer(first * ROW));
+      for (let i = first; i < last; i++) rows.push(this.renderRow(this.view[i], i));
+      if (last < this.view.length) rows.push(spacer((this.view.length - last) * ROW));
       N.clear(this.tbody).append(...rows);
+      this.table.setAttribute("aria-rowcount", String(this.view.length + 1));
       if (!this.view.length) {
         this.tbody.appendChild(h("tr", h("td", { colSpan: span, style: { height: "160px", textAlign: "center", color: "var(--text-3)" } },
           this.data.rows.length ? "No rows match the filter." : "No entities yet. Scan the stores, then sync.")));
       }
+      this.rove(focused);
     }
 
-    renderRow(row) {
+    /** The cell of a row (by key id) and column drawn now, or null. */
+    cellOf(id, column) {
+      return this.tbody.querySelector(`tr[data-id="${CSS.escape(id)}"] > td[data-col="${CSS.escape(column)}"]`);
+    }
+
+    /** One cell of the rows drawn is in the page's Tab order: the keyboard's, or the first row's key when that is not
+     *  drawn. With focus, the keyboard's cell takes the focus (it stays on its cell as the rows are drawn anew). */
+    rove(focus = false) {
+      const active = this.active && this.cellOf(this.active.id, this.active.column);
+      const target = active || this.tbody.querySelector("tr[data-id] > td.key") || this.tbody.querySelector("td[data-col]");
+      this.tbody.querySelectorAll("td[data-col]").forEach((td) => { td.tabIndex = td === target ? 0 : -1; });
+      if (focus && active) active.focus({ preventScroll: true });
+    }
+
+    activate(td) {
+      this.active = { id: td.parentElement.dataset.id, column: td.dataset.col };
+      this.tbody.querySelectorAll("td[tabindex='0']").forEach((other) => { if (other !== td) other.tabIndex = -1; });
+      td.tabIndex = 0;
+    }
+
+    /** Put the keyboard on a cell (a row of the view, a column), scrolling it into sight and drawing its row. */
+    focusCell(index, column) {
+      const row = this.view[index];
+      if (!row) return;
+      this.active = { id: N.keyId(row.key), column };
+      const ROW = rowHeight();
+      const room = this.el.clientHeight - this.thead.offsetHeight;
+      if (index * ROW < this.el.scrollTop) this.el.scrollTop = index * ROW;
+      else if ((index + 1) * ROW > this.el.scrollTop + room) this.el.scrollTop = (index + 1) * ROW - room;
+      this.refocus = true;
+      this.renderBody(true);
+      const td = this.cellOf(this.active.id, column);
+      if (!td) return;
+      if (td.offsetLeft < this.el.scrollLeft) this.el.scrollLeft = td.offsetLeft;
+      else if (td.offsetLeft + td.offsetWidth > this.el.scrollLeft + this.el.clientWidth) this.el.scrollLeft = td.offsetLeft + td.offsetWidth - this.el.clientWidth;
+    }
+
+    editable(row, column) { return Boolean(column && column.editable && row.inTable && !this.locked); }
+
+    /** The keyboard on a cell (WCAG 2.1.1: what the pointer does, the keys do): the arrows, Home, End, Page Up and Page Down
+     *  move (with Ctrl, Home and End go to the first and last row); Enter or F2 edits the cell, and Enter on a cell that
+     *  cannot be edited runs its column's action, follows its link or opens the row's drawer; Space ticks a yes/no cell or
+     *  selects the row (Shift + Space a range, as Shift + click). Editing: see edit. */
+    cellKey(event) {
+      const td = event.target.closest("td[data-col]");
+      if (!td || this.editing || event.altKey || event.metaKey || (event.target !== td && event.target.type !== "checkbox")) return;
+      const row = this.byId.get(td.parentElement.dataset.id);
+      if (!row) return;
+      const names = ["__sel"].concat(this.columns.map((c) => c.name));
+      const column = this.columns.find((c) => c.name === td.dataset.col);
+      const index = this.view.indexOf(row), at = names.indexOf(td.dataset.col);
+      const page = Math.max(1, Math.floor((this.el.clientHeight - this.thead.offsetHeight) / rowHeight()) - 1);
+      const go = (to, column) => this.focusCell(Math.max(0, Math.min(this.view.length - 1, to)), names[Math.max(0, Math.min(names.length - 1, column))]);
+      const key = event.key;
+      const tick = column && column.dataType === "boolean" && this.editable(row, column);
+      if (key === "ArrowDown") go(index + 1, at);
+      else if (key === "ArrowUp") go(index - 1, at);
+      else if (key === "ArrowRight") go(index, at + 1);
+      else if (key === "ArrowLeft") go(index, at - 1);
+      else if (key === "PageDown") go(index + page, at);
+      else if (key === "PageUp") go(index - page, at);
+      else if (key === "Home") go(event.ctrlKey ? 0 : index, event.ctrlKey ? at : 0);
+      else if (key === "End") go(event.ctrlKey ? this.view.length - 1 : index, event.ctrlKey ? at : names.length - 1);
+      else if (event.ctrlKey) return;
+      else if ((key === "Enter" || key === "F2") && this.editable(row, column) && !tick) this.edit(row, column, td);
+      else if ((key === " " || key === "Enter") && tick) {
+        this.refocus = true;
+        this.commit(row, column, row.values[column.name] !== true, td);
+      }
+      else if (key === " ") this.toggleRow(row, event.shiftKey);
+      else if (key === "Enter" && column && column.action && this.onAction) this.onAction(row, column);
+      else if (key === "Enter" && td.querySelector("a[href]")) td.querySelector("a[href]").click();
+      else if (key === "Enter") this.onOpen(row, { keyboard: true });
+      else return;
+      event.preventDefault();
+    }
+
+    renderRow(row, index) {
       const id = N.keyId(row.key);
       const status = statusOf(row);
-      const tr = h("tr", { dataset: { id } });
+      const tr = h("tr", { dataset: { id }, "aria-rowindex": String(index + 2), "aria-selected": String(this.selected.has(id)) });
       if (this.selected.has(id)) tr.classList.add("selected");
       if (row.values.ignore === true) tr.classList.add("ignored");
-      tr.appendChild(h("td.sel", h("input", { type: "checkbox", checked: this.selected.has(id),
-        on: { click: (e) => { e.stopPropagation(); this.toggleRow(row, e.shiftKey); } } })));
+      tr.appendChild(h("td.sel", { dataset: { col: "__sel" } }, h("input", { type: "checkbox", checked: this.selected.has(id), tabindex: "-1",
+        "aria-label": `Select ${N.fmt.key(row.key)}`, on: { click: (e) => { e.stopPropagation(); this.toggleRow(row, e.shiftKey); } } })));
       tr.appendChild(h("td.status", { title: STATUS_TITLE[status] }, h("span.status-mark." + status)));
-      for (const column of this.columns) tr.appendChild(this.renderCell(row, column));
-      const keyCell = tr.querySelector("td.key");   // the keyboard opens a row from its first key cell, with Enter
-      if (keyCell) {
-        keyCell.tabIndex = 0;
-        keyCell.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); this.onOpen(row); } });
+      for (const column of this.columns) {
+        const td = this.renderCell(row, column);
+        td.dataset.col = column.name;
+        td.querySelectorAll("input, a").forEach((control) => { control.tabIndex = -1; });   // the cell takes the keys
+        tr.appendChild(td);
       }
       tr.addEventListener("click", (e) => {
         if (e.target.closest("td.editable") && row.inTable) return;
@@ -339,7 +440,7 @@
         return td;
       }
       if (column.dataType === "boolean") {
-        const box = h("input", { type: "checkbox", checked: value === true, disabled: !editable,
+        const box = h("input", { type: "checkbox", checked: value === true, disabled: !editable, "aria-label": `${column.title || column.name} of ${N.fmt.key(row.key)}`,
           on: { click: (e) => { e.stopPropagation(); this.commit(row, column, e.target.checked, td); } } });
         td.appendChild(box);
         return td;
@@ -373,14 +474,19 @@
       return td;
     }
 
+    /** Edit a cell in place, after a click, or Enter or F2 on it. Enter saves and Escape cancels, the keyboard back on
+     *  the cell; Tab and Shift + Tab save and go to the next or previous cell of the row; leaving the box saves. */
     edit(row, column, td) {
       if (td.classList.contains("editing")) return;
       const value = row.values[column.name];
       const type = { integer: "number", number: "number", date: "date" }[column.dataType] || "text";
+      const label = `${column.title || column.name} of ${N.fmt.key(row.key)}`;
       const input = column.choices
-        ? h("select", [h("option", { value: "" }, "—"), column.choices.map((c) => h("option", { value: c, selected: c === value }, c))])
-        : h("input", { type, value: value === null || value === undefined ? "" : String(value) });
-      if (column.choices) input.addEventListener("change", () => input.blur());
+        ? h("select", { "aria-label": label }, [h("option", { value: "" }, "—"), column.choices.map((c) => h("option", { value: c, selected: c === value }, c))])
+        : h("input", { type, "aria-label": label, value: value === null || value === undefined ? "" : String(value) });
+      // a choice picked with the pointer is saved at once; the arrow keys change it in place until Enter
+      let keyed = false;
+      if (column.choices) input.addEventListener("change", () => { if (!keyed) input.blur(); });
       if (column.dataType === "datetime") input.placeholder = "YYYY-MM-DDTHH:MM:SS";
       N.clear(td);
       td.classList.add("editing");
@@ -400,9 +506,17 @@
         this.commit(row, column, next, td);
       };
       input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") finish(true);
-        if (e.key === "Escape") finish(false);
         e.stopPropagation();
+        keyed = true;
+        if (e.key === "Tab") {   // on to the next cell of the row (Shift: the previous)
+          const names = ["__sel"].concat(this.columns.map((c) => c.name));
+          const to = names[Math.max(0, Math.min(names.length - 1, names.indexOf(column.name) + (e.shiftKey ? -1 : 1)))];
+          this.active = { id: N.keyId(row.key), column: to };
+        }
+        if (!["Enter", "Escape", "Tab"].includes(e.key)) return;
+        e.preventDefault();
+        this.refocus = true;
+        finish(e.key !== "Escape");
       });
       input.addEventListener("blur", () => finish(true));
     }

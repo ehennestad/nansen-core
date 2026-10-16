@@ -40,6 +40,20 @@ def test_serves_the_frontend(server):
             response.headers["Content-Type"].startswith("text/javascript")
 
 
+def test_the_frontend_is_compressed_for_a_browser_that_takes_it(server):
+    import gzip
+    from pathlib import Path
+
+    request = urllib.request.Request(server.url + "js/views.js", headers={"Accept-Encoding": "gzip, deflate"})
+    with urllib.request.urlopen(request, timeout=5) as response:
+        assert response.headers["Content-Encoding"] == "gzip" and response.headers["Vary"] == "Accept-Encoding"
+        body = response.read()
+    expected = (Path(__file__).resolve().parents[2] / "ui" / "js" / "views.js").read_bytes()
+    assert gzip.decompress(body) == expected and len(body) < len(expected) / 3
+    with urllib.request.urlopen(server.url + "js/views.js", timeout=5) as response:   # and not for one that does not
+        assert response.headers["Content-Encoding"] is None and response.read() == expected
+
+
 def test_does_not_serve_outside_the_ui_folder(server):
     with pytest.raises(urllib.error.HTTPError) as error:
         urllib.request.urlopen(server.url + "../pyproject.toml", timeout=5)

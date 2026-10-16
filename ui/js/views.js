@@ -42,7 +42,7 @@
           const row = h("li.folder-entry.hdf5-group", { dataset: { path: item.path }, title: describe(item) },
             h("button.tree-toggle", { title: "Open", on: { click: () => {
               if (open) { open.remove(); open = null; row.classList.remove("open"); return; }
-              open = level(item.path);
+              open = h("li.subtree", level(item.path));   // a list holds only items
               row.after(open);
               row.classList.add("open");
             } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", item.name), tag), sender(item));
@@ -77,7 +77,7 @@
     const stats = h("div.grid.stats", project.entityTypes.map((type) => {
       const c = counts[type.name] || { all: 0, both: 0, new: 0, missing: 0 };
       const pct = (n) => (c.all ? (100 * n) / c.all : 0) + "%";
-      return h("div.card.stat", { on: { click: () => app.go(`#/entities/${type.name}`) } },
+      return N.clickable(h("div.card.stat", { on: { click: () => app.go(`#/entities/${type.name}`) } },
         h("div.label", type.title || type.name),
         h("div.value", c.all.toLocaleString()),
         h("div.stat-chips",
@@ -85,7 +85,7 @@
           c.new ? h("span.pill.info", `${c.new} new`) : null,
           c.missing ? h("span.pill.warn", `${c.missing} not found`) : null),
         h("div.bar", h("span.b-both", { style: { width: pct(c.both) } }), h("span.b-new", { style: { width: pct(c.new) } }),
-          h("span.b-missing", { style: { width: pct(c.missing) } })));
+          h("span.b-missing", { style: { width: pct(c.missing) } }))), "link");
     }));
 
     const dataset = project.dataset;
@@ -104,7 +104,7 @@
     const recent = tasks.slice(-6).reverse();
     const taskList = recent.length ? h("ul.list", recent.map((task) => h("li", { style: { cursor: "pointer" }, on: { click: () => app.go("#/tasks") } },
       N.statusPill(task.status),
-      h("div.grow", h("div.title", app.methodTitle(task.method.id)),
+      h("div.grow", h("div.title", h("a.plain-link", { href: "#/tasks" }, app.methodTitle(task.method.id))),   // the keyboard's way there
         h("div.sub", `${task.entities.length} ${task.entities[0].entityType}(s) · ${N.fmt.ago(task.createdAt)}`))))) :
       h("div.card-body.muted", "No tasks yet. Select entities and run a method.");
 
@@ -126,7 +126,7 @@
         } } }, "Ignore"))),
         !all && unmatched.entries.length > 6 ? h("li.more", h("button.btn.small.ghost", { on: { click: () => draw(true) } }, `Show all ${unmatched.entries.length}`)) : null);
       draw(false);
-      return h("div.card.unmatched-card", h("div.card-head", N.icon("alert"), h("h3", "Not matched by the last scan"), h("div.spacer"),
+      return h("div.card.unmatched-card", h("div.card-head", N.icon("alert"), h("h2", "Not matched by the last scan"), h("div.spacer"),
         h("span.pill.warn", String(unmatched.total))),
         h("div.card-body.muted", { style: { paddingBottom: 0 } }, "Folders and files in the data locations that no subject or session accounts for. Fix the names, change the dataset config, assign them to the entity they are, or have scans ignore them."),
         list);
@@ -134,7 +134,7 @@
 
     // Folders matched to an entity by hand (dataset.assign), each with Undo
     const assignedCard = assignments && assignments.length ? h("div.card.assigned-card",
-      h("div.card-head", N.icon("link"), h("h3", "Matched by hand"), h("div.spacer"), h("span.pill.plain", String(assignments.length))),
+      h("div.card-head", N.icon("link"), h("h2", "Matched by hand"), h("div.spacer"), h("span.pill.plain", String(assignments.length))),
       h("ul.list", assignments.map((a) => h("li", { dataset: { path: a.path, location: a.dataLocation } },
         h("span.dot.good"),
         h("div.grow", h("div.title.mono", { style: { fontSize: "12.5px" } }, a.path),
@@ -148,7 +148,7 @@
         } } }, "Undo"))))) : null;
 
     const tools = (app.methods || []).filter((m) => m.tool && !m.hidden);
-    const toolsCard = tools.length ? h("div.card.tools-card", h("div.card-head", N.icon("zap"), h("h3", "Tools")),
+    const toolsCard = tools.length ? h("div.card.tools-card", h("div.card-head", N.icon("zap"), h("h2", "Tools")),
       h("ul.list", tools.map((m) => h("li", { dataset: { tool: m.id } },
         h("div.grow", h("div.title", m.title), h("div.sub", m.description || m.id)),
         h("button.btn.small.run-tool", { on: { click: () => toolDialog(app, m) } }, N.icon("play", 14), "Run"))))) : null;
@@ -173,14 +173,14 @@
       h("div", { style: { height: "16px" } }),
       h("div.grid.two",
         h("div.grid",
-          h("div.card", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
+          h("div.card", h("div.card-head", N.icon("database"), h("h2", "Data locations"), h("div.spacer"),
             h("span.muted", dataset ? `Last scan ${N.fmt.ago(project.lastScan)}` : "")), roots),
           unmatchedCard, assignedCard),
         h("div.grid",
-          h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Recent tasks"), h("div.spacer"),
+          h("div.card", h("div.card-head", N.icon("tasks"), h("h2", "Recent tasks"), h("div.spacer"),
             h("a", { href: "#/tasks" }, "All tasks")), taskList),
           toolsCard,
-          h("div.card.modules", h("div.card-head", N.icon("layers"), h("h3", "Modules"), h("div.spacer"),
+          h("div.card.modules", h("div.card-head", N.icon("layers"), h("h2", "Modules"), h("div.spacer"),
             h("button.btn.small.manage-modules", { on: { click: () => modulesDialog(app) } }, N.icon("settings"), "Manage")), modules))));
   };
 
@@ -217,7 +217,8 @@
     }
     content.classList.add("flush");
     const grid = new N.EntityGrid({
-      onOpen: (row) => N.views.entityDrawer(app, entityType, row.key),
+      // opened from the keyboard, the drawer takes the focus, and gives it back to the cell when it closes
+      onOpen: (row, how) => N.views.entityDrawer(app, entityType, row.key).then(() => { if (how && how.keyboard) N.drawer.focus(); }),
       onAction: async (row, column) => {
         try {
           N.toast("Running", `${app.methodTitle(column.action)} on ${N.fmt.key(row.key)}…`);
@@ -232,6 +233,7 @@
       onColumnMenu: (column, anchor) => columnMenu(column, anchor),
     });
     app.currentGrid = grid;
+    grid.table.setAttribute("aria-label", type.title || N.titleCase(entityType));
 
     const chips = h("div.chips");
     const renderChips = () => {
@@ -497,6 +499,15 @@
         { label: "Sort Z → A", icon: "sort-desc", onClick: () => grid.sortBy(column.name, -1) },
         { label: "Hide column", icon: "eye-off", onClick: () => grid.toggleColumn(column.name) },
         { label: "Filter…", icon: "filter", onClick: () => filterDialog(column) }];
+      // what dragging a header or its edge does, from the keyboard (WCAG 2.1.1)
+      const shown = grid.columns.map((c) => c.name);
+      const at = shown.indexOf(column.name);
+      items.push({ heading: "Layout" });
+      if (at > 0) items.push({ label: "Move left", icon: "arrow-left", onClick: () => grid.moveColumnBy(column.name, -1) });
+      if (at < shown.length - 1) items.push({ label: "Move right", icon: "arrow-right", onClick: () => grid.moveColumnBy(column.name, 1) });
+      items.push({ label: "Wider", icon: "plus", onClick: () => grid.sizeColumnBy(column.name, 40) },
+        { label: "Narrower", icon: "minus", onClick: () => grid.sizeColumnBy(column.name, -40) });
+      if (grid.widths[column.name]) items.push({ label: "Fit the width", icon: "columns", onClick: () => grid.setWidth(column.name, null) });
       if (column.source === "table") {
         const selected = grid.selectedRows().filter((r) => r.inTable);
         const reset = async (rows) => {
@@ -772,8 +783,8 @@
                   on: { click: (event) => {
                     const li = event.currentTarget.closest("li");
                     const shown = li.nextElementSibling;
-                    if (shown && shown.classList.contains("hdf5-tree")) { shown.remove(); return; }
-                    li.after(hdf5Tree(app, where(child)));
+                    if (shown && shown.classList.contains("hdf5-subtree")) { shown.remove(); return; }
+                    li.after(h("li.subtree.hdf5-subtree", hdf5Tree(app, where(child))));
                   } } }, N.icon("database", 13)) : null,
                 h("button.btn.ghost.icon.small.preview-file", { title: "Show the start of the file as text", on: { click: () => previewFile(app, where(child), entry.name) } },
                   N.icon("note", 13)),
@@ -811,7 +822,7 @@
             const row = h("li.folder-entry", { dataset: { name: entry.name } },
               h("button.tree-toggle", { title: "Open", on: { click: () => {
                 if (open) { open.remove(); open = null; row.classList.remove("open"); return; }
-                open = tree(child, base);
+                open = h("li.subtree", tree(child, base));   // a list holds only items
                 row.after(open);
                 row.classList.add("open");
               } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", entry.name)),
@@ -821,7 +832,7 @@
                 try {
                   await app.client.request("files.makeFolder", where(`${child}/${name}`));
                   if (open) { open.remove(); open = null; }
-                  open = tree(child, base);
+                  open = h("li.subtree", tree(child, base));   // a list holds only items
                   row.after(open);
                   row.classList.add("open");
                 } catch (error) { N.showError(error, "Could not make the folder"); }
@@ -829,7 +840,7 @@
               // dev's file viewer's Refresh: the folder listed again, open, with what came or went since
               h("button.btn.ghost.icon.small.refresh-folder", { title: "List this folder again", on: { click: () => {
                 if (open) open.remove();
-                open = tree(child, base);
+                open = h("li.subtree", tree(child, base));   // a list holds only items
                 row.after(open);
                 row.classList.add("open");
               } } }, N.icon("refresh", 13)),
@@ -842,14 +853,14 @@
       };
       const browse = (p, li) => h("button.btn.ghost.icon.small.browse", { title: "Show the files", on: { click: () => {
         const shown = li().nextElementSibling;
-        if (shown && shown.classList.contains("file-tree")) { shown.remove(); return; }
-        li().after(tree(p));
+        if (shown && shown.classList.contains("files-subtree")) { shown.remove(); return; }
+        li().after(h("li.subtree.files-subtree", tree(p)));   // a list holds only items
       } } }, N.icon("list", 13));
       // dev's file viewer's Refresh: the entity's folder listed again (its open folders closed)
       const relist = (p, li) => h("button.btn.ghost.icon.small.refresh-files", { title: "List the files again", on: { click: () => {
         const shown = li().nextElementSibling;
-        if (shown && shown.classList.contains("file-tree")) shown.remove();
-        li().after(tree(p));
+        if (shown && shown.classList.contains("files-subtree")) shown.remove();
+        li().after(h("li.subtree.files-subtree", tree(p)));   // as browse shows them
       } } }, N.icon("refresh", 13));
       // Several folders are this entity (dev's duplicate sessions): any but one can be left out of scans, by name
       const paths = loc.paths || [];
@@ -1003,7 +1014,7 @@
     try { pipelines = await app.client.request("pipelines.list"); } catch (error) { N.showError(error); }
     const typeTitle = (t) => (t === "*" ? "Any entity" : app.typeTitle(t));
     const card = (p) => h("div.card.pipeline", { dataset: { id: p.id } },
-      h("div.card-head", N.icon("layers", 16), h("div.grow", h("h3", p.title || p.id), h("div.sub", `${p.id} · ${typeTitle(p.entityType)}`)),
+      h("div.card-head", N.icon("layers", 16), h("div.grow", h("h2", p.title || p.id), h("div.sub", `${p.id} · ${typeTitle(p.entityType)}`)),
         h("span.pill." + (p.source === "project" ? "accent" : "plain"), p.source === "project" ? "project" : "module"),
         h("button.btn.small", { on: { click: () => pipelineEditor(app, p) } }, N.icon(p.source === "project" ? "edit" : "copy", 14), p.source === "project" ? "Edit" : "Customize"),
         p.source === "project" ? h("button.btn.ghost.icon.small", { title: "Delete this pipeline", on: { click: async () => {
@@ -1019,7 +1030,7 @@
       h("div.hero", h("div", h("h1", "Pipelines"), h("p", "Steps to take each entity through. Assign a pipeline to rows of a table, follow their progress there, and queue the steps that are left.")),
         h("div.spacer"), h("div.actions", h("button.btn.primary", { on: { click: () => pipelineEditor(app, null) } }, N.icon("plus"), "New pipeline"))),
       pipelines.length ? h("div.grid.two", pipelines.map(card))
-        : h("div.empty", N.icon("layers", 40), h("h3", "No pipelines yet"), h("div", "Make one from the methods of the project's modules.")));
+        : h("div.empty", N.icon("layers", 40), h("h2", "No pipelines yet"), h("div", "Make one from the methods of the project's modules.")));
   };
 
   /** Make or change a project pipeline: an id, a title, the entity type, and its steps (method, title, preset). */
@@ -1042,13 +1053,13 @@
     }
     async function renderSteps() {
       const rows = await Promise.all(steps.map(async (step, i) => {
-        const method = h("select.input", { on: { change: (e) => { step.method = e.target.value; step.preset = ""; renderSteps(); } } },
+        const method = h("select.input", { "aria-label": `Step ${i + 1}: method`, on: { change: (e) => { step.method = e.target.value; step.preset = ""; renderSteps(); } } },
           h("option", { value: "" }, "Choose a method…"),
           methods.filter(fits).map((m) => h("option", { value: m.id, selected: m.id === step.method }, `${m.title} (${m.id})`)));
         const presets = await presetOptions(step.method);
-        const preset = h("select.input", { disabled: !presets.length, on: { change: (e) => { step.preset = e.target.value; } } },
+        const preset = h("select.input", { "aria-label": `Step ${i + 1}: preset`, disabled: !presets.length, on: { change: (e) => { step.preset = e.target.value; } } },
           h("option", { value: "" }, presets.length ? "Defaults" : "No presets"), presets.map((p) => h("option", { value: p, selected: p === step.preset }, p)));
-        const stepTitle = h("input.input", { value: step.title, placeholder: "Title (the method's)", on: { input: (e) => { step.title = e.target.value; } } });
+        const stepTitle = h("input.input", { "aria-label": `Step ${i + 1}: title`, value: step.title, placeholder: "Title (the method's)", on: { input: (e) => { step.title = e.target.value; } } });
         const move = (d) => { const j = i + d; if (j < 0 || j >= steps.length) return; [steps[i], steps[j]] = [steps[j], steps[i]]; renderSteps(); };
         return h("li", h("span.step-mark.n", String(i + 1)), h("div.step-fields", method, stepTitle, preset),
           h("div.step-buttons",
@@ -1068,10 +1079,10 @@
     const rulesEl = h("ul.rule-editor", { style: { listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "6px" } });
     function renderRules() {
       N.fill(rulesEl, rules.map((rule, i) => {
-        const column = h("input.input.rule-column", { value: rule.column, placeholder: "column, e.g. subject_id", on: { input: (e) => { rule.column = e.target.value.trim(); } } });
-        const op = h("select.input.rule-op", { on: { change: (e) => { rule.op = e.target.value; renderRules(); } } },
+        const column = h("input.input.rule-column", { "aria-label": `Rule ${i + 1}: column`, value: rule.column, placeholder: "column, e.g. subject_id", on: { input: (e) => { rule.column = e.target.value.trim(); } } });
+        const op = h("select.input.rule-op", { "aria-label": `Rule ${i + 1}: comparison`, on: { change: (e) => { rule.op = e.target.value; renderRules(); } } },
           RULE_OPS.map(([v, label]) => h("option", { value: v, selected: v === rule.op }, label)));
-        const text = h("input.input.rule-text", { value: rule.text, placeholder: rule.op === "in" ? "values, separated by commas" : "text",
+        const text = h("input.input.rule-text", { "aria-label": `Rule ${i + 1}: values`, value: rule.text, placeholder: rule.op === "in" ? "values, separated by commas" : "text",
           on: { input: (e) => { rule.text = e.target.value; } } });
         return h("li", { style: { display: "grid", gridTemplateColumns: "1fr 140px 1fr auto", gap: "6px" } }, column, op,
           rule.op === "in" || rule.op === "contains" ? text : h("span"),
@@ -1203,7 +1214,7 @@
         h("button.chip" + (t === type ? ".on" : ""), { dataset: { type: t }, on: { click: () => { type = t; render(); } } }, title, h("span.n", String(count(t))))));
       const shown = notes.filter((n) => (type === "all" || n.type === type) && matches(n));
       N.fill(listEl, shown.length ? shown.map((note) => N.views.noteItem(app, note, { showEntity: true, onRemove: load }))
-        : h("li.empty", N.icon("note", 36), h("h3", notes.length ? "No notes match" : "No notes yet"),
+        : h("li.empty", N.icon("note", 36), h("h2", notes.length ? "No notes match" : "No notes yet"),
           h("div", notes.length ? "Try another type or search." : "Open an entity and write a note in its drawer.")));
     }
     N.fill(content,
@@ -1312,7 +1323,7 @@
       const preferred = (presets.find((p) => p.preferred) || {}).name;   // the method's own default (dev's preferred options)
       const preset = presets.find((p) => p.name === (presetName || preferred || "default")) || presets[0];
       form = N.schemaForm(method.options || {}, preset ? preset.values : {});
-      const presetSelect = h("select.input", { style: { width: "200px" }, on: { change: (e) => select(method, e.target.value) } },
+      const presetSelect = h("select.input", { style: { width: "200px" }, "aria-label": "Preset", on: { change: (e) => select(method, e.target.value) } },
         presets.map((p) => h("option", { value: p.name, selected: preset && p.name === preset.name },
           (p.source === "module" ? `${p.name} (from ${p.module})` : p.name) + (p.preferred ? " ★" : ""))));
       const isPreferred = preset && (preset.preferred || (!preferred && preset.name === "default"));
@@ -1375,7 +1386,7 @@
         } catch (error) { N.showError(error, "Could not queue the pipeline"); }
         return;
       }
-      if (!current) return;
+      if (!current || !form) return;   // no method, or its options are still loading
       const problems = form.validate();
       if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
       const params = { methodId: current.id, entityType, options: form.getValue() };
@@ -1425,6 +1436,7 @@
     const preview = () => {
       if (!current) { N.toast("Choose a method", "A pipeline is not previewed: preview its steps one by one", "error"); return; }
       if (!rows.length) { N.toast("Select an entity", "The preview runs on one entity: select it in the table first", "error"); return; }
+      if (!form) return;   // its options are still loading
       const problems = form.validate();
       if (problems.length) { N.toast("Check the options", problems.join("; "), "error"); return; }
       const method = current;
@@ -1531,7 +1543,7 @@
     const detailEl = h("div");
     const queueControls = h("div", { style: { display: "flex", gap: "8px", alignItems: "center" } });
 
-    // A list or an event can be older than what the view already shows (a poll answered just before a task
+    // A list or an event can be older than what the view already shows (a list answered just before a task
     // finished), so a task only moves forward: queued, running, then finished, with progress only growing.
     const stage = (task) => ({ queued: 0, running: 1 }[task.status] ?? 2);
     function newer(incoming, shown) {
@@ -1592,6 +1604,9 @@
     };
     function render() {
       renderControls();
+      // the keyboard stays on the button it was on (a task's title, Move up), as the list is drawn anew
+      const focused = listEl.contains(document.activeElement) && document.activeElement.closest(".task");
+      const was = focused ? [focused.dataset.id, [...document.activeElement.classList].map((c) => "." + c).join("")] : null;
       const queued = tasks.filter((t) => t.status === "queued").sort(byQueuePosition);
       const others = tasks.filter((t) => t.status !== "queued").reverse();
       N.fill(listEl, tasks.length ? [
@@ -1599,7 +1614,12 @@
         queued.map((task, i) => renderTask(task, queued, i)),
         queued.length && others.length ? h("div.task-group", h("span", "Started and finished")) : null,
         others.map((task) => renderTask(task)),
-      ] : h("div.empty", N.icon("tasks", 40), h("h3", "No tasks"), h("div", "Select entities in a table and run a method in the background.")));
+      ] : h("div.empty", N.icon("tasks", 40), h("h2", "No tasks"), h("div", "Select entities in a table and run a method in the background.")));
+      if (was) {
+        const again = listEl.querySelector(`.task[data-id="${CSS.escape(was[0])}"] ${was[1] || "button"}:not([disabled])`) ||
+          listEl.querySelector(`.task[data-id="${CSS.escape(was[0])}"] .task-pick`);
+        if (again) again.focus({ preventScroll: true });
+      }
       if (selectedId) showDetail(selectedId);
     }
     async function move(queued, index, by) {
@@ -1654,7 +1674,8 @@
       const el = h("div.task" + (task.id === selectedId ? ".selected" : ""), { dataset: { id: task.id }, on: { click: () => { selectedId = task.id; app.replace("#/tasks/" + task.id); render(); } } },
         h("div",
           h("div.title", N.statusPill(task.status), task.onHold && task.status === "queued" ? h("span.pill.warn", "on hold") : null,
-            task.pipeline ? [h("span.pill.accent.plain", `${task.pipeline.id} ${task.pipeline.step + 1}/${task.pipeline.steps}`), task.pipeline.title || app.methodTitle(task.method.id)] : app.methodTitle(task.method.id),
+            // the title is the keyboard's way to the task's details (the pointer clicks anywhere on it)
+            h("button.task-pick", { "aria-current": task.id === selectedId ? "true" : null }, task.pipeline ? [h("span.pill.accent.plain", `${task.pipeline.id} ${task.pipeline.step + 1}/${task.pipeline.steps}`), " ", task.pipeline.title || app.methodTitle(task.method.id)] : app.methodTitle(task.method.id)),
             h("span.muted", { style: { fontWeight: 400 } }, `· ${task.entities.length} ${task.entities[0].entityType}(s)`)),
           h("div.sub", [
             `queued ${N.fmt.time(task.createdAt)}`,
@@ -1685,7 +1706,7 @@
       try { task = await app.client.request("tasks.get", { id }); } catch (error) { if (token === detailToken) N.clear(detailEl); return; }
       if (token !== detailToken) return;
       N.fill(detailEl, h("div.card",
-        h("div.card-head", h("h3", app.methodTitle(task.method.id)), h("div.spacer"), N.statusPill(task.status)),
+        h("div.card-head", h("h2", app.methodTitle(task.method.id)), h("div.spacer"), N.statusPill(task.status)),
         h("div.card-body",
           h("dl.props",
             h("dt", "Task"), h("dd.mono", task.id),
@@ -1721,10 +1742,13 @@
       if (index >= 0) tasks[index] = newer(task, tasks[index]); else tasks.push(task);
       render();
     };
-    // Events can pass while the view loads; the task files are the truth, so poll while tasks are active.
-    app.viewTimer = setInterval(() => {
-      if (tasks.some((t) => t.status === "queued" || t.status === "running")) load();
-    }, 1500);
+    app.onTaskRemoved = ({ id }) => {
+      tasks = tasks.filter((t) => t.id !== id);
+      if (selectedId === id) selectedId = null;
+      render();
+    };
+    // No polling: the backend watches the tasks folder, so a task file another worker or process writes (the other
+    // language's worker, nansen worker) arrives as a task event as this app's own changes do
     app.onLogEvent = (event) => {
       if (event.id === selectedId) {
         const log = document.getElementById("task-log");
@@ -1757,7 +1781,7 @@
     N.fill(content, 
       h("div.hero", h("div", h("h1", "Data"), h("p", "Where the data is, how it is named, and what the project adds to it."))),
       h("div.grid",
-        h("div.card.data-locations", h("div.card-head", N.icon("database"), h("h3", "Data locations"), h("div.spacer"),
+        h("div.card.data-locations", h("div.card-head", N.icon("database"), h("h2", "Data locations"), h("div.spacer"),
           dataset ? h("span.muted", `environment: ${dataset.environment || "default"}`) : null,
           dataset ? h("button.btn.small.edit-config", { title: "Edit the dataset config: locations, folder levels, file patterns, naming rules",
             on: { click: () => N.views.dataLocations(app) } }, N.icon("edit", 14), "Edit locations") : null),
@@ -1778,7 +1802,7 @@
                   } catch (error) { N.showError(error, "Could not change the path"); }
                 } } }, "Change path")));
             }))) : h("div.card-body.muted", "No dataset.")),
-        h("div.card.data-variables", h("div.card-head", N.icon("file"), h("h3", "Data variables"), h("div.spacer"), cacheInfo, clearCache,
+        h("div.card.data-variables", h("div.card-head", N.icon("file"), h("h2", "Data variables"), h("div.spacer"), cacheInfo, clearCache,
           h("button.btn.small.ghost.new-adapter", { title: "Start a file adapter of the project, for a file format NANSEN cannot read yet", on: { click: () => newAdapterDialog(app) } }, N.icon("file"), "New file adapter"),
           h("button.btn.small.ghost.import-adapter", { title: "Copy a file adapter and its code into the project",
             on: { click: (event) => N.menu(event.currentTarget, [{ heading: "Import a file adapter" },
@@ -1804,10 +1828,10 @@
                 } } }, N.icon("trash", 14))))))) :
             h("div.card-body.muted", dataset ? "No data variables. A data variable names a file of each entity, so methods can load and save it." : "No data variables.")),
         h("div.grid.two",
-          h("div.card", h("div.card-head", N.icon("columns"), h("h3", "Fragments")),
+          h("div.card", h("div.card-head", N.icon("columns"), h("h2", "Fragments")),
             h("ul.list", fragments.map((f) => h("li", h("div.grow", h("div.title", f.title, f.computed ? h("span.pill.accent", { style: { marginLeft: "8px" } }, "computed") : null),
               h("div.sub", `${f.id} ${f.version} · ${f.columns.map((c) => c.name).join(", ")}`)))))),
-          h("div.card.methods-card", h("div.card-head", N.icon("zap"), h("h3", "Methods"), h("div.spacer"),
+          h("div.card.methods-card", h("div.card-head", N.icon("zap"), h("h2", "Methods"), h("div.spacer"),
             h("button.btn.small.ghost.import-legacy-method", { title: "Import a session method of NANSEN dev (a .m file, or a folder of them), to run as it is in MATLAB",
               on: { click: () => importLegacyMethodDialog(app) } }, N.icon("file"), "Import dev method"),
             h("button.btn.small.new-method", { on: { click: () => newMethodDialog(app) } }, N.icon("plus", 14), "New method")),
@@ -1841,7 +1865,12 @@
       const input = h("input", { type: "checkbox", checked, on: { change: () => onChange(input.checked) } });
       return h("label.switch." + cls, input, h("span"));
     };
-    const row = (title, sub, control) => h("li", h("div.grow", h("div.title", title), h("div.sub", sub)), control);
+    const row = (title, sub, control) => {
+      // the row's title names its switch or list for assistive technology
+      const input = control.matches("input, select") ? control : control.querySelector("input, select");
+      if (input && !input.hasAttribute("aria-label")) input.setAttribute("aria-label", title);
+      return h("li", h("div.grow", h("div.title", title), h("div.sub", sub)), control);
+    };
     const theme = h("select.input.theme-select", { style: { width: "180px" }, on: { change: () => { N.theme.save(theme.value); N.theme.apply(theme.value); } } },
       [["auto", "Follow the system"], ["light", "Light"], ["dark", "Dark"]].map(([v, label]) => h("option", { value: v, selected: N.theme.load() === v }, label)));
     // the tables' text size and lock: this browser's, else the user's default; a change is both
@@ -1884,7 +1913,7 @@
     N.fill(content,
       h("div.hero", h("div", h("h1", "Settings"), h("p", "How the app behaves for you. Worker settings are kept with your project list; how the dashboard looks is kept in this browser, and the tables' text size and lock with your project list too, for browsers that have not chosen their own."))),
       h("div.grid",
-        h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Tasks")),
+        h("div.card", h("div.card-head", N.icon("tasks"), h("h2", "Tasks")),
           h("ul.list", row("Start the worker when a project opens", "Queued tasks then run on their own; otherwise start it on the Tasks page. Takes effect the next time the app starts.",
             toggle("auto-start", settings.queue.autoStart, (on) => save({ queue: { autoStart: on } }))),
             row("Run tasks in", "A thread of the app, or each task in a process of its own (in MATLAB, a process pool of the Parallel Computing Toolbox), for methods that cannot run on a thread, such as MEX files and most toolboxes",
@@ -1894,7 +1923,7 @@
               toggle("debug-tasks", Boolean(settings.queue.debug), (on) => save({ queue: { debug: on } }))),
             row("Save rows into the data folders", "When a row is edited, write it as <entity type>_info.json into each of its entity's folders, so the data folders describe themselves",
               toggle("save-to-folders", Boolean(settings.tables && settings.tables.saveToDataFolders), (on) => save({ tables: { saveToDataFolders: on } }))))),
-        h("div.card", h("div.card-head", N.icon("eye"), h("h3", "Dashboard")),
+        h("div.card", h("div.card-head", N.icon("eye"), h("h2", "Dashboard")),
           h("ul.list",
             row("Theme", "Light, dark, or as the system is set", theme),
             row("Table text size", "The size of the text and rows in the entity tables; also the default of other browsers",
@@ -1910,7 +1939,7 @@
               })),
             row("Keyboard shortcuts", "Press ? anywhere, or the keyboard button at the top", h("button.btn.small", { on: { click: () => N.showShortcuts() } }, N.icon("keyboard", 14), "Show"))))),
       h("div.card.addons-card", { style: { marginTop: "16px" } },
-        h("div.card-head", N.icon("puzzle"), h("h3", "Add-ons"), h("div.spacer"), folderNote),
+        h("div.card-head", N.icon("puzzle"), h("h2", "Add-ons"), h("div.spacer"), folderNote),
         h("p.muted", { style: { margin: "10px 16px 0" } }, "Toolboxes and packages the modules' methods use. MATLAB toolboxes are downloaded from GitHub into the add-ons folder and put on MATLAB's path; Python packages are installed into this Python with pip."),
         addonList));
     drawAddons();
@@ -1979,7 +2008,7 @@
           } } }, N.icon("search", 14), "Locate…"),
           h("button.btn.small" + (p.available ? ".primary" : ""), { disabled: !p.available, on: { click: () => open(p.path) } }, "Open"),
           h("button.btn.small.ghost.icon.project-menu", { title: "Rename, move, forget or delete", on: { click: (event) => projectMenu(event.currentTarget, p) } }, N.icon("menu", 14))))) :
-          h("div.empty", N.icon("folder", 40), h("h3", "No projects yet"), h("div", "Create one above, or open a project folder.")))));
+          h("div.empty", N.icon("folder", 40), h("h2", "No projects yet"), h("div", "Create one above, or open a project folder.")))));
     path.addEventListener("keydown", (e) => { if (e.key === "Enter") open(path.value); });
 
     // dev's project manager: rename a project, move its folder, forget it, or delete it with its folder
@@ -2411,7 +2440,7 @@
   N.views.datasetJson = async function (app, text) {
     let got;
     try { got = await app.client.request("dataset.get"); } catch (error) { N.showError(error, "Could not read the dataset config"); return; }
-    const editor = h("textarea.input.mono.config-text", { spellcheck: false, style: { width: "100%", height: "52vh", resize: "vertical", fontSize: "12.5px", lineHeight: "1.45", tabSize: "2" } });
+    const editor = h("textarea.input.mono.config-text", { "aria-label": "The dataset config, as JSON", spellcheck: false, style: { width: "100%", height: "52vh", resize: "vertical", fontSize: "12.5px", lineHeight: "1.45", tabSize: "2" } });
     editor.value = text || got.text;
     const message = h("div.form-message.hidden");
     const status = h("span.muted.config-status");

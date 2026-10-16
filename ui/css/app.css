@@ -242,7 +242,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 /* ---------- cards, pills ---------- */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
 .card-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
-.card-head h3 { margin: 0; font-size: 14px; }
+.card-head h2, .card-head h3 { margin: 0; font-size: 14px; }   /* a page's sections are h2, under its h1; a dialog's h3 */
 .card-head .spacer { flex: 1; }
 .card-body { padding: 14px 16px; }
 /* minmax(0, …): long one-line text (paths, descriptions) is cut with an ellipsis instead of widening a column */
@@ -272,6 +272,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .hero .actions { display: flex; gap: 8px; }
 
 .stat { padding: 16px; position: relative; overflow: hidden; cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
+.stat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stat:hover { border-color: var(--accent); transform: translateY(-1px); }
 .stat .label { color: var(--text-3); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
 .stat .value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 8px; font-variant-numeric: tabular-nums; }
@@ -299,7 +300,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .dot.info { background: var(--info); }
 
 .empty { text-align: center; padding: 48px 20px; color: var(--text-3); }
-.empty h3 { color: var(--text); margin: 10px 0 4px; }
+.empty h2, .empty h3 { color: var(--text); margin: 10px 0 4px; font-size: 1.17em; }
 .empty svg { color: var(--border-strong); }
 
 /* ---------- entity table ---------- */
@@ -344,6 +345,8 @@ table.grid-table { border-collapse: separate; border-spacing: 0; width: max-cont
 .grid-table td.editing { padding: 0 4px; }
 .grid-table td.editing input, .grid-table td.editing select { width: 100%; height: 28px; border: 1px solid var(--accent); border-radius: 6px; padding: 0 8px; outline: none; background: var(--surface); box-shadow: 0 0 0 3px var(--accent-soft); }
 .grid-table td.missing { color: var(--text-3); }
+.grid-table td[data-col]:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }   /* the keyboard's cell */
+.viewer-canvas:focus-visible, .trace-canvas:focus-visible, .fov-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .grid-table .sel { width: 40px; padding: 0 0 0 16px; }
 .grid-table .status { width: 30px; padding: 0 4px; }
 .grid-table input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; vertical-align: middle; }
@@ -367,9 +370,11 @@ table.grid-table { border-collapse: separate; border-spacing: 0; width: max-cont
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; width: 460px; max-width: 92vw; z-index: 20; background: var(--surface);
   border-left: 1px solid var(--border); box-shadow: var(--shadow-lg); display: flex; flex-direction: column;
-  transform: translateX(105%); transition: transform 0.2s ease;
+  transform: translateX(105%); transition: transform 0.2s ease, visibility 0s linear 0.2s; visibility: hidden;
 }
-.drawer.open { transform: none; }
+/* closed, it is hidden once it has slid out: out of the Tab order and of what a screen reader reads */
+.drawer.open { transform: none; visibility: visible; transition: transform 0.2s ease; }
+.drawer:focus { outline: none; }
 .drawer-head { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; }
 .drawer-head h2 { margin: 0; font-size: 16px; font-family: var(--mono); word-break: break-all; }
 .drawer-head .spacer { flex: 1; }
@@ -386,12 +391,15 @@ dl.props dd { margin: 0; word-break: break-word; }
 ul.file-tree { list-style: none; margin: 0 0 6px 10px; padding: 2px 0 2px 10px; border-left: 1px solid var(--border); font-size: 12.5px; }
 .path-list ul.file-tree { background: none; }
 ul.file-tree > li { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 6px; min-height: 26px; background: none; font-family: inherit; margin: 0; }
-ul.file-tree > li:hover { background: var(--surface-3); }
+ul.file-tree > li:not(.subtree):hover { background: var(--surface-3); }
 ul.file-tree .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 ul.file-tree .size { font-size: 11.5px; flex: none; }
 ul.file-tree .path-actions { opacity: 0; }
-ul.file-tree > li:hover .path-actions { opacity: 1; }
+ul.file-tree > li:not(.subtree):hover > .path-actions, ul.file-tree .path-actions:focus-within { opacity: 1; }   /* and when the keyboard is on them */
+/* a folder opened in place: its list in an item of its own, as a list holds only items */
+.path-list li.subtree, ul.file-tree > li.subtree { display: block; padding: 0; min-height: 0; background: none; margin: 0; border-radius: 0; }
 .tree-toggle { all: unset; cursor: pointer; display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.tree-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 .tree-toggle svg:first-child { transform: rotate(-90deg); transition: transform .15s; flex: none; }
 li.open > .tree-toggle svg:first-child { transform: none; }
 .hero .path { display: flex; align-items: center; gap: 6px; }
@@ -447,6 +455,10 @@ fieldset.group legend { font-weight: 700; padding: 0 6px; }
 .menu .item.disabled { opacity: 0.45; cursor: default; }
 .menu .item.disabled:hover { background: none; }
 .menu .heading { font-size: 11px; text-transform: uppercase; color: var(--text-3); font-weight: 700; padding: 8px 10px 4px; letter-spacing: 0.06em; }
+/* a box among a menu's items (role menuitemcheckbox): its mark, in the place of the box it hides */
+.menu .menu-check { flex: none; width: 15px; height: 15px; border: 1.5px solid var(--text-3); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
+.menu .menu-check.on { background: var(--accent); border-color: var(--accent); }
+.menu .menu-check.on::after { content: ""; width: 4px; height: 8px; border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
 
 .toasts { position: fixed; right: 18px; bottom: 18px; z-index: 50; display: flex; flex-direction: column; gap: 8px; }
 .toast { min-width: 280px; max-width: 420px; padding: 11px 14px; border-radius: 10px; background: var(--sidebar); color: white; box-shadow: var(--shadow-lg); display: flex; gap: 10px; align-items: flex-start; animation: slide 0.18s ease; }
@@ -461,6 +473,11 @@ fieldset.group legend { font-weight: 700; padding: 0 6px; }
 .task:first-child { border-top: 0; }
 .task:hover { background: var(--surface-2); }
 .task.selected { background: var(--accent-soft); }
+/* a task's title: a button, the keyboard's way to its details */
+.task-pick, .mark-edit { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.task-pick:focus-visible, .mark-edit:focus-visible, .plain-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.plain-link { color: inherit; text-decoration: none; }
+.plain-link:hover { text-decoration: underline; }
 .task .title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .task .sub { color: var(--text-3); font-size: 12px; }
 .task .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
@@ -488,7 +505,7 @@ table.simple th { font-size: 12px; color: var(--text-3); font-weight: 600; borde
 .action-card .sub { font-size: 12.5px; color: var(--text-3); }
 .action-icon { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
 .card-body.setup p { margin: 0 0 12px; color: var(--text-2); }
-.nav-empty { padding: 4px 12px 8px; font-size: 12.5px; color: var(--text-3); }
+.nav-empty { padding: 4px 12px 8px; font-size: 12.5px; color: var(--sidebar-muted); }   /* on the sidebar, in both themes */
 .form-message { margin-top: 12px; padding: 8px 12px; border-radius: 8px; background: var(--bad-soft, #fdecec); color: var(--bad); font-size: 13px; }
 .form-message.hidden { display: none; }
 ul.notes { margin: 0; padding-left: 18px; max-height: 320px; overflow: auto; }
