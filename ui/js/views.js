@@ -16,6 +16,18 @@
         children.get(parent).push(item);
       }
       const describe = (item) => Object.entries(item.attributes || {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+      // dev's NWB node Assign to Workspace: a dataset's values, or a group with its attributes, datasets and groups (as
+      // dev's MatNWB object of it)
+      const sender = (item) => app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-dataset", {
+        title: item.kind === "group" ? "Load this group into the workspace: its attributes, datasets and groups" : "Load this dataset into the workspace",
+        on: { click: async (event) => {
+          event.stopPropagation();
+          try {
+            const sent = await app.client.request("files.send", { ...where, dataset: item.path });
+            N.toast("In the workspace", sent.kind === "group" ? `${sent.name} (${sent.fields.length} fields: ${sent.fields.slice(0, 6).join(", ")}${sent.fields.length > 6 ? ", …" : ""})`
+              : `${sent.name} (${sent.shape.length ? sent.shape.join(" × ") : "scalar"} · ${sent.dataType})`, "success");
+          } catch (error) { N.showError(error, "Could not load it"); }
+        } } }, N.icon("download", 13)) : null;
       const items = (path) => (children.get(path) || []).map((item) => {
           const tag = item.neurodataType ? h("span.pill.plain", item.neurodataType) : null;
           if (item.kind === "link") {
@@ -23,16 +35,8 @@
           }
           if (item.kind === "dataset") {
             const shape = item.shape.length ? item.shape.join(" × ") : "scalar";
-            // dev's NWB node Assign to Workspace: this dataset alone
-            const send = app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-dataset", { title: "Load this dataset into the workspace",
-              on: { click: async () => {
-                try {
-                  const sent = await app.client.request("files.send", { ...where, dataset: item.path });
-                  N.toast("In the workspace", `${sent.name} (${sent.shape.length ? sent.shape.join(" × ") : "scalar"} · ${sent.dataType})`, "success");
-                } catch (error) { N.showError(error, "Could not load the dataset"); }
-              } } }, N.icon("download", 13)) : null;
             return h("li.hdf5-dataset", { dataset: { path: item.path }, title: describe(item) }, N.icon("file", 13), h("span.name", item.name), tag,
-              h("span.muted.size", "value" in item ? String(item.value) : `${shape} · ${item.dataType}`), send);
+              h("span.muted.size", "value" in item ? String(item.value) : `${shape} · ${item.dataType}`), sender(item));
           }
           let open = null;
           const row = h("li.folder-entry.hdf5-group", { dataset: { path: item.path }, title: describe(item) },
@@ -41,7 +45,7 @@
               open = level(item.path);
               row.after(open);
               row.classList.add("open");
-            } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", item.name), tag));
+            } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", item.name), tag), sender(item));
           return row;
         });
       const level = (path) => h("ul.file-tree.hdf5-level", items(path));

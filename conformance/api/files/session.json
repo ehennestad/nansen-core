@@ -921,7 +921,8 @@
             3,
             5
           ],
-          "dataType": "uint16"
+          "dataType": "uint16",
+          "kind": "dataset"
         }
       }
     },
@@ -973,7 +974,13 @@
         }
       },
       "expect": {
-        "error": "invalid-params"
+        "result": {
+          "name": "acquisition",
+          "kind": "group",
+          "fields": [
+            "TwoPhotonSeries"
+          ]
+        }
       }
     },
     {
@@ -1043,6 +1050,59 @@
       },
       "expect": {
         "error": "unsupported-file"
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 61,
+        "params": {
+          "path": "data/recording.nwb",
+          "dataset": "/acquisition/TwoPhotonSeries",
+          "name": "series"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "series",
+          "dataset": "/acquisition/TwoPhotonSeries",
+          "kind": "group",
+          "fields": [
+            "description",
+            "neurodata_type",
+            "data",
+            "data_conversion",
+            "data_unit",
+            "imaging_plane",
+            "timestamps"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 62,
+        "params": {
+          "path": "data/recording.nwb",
+          "dataset": "/"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "file",
+          "kind": "group",
+          "fields": [
+            "namespace",
+            "neurodata_type",
+            "nwb_version",
+            "acquisition",
+            "general",
+            "identifier",
+            "processing",
+            "session_description"
+          ]
+        }
       }
     }
   ]

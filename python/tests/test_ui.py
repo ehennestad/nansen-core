@@ -841,6 +841,11 @@ def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app,
     page.click(f"{tree} li.hdf5-dataset[data-path='/acquisition/TwoPhotonSeries/data'] .send-dataset")
     page.wait_for_selector(".toast:has-text('data (4 × 3 × 5 · uint16)')")
     assert namespace["data"].shape == (4, 3, 5)
+    # a group, as dev's MatNWB object of the node: its attributes, datasets (with theirs) and groups
+    page.click(f"{tree} li.hdf5-group[data-path='/acquisition/TwoPhotonSeries'] .send-dataset")
+    page.wait_for_selector(".toast:has-text('TwoPhotonSeries (7 fields: description, neurodata_type, data, data_conversion')")
+    series = namespace["TwoPhotonSeries"]
+    assert series["data_unit"] == "n.a." and series["data"].shape == (4, 3, 5) and series["neurodata_type"] == "TwoPhotonSeries"
 
 
 def test_send_the_selection_to_the_workspace(empty_app, page):

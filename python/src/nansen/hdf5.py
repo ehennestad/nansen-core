@@ -1,6 +1,7 @@
 """The layout of an HDF5 file (NWB, MATLAB v7.3, .h5) for files.inspect: its groups, datasets and links."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from .errors import NansenError
@@ -103,6 +104,96 @@ def inspect(path: Path, limit: int = 2000) -> dict:
         walk(f, "/")
     items.sort(key=lambda item: (item["path"] != "/", item["path"]))
     return {"format": "hdf5", "items": items[:limit], "truncated": len(items) > limit}
+
+
+def field_name(name: str, taken) -> str:
+    """A dict key (and MATLAB struct field) for the name of an HDF5 member or attribute, the same in both languages
+    (nansen.internal.hdf5FieldName): characters other than ASCII letters, digits and _ as _, x before a name that does
+    not start with a letter, at most 63 characters (MATLAB's namelengthmax), and _2, _3, ... after one already taken."""
+    out = re.sub(r"[^A-Za-z0-9_]", "_", name)
+    if not re.match(r"[A-Za-z]", out):
+        out = "x" + out
+    base = out = out[:63]
+    number = 2
+    while out in taken:
+        suffix = f"_{number}"
+        out = base[:63 - len(suffix)] + suffix
+        number += 1
+    return out
+
+
+def _value(value):
+    """A value as h5py reads it, a string as str."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return value
+
+
+def _add_attributes(out: dict, node, prefix: str = "") -> None:
+    """A node's attributes, in name order, as out's keys (prefix_ before each, for a dataset's in its group); those
+    that hold object references are left out."""
+    import h5py
+
+    for name in sorted(node.attrs.keys()):
+        if h5py.check_ref_dtype(node.attrs.get_id(name).dtype) is not None:
+            continue
+        try:
+            value = node.attrs[name]
+        except (OSError, TypeError, ValueError):
+            continue   # a type h5py cannot read
+        out[field_name(prefix + name, out)] = _value(value)
+
+
+def _read_group(group) -> dict:
+    import h5py
+
+    out: dict = {}
+    _add_attributes(out, group)
+    for name in sorted(group.keys()):
+        link = group.get(name, getlink=True)
+        if isinstance(link, h5py.SoftLink):
+            out[field_name(name, out)] = link.path
+            continue
+        if isinstance(link, h5py.ExternalLink):
+            out[field_name(name, out)] = f"{link.filename}:{link.path}"
+            continue
+        member = group[name]
+        if isinstance(member, h5py.Group):
+            out[field_name(name, out)] = _read_group(member)
+        else:
+            out[field_name(name, out)] = _value(member[()])
+            _add_attributes(out, member, name + "_")
+    return out
+
+
+def read_group(path: Path, group: str):
+    """A group of an HDF5 file as a dict, for files.send (dev's file viewer's NWB node Assign to Workspace gave a MatNWB
+    object of it): the group's attributes in name order, then its members in name order: a dataset's value (as
+    read_dataset reads it) followed by its attributes, as <dataset>_<attribute> (as MatNWB names them: data_unit), a
+    group as a dict of its own, the same way, and a link as the path it points to (file:path for another file's).
+    Keys are made by field_name. Returns the dict and its keys; invalid-params when the file has no group there."""
+    try:
+        import h5py
+    except ImportError:
+        raise NansenError("dependency-missing", "Reading HDF5 files needs h5py: pip install h5py") from None
+    if not h5py.is_hdf5(str(path)):
+        raise NansenError("unsupported-file", f"{path} is not an HDF5 file (NWB, MATLAB v7.3 or .h5)")
+    with h5py.File(path, "r") as f:
+        node = f.get(group)
+        if not isinstance(node, h5py.Group):
+            raise NansenError("invalid-params", f"{path.name} has no group {group}")
+        value = _read_group(node)
+    return value, list(value)
+
+
+def is_group(path: Path, node: str) -> bool:
+    """Whether the HDF5 file has a group at that path (False for a dataset, nothing or a file that is not HDF5)."""
+    import h5py
+
+    if not h5py.is_hdf5(str(path)):
+        return False
+    with h5py.File(path, "r") as f:
+        return isinstance(f.get(node), h5py.Group)
 
 
 def read_dataset(path: Path, dataset: str):

@@ -1004,19 +1004,24 @@ class Api:
         path = Path(resolved["path"])
         dataset = params.get("dataset")
         if dataset is not None and (not isinstance(dataset, str) or not dataset.startswith("/")):
-            raise NansenError("invalid-params", "dataset is the path of a dataset in the file, such as /acquisition/data")
-        stem = dataset.rstrip("/").rsplit("/", 1)[-1] if dataset else path.stem
+            raise NansenError("invalid-params", "dataset is the path of a dataset or group in the file, such as /acquisition/data")
+        stem = (dataset.rstrip("/").rsplit("/", 1)[-1] or "file") if dataset else path.stem
         name = params.get("name") or re.sub(r"\W", "_", stem)
         if not name or not name[0].isalpha():
             name = "data_" + name
         if not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name):
             raise NansenError("invalid-params", f"{name!r} is not a variable name")
-        if dataset:   # one dataset of an HDF5 file (NWB, MATLAB v7.3): dev's file viewer's NWB node Assign to Workspace
-            from .hdf5 import read_dataset
+        if dataset:   # one dataset or group of an HDF5 file (NWB, MATLAB v7.3): dev's file viewer's NWB node Assign to Workspace
+            from .hdf5 import is_group, read_dataset, read_group
 
-            value, shape, data_type = read_dataset(path, dataset)
+            node = dataset.rstrip("/") or "/"
+            if is_group(path, node):   # its attributes, datasets and groups, as dev's MatNWB object of it had them
+                value, fields = read_group(path, node)
+                self.workspace[name] = value
+                return {"name": name, "path": str(path), "dataset": dataset, "kind": "group", "fields": fields}
+            value, shape, data_type = read_dataset(path, node)
             self.workspace[name] = value
-            return {"name": name, "path": str(path), "dataset": dataset, "shape": shape, "dataType": data_type}
+            return {"name": name, "path": str(path), "dataset": dataset, "kind": "dataset", "shape": shape, "dataType": data_type}
         tries = [params["adapter"]] if params.get("adapter") else project.adapters.for_extension(path.suffix)
         if not tries:
             raise NansenError("unsupported-file", f"no file adapter of the project reads {path.suffix or 'these'} files")

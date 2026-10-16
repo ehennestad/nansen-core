@@ -935,8 +935,8 @@ classdef Api < handle
 
         function result = apiFilesSend(obj, params)
             % Read any file and put its value in the base workspace, as dev's file viewer's Load to workspace: with the
-            % adapter given, or the first of those naming its extension that reads it. With dataset, that dataset of an
-            % HDF5 file (dev's NWB node Assign to Workspace)
+            % adapter given, or the first of those naming its extension that reads it. With dataset, that dataset or
+            % group of an HDF5 file (dev's NWB node Assign to Workspace)
             project = obj.requireProject();
             resolved = obj.apiFilesResolve(params);
             if ~resolved.exists
@@ -950,10 +950,13 @@ classdef Api < handle
             if isfield(params, "dataset") && ~isempty(params.dataset)
                 dataset = string(params.dataset);
                 if ~isscalar(dataset) || ~startsWith(dataset, "/")
-                    nansen.internal.throwError("invalid-params", "dataset is the path of a dataset in the file, such as /acquisition/data")
+                    nansen.internal.throwError("invalid-params", "dataset is the path of a dataset or group in the file, such as /acquisition/data")
                 end
                 parts = split(regexprep(dataset, "/+$", ""), "/");
                 stem = parts(end);
+                if stem == ""
+                    stem = "file";   % the root group
+                end
             end
             name = string(nansen.internal.getField(params, "name", ""));
             if name == ""
@@ -966,10 +969,22 @@ classdef Api < handle
                 nansen.internal.throwError("invalid-params", "'%s' is not a variable name", name)
             end
             if dataset ~= ""
-                [value, shape, dataType] = nansen.internal.readHdf5Dataset(string(resolved.path), dataset);
+                node = regexprep(dataset, "/+$", "");
+                if node == ""
+                    node = "/";
+                end
+                if nansen.internal.isHdf5Group(string(resolved.path), node)
+                    % its attributes, datasets and groups, as dev's MatNWB object of it had them
+                    [value, fields] = nansen.internal.readHdf5Group(string(resolved.path), node);
+                    obj.SendToWorkspace(name, value);
+                    result = struct("name", char(name), "path", char(resolved.path), "dataset", char(dataset), ...
+                        "kind", "group", "fields", {cellstr(fields)});
+                    return
+                end
+                [value, shape, dataType] = nansen.internal.readHdf5Dataset(string(resolved.path), node);
                 obj.SendToWorkspace(name, value);
                 result = struct("name", char(name), "path", char(resolved.path), "dataset", char(dataset), ...
-                    "shape", {num2cell(shape)}, "dataType", char(dataType));
+                    "kind", "dataset", "shape", {num2cell(shape)}, "dataType", char(dataType));
                 return
             end
             adapterId = string(nansen.internal.getField(params, "adapter", ""));

@@ -274,9 +274,24 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(result.dataType), "int16");
             sent = evalin("base", "nansenApiTestDataset");
             testCase.verifyEqual(sent{2}, int16([0 3; 1 4; 2 5]));   % as h5read gives it
-            response = api.handle(struct("id", 2, "method", "files.send", "params", struct("path", "recording.nwb", "dataset", "/acquisition")));
+            % a group: its attributes, datasets (each followed by its attributes, as MatNWB's data_unit) and groups, as
+            % dev's MatNWB object of the node had them
+            h5writeatt(file, "/acquisition/series", "neurodata_type", "TimeSeries");
+            h5writeatt(file, "/acquisition/series/data", "unit", "volts");
+            h5create(file, "/acquisition/series/rate/hz", 1);
+            h5write(file, "/acquisition/series/rate/hz", 30);
+            result = api.handle(struct("id", 2, "method", "files.send", "params", struct("path", "recording.nwb", "dataset", "/acquisition/series/"))).result;
+            testCase.verifyEqual(string(result.kind), "group");
+            testCase.verifyEqual(reshape(string(result.fields), 1, []), ["neurodata_type", "data", "data_unit", "rate"]);
+            sent = evalin("base", "nansenApiTestDataset");
+            testCase.verifyEqual(string(sent{1}), "series");
+            testCase.verifyEqual(sent{2}.data, int16([0 3; 1 4; 2 5]));
+            testCase.verifyEqual(sent{2}.data_unit, "volts");
+            testCase.verifyEqual(sent{2}.rate.hz, 30);
+            testCase.verifyEqual(nansen.internal.hdf5FieldName("2nd name", "x2nd_name"), "x2nd_name_2");
+            response = api.handle(struct("id", 3, "method", "files.send", "params", struct("path", "recording.nwb", "dataset", "/nothing")));
             testCase.verifyEqual(string(response.error.code), "invalid-params");
-            response = api.handle(struct("id", 3, "method", "files.send", "params", struct("path", "project.nansen.json", "dataset", "/data")));
+            response = api.handle(struct("id", 4, "method", "files.send", "params", struct("path", "project.nansen.json", "dataset", "/data")));
             testCase.verifyEqual(string(response.error.code), "unsupported-file");
         end
 
