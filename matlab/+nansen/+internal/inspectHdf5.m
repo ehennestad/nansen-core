@@ -77,7 +77,7 @@ function item = dataset(file, info, path)
         shape = fliplr(double(info.Dataspace.Size));
     end
     item.shape = num2cell(shape);
-    item.dataType = dataType(info.Datatype);
+    item.dataType = nansen.internal.hdf5TypeName(info.Datatype);
     if string(info.Dataspace.Type) == "scalar"
         try
             value = plain(h5read(file, path));
@@ -96,29 +96,6 @@ function name = leaf(path)
     name = parts(end);
     if name == ""
         name = "/";
-    end
-end
-
-function name = dataType(type)
-    switch string(type.Class)
-        case "H5T_FLOAT"
-            name = "float" + string(8 * type.Size);
-        case "H5T_INTEGER"
-            if contains(string(type.Type), "_U")
-                name = "uint" + string(8 * type.Size);
-            else
-                name = "int" + string(8 * type.Size);
-            end
-        case "H5T_STRING"
-            name = "string";
-        case "H5T_ENUM"
-            name = "enum";
-        case "H5T_COMPOUND"
-            name = "compound";
-        case "H5T_REFERENCE"
-            name = "reference";
-        otherwise
-            name = "other";
     end
 end
 

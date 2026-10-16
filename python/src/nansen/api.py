@@ -75,6 +75,17 @@ def open_in_file_browser(folder: Path) -> None:
             raise NansenError("cannot-open", f"could not open {folder}: {error}") from None
 
 
+def close_matplotlib_figures() -> int:
+    """Close matplotlib's figure windows, when this process has imported pyplot (dev's Close All Figures: close all);
+    how many there were. With no pyplot imported, there are none."""
+    pyplot = sys.modules.get("matplotlib.pyplot")
+    if pyplot is None:
+        return 0
+    count = len(pyplot.get_fignums())
+    pyplot.close("all")
+    return count
+
+
 FILES_LIST_LIMIT = 500  # entries files.list gives at most, unless asked for more
 FILES_INSPECT_LIMIT = 2000  # groups, datasets and links files.inspect gives at most
 FILES_READ_LIMIT = 65536  # bytes files.read gives at most, unless asked for more
@@ -172,6 +183,11 @@ class Api:
         self.edit_file: Callable[[Path], None] = edit_in_editor
         # Where workspace.send puts entities: a namespace such as a notebook's globals(), or None for none
         self.workspace: Optional[Dict[str, Any]] = None
+        # Changes the working folder of the process the app was opened from (dev's Change Current Folder), or None when
+        # the app runs on its own (nansen app), whose folder is no one's; open_app sets os.chdir
+        self.change_folder: Optional[Callable[[Path], None]] = None
+        # Closes the figure windows of this process (dev's Close All Figures): matplotlib's, where pyplot is imported
+        self.close_figures: Callable[[], int] = close_matplotlib_figures
         self._lock = threading.RLock()
         self._methods: Dict[str, Callable[[dict], Any]] = {
             name.replace("__", "."): getattr(self, name) for name in dir(self)
@@ -338,7 +354,25 @@ class Api:
 
     def app__info(self, params: dict) -> dict:
         return {"name": "nansen", "language": "python", "version": __version__, "protocolVersion": PROTOCOL_VERSION,
-                "methods": self.method_names, "workspace": self.workspace is not None}
+                "methods": self.method_names, "workspace": self.workspace is not None,
+                "changeFolder": self.change_folder is not None}
+
+    def app__changeFolder(self, params: dict) -> dict:
+        """Make a folder the working folder of the process the app was opened from (dev's Change Current Folder, and
+        its file viewer's Make Current Folder): the project's, or a folder as files.resolve finds it."""
+        if self.change_folder is None:
+            raise NansenError("no-workspace", "this app was not opened from a Python session")
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        if not resolved["isFolder"]:
+            raise NansenError("invalid-params", f"{resolved['path']} is not a folder")
+        self.change_folder(Path(resolved["path"]))
+        return {"path": resolved["path"]}
+
+    def app__closeFigures(self, params: dict) -> dict:
+        """Close the figure windows of the process the app runs in (dev's Close All Figures); how many were open."""
+        return {"closed": int(self.close_figures() or 0)}
 
     def workspace__send(self, params: dict) -> dict:
         """Put the entities into the workspace the app was opened from, as a list named name."""
@@ -873,16 +907,20 @@ class Api:
 
     # -- files ---------------------------------------------------------------------------------
 
-    def files__resolve(self, params: dict) -> dict:
+    def _files_base(self, params: dict) -> Path:
+        """The folder files.resolve takes paths in: the data location's root (dataLocation, rootStoragePath), or the
+        project folder."""
         project = self._require_project()
+        if "dataLocation" in params:
+            return Path(project.require_dataset().root(params["dataLocation"], params.get("rootStoragePath")).path).resolve()
+        return Path(project.folder).resolve()
+
+    def files__resolve(self, params: dict) -> dict:
+        self._require_project()
         relative = str(params.get("path", ""))
         if relative.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", relative):
             raise NansenError("invalid-params", f"{relative!r} is not a relative path")
-        if "dataLocation" in params:
-            base = project.require_dataset().root(params["dataLocation"], params.get("rootStoragePath")).path
-        else:
-            base = project.folder
-        base = Path(base).resolve()
+        base = self._files_base(params)
         path = (base / relative).resolve()
         if path != base and base not in path.parents:
             raise NansenError("invalid-params", f"{relative!r} is outside {base}")
@@ -957,11 +995,21 @@ class Api:
         if resolved["isFolder"]:
             raise NansenError("invalid-params", f"{resolved['path']} is a folder")
         path = Path(resolved["path"])
-        name = params.get("name") or re.sub(r"\W", "_", path.stem)
+        dataset = params.get("dataset")
+        if dataset is not None and (not isinstance(dataset, str) or not dataset.startswith("/")):
+            raise NansenError("invalid-params", "dataset is the path of a dataset in the file, such as /acquisition/data")
+        stem = dataset.rstrip("/").rsplit("/", 1)[-1] if dataset else path.stem
+        name = params.get("name") or re.sub(r"\W", "_", stem)
         if not name or not name[0].isalpha():
             name = "data_" + name
         if not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name):
             raise NansenError("invalid-params", f"{name!r} is not a variable name")
+        if dataset:   # one dataset of an HDF5 file (NWB, MATLAB v7.3): dev's file viewer's NWB node Assign to Workspace
+            from .hdf5 import read_dataset
+
+            value, shape, data_type = read_dataset(path, dataset)
+            self.workspace[name] = value
+            return {"name": name, "path": str(path), "dataset": dataset, "shape": shape, "dataType": data_type}
         tries = [params["adapter"]] if params.get("adapter") else project.adapters.for_extension(path.suffix)
         if not tries:
             raise NansenError("unsupported-file", f"no file adapter of the project reads {path.suffix or 'these'} files")
@@ -977,6 +1025,22 @@ class Api:
             self.workspace[name] = value
             return {"name": name, "adapter": adapter_id, "path": str(path)}
         raise NansenError("invalid-data", f"{path.name} could not be read: " + "; ".join(problems))
+
+    def files__run(self, params: dict) -> dict:
+        """Run a file method (entityType @file) on a file now, as files.resolve finds it: dev's project filemethods on the
+        file viewer's context menu (Download File). The method gets the file's path and its root: the data location's
+        root folder it is in, or the project folder. Its result and log."""
+        project = self._require_project()
+        method = project.method(params["methodId"])
+        resolved = self.files__resolve(params)
+        if not resolved["exists"]:
+            raise NansenError("file-not-found", f"{resolved['path']} does not exist")
+        if resolved["isFolder"]:
+            raise NansenError("invalid-params", f"{resolved['path']} is a folder")
+        file = {"path": resolved["path"], "root": str(self._files_base(params))}
+        context = MethodContext(project=project, method=method, app_url=self.app_url, open_url=self.open_url)
+        result = project.run_file_method(method.id, file, params.get("options"), params.get("preset"), context)
+        return {"result": result, "log": context.lines, "path": resolved["path"]}
 
     def files__frame(self, params: dict) -> dict:
         """A frame (or a projection) of any stack file, as data.frame gives one of a variable: dev's imviewer on a file.

@@ -261,6 +261,10 @@ function detail = runApiCase(folder)
         registerViewables(viewables, nansen.internal.asCellOfStructs(session.viewables));
     end
     api = nansen.Api(Viewables=viewables);
+    % the base workspace, the current folder and the figures are left as they are
+    api.SendToWorkspace = @(name, value) [];
+    api.ChangeFolder = @(folder) [];
+    api.CloseFigures = @() 0;
     kept = struct("name", {}, "value", {});   % values a step keeps from its result, as ${name}, for the steps after it
     for number = 1:numel(steps)
         step = steps{number};

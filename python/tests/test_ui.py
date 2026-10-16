@@ -762,6 +762,76 @@ def test_browse_an_entitys_files(empty_app, page):
     page.wait_for_selector(f"{tree} ul.file-tree", state="detached")
 
 
+def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app, page):
+    """dev's Change Current Folder and Close All Figures (the Nansen menu), and its file viewer's Make Current Folder,
+    project filemethods (Download File) and NWB node Assign to Workspace."""
+    import shutil
+    from pathlib import Path
+
+    api = empty_app["api"]
+    demo = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(demo)}})
+    case = Path(__file__).resolve().parents[2] / "conformance" / "api" / "files"
+    for folder, name in (("methods", "lab.download_file.method.nansen.json"), ("python", "lab_download_file.py")):
+        (demo / folder).mkdir(exist_ok=True)
+        shutil.copy(case / "project" / folder / name, demo / folder / name)
+    first = api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"][0]
+    detail = api.handle({"id": 3, "method": "entities.get", "params": {"entityType": "session", "key": first["key"]}})["result"]
+    processed = next(loc for loc in detail["locations"] if loc["dataLocationIdentifier"] == "processed")
+    root = Path(api.handle({"id": 4, "method": "files.resolve", "params": {"dataLocation": "processed", "path": ""}})["result"]["path"])
+    folder = root / processed["paths"][0]
+    (folder / "roi").mkdir()
+    (folder / "roi" / "big.tif").write_bytes(b"")   # a placeholder, in the archive
+    archive = empty_app["folder"] / "archive"
+    (archive / (folder / "roi").relative_to(root)).mkdir(parents=True)
+    (archive / (folder / "roi" / "big.tif").relative_to(root)).write_bytes(b"frames")
+    shutil.copy(case / "project" / "data" / "recording.nwb", folder / "roi" / "recording.nwb")
+    namespace, folders, figures = {}, [], [3]
+    api.workspace, api.change_folder = namespace, folders.append
+    api.close_figures = lambda: figures.pop() if figures else 0
+    api.handle({"id": 5, "method": "project.open", "params": {"path": str(demo)}})
+
+    page.goto(empty_app["server"].url + "#/overview")
+    page.click(".hero .session-menu")
+    page.click(".menu .item:has-text(\"Make the project folder Python's current folder\")")
+    page.wait_for_selector(".toast:has-text('Current folder')")
+    assert folders == [demo.resolve()]
+    page.click(".hero .session-menu")
+    page.click(".menu .item:has-text('Close all figures')")
+    page.wait_for_selector(".toast:has-text('3 figure(s)')")
+
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open .path-list .browse")
+    tree = ".drawer .loc:has(.loc-head:has-text('processed'))"
+    page.locator(f"{tree} .path-list .browse").first.click()
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .make-current")
+    wait_until(lambda: len(folders) == 2)
+    assert folders[1] == (folder / "roi").resolve()
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
+    placeholder = f"{tree} li.file-entry[data-name='big.tif']"
+    page.wait_for_selector(f"{placeholder} .size:text-is('0 B')")
+    page.click(f"{placeholder} .file-methods")
+    page.click(".menu .item:has-text('Download File')")
+    page.fill(".dialog .field:has-text('Archive') input", str(archive))
+    page.click(".dialog .dialog-foot button:has-text('Run')")
+    page.wait_for_selector(".dialog .tool-result:has-text('\"downloaded\": true')")
+    assert (folder / "roi" / "big.tif").read_bytes() == b"frames"
+    page.wait_for_selector(f"{placeholder} .size:text-is('6 B')")
+    page.locator(".dialog .dialog-foot button:has-text('Close')").click()
+    page.click(f"{placeholder}", button="right")   # the same menu on the right mouse button
+    page.wait_for_selector(".menu .item:has-text('Download File')")
+    page.keyboard.press("Escape")
+
+    page.click(f"{tree} li[data-name='recording.nwb'] .inspect-file")
+    page.click(f"{tree} li.hdf5-group[data-path='/acquisition'] .tree-toggle")
+    page.click(f"{tree} li.hdf5-group[data-path='/acquisition/TwoPhotonSeries'] .tree-toggle")
+    page.click(f"{tree} li.hdf5-dataset[data-path='/acquisition/TwoPhotonSeries/data'] .send-dataset")
+    page.wait_for_selector(".toast:has-text('data (4 × 3 × 5 · uint16)')")
+    assert namespace["data"].shape == (4, 3, 5)
+
+
 def test_send_the_selection_to_the_workspace(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})

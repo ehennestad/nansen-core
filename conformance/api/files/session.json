@@ -14,6 +14,16 @@
     },
     {
       "request": {
+        "method": "app.changeFolder",
+        "id": 38,
+        "params": {}
+      },
+      "expect": {
+        "error": "no-project"
+      }
+    },
+    {
+      "request": {
         "method": "project.open",
         "id": 2,
         "params": {
@@ -242,6 +252,18 @@
               "name": "fragments",
               "isFolder": true,
               "size": null
+            },
+            {
+              "name": "matlab",
+              "isFolder": true
+            },
+            {
+              "name": "methods",
+              "isFolder": true
+            },
+            {
+              "name": "python",
+              "isFolder": true
             },
             {
               "name": "tables",
@@ -705,6 +727,297 @@
       },
       "expect": {
         "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "app.changeFolder",
+        "id": 39,
+        "params": {}
+      },
+      "expect": {
+        "result": {}
+      }
+    },
+    {
+      "request": {
+        "method": "app.changeFolder",
+        "id": 40,
+        "params": {
+          "path": "tables"
+        }
+      },
+      "expect": {
+        "result": {}
+      }
+    },
+    {
+      "request": {
+        "method": "app.changeFolder",
+        "id": 41,
+        "params": {
+          "path": "tables/session.csv"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "app.changeFolder",
+        "id": 42,
+        "params": {
+          "path": "no/such/folder"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "app.changeFolder",
+        "id": 43,
+        "params": {
+          "path": "../outside"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "app.closeFigures",
+        "id": 44,
+        "params": {}
+      },
+      "expect": {
+        "result": {
+          "closed": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.run",
+        "id": 45,
+        "params": {
+          "methodId": "lab.download_file",
+          "path": "data/placeholder.bin",
+          "options": {
+            "archive": "${scratch}/data/archive"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "result": {
+            "downloaded": true,
+            "bytes": 16
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.read",
+        "id": 46,
+        "params": {
+          "path": "data/placeholder.bin"
+        }
+      },
+      "expect": {
+        "result": {
+          "text": "recorded frames\n",
+          "size": 16
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.run",
+        "id": 47,
+        "params": {
+          "methodId": "lab.download_file",
+          "path": "data/placeholder.bin",
+          "options": {
+            "archive": "${scratch}/data/archive"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "result": {
+            "downloaded": false,
+            "bytes": 16
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.run",
+        "id": 48,
+        "params": {
+          "methodId": "lab.download_file",
+          "path": "data"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.run",
+        "id": 49,
+        "params": {
+          "methodId": "lab.download_file",
+          "path": "data/missing.bin"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "files.run",
+        "id": 50,
+        "params": {
+          "methodId": "core.file_stats",
+          "path": "data/placeholder.bin"
+        }
+      },
+      "expect": {
+        "error": "wrong-entity-type"
+      }
+    },
+    {
+      "request": {
+        "method": "files.run",
+        "id": 51,
+        "params": {
+          "methodId": "lab.nothing",
+          "path": "data/placeholder.bin"
+        }
+      },
+      "expect": {
+        "error": "unknown-method"
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 52,
+        "params": {
+          "path": "data/recording.nwb",
+          "dataset": "/acquisition/TwoPhotonSeries/data"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "data",
+          "dataset": "/acquisition/TwoPhotonSeries/data",
+          "shape": [
+            4,
+            3,
+            5
+          ],
+          "dataType": "uint16"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 53,
+        "params": {
+          "path": "data/recording.nwb",
+          "dataset": "/processing/ophys/Fluorescence/RoiResponseSeries/data",
+          "name": "dff"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "dff",
+          "shape": [
+            4,
+            2
+          ],
+          "dataType": "float64"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 54,
+        "params": {
+          "path": "data/recording.nwb",
+          "dataset": "/identifier"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "identifier",
+          "shape": [],
+          "dataType": "string"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 55,
+        "params": {
+          "path": "data/recording.nwb",
+          "dataset": "/acquisition"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 56,
+        "params": {
+          "path": "data/recording.nwb",
+          "dataset": "/no/such/data"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 57,
+        "params": {
+          "path": "data/recording.nwb",
+          "dataset": "acquisition/TwoPhotonSeries/data"
+        }
+      },
+      "expect": {
+        "error": "invalid-params"
+      }
+    },
+    {
+      "request": {
+        "method": "files.send",
+        "id": 58,
+        "params": {
+          "path": "tables/session.csv",
+          "dataset": "/data"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
       }
     }
   ]

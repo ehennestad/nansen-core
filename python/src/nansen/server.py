@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import hmac
+import os
 import queue
 import secrets
 import threading
@@ -183,6 +184,7 @@ def open_app(project=None, namespace: Optional[dict] = None, catalog=None, port:
     catalog = catalog if catalog is not None else Catalog(default_catalog_path())
     api = Api(catalog=catalog, project=project, start_queue=catalog.settings()["queue"]["autoStart"])
     api.workspace = namespace
+    api.change_folder = os.chdir   # this process is the user's: Change Current Folder makes it work in that folder
     server = serve(api, port=port)
     if open_browser:
         webbrowser.open(server.url)

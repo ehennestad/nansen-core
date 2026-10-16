@@ -224,6 +224,88 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(response.error.code), "invalid-params");
         end
 
+        function theCurrentFolderChangesAndFiguresClose(testCase)
+            % dev's Change Current Folder, its file viewer's Make Current Folder, and Close All Figures
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            api = nansen.Api(Project=project);
+            before = pwd;
+            testCase.addTeardown(@() cd(before));
+            info = api.handle(struct("id", 1, "method", "app.info")).result;
+            testCase.verifyTrue(info.changeFolder);
+            result = api.handle(struct("id", 2, "method", "app.changeFolder", "params", struct("path", "tables"))).result;
+            testCase.verifyTrue(endsWith(string(result.path), filesep + "tables"));
+            testCase.verifyTrue(endsWith(string(pwd), filesep + "tables"));
+            api.ChangeFolder = @(folder) assignin("base", "nansenApiTestFolder", string(folder));
+            testCase.addTeardown(@() evalin("base", "clear nansenApiTestFolder"));
+            result = api.handle(struct("id", 3, "method", "app.changeFolder")).result;
+            testCase.verifyEqual(evalin("base", "nansenApiTestFolder"), string(result.path));
+            testCase.verifyTrue(isfile(fullfile(result.path, "project.nansen.json")));
+            response = api.handle(struct("id", 4, "method", "app.changeFolder", "params", struct("path", "project.nansen.json")));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+            response = api.handle(struct("id", 5, "method", "app.changeFolder", "params", struct("path", "no/such")));
+            testCase.verifyEqual(string(response.error.code), "file-not-found");
+
+            closed = figure(Visible="off");
+            kept = figure(Visible="off");
+            testCase.addTeardown(@() delete(kept));
+            testCase.verifyGreaterThanOrEqual(nansen.Api.closeAllFigures(kept), 1);   % the app keeps its own window
+            testCase.verifyFalse(isvalid(closed));
+            testCase.verifyTrue(isvalid(kept));
+            api.CloseFigures = @() 3;
+            result = api.handle(struct("id", 6, "method", "app.closeFigures")).result;
+            testCase.verifyEqual(result.closed, 3);
+        end
+
+        function oneDatasetOfAnHdf5FileGoesToTheWorkspace(testCase)
+            % dev's file viewer's NWB node Assign to Workspace
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            file = fullfile(project.Folder, "recording.nwb");
+            h5create(file, "/acquisition/series/data", [3 2], Datatype="int16");   % 2 x 3 in the file's order
+            h5write(file, "/acquisition/series/data", int16([0 3; 1 4; 2 5]));
+            api = nansen.Api(Project=project);
+            api.SendToWorkspace = @(name, value) assignin("base", "nansenApiTestDataset", {name, value});
+            testCase.addTeardown(@() evalin("base", "clear nansenApiTestDataset"));
+            result = api.handle(struct("id", 1, "method", "files.send", "params", ...
+                struct("path", "recording.nwb", "dataset", "/acquisition/series/data"))).result;
+            testCase.verifyEqual(string(result.name), "data");
+            testCase.verifyEqual(result.shape, {2, 3});
+            testCase.verifyEqual(string(result.dataType), "int16");
+            sent = evalin("base", "nansenApiTestDataset");
+            testCase.verifyEqual(sent{2}, int16([0 3; 1 4; 2 5]));   % as h5read gives it
+            response = api.handle(struct("id", 2, "method", "files.send", "params", struct("path", "recording.nwb", "dataset", "/acquisition")));
+            testCase.verifyEqual(string(response.error.code), "invalid-params");
+            response = api.handle(struct("id", 3, "method", "files.send", "params", struct("path", "project.nansen.json", "dataset", "/data")));
+            testCase.verifyEqual(string(response.error.code), "unsupported-file");
+        end
+
+        function aFileMethodRunsOnAFile(testCase)
+            % dev's project filemethods on the file viewer's menu: its example, Download File, fetches a placeholder
+            fixture = testCase.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture);
+            project = nansen.demo.create(fullfile(fixture.Folder, "demo"));
+            case_ = fullfile(nansen.internal.repoRoot(), "conformance", "api", "files", "project");
+            mkdir(fullfile(project.Folder, "methods"));
+            mkdir(fullfile(project.Folder, "matlab"));
+            copyfile(fullfile(case_, "methods", "lab.download_file.method.nansen.json"), fullfile(project.Folder, "methods"));
+            copyfile(fullfile(case_, "matlab", "labDownloadFile.m"), fullfile(project.Folder, "matlab"));
+            archive = fullfile(fixture.Folder, "archive");
+            mkdir(fullfile(archive, "raw"));
+            nansen.internal.writeText(fullfile(archive, "raw", "big.tif"), "frames");
+            mkdir(fullfile(project.Folder, "raw"));
+            nansen.internal.writeText(fullfile(project.Folder, "raw", "big.tif"), "");   % a placeholder
+            api = nansen.Api(Project=project);
+            result = api.handle(struct("id", 1, "method", "files.run", "params", struct("methodId", "lab.download_file", ...
+                "path", "raw/big.tif", "options", struct("archive", archive)))).result;
+            testCase.verifyTrue(result.result.downloaded);
+            testCase.verifyEqual(result.result.bytes, 6);
+            testCase.verifyEqual(string(fileread(fullfile(project.Folder, "raw", "big.tif"))), "frames");
+            result = api.handle(struct("id", 2, "method", "files.run", "params", struct("methodId", "lab.download_file", "path", "raw/big.tif"))).result;
+            testCase.verifyFalse(result.result.downloaded);
+            response = api.handle(struct("id", 3, "method", "files.run", "params", struct("methodId", "core.file_stats", "path", "raw/big.tif")));
+            testCase.verifyEqual(string(response.error.code), "wrong-entity-type");
+        end
+
         function aMethodOnlyPythonHasRunsInAPythonWorker(testCase)
             % methods.run hands it to python -m nansen worker; a stand-in does to the task what outcome.json says
             testCase.assumeFalse(ispc, "the stand-in worker is a script with a shebang");

@@ -217,6 +217,10 @@ def _run_api_case(case: Path) -> str:
         if (case / "data").is_dir():   # files viewed without a project
             shutil.copytree(case / "data", Path(scratch) / "data")
         api = Api(start_queue=False, viewables=_viewables(session.get("viewables", [])))
+        # as MATLAB's app always has: a workspace (a scratch one here), a working folder and figures, left as they are
+        api.workspace = {}
+        api.change_folder = lambda folder: None
+        api.close_figures = lambda: 0
         kept: dict = {}  # values a step keeps from its result, as ${name}, for the steps after it
         try:
             for number, step in enumerate(steps, start=1):

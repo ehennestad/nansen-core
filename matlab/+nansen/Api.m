@@ -27,6 +27,8 @@ classdef Api < handle
         OpenFile function_handle = @nansen.Api.openInFileBrowser   % opens a file in its default app
         OpenUrl function_handle = @(url) web(char(url), "-browser")   % opens a web page in the system's browser
         EditFile function_handle = @nansen.Api.openInEditor   % opens a code file in MATLAB's editor
+        ChangeFolder function_handle = @(folder) cd(char(folder))   % makes a folder MATLAB's current folder
+        CloseFigures function_handle = @() nansen.Api.closeAllFigures()   % closes the figures; returns how many
         StartQueue (1,1) logical = false   % start the background worker whenever a project is opened (the app sets it)
     end
 
@@ -48,10 +50,10 @@ classdef Api < handle
                 obj.Viewables = nansen.Viewables();
             end
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
-            names = ["app.info", "app.openUrl", "app.plugins", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
+            names = ["app.info", "app.openUrl", "app.plugins", "app.changeFolder", "app.closeFigures", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
                 "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
-                "entities.remove", "columns.reset", "columns.import", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "view.updateRois", "view.detect", "view.methods", "view.run", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "adapters.import", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "rois.neuropil", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
+                "entities.remove", "columns.reset", "columns.import", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.run", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "view.updateRois", "view.detect", "view.methods", "view.run", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "adapters.import", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "rois.neuropil", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.setHidden", "methods.create", "methods.importLegacy", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
                 "pipelines.list", "pipelines.submit", "pipelines.save", "pipelines.delete", "pipelines.assign", "pipelines.markStep", "pipelines.queueNext", "pipelines.runNext", "tasks.submit", "tasks.comment", "tasks.list", "tasks.get", "tasks.cancel", "tasks.retry", "tasks.remove", "tasks.hold", "tasks.update", "tasks.reorder", ...
                 "tasks.clear", "tasks.runNext", "queue.status", "queue.start", "queue.stop", "queue.startWorker"];
@@ -163,7 +165,26 @@ classdef Api < handle
         function result = apiAppInfo(obj, ~)
             result = struct("name", 'nansen', "language", 'matlab', "version", '0.1.0', ...
                 "protocolVersion", char(nansen.Api.ProtocolVersion), "methods", {cellstr(obj.methodNames())}, ...
-                "workspace", true);
+                "workspace", true, "changeFolder", true);
+        end
+
+        function result = apiAppChangeFolder(obj, params)
+            % Make a folder MATLAB's current folder (dev's Change Current Folder, and its file viewer's Make Current
+            % Folder): the project's, or a folder as files.resolve finds it
+            resolved = obj.apiFilesResolve(params);
+            if ~resolved.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", resolved.path)
+            end
+            if ~resolved.isFolder
+                nansen.internal.throwError("invalid-params", "%s is not a folder", resolved.path)
+            end
+            obj.ChangeFolder(string(resolved.path));
+            result = struct("path", resolved.path);
+        end
+
+        function result = apiAppCloseFigures(obj, ~)
+            % Close MATLAB's figure windows (dev's Close All Figures: close all); how many were open
+            result = struct("closed", double(obj.CloseFigures()));
         end
 
         function result = apiWorkspaceSend(obj, params)
@@ -815,21 +836,12 @@ classdef Api < handle
         end
 
         function result = apiFilesResolve(obj, params)
-            project = obj.requireProject();
+            obj.requireProject();
             relative = string(nansen.internal.getField(params, "path", ""));
             if startsWith(relative, ["/", "\"]) || ~isempty(regexp(relative, "^[A-Za-z]:", "once"))
                 nansen.internal.throwError("invalid-params", "'%s' is not a relative path", relative)
             end
-            if isfield(params, "dataLocation")
-                rootPath = "";
-                if isfield(params, "rootStoragePath")
-                    rootPath = string(params.rootStoragePath);
-                end
-                base = project.requireDataset().root(string(params.dataLocation), rootPath).Path;
-            else
-                base = project.Folder;
-            end
-            base = regexprep(nansen.internal.normalizePath(base), "(?<=.)/$", "");
+            base = obj.filesBase(params);
             path = nansen.internal.normalizePath(base + "/" + relative);
             if path ~= base && ~startsWith(path, regexprep(base, "/$", "") + "/")
                 nansen.internal.throwError("invalid-params", "'%s' is outside %s", relative, base)
@@ -923,7 +935,8 @@ classdef Api < handle
 
         function result = apiFilesSend(obj, params)
             % Read any file and put its value in the base workspace, as dev's file viewer's Load to workspace: with the
-            % adapter given, or the first of those naming its extension that reads it
+            % adapter given, or the first of those naming its extension that reads it. With dataset, that dataset of an
+            % HDF5 file (dev's NWB node Assign to Workspace)
             project = obj.requireProject();
             resolved = obj.apiFilesResolve(params);
             if ~resolved.exists
@@ -933,6 +946,15 @@ classdef Api < handle
                 nansen.internal.throwError("invalid-params", "%s is a folder", resolved.path)
             end
             [~, stem, extension] = fileparts(string(resolved.path));
+            dataset = "";
+            if isfield(params, "dataset") && ~isempty(params.dataset)
+                dataset = string(params.dataset);
+                if ~isscalar(dataset) || ~startsWith(dataset, "/")
+                    nansen.internal.throwError("invalid-params", "dataset is the path of a dataset in the file, such as /acquisition/data")
+                end
+                parts = split(regexprep(dataset, "/+$", ""), "/");
+                stem = parts(end);
+            end
             name = string(nansen.internal.getField(params, "name", ""));
             if name == ""
                 name = regexprep(stem, "\W", "_");
@@ -942,6 +964,13 @@ classdef Api < handle
             end
             if ~isvarname(name)
                 nansen.internal.throwError("invalid-params", "'%s' is not a variable name", name)
+            end
+            if dataset ~= ""
+                [value, shape, dataType] = nansen.internal.readHdf5Dataset(string(resolved.path), dataset);
+                obj.SendToWorkspace(name, value);
+                result = struct("name", char(name), "path", char(resolved.path), "dataset", char(dataset), ...
+                    "shape", {num2cell(shape)}, "dataType", char(dataType));
+                return
             end
             adapterId = string(nansen.internal.getField(params, "adapter", ""));
             tries = adapterId;
@@ -967,6 +996,29 @@ classdef Api < handle
                 return
             end
             nansen.internal.throwError("invalid-data", "%s could not be read: %s", stem + extension, strjoin(problems, "; "))
+        end
+
+        function result = apiFilesRun(obj, params)
+            % Run a file method (entityType @file) on a file now, as files.resolve finds it: dev's project filemethods on
+            % the file viewer's context menu (Download File). The method gets the file's path and its root: the data
+            % location's root folder it is in, or the project folder
+            project = obj.requireProject();
+            method = project.method(string(nansen.Api.param(params, "methodId")));
+            resolved = obj.apiFilesResolve(params);
+            if ~resolved.exists
+                nansen.internal.throwError("file-not-found", "%s does not exist", resolved.path)
+            end
+            if resolved.isFolder
+                nansen.internal.throwError("invalid-params", "%s is a folder", resolved.path)
+            end
+            file = struct("path", string(resolved.path), "root", replace(obj.filesBase(params), "/", filesep));
+            context = nansen.MethodContext(Project=project, Method=method);
+            value = project.runFileMethod(method.Id, file, Options=obj.optionsOf(params), ...
+                Preset=string(nansen.internal.getField(params, "preset", "")), Context=context);
+            if isempty(value) && isnumeric(value)
+                value = NaN;   % null
+            end
+            result = struct("result", {value}, "log", {cellstr(context.Lines)}, "path", resolved.path);
         end
 
         function result = apiFilesFrame(obj, params)
@@ -2616,6 +2668,22 @@ classdef Api < handle
             assignin("base", name, value);
         end
 
+        function count = closeAllFigures(keep)
+            %closeAllFigures Close the figures close all closes (those whose handles are visible), but keep (the app's
+            % own window); how many were closed
+            arguments
+                keep = []
+            end
+            figures = findobj(groot, "-depth", 1, "Type", "figure");
+            if ~isempty(keep) && ~isempty(figures)
+                figures = figures(arrayfun(@(f) f ~= keep, figures));
+            end
+            count = numel(figures);
+            if count > 0
+                close(figures);
+            end
+        end
+
         function openInFileBrowser(folder)
             %openInFileBrowser Show a folder in Finder, Explorer or the desktop's file manager
             if ispc
@@ -2699,6 +2767,22 @@ classdef Api < handle
     end
 
     methods (Access = private)
+        function base = filesBase(obj, params)
+            % The folder files.resolve takes paths in: the data location's root (dataLocation, rootStoragePath), or the
+            % project folder; normalised, with no slash at the end
+            project = obj.requireProject();
+            if isfield(params, "dataLocation")
+                rootPath = "";
+                if isfield(params, "rootStoragePath")
+                    rootPath = string(params.rootStoragePath);
+                end
+                base = project.requireDataset().root(string(params.dataLocation), rootPath).Path;
+            else
+                base = project.Folder;
+            end
+            base = regexprep(nansen.internal.normalizePath(base), "(?<=.)/$", "");
+        end
+
         function tf = hasPipelines(~, project, entityType)
             listed = string(nansen.internal.asCellstr(nansen.internal.getField(project.entityType(entityType), "fragments", {})));
             tf = ismember("core.pipeline", listed);

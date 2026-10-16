@@ -23,8 +23,16 @@
           }
           if (item.kind === "dataset") {
             const shape = item.shape.length ? item.shape.join(" × ") : "scalar";
+            // dev's NWB node Assign to Workspace: this dataset alone
+            const send = app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-dataset", { title: "Load this dataset into the workspace",
+              on: { click: async () => {
+                try {
+                  const sent = await app.client.request("files.send", { ...where, dataset: item.path });
+                  N.toast("In the workspace", `${sent.name} (${sent.shape.length ? sent.shape.join(" × ") : "scalar"} · ${sent.dataType})`, "success");
+                } catch (error) { N.showError(error, "Could not load the dataset"); }
+              } } }, N.icon("download", 13)) : null;
             return h("li.hdf5-dataset", { dataset: { path: item.path }, title: describe(item) }, N.icon("file", 13), h("span.name", item.name), tag,
-              h("span.muted.size", "value" in item ? String(item.value) : `${shape} · ${item.dataType}`));
+              h("span.muted.size", "value" in item ? String(item.value) : `${shape} · ${item.dataType}`), send);
           }
           let open = null;
           const row = h("li.folder-entry.hdf5-group", { dataset: { path: item.path }, title: describe(item) },
@@ -153,6 +161,7 @@
             N.icon("folder", 13)))),
         h("div.spacer"),
         h("div.actions",
+          h("button.btn.ghost.icon.session-menu", { title: "Current folder and figures", on: { click: (event) => sessionMenu(app, event.currentTarget) } }, N.icon("more")),
           h("button.btn.ghost.icon.edit-project", { title: "Change the title, description and table names", on: { click: () => editProjectDialog(app) } }, N.icon("edit")),
           dataset ? h("button.btn", { on: { click: () => app.scan() } }, N.icon("scan"), "Scan stores") : null,
           dataset ? h("button.btn.primary", { on: { click: () => app.sync() } }, N.icon("sync"), "Sync tables") : null)),
@@ -170,6 +179,30 @@
           h("div.card.modules", h("div.card-head", N.icon("layers"), h("h3", "Modules"), h("div.spacer"),
             h("button.btn.small.manage-modules", { on: { click: () => modulesDialog(app) } }, N.icon("settings"), "Manage")), modules))));
   };
+
+  /** dev's Nansen menu items for the session the app was opened from: Change Current Folder and Close All Figures. */
+  function sessionMenu(app, anchor) {
+    const items = [];
+    if (app.info && app.info.changeFolder) {
+      items.push({ label: `Make the project folder ${sessionName(app)}'s current folder`, icon: "folder", onClick: () => changeFolder(app, { path: "" }) });
+    }
+    items.push({ label: "Close all figures", icon: "x", onClick: async () => {
+      try {
+        const result = await app.client.request("app.closeFigures");
+        N.toast("Figures closed", result.closed ? `${result.closed} figure(s)` : "There were none", "success");
+      } catch (error) { N.showError(error, "Could not close the figures"); }
+    } });
+    N.menu(anchor, items);
+  }
+  const sessionName = (app) => (app.info && app.info.language === "matlab" ? "MATLAB" : "Python");
+  /** Make a folder (as files.resolve takes it) the current folder of the session the app was opened from. */
+  async function changeFolder(app, where) {
+    try {
+      const result = await app.client.request("app.changeFolder", where);
+      N.toast("Current folder", result.path, "success");
+    } catch (error) { N.showError(error, "Could not change the current folder"); }
+  }
+  N.changeFolder = changeFolder;
 
   /* ------------------------------------------------------------------ entities */
   N.views.entities = async function (app, content, entityType) {
@@ -668,9 +701,16 @@
       return c && (c.dataType === "number" || c.dataType === "integer") ? N.fmt.number(v) : String(v);
     };
     const props = h("dl.props", values.map(([k, v]) => [h("dt", label(k)), h("dd", show(k, v))]));
+    // the project's file methods (entityType @file), on each file's menu: dev's project filemethods (Download File)
+    const fileMethods = (app.methods || []).filter((m) => m.entityType === "@file" && !m.hidden);
     const locations = (detail.locations || []).map((loc) => {
       const files = Object.entries(loc.files || {});
       const where = (p) => ({ dataLocation: loc.dataLocationIdentifier, rootStoragePath: loc.rootStoragePathIdentifier, path: p });
+      const fileMenu = (anchor, p, name, refresh) => N.menu(anchor, [{ heading: name }].concat(fileMethods.map((m) => ({
+        label: m.title, icon: "zap", onClick: () => toolDialog(app, m, { where: where(p), name, onDone: refresh }) }))));
+      // dev's file viewer's Make Current Folder, on folders
+      const current = (p) => app.info && app.info.changeFolder ? h("button.btn.ghost.icon.small.make-current",
+        { title: `Make it ${sessionName(app)}'s current folder`, on: { click: () => changeFolder(app, where(p)) } }, N.icon("crosshair", 13)) : null;
       const pathActions = (p) => h("span.path-actions",
         h("button.btn.ghost.icon.small", { title: "Show in the file browser", on: { click: () => app.client.request("files.reveal", where(p))
           .catch((error) => N.showError(error, "Could not open the folder")) } }, N.icon("folder", 13)),
@@ -688,8 +728,19 @@
           N.fill(el, listing.entries.length ? listing.entries.map((entry) => {
             const child = p ? `${p}/${entry.name}` : entry.name;
             if (!entry.isFolder) {
-              return h("li.file-entry", { dataset: { name: entry.name } }, N.icon("file", 13), h("span.name", entry.name),
+              // after a file method: the file's size again (a placeholder downloaded)
+              const refresh = () => app.client.request("files.list", where(p)).then((listing) => {
+                const now = listing.entries.find((e) => e.name === entry.name);
+                if (now) fileItem.querySelector(".size").textContent = N.fmt.bytes(now.size);
+              }).catch(() => {});
+              const fileItem = h("li.file-entry", { dataset: { name: entry.name }, on: { contextmenu: (event) => {
+                if (!fileMethods.length) return;
+                event.preventDefault();
+                fileMenu(event.currentTarget, child, entry.name, refresh);
+              } } }, N.icon("file", 13), h("span.name", entry.name),
                 h("span.muted.size", N.fmt.bytes(entry.size)),
+                fileMethods.length ? h("button.btn.ghost.icon.small.file-methods", { title: "The project's file methods (also the right mouse button)",
+                  on: { click: (event) => fileMenu(event.currentTarget, child, entry.name, refresh) } }, N.icon("zap", 13)) : null,
                 /\.(nwb|h5|hdf5|he5|mat)$/i.test(entry.name) ? h("button.btn.ghost.icon.small.inspect-file", { title: "Show what the file holds",
                   on: { click: (event) => {
                     const li = event.currentTarget.closest("li");
@@ -721,6 +772,7 @@
                 h("button.btn.ghost.icon.small.open-file", { title: "Open in its app", on: { click: () => app.client.request("files.open", where(child))
                   .catch((error) => N.showError(error, "Could not open the file")) } }, N.icon("eye", 13)),
                 pathActions(child));
+              return fileItem;
             }
             let open = null;
             const row = h("li.folder-entry", { dataset: { name: entry.name } },
@@ -741,6 +793,7 @@
                   row.classList.add("open");
                 } catch (error) { N.showError(error, "Could not make the folder"); }
               } } }, N.icon("plus", 13)),
+              current(child),
               pathActions(child));
             return row;
           }) : h("li.muted", "Empty folder"), listing.truncated ? h("li.muted", `Only the first ${listing.entries.length} are shown`) : null);
@@ -779,7 +832,7 @@
           duplicate ? h("span.pill.warn", { title: "More than one folder is this entity: keep one by excluding the others" }, `${paths.length} folders`) : null),
         h("ul.path-list", paths.map((p) => {
           let li = null;
-          li = h("li", h("span.path-text", p), browse(p, () => li), pathActions(p), duplicate ? exclude(p) : null);
+          li = h("li", h("span.path-text", p), browse(p, () => li), loc.fileSystemType !== "file" ? current(p) : null, pathActions(p), duplicate ? exclude(p) : null);
           return li;
         })),
         files.length ? h("dl.props", { style: { marginTop: "8px" } }, files.map(([name, paths]) => [h("dt", name),
@@ -1721,7 +1774,7 @@
               } } });
               const item = h("li" + (m.hidden ? ".muted" : ""), { dataset: { method: m.id } },
                 h("div.grow", h("div.title", m.title, m.legacy ? h("span.pill.legacy-pill", { style: { marginLeft: "8px" }, title: "A session method of NANSEN dev, run as it is in MATLAB" }, "dev") : null),
-                  h("div.sub", `${m.id} · ${m.tool ? "project tool" : m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)),
+                  h("div.sub", `${m.id} · ${m.tool ? "project tool" : m.entityType === "@file" ? "file method" : m.entityType === "*" ? "any entity" : m.entityType} · ${m.languages.join(", ")}`)),
                 h("label.switch.method-shown", { title: "Shown in the run menus" }, shown, h("span")));
               return item;
             }))))));
@@ -2163,12 +2216,14 @@
   }
 
   /* Run a project tool: its options, then what it returned and logged. */
-  function toolDialog(app, method) {
+  /** A project tool's dialog: its options, Run, its result and log. With file ({where, name, onDone?}), a file method's,
+   * run on that file (files.run). */
+  function toolDialog(app, method, file = null) {
     const form = N.schemaForm(method.options || {}, {});
     const output = h("div.tool-output.hidden");
     let running = false;
     const d = N.dialog({
-      title: method.title,
+      title: file ? `${method.title} · ${file.name}` : method.title,
       content: h("div", { style: { padding: "16px 20px" } },
         method.description ? h("p.muted", { style: { marginTop: 0 } }, method.description) : null,
         Object.keys((method.options || {}).properties || {}).length ? form.el : h("p.muted", "It has no options."), output),
@@ -2182,7 +2237,9 @@
           N.fill(output, h("div.muted", "Running…"));
           output.classList.remove("hidden");
           try {
-            const answer = await app.client.request("tools.run", { methodId: method.id, options: form.getValue() });
+            const answer = file ? await app.client.request("files.run", { ...file.where, methodId: method.id, options: form.getValue() })
+              : await app.client.request("tools.run", { methodId: method.id, options: form.getValue() });
+            if (file && file.onDone) file.onDone();
             N.fill(output,
               h("div.section-title", "Result"), h("pre.log.tool-result", JSON.stringify(answer.result, null, 2)),
               h("div.section-title", "Log"), h("pre.log", answer.log.length ? answer.log.join("\n") : "(nothing logged)"));

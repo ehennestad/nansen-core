@@ -1915,6 +1915,34 @@ classdef Project < handle
             result = nansen.runTool(method, obj, values, context);
         end
 
+        function result = runFileMethod(obj, methodId, file, options)
+            %runFileMethod Run a file method on a file now, in this MATLAB session; returns what it returns
+            %
+            %   file is a struct with path (the file's) and root (the folder of the data location it is in, or the
+            %   project folder), as dev's filemethods got them.
+            arguments
+                obj
+                methodId (1,1) string
+                file (1,1) struct
+                options.Options = struct()
+                options.Preset (1,1) string = ""
+                options.Context = []
+            end
+            method = obj.method(methodId);
+            values = struct();
+            if options.Preset ~= ""
+                values = obj.preset(methodId, options.Preset);
+            end
+            values = nansen.internal.mergeStructs(values, options.Options);
+            context = options.Context;
+            if isempty(context)
+                context = nansen.MethodContext(Project=obj, Method=method);
+            elseif isempty(context.Project)
+                context.Project = obj;
+            end
+            result = nansen.runFileMethod(method, file, values, context);
+        end
+
         function names = updateValues(obj, entity, values)
             %updateValues Write values (a struct) into the entity's table row, those of columns the table has
             %
