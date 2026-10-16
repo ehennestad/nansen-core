@@ -2048,7 +2048,9 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     # time series: the per-frame image stats and the motion shifts, their columns named
     page.click(".drawer li[data-variable='FrameStats'] .plot-data")
     page.wait_for_selector(".traces-dialog .trace-roi-list li:has-text('std')")
-    assert page.locator(".trace-roi-list li").all_inner_texts() == ["mean", "min", "max", "std"]
+    assert page.locator(".trace-roi-list li").all_inner_texts() == ["mean", "min", "max", "std", "median", "p0.005", "p0.05", "p99.95", "p99.995"]
+    # as dev's plotImageStats: the mean between the extremes and between the 0.05 and 99.95 percentiles
+    assert page.locator(".trace-roi-list li.selected").all_inner_texts() == ["mean", "min", "max", "p0.05", "p99.95"]
     assert page.locator(".traces-dialog .trace-variable").all_inner_texts() == ["FrameStats", "MotionCorrectionShifts"]
     page.locator(".traces-dialog .dialog-head button[title='Close']").click()
 

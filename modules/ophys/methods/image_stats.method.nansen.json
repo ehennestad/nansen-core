@@ -6,7 +6,7 @@
   "title": "Image statistics",
   "category": "Two-photon/Inspect",
   "entityType": "*",
-  "description": "Size and intensity of the entity's image stack, with its average and maximum projections saved as images. Fills the ophys.image_stats columns.",
+  "description": "Size and intensity of the entity's image stack, with its average and maximum projections saved as images, and each frame's statistics (dev's PixelStatCalculator: mean, minimum, maximum, standard deviation, median and the 0.005, 0.05, 99.95 and 99.995 percentiles), which the signals dialog plots over the frames, as dev's plotImageStats. Fills the ophys.image_stats columns.",
   "implementations": {
     "python": "ophys_methods:image_stats",
     "matlab": "ophys.imageStats"
@@ -36,7 +36,7 @@
         "type": "string",
         "default": "FrameStats",
         "title": "Frame statistics",
-        "description": "Variable each frame's mean, minimum, maximum and standard deviation (frames x 4) is saved to. Leave empty to not save it."
+        "description": "Variable each frame's mean, minimum, maximum, standard deviation, median and 0.005, 0.05, 99.95 and 99.995 percentiles (frames x 9) are saved to. Leave empty to not save it."
       },
       "firstFrame": {
         "type": "integer",

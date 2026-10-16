@@ -245,6 +245,10 @@
   N.views.traces = async function (app, entityType, key, signalVariables, { variable = null, roiVariable = null, column = 0, viewable = null } = {}) {
     if (viewable) signalVariables = [viewable.name];
     const state = { variables: variable ? [variable] : signalVariables.slice(0, 1), columns: [column], range: [null, null], count: 0, rois: null };
+    // per-frame image statistics (ophys.image_stats' FrameStats) open as dev's plotImageStats drew them: the mean between
+    // the minimum and maximum and between the 0.05 and 99.95 percentiles
+    let firstLoad = column === 0;
+    const IMAGE_STATS = ["mean", "min", "max", "p0.05", "p99.95"];
     const status = h("div.muted.trace-status", "Loading…");
     const plot = N.tracePlot({
       height: 150,
@@ -350,6 +354,12 @@
         if (result.rois) state.rois = result.rois;
         state.names = (result.traces.find((t) => t.columnNames) || {}).columnNames || null;
         state.count = Math.min(...result.traces.map((t) => t.count));
+        if (firstLoad && state.names && state.names[0] === "mean" && IMAGE_STATS.every((n) => state.names.includes(n))) {
+          firstLoad = false;
+          state.columns = IMAGE_STATS.map((n) => state.names.indexOf(n));
+          return load();
+        }
+        firstLoad = false;
         plot.draw(result, state.columns.map(labelOf));
         showEvents();
         status.textContent = `${result.frames} frames` + (result.frameRate ? ` at ${N.fmt.number(result.frameRate)} Hz` : "") + (start !== null ? ` · showing ${result.start}–${result.start + (result.points - 1) * result.step} (double-click for all)` : " · drag across a plot to zoom") +

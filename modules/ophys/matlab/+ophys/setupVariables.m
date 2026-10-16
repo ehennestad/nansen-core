@@ -23,7 +23,7 @@ function result = setupVariables(project, options, context)
         "TwoPhotonSeries_Denoised", "Denoised stack", "two_photon_series_denoised.npy", "npy", "ImageStack";
         "TwoPhotonSeries_Deinterleaved", "Deinterleaved stack", "two_photon_series_deinterleaved.npy", "npy", "ImageStack"
         "TwoPhotonSeries_Cropped", "Cropped stack", "two_photon_series_cropped.npy", "npy", "ImageStack"};
-    columnNames = struct("MotionCorrectionShifts", {{'rows', 'columns'}}, "FrameStats", {{'mean', 'min', 'max', 'std'}});
+    columnNames = struct("MotionCorrectionShifts", {{'rows', 'columns'}}, "FrameStats", {{'mean', 'min', 'max', 'std', 'median', 'p0.005', 'p0.05', 'p99.95', 'p99.995'}});
     documents = {};
     if strlength(string(options.rawFilePattern)) > 0
         documents{end + 1} = struct("schemaType", "nansen.dataVariable", "schemaVersion", "0.1.0", ...

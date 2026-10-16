@@ -1167,12 +1167,17 @@
           "traces": [
             {
               "variable": "FrameStats",
-              "count": 4,
+              "count": 9,
               "columnNames": [
                 "mean",
                 "min",
                 "max",
-                "std"
+                "std",
+                "median",
+                "p0.005",
+                "p0.05",
+                "p99.95",
+                "p99.995"
               ],
               "columns": [
                 {
@@ -1191,6 +1196,106 @@
                     91.9797,
                     98.1465,
                     95.1129
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.traces",
+        "id": 2310,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variables": [
+            "FrameStats"
+          ],
+          "columns": [
+            1,
+            4,
+            5,
+            6,
+            7,
+            8,
+            2
+          ],
+          "maxPoints": 4
+        }
+      },
+      "expect": {
+        "result": {
+          "traces": [
+            {
+              "variable": "FrameStats",
+              "columns": [
+                {
+                  "column": 1,
+                  "values": [
+                    41.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                {
+                  "column": 4,
+                  "values": [
+                    203.0,
+                    197.0,
+                    192.0,
+                    200.0
+                  ]
+                },
+                {
+                  "column": 5,
+                  "values": [
+                    41.1535,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                {
+                  "column": 6,
+                  "values": [
+                    42.5345,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                {
+                  "column": 7,
+                  "values": [
+                    590.471,
+                    650.494,
+                    615.4425,
+                    769.0975
+                  ]
+                },
+                {
+                  "column": 8,
+                  "values": [
+                    611.6471,
+                    670.7494,
+                    617.7443,
+                    785.2098
+                  ]
+                },
+                {
+                  "column": 2,
+                  "values": [
+                    614.0,
+                    673.0,
+                    618.0,
+                    787.0
                   ]
                 }
               ]
@@ -8412,11 +8517,11 @@
               "kind": "array",
               "size": [
                 5,
-                4
+                9
               ],
               "min": 34.0,
               "max": 812.0,
-              "mean": 211.463
+              "mean": 245.9319
             }
           ]
         }
@@ -9234,7 +9339,7 @@
               "name": "FrameStats",
               "size": [
                 5,
-                4
+                9
               ]
             }
           ]
@@ -9715,7 +9820,7 @@
           ],
           "columns": [
             0,
-            4
+            9
           ],
           "maxPoints": 5
         }
@@ -9726,7 +9831,7 @@
           "traces": [
             {
               "variable": "PlaneFrameStats",
-              "count": 8,
+              "count": 18,
               "columns": [
                 {
                   "column": 0,
@@ -9739,7 +9844,7 @@
                   ]
                 },
                 {
-                  "column": 4,
+                  "column": 9,
                   "values": [
                     206.7607,
                     194.9492,
@@ -10624,7 +10729,7 @@
               "name": "FrameStats",
               "size": [
                 4,
-                8
+                18
               ]
             }
           ]

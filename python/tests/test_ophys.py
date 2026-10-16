@@ -976,7 +976,7 @@ def test_every_plane_is_processed_in_one_run_as_each_would_be_alone(tmp_path):
         assert [pick(s) for s in each] == [pick(s) for s in stats["planes"]]
         average = load("Average")
         assert average.shape == (32, 32, 1, 2, 1) and np.array_equal(average[:, :, 0, 1, 0], load("Average2"))
-        assert np.array_equal(load("Stats")[:, 4:], load("Stats2"))
+        assert load("Stats").shape == (40, 18) and np.array_equal(load("Stats")[:, 9:], load("Stats2"))
         frame = api.handle({"id": 3, "method": "data.frame", "params": {"entityType": "session", "key": entity.key, "variable": "Average", "plane": 1}})
         assert (frame["result"]["frames"], frame["result"]["planes"]) == (1, 2)
         # ROIs of every plane in one file, with their places; the signals of each from its own plane
