@@ -2634,11 +2634,13 @@
       if (!last || !folder || !name) return;
       const sep = last.path.includes("\\") && !last.path.includes("/") ? "\\" : "/";
       const root = last.path.slice(0, last.path.lastIndexOf(sep));
-      name.addEventListener("input", () => {
+      const follow = () => {
         if (folder.value !== "" && folder.value !== suggested) return;   // a folder of one's own stays
         suggested = name.value.trim() ? root + sep + name.value.trim() : "";
         folder.value = suggested;
-      });
+      };
+      name.addEventListener("input", follow);
+      follow();   // a name typed before the projects were listed
     }).catch(() => {});
   }
 
