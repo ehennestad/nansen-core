@@ -316,6 +316,80 @@
       brightnessButton.classList.toggle("active", on);
       if (on) drawHistogram();
     }
+
+    // --- imviewer's thumbnail selector (Shift+P, Shift+B, Shift+F): a small image of each projection, binning or filter,
+    // picked by a click. As dev's: projections of the stack, binnings at the frame shown, filters of its average
+    const thumbs = h("div.viewer-thumbs.hidden");
+    const thumbsButton = h("button.btn.ghost.icon.small.viewer-thumbs-toggle", { title: "Thumbnails of the projections, binnings and filters (Shift+P, Shift+F)",
+      on: { click: () => showThumbs(thumbs.classList.contains("hidden") ? state.thumbs || "projection" : null) } }, N.icon("grid", 14));
+    const THUMBS = {
+      projection: () => [["frame", "Frame", { frame: state.frame }], ["mean", "Average", { projection: "mean" }], ["max", "Maximum", { projection: "max" }],
+        ["std", "Standard deviation", { projection: "std" }], ["correlation", "Local correlation", { projection: "correlation" }], ["meanClahe", "Mean CLAHE", { projection: "meanClahe" }]],
+      binning: () => [["", "No binning", { frame: state.frame }]].concat([["mean", "Mean"], ["max", "Max"]].map(([method, label]) =>
+        [`${method}:10`, `${label} of 10`, { frame: state.frame, bin: { size: 10, method } }])),
+      filter: () => [...filterPick.options].map((o) => [o.value, o.textContent, { projection: "mean", ...(o.value ? { filter: o.value } : {}) }]),
+    };
+    /** The thumbnails of a kind (projection, binning or filter), or none (null). */
+    async function showThumbs(kind) {
+      state.thumbs = kind || state.thumbs;
+      thumbs.classList.toggle("hidden", !kind);
+      thumbsButton.classList.toggle("active", Boolean(kind));
+      if (!kind) return;
+      const tabs = Object.keys(THUMBS).map((k) => h("button.btn.ghost.small.viewer-thumbs-kind" + (k === kind ? ".active" : ""), { dataset: { kind: k },
+        disabled: k !== "filter" && state.frames < 2, on: { click: () => showThumbs(k) } }, N.titleCase(k)));
+      const current = { projection: state.mode, binning: state.bin || "", filter: state.filter || "" }[kind];
+      const items = THUMBS[kind]().map(([value, label, at]) => {
+        const thumb = h("canvas.viewer-thumb-image");
+        const item = h("button.viewer-thumb" + (value === current ? ".active" : ""), { dataset: { value }, title: label, on: { click: () => pickThumb(kind, value) } },
+          thumb, h("span.viewer-thumb-label", label));
+        const base = viewable ? { viewable: viewable.id } : options.file ? { ...options.file } : { entityType, key, variable };
+        if ((options.file || viewable) && state.adapter) base.adapter = state.adapter;
+        app.client.request(viewable ? "view.frame" : options.file ? "files.frame" : "data.frame", { ...base, channel: state.channel, plane: state.plane, ...at })
+          .then((frame) => { paint(thumb, frame, null, false, new Set(), false, state.colormap); item.classList.add("ready"); })
+          .catch(() => { item.disabled = true; item.classList.add("failed"); });
+        return item;
+      });
+      N.fill(thumbs, h("div.viewer-thumbs-kinds", tabs), h("div.viewer-thumbs-strip", items));
+    }
+    function pickThumb(kind, value) {
+      if (kind === "projection") { mode.value = value; state.mode = value; }
+      else if (kind === "binning") {
+        if (value) state.binLast = value;
+        state.bin = value; binPick.value = value;
+        if (state.mode !== "frame") { state.mode = "frame"; mode.value = "frame"; }
+      } else { state.filter = value; filterPick.value = value; }
+      thumbs.querySelectorAll(".viewer-thumb").forEach((b) => b.classList.toggle("active", b.dataset.value === value));
+      show();
+    }
+
+    // --- dev's zStackPlaneFinder: on a z-stack (its planes as frames), a box in each corner of the image; a click on a
+    // box takes the frame shown as the plane that corner is in focus in. The four planes, from the top left corner
+    // counter-clockwise (as dev's: top left, bottom left, bottom right, top right), show under the image to copy
+    const corners = h("div.viewer-corners.hidden");
+    const cornerBar = h("div.viewer-corner-bar.hidden");
+    holder.appendChild(corners);
+    const cornerButton = h("button.btn.ghost.icon.small.viewer-corner-tool", {
+      title: "Plane finder: on a z-stack, click a corner's box at the frame where that corner is in focus (dev's zStackPlaneFinder)",
+      on: { click: () => showCorners(corners.classList.contains("hidden")) } }, N.icon("crosshair", 14));
+    const cornerPlanes = [null, null, null, null];
+    const CORNERS = [["top-left", "Top left"], ["bottom-left", "Bottom left"], ["bottom-right", "Bottom right"], ["top-right", "Top right"]];
+    function showCorners(on) {
+      corners.classList.toggle("hidden", !on);
+      cornerBar.classList.toggle("hidden", !on);
+      cornerButton.classList.toggle("active", on);
+      drawCorners();
+    }
+    function drawCorners() {
+      const text = () => cornerPlanes.map((p) => (p === null ? "—" : String(p))).join(", ");
+      N.fill(corners, CORNERS.map(([where, label], k) => h("button.viewer-corner." + where + (cornerPlanes[k] !== null ? ".set" : ""), {
+        dataset: { corner: String(k) }, title: `${label}: the frame shown is the plane in focus here`,
+        on: { click: (event) => { event.stopPropagation(); cornerPlanes[k] = state.frame + 1; drawCorners(); } } }, cornerPlanes[k] === null ? "" : String(cornerPlanes[k]))));
+      N.fill(cornerBar, h("span.muted", "Planes in focus (top left, bottom left, bottom right, top right):"), h("span.mono.viewer-corner-planes", text()),
+        h("button.btn.ghost.small.viewer-corner-copy", { on: { click: () =>
+          N.copyText(`[${cornerPlanes.map((p) => (p === null ? "NaN" : String(p))).join(", ")}]`).then(() => N.toast("Planes copied", text(), "success"), (error) => N.showError(error, "Could not copy")) } },
+          N.icon("copy", 13), "Copy"),
+        h("button.btn.ghost.small.viewer-corner-clear", { on: { click: () => { cornerPlanes.fill(null); drawCorners(); } } }, "Clear"));
+    }
     /** The sliders run over the values of the image shown with automatic limits (its smallest to its largest). */
     function fromSliders() {
       const [bottom, top] = state.range || [state.low, state.high];
@@ -1367,6 +1441,7 @@
         show();
       }
       else if (key === "c") showBrightness(brightness.classList.contains("hidden"));
+      else if (key === "P" || key === "F") showThumbs(key === "P" ? "projection" : "filter");   // imviewer's thumbnail selector
       else if (key === "r" || key === "R") rotate(key === "r" ? 90 : -90);
       else if (key === "`" || key === "~") setSpeed((state.speed || 1) * (key === "~" ? 2 : 0.5));
       else return false;
@@ -2034,10 +2109,12 @@
       h("div.viewer-bar",
         playButton, speedLabel, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high, brightnessButton,
-        binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, groupsButton, roiVariables.length ? roiColorPick : null, mirrorLabel, measurement, measureButton, scaleButton,
-        linkButton, propertiesButton, openButton, exportButton),
+        binPick, filterPick, thumbsButton, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, groupsButton, roiVariables.length ? roiColorPick : null, mirrorLabel, measurement, measureButton, scaleButton,
+        linkButton, cornerButton, propertiesButton, openButton, exportButton),
       brightness,
+      thumbs,
       h("div.viewer-main", stage, linkedPanel, roiVariables.length ? roiPanel : null),
+      cornerBar,
       signalPanel,
       h("div.viewer-foot", status, h("div.spacer"), where, zoomLabel, gridButton));
     const dialog = N.dialog({ title, content, onClose: () => {

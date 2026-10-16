@@ -625,6 +625,24 @@ table.shortcuts td:first-child { white-space: nowrap; width: 1%; }
 .viewer-bar .viewer-channel-toggle { gap: 2px; font-size: 12px; color: var(--muted); }
 .viewer-channel-color { width: 22px; height: 20px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: none; cursor: pointer; }
 .viewer-bar .btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.viewer-thumbs { display: flex; flex-direction: column; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+.viewer-thumbs.hidden, .viewer-corners.hidden, .viewer-corner-bar.hidden { display: none; }
+.viewer-thumbs-kinds { display: flex; gap: 4px; }
+.viewer-thumbs-kinds .active { background: var(--surface-3); }
+.viewer-thumbs-strip { display: flex; gap: 8px; overflow-x: auto; }
+.viewer-thumb { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; border: 2px solid transparent; border-radius: 6px; background: none; color: inherit; cursor: pointer; font: inherit; }
+.viewer-thumb.active { border-color: var(--accent); }
+.viewer-thumb:disabled { opacity: 0.4; cursor: default; }
+.viewer-thumb-image { width: 96px; height: 96px; object-fit: contain; image-rendering: pixelated; background: #000; }
+.viewer-thumb-label { font-size: 11px; color: var(--muted); max-width: 96px; text-align: center; }
+.viewer-corners { position: absolute; inset: 0; pointer-events: none; }
+.viewer-corner { position: absolute; width: 14%; height: 14%; min-width: 18px; min-height: 18px; pointer-events: auto; border: 1px solid rgba(180, 180, 180, .9); background: rgba(128, 128, 128, .45); color: white; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0; text-shadow: 0 0 3px rgba(0, 0, 0, .9); }
+.viewer-corner.set { border-width: 2px; background: rgba(40, 40, 40, .6); }
+.viewer-corner.top-left { left: 0; top: 0; }
+.viewer-corner.bottom-left { left: 0; bottom: 0; }
+.viewer-corner.bottom-right { right: 0; bottom: 0; }
+.viewer-corner.top-right { right: 0; top: 0; }
+.viewer-corner-bar { display: flex; align-items: center; gap: 10px; padding: 6px 16px; border-top: 1px solid var(--border); font-size: 12px; flex-wrap: wrap; }
 .viewer-scalebar { position: absolute; left: 10px; bottom: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; pointer-events: none; }
 .viewer-scalebar-line { height: 3px; background: white; box-shadow: 0 0 2px rgba(0, 0, 0, .8); }
 .viewer-scalebar-label { font-size: 11px; color: white; text-shadow: 0 0 3px rgba(0, 0, 0, .9); white-space: nowrap; }

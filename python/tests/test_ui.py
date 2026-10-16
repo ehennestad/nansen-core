@@ -2388,6 +2388,61 @@ def test_the_roi_gallery_shows_the_classifier_images_and_statistics(empty_app, p
     page.keyboard.press("Escape")
 
 
+def test_thumbnails_and_the_plane_finder_in_the_viewer(empty_app, page):
+    """imviewer's thumbnail selector (Shift+P, Shift+B, Shift+F: a picture of each projection, binning and filter, picked
+    by a click) and dev's zStackPlaneFinder (the plane each corner of the image is in focus in)."""
+    page.add_init_script("window.copied = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text) => { window.copied.push(text); } } });")
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    page.evaluate("document.activeElement.blur()")
+    page.keyboard.press("Shift+P")
+    page.wait_for_selector(".viewer-thumbs .viewer-thumb.ready[data-value='max']")
+    assert page.locator(".viewer-thumbs .viewer-thumb").count() == 6
+    assert page.locator(".viewer-thumb.active").get_attribute("data-value") == "frame"
+    page.click(".viewer-thumb[data-value='mean']")
+    page.wait_for_selector(".viewer-frame:text-is('40 frames')")
+    assert page.locator(".viewer-mode").input_value() == "mean"
+    page.click(".viewer-thumbs-kind[data-kind='binning']")
+    page.wait_for_selector(".viewer-thumb.ready[data-value='max:10']")
+    page.click(".viewer-thumb[data-value='max:10']")
+    page.wait_for_selector(".viewer-frame:text-is('1 / 40 (1–10)')")
+    assert page.locator(".viewer-bin").input_value() == "max:10" and page.locator(".viewer-mode").input_value() == "frame"
+    page.evaluate("document.activeElement.blur()")
+    page.keyboard.press("Shift+F")
+    page.wait_for_selector(".viewer-thumb.ready[data-value='clahe']")
+    assert page.locator(".viewer-thumb").count() == page.locator(".viewer-filter option").count() == 7
+    page.click(".viewer-thumb[data-value='clahe']")
+    wait_until(lambda: page.locator(".viewer-filter").input_value() == "clahe")
+    page.click(".viewer-thumbs-toggle")
+    page.wait_for_selector(".viewer-thumbs", state="hidden")
+    page.select_option(".viewer-filter", "")
+    page.select_option(".viewer-bin", "")
+
+    # dev's zStackPlaneFinder: a box in each corner takes the frame shown as the plane that corner is in focus in
+    page.click(".viewer-corner-tool")
+    page.locator(".viewer-slider").fill("4")
+    page.wait_for_selector(".viewer-frame:text-is('5 / 40')")
+    page.click(".viewer-corner[data-corner='0']")
+    page.locator(".viewer-slider").fill("11")
+    page.wait_for_selector(".viewer-frame:text-is('12 / 40')")
+    page.click(".viewer-corner[data-corner='2']")
+    assert page.locator(".viewer-corner-planes").inner_text() == "5, —, 12, —"
+    assert page.locator(".viewer-corner[data-corner='2']").inner_text() == "12"
+    page.click(".viewer-corner-copy")
+    page.wait_for_selector(".toast:has-text('Planes copied')")
+    assert page.evaluate("window.copied[0]") == "[5, NaN, 12, NaN]"
+    page.click(".viewer-corner-tool")
+    page.wait_for_selector(".viewer-corner-bar", state="hidden")
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_viewer_projections_and_roi_display_options(empty_app, page):
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     ophys_project(empty_app, [
