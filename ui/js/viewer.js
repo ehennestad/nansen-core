@@ -1009,6 +1009,8 @@
     const labelToggle = h("input.viewer-roi-labels", { type: "checkbox", on: { change: () => { state.labels = labelToggle.checked; drawOverlay(); } } });
     const linkToggle = h("input.viewer-roi-links", { type: "checkbox", on: { change: () => { state.links = linkToggle.checked; drawOverlay(); } } });
     const outlineToggle = h("input.viewer-roi-outlines", { type: "checkbox", on: { change: () => { state.outlines = outlineToggle.checked; redraw(); } } });
+    // dev's ROI table: classifying an ROI with a key went on to the next ROI not classified yet
+    const advanceToggle = h("input.viewer-roi-advance", { type: "checkbox", on: { change: () => { state.advance = advanceToggle.checked; } } });
     // roimanager's showNeuropilMask (Shift+N): the selected ROI's neuropil as signal extraction takes it (rois.neuropil),
     // with ophys.extract_signals's preferred preset when the project has the method; read again when the ROIs change
     const neuropilToggle = h("input.viewer-roi-neuropil", { type: "checkbox", on: { change: () => setNeuropil(neuropilToggle.checked) } });
@@ -1055,7 +1057,8 @@
       h("div.viewer-roi-actions.viewer-roi-tools", tools, detectModeLabel, findButton, addFromButton, h("div.spacer"), radius),
       roiFileNote,
       h("div.viewer-roi-display", h("label.viewer-hide", hide, "Hide rejected"), h("label.viewer-display-option", labelToggle, "Numbers"),
-        h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links"), viewable ? null : neuropilLabel),
+        h("label.viewer-display-option", outlineToggle, "Outlines"), h("label.viewer-display-option", linkToggle, "Links"), viewable ? null : neuropilLabel,
+        h("label.viewer-display-option", { title: "After a key classifies the selected ROI, select the next one not classified yet (as dev's ROI table)" }, advanceToggle, "Then the next")),
       roiList);
 
     // The selected ROI's signal under the image: the frame shown is marked, a click on the trace goes to that frame.
@@ -1240,6 +1243,17 @@
       else status.textContent = "No cell found in the selected ROIs: draw them instead";
     }
     function classify(label) { if (state.selection.size) edit({ classify: selectedIds().map((id) => ({ id, classification: label })) }); }
+    /** classify by a key; with Then the next (dev's ROI table), the next ROI in the list not classified yet is selected after it. */
+    function classifyByKey(label) {
+      const one = state.selection.size === 1 ? state.selected : null;
+      classify(label);
+      if (!state.advance || one === null || label === null) return;
+      enqueue(() => {
+        const order = visible();
+        const next = order.slice(order.findIndex((r) => r.id === one) + 1).find((r) => !r.classification);
+        if (next) select(next.id);
+      });
+    }
     function remove() { if (state.selection.size) edit({ remove: selectedIds() }); }
     // roimanager's cell types (Shift+E, I, X; again to clear) and links between ROIs (Shift+C: the selected one with the others)
     function setCellType(type) {
@@ -1283,17 +1297,17 @@
       const arrows = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
       if (state.tool === "detect" && /^[1-5]$/.test(key) && !event.altKey) setDetectMode(Number(key));
       else if (some && !event.altKey && /^Digit[0-3]$/.test(event.code) && !event.shiftKey)   // dev's classes: 1 accepted, 2 rejected, 3 unresolved; 0 none
-        classify([null, "accepted", "rejected", "unresolved"][Number(event.code.slice(5))]);
+        classifyByKey([null, "accepted", "rejected", "unresolved"][Number(event.code.slice(5))]);
       else if (some && !event.altKey && arrows[key]) {   // move the selected ROIs a pixel (5 with Shift)
         const [rows, columns] = arrows[key].map((v) => v * (event.shiftKey ? 5 : 1));
         edit({ move: selectedIds().map((id) => ({ id, rows, columns })) });
       }
       else if (event.altKey) return false;
       else if (some && (key === "g" || key === "h")) reshape(key === "g" ? 1 : -1);
-      else if (some && key === "a") classify("accepted");
-      else if (some && key === "r") classify("rejected");
-      else if (some && key === "q") classify("unresolved");
-      else if (some && key === "u") classify(null);
+      else if (some && key === "a") classifyByKey("accepted");
+      else if (some && key === "r") classifyByKey("rejected");
+      else if (some && key === "q") classifyByKey("unresolved");
+      else if (some && key === "u") classifyByKey(null);
       else if (state.selection.size > 1 && key === "m") merge();
       else if (some && key === "i") improve();
       else if (some && key === "E") setCellType("excitatory");

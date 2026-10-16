@@ -1877,6 +1877,17 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('accepted')")
     page.keyboard.press("2")
     page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('rejected')")
+    # dev's ROI table went on to the next ROI not classified yet: with Then the next
+    page.check(".viewer-roi-advance")
+    page.click(".viewer-roi-list li[data-roi='1']")
+    page.keyboard.press("1")
+    page.wait_for_selector(".viewer-roi-list li[data-roi='1'] .pill:has-text('accepted')")
+    page.wait_for_selector(".viewer-roi-list li[data-roi='3'].selected")   # 2 is classified already
+    page.click(".viewer-roi-list li[data-roi='1']")
+    page.keyboard.press("u")   # no class again: the selection stays
+    page.wait_for_selector(".viewer-roi-list li[data-roi='1'].selected:not(:has(.pill:has-text('accepted')))")
+    page.uncheck(".viewer-roi-advance")
+    page.click(".viewer-roi-list li[data-roi='2']")
     page.keyboard.press("Shift+1")   # imviewer's Shift+1: the top-left quarter, zoomed; Alt and the arrows pan
     page.wait_for_selector(".viewer-zoom:text-is('200%')")
     for _ in range(4):
