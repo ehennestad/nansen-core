@@ -340,7 +340,14 @@ UPSAMPLING = 4
 
 
 def soma_mask_by_edges(image: Any, rounded: bool) -> Any:
-    """flufinder's findSomaMaskByEdgeDetection of an image (rounded: 8-bit values, which every step rounds to again).
+    """flufinder's findSomaMaskByEdgeDetection of an image (rounded: 8-bit values, which every step rounds to again): the
+    mask of soma_edges."""
+    return soma_edges(image, rounded)[0]
+
+
+def soma_edges(image: Any, rounded: bool):
+    """flufinder's findSomaMaskByEdgeDetection of an image (rounded: 8-bit values, which every step rounds to again),
+    and its ridgeFraction (getStats), which flufinder's shape detection keeps candidates by.
 
     The image is made 4 times larger (imresize, bicubic), unrolled into rings around its centre (imunroll: radius by
     angle), blurred (imgaussfilt, sigma 1), and differentiated along the radius. In each direction the nucleus's edge
@@ -348,7 +355,9 @@ def soma_mask_by_edges(image: Any, rounded: bool) -> Any:
     its rises are significant (their mean over their standard deviation above 1.5) the soma's edge is sought from it
     out to 1.2 times its mean radius, otherwise from the centre. The soma's edge is the largest fall, mended and
     smoothed the same way; the mask is the pixels whose centre is inside the polygon of that edge, scaled back and 2/4
-    pixel further out (poly2mask: inside by the even-odd rule)."""
+    pixel further out (poly2mask: inside by the even-odd rule). The ridge fraction is the share of directions in which
+    the blurred rings are brighter halfway between the two edges (rounded half away from zero, as both edges) than at
+    either edge; NaN when the image is too small to unroll."""
     import numpy as np
     im = np.asarray(image, dtype=np.float64)
     height, width = im.shape
@@ -357,7 +366,7 @@ def soma_mask_by_edges(image: Any, rounded: bool) -> Any:
     unrolled = imunroll(big, rounded)
     rings, angles = unrolled.shape
     if rings < 3:
-        return mask
+        return mask, float("nan")
     unrolled = gauss_blur(unrolled, rounded)
     grad = unrolled[1:, :] - unrolled[:-1, :]
     inner, inner_values = find_edge(grad, rise=True)
@@ -371,8 +380,12 @@ def soma_mask_by_edges(image: Any, rounded: bool) -> Any:
     outer_smooth = circular_smooth(outer, 2 * UPSAMPLING + 1)
     limit = grad.shape[0]
     xs, ys = [], []
+    ridges = 0
     for k in range(angles):
         edge = min(max(outer_smooth[k] + inner_smooth[k], 1), limit)
+        middle = unrolled[_round((inner_smooth[k] + edge) / 2) - 1, k]   # getStats' centreLine
+        if middle > unrolled[_round(inner_smooth[k]) - 1, k] and middle > unrolled[_round(edge) - 1, k]:
+            ridges += 1
         radius = edge / UPSAMPLING + 2 / UPSAMPLING
         theta = (math.pi / 180) * (k * (360 / angles))
         xs.append(width / 2 + radius * math.cos(theta) + 0.5)
@@ -380,7 +393,7 @@ def soma_mask_by_edges(image: Any, rounded: bool) -> Any:
     for i in range(height):
         for j in range(width):
             mask[i, j] = _inside(xs, ys, j + 1, i + 1)
-    return mask
+    return mask, ridges / angles
 
 
 def _cubic(x: float) -> float:
@@ -435,8 +448,7 @@ def imunroll(image: Any, rounded: bool) -> Any:
     height, width = image.shape
     cy, cx = (height + 1) / 2, (width + 1) / 2
     rings = _round(min(width - cx, (height - cy)))
-    rho, theta = {}, {}
-    entries = []
+    by_distance = {}
     for j in range(width):              # column-major, as MATLAB's find
         for i in range(height):
             xx, yy = (j + 1) - cx, -((i + 1) - cy)   # y up (flipud)
@@ -444,10 +456,10 @@ def imunroll(image: Any, rounded: bool) -> Any:
             angle = math.atan2(yy, xx) * (180 / math.pi)
             if angle < 0:
                 angle = 180 + (180 - abs(angle))
-            entries.append((distance, angle, i, j))
+            by_distance.setdefault(distance, []).append((distance, angle, i, j))
     out = np.zeros((max(rings, 0), width))
     for r in range(1, rings + 1):
-        ring = sorted((e for e in entries if e[0] == r), key=lambda e: e[1])   # stable: ties keep column-major order
+        ring = sorted(by_distance.get(r, []), key=lambda e: e[1])   # stable: ties keep column-major order
         values = np.array([image[i, j] for _, _, i, j in ring])
         out[r - 1] = imresize(values, 0, width, rounded)
     return out

@@ -6,8 +6,9 @@
   "title": "Detect ROIs (flufinder)",
   "category": "Two-photon/Segmentation",
   "entityType": "*",
-  "description": "Runs flufinder.runAutoSegmentation from NANSEN dev (Quicky's algorithm, with its shape detection) on the stack, when it is on the MATLAB path, and saves its ROIs.",
+  "description": "dev's flufinder (Quicky's algorithm, with its shape detection) on the stack, its ROIs saved as the other detection methods save them: in MATLAB flufinder.runAutoSegmentation from NANSEN dev itself, when it is on the MATLAB path; in Python flufinder's pipeline written out step by step (preprocessImages, binarizeSomaStack, getBwComponentStats, findUniqueRoisFromComponents, shapeDetection and combineRoiArrays, with flufinder's constants), which needs no toolbox. The two find nearly the same ROIs, not exactly the same: Python computes in double precision where flufinder uses single, and where the toolbox's MATLAB functions decide ties (its linkage clustering of areas whose centroids spread) Python decides them its own way.",
   "implementations": {
+    "python": "ophys_flufinder:flufinder",
     "matlab": "ophys.flufinder"
   },
   "options": {

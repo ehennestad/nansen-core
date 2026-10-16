@@ -6,9 +6,10 @@
   "title": "Open in imviewer",
   "category": "Two-photon/View",
   "entityType": "*",
-  "description": "Opens the stack in NANSEN's imviewer, when it is on the MATLAB path.",
+  "description": "Opens the stack in an image viewer: in MATLAB NANSEN dev's imviewer, when it is on the MATLAB path (MATLAB R2024b or older); in Python napari, its Python counterpart, when it is installed, and otherwise the dashboard's viewer on the entity's variable (opened from the app; elsewhere the result gives its page).",
   "queueable": false,
   "implementations": {
+    "python": "ophys_methods:open_in_imviewer",
     "matlab": "ophys.openInImviewer"
   },
   "options": {

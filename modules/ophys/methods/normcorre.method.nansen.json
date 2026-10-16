@@ -6,8 +6,9 @@
   "title": "Correct motion (NoRMCorre)",
   "category": "Two-photon/Motion correction",
   "entityType": "*",
-  "description": "Runs NoRMCorre on the stack, when it is on the MATLAB path: rigid with gridSize 0 (or patches 1), piecewise rigid otherwise. Its options are passed to NoRMCorre under NoRMCorre's names (given in each option's description). Saves the aligned stack and the shifts of each frame (frames x 2, subpixel). Presets nonrigid and rigid are dev's NoRMCorre presets.",
+  "description": "Runs NoRMCorre on the stack: in MATLAB NoRMCorre itself, when it is on the MATLAB path; in Python CaImAn's port of it (caiman.motion_correction.MotionCorrect), when CaImAn is installed. Rigid with gridSize 0 (or patches 1), piecewise rigid otherwise. Its options are passed to NoRMCorre under NoRMCorre's names (given in each option's description), and to CaImAn under CaImAn's: max_shifts, strides (the grid), overlaps and max_deviation_rigid; CaImAn registers chunks of binWidth frames to one template, renewed between passes (with updateTemplate), and finds shifts to 1/10 pixel whatever the upsampling. Saves the aligned stack and the shifts of each frame (frames x 2, subpixel) in the same variables in both languages; the two tools' results are close, not the same. Presets nonrigid and rigid are dev's NoRMCorre presets.",
   "implementations": {
+    "python": "ophys_methods:normcorre",
     "matlab": "ophys.normcorre"
   },
   "options": {

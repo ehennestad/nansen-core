@@ -166,7 +166,8 @@ classdef ExternalToolsTest < matlab.unittest.TestCase
             % the MATLAB Suite2P on the moving recording: reg2P registers it, sourcery finds the cells, and
             % wrapperDECONV deconvolves with CaImAn-MATLAB's oasisAR1 (as Python's test_external_tools runs suite2p)
             result = testCase.Project.run("ophys.suite2p", {testCase.Session}, Options=struct( ...
-                "stack", "TwoPhotonSeries_Original", "framesPerSecond", 30, "cellDiameter", 8, "onlyCells", false));
+                "stack", "TwoPhotonSeries_Original", "framesPerSecond", 30, "cellDiameter", 8, "onlyCells", false, ...
+                "sparseMode", false));   % sparse mode is Python's suite2p (OphysTest runs it with a stand-in Python)
             testCase.verifyEqual(result{1}.frames, 300);
             testCase.verifyGreaterThanOrEqual(result{1}.rois, 10);
             rois = ophys.internal.roiList(testCase.Project.load(testCase.Session, "RoiArray", Cached=false));

@@ -8,7 +8,8 @@ function ops = suite2pOps(options, frames, useGpu)
 %   maxIterRoiDetection, innerNeuropilRadius innerNeuropil and
 %   minNeuropilPixels minNeuropilPixels. sparseMode, spatialScale and
 %   denoise are suite2p's (Python) sparse detection, which the MATLAB
-%   Suite2P does not have (its detection is sourcery). Everything else is
+%   Suite2P does not have (its detection is sourcery; with sparseMode
+%   ophys.suite2p runs Python's suite2p instead). Everything else is
 %   the master file's, without figures, the frames registered first taken
 %   from the stack (NimgFirstRegistration: at most 500, and fewer than its
 %   frames, as GetRandFrames reads them after the first). Char only, so

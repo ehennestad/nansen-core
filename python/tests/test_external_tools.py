@@ -138,6 +138,32 @@ def test_caiman_cnmf(api):
     assert load(api, "RoiSignals_Denoised").shape == (FRAMES, len(rois))
 
 
+def wobble(stack):
+    """How much the frames differ from their average, inside the borders."""
+    inner = stack[8:-8, 8:-8].astype(float)
+    return float(np.abs(inner - inner.mean(axis=2, keepdims=True)).mean())
+
+
+@pytest.mark.parametrize("options", [{}, {"patches": 2, "overlap": 16, "maxDeviation": 3}, {"updateTemplate": False, "initialBatchSize": 1}],
+                         ids=["rigid", "piecewise", "fixed-template"])
+def test_caiman_normcorre(api, options):
+    need("caiman")
+    # moved by known whole-pixel shifts, as MATLAB's ExternalToolsTest moves its recording for NoRMCorre
+    shifts = np.array([(round(3 * np.sin(t / 20)), round(2 * np.cos(t / 30))) for t in range(1, FRAMES + 1)])
+    moving = np.stack([np.roll(api.stack[:, :, t], tuple(shifts[t]), axis=(0, 1)) for t in range(FRAMES)], axis=2)
+    project = api.project
+    project.save(project.entity("session", SESSION), "TwoPhotonSeries_Denoised", moving)
+    result = run(api, "ophys.normcorre", dict(options, stack="TwoPhotonSeries_Denoised", maxShift=8))
+    assert result["frames"] == FRAMES and 2 <= result["maxShift"] <= 8
+    found = load(api, "MotionCorrectionShifts")
+    assert found.shape == (FRAMES, 2)
+    for axis in (0, 1):   # the shift that moves each frame back: rows, then columns (as NoRMCorre reports it)
+        assert np.corrcoef(found[:, axis], -shifts[:, axis])[0, 1] > 0.9, axis
+    aligned = load(api, "TwoPhotonSeries_Corrected")
+    assert aligned.shape == moving.shape and aligned.dtype == moving.dtype
+    assert wobble(aligned) < 0.8 * wobble(moving)
+
+
 def test_export_nwb(api, tmp_path):
     pynwb = need("pynwb")
     run(api, "ophys.motion_correction", {"stack": "TwoPhotonSeries_Original", "referenceFrames": 20})

@@ -291,13 +291,13 @@
       N.drawer.close();
       this.renderNav();
       N.clear(this.topActions);
-      const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", notes: "Notes", pipelines: "Pipelines", projects: "Projects", settings: "Settings", view: "Viewer" };
+      const crumbs = { overview: "Overview", tasks: "Tasks", data: "Data", notes: "Notes", pipelines: "Pipelines", projects: "Projects", settings: "Settings", view: "Viewer", viewer: "Viewer" };
       const title = this.route.name === "entities" ? this.typeTitle(arg)
         : this.route.name === "page" ? (N.pages[arg] ? N.pages[arg].title : "") : crumbs[this.route.name] || "";
       N.fill(this.crumbsEl, this.project ? h("span.sub", this.project.title) : null, this.project ? h("span.sep", "/") : null, h("span", title));
       if (!this.project && !["projects", "settings", "view"].includes(this.route.name)) { this.go("#/projects"); return; }
       const page = this.route.name === "page" && N.pages[arg] ? (app, el) => N.pages[arg].render(app, el) : null;
-      const view = page || { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, pipelines: N.views.pipelines, projects: N.views.projects, settings: N.views.settings, view: N.views.viewables }[this.route.name];
+      const view = page || { overview: N.views.overview, entities: N.views.entities, tasks: N.views.tasks, data: N.views.data, notes: N.views.notes, pipelines: N.views.pipelines, projects: N.views.projects, settings: N.views.settings, view: N.views.viewables, viewer: N.views.entityViewer }[this.route.name];
       if (!view) { this.go("#/overview"); return; }
       // Each render draws into a new container, shown when it is done, unless a later render has started:
       // views load their data first, and one that finishes late must not draw over the page now shown.

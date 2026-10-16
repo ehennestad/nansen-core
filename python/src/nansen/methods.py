@@ -150,15 +150,20 @@ class Cancelled(Exception):
 class MethodContext:
     """What a running method gets besides its entity and options: the project, a log, progress and cancellation.
 
-    Observers (callables) are told about log lines and progress; nothing is global.
+    Observers (callables) are told about log lines and progress; nothing is global. A method run from the app also
+    gets the app's address (app_url, the dashboard's page) and its hook that opens a web page (open_url), which a
+    method can open one of the dashboard's pages with; both are None elsewhere.
     """
 
     def __init__(self, project=None, method: Optional[Method] = None,
                  on_log: Optional[Callable[[str], None]] = None,
                  on_progress: Optional[Callable[[float, str], None]] = None,
-                 cancel_event: Optional[threading.Event] = None):
+                 cancel_event: Optional[threading.Event] = None,
+                 app_url: Optional[str] = None, open_url: Optional[Callable[[str], Any]] = None):
         self.project = project
         self.method = method
+        self.app_url = app_url
+        self.open_url = open_url
         self.lines: List[str] = []
         self.fraction = 0.0
         self._on_log = on_log
