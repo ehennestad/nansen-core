@@ -4,9 +4,15 @@ function info = analyzeFileAdapter(name, text, options)
 %   info = nansen.legacy.analyzeFileAdapter(name, text) for the class file
 %   name.m gives title (the class's name), description, extensions and
 %   dataType. A class is a dev file adapter when it subclasses
-%   nansen.dataio.FileAdapter (and no other class of dev's nansen); its
+%   nansen.dataio.FileAdapter, or one of dev's own adapters (its ImageStack,
+%   RoiGroup, RoiSignalArray, ...), and no other class of dev's nansen; its
 %   constant DataType, SUPPORTED_FILE_TYPES ('tif' or {'tif', 'tiff'}) and
-%   Description say the rest, or else the first line of its help text.
+%   Description say the rest, or else the first line of its help text. A
+%   class on one of dev's adapters has that adapter's data type and file
+%   types, and also base (that adapter's class), builtIn (per row an
+%   extension and the adapter here that reads and writes such a file in
+%   place of dev's adapter) and overrides (whether it has a readData or
+%   writeData of its own).
 %
 %   info = analyzeFileAdapter(namespace, text, Files=names) reads the
 %   fileadapter.json of dev's function-based adapter (DynamicFileAdapter)
@@ -55,19 +61,33 @@ function info = analyzeFileAdapter(name, text, options)
     if ~isempty(at)
         supers = reshape(strtrim(split(string(declaration(at + 1:end)), "&")), 1, []);
     end
-    if ~ismember(fileAdapter, supers)
-        nansen.internal.throwError("unsupported-file", "%s.m is a class that does not subclass %s, " + ...
-            "so it is not a dev file adapter", name, fileAdapter)
-    end
-    others = supers(startsWith(supers, "nansen.") & supers ~= fileAdapter);
+    bases = supers(arrayfun(@(s) ~isempty(devAdapterBase(s)), supers));
+    isAdapter = ismember(fileAdapter, supers) || ~isempty(bases);
+    others = supers(startsWith(supers, "nansen.") & supers ~= fileAdapter & ~ismember(supers, bases));
     if ~isempty(others)
-        nansen.internal.throwError("unsupported-file", "%s.m also subclasses %s, which nansen-core does not have", ...
-            name, strjoin(others, ", "))
+        also = "";
+        if isAdapter
+            also = "also ";
+        end
+        nansen.internal.throwError("unsupported-file", "%s.m %ssubclasses %s, which nansen-core does not have", ...
+            name, also, strjoin(others, ", "))
+    end
+    if ~isAdapter
+        nansen.internal.throwError("unsupported-file", "%s.m is a class that does not subclass %s " + ...
+            "or one of dev's file adapters, so it is not a dev file adapter", name, fileAdapter)
+    end
+    if numel(bases) > 1
+        nansen.internal.throwError("unsupported-file", "%s.m subclasses several of dev's file adapters (%s)", ...
+            name, strjoin(bases, ", "))
     end
     info = struct("title", name, "description", describe(lines, first, name), "extensions", strings(1, 0), ...
         "dataType", "");
+    overrides = false;
     for i = 1:numel(lines)
         code = codeOf(lines(i));
+        if ~isempty(regexp(code, '^\s*function\s+(?:[^=(]*=\s*)?(?:readData|writeData)\s*(?:\(|$)', 'once'))
+            overrides = true;
+        end
         value = quotedValue(code, 'DataType');
         if ~ismissing(value) && info.dataType == ""
             info.dataType = strtrim(value);
@@ -80,6 +100,42 @@ function info = analyzeFileAdapter(name, text, options)
         if ~isempty(types) && isempty(info.extensions)
             info.extensions = extensionsOf(textsOf(types{1}));
         end
+    end
+    if ~isempty(bases)   % dev's class's constants, which a subclass cannot set again
+        base = devAdapterBase(bases(1));
+        info.dataType = base.dataType;
+        info.extensions = base.extensions;
+        info.base = bases(1);
+        info.builtIn = base.builtIn;
+        info.overrides = overrides;
+    end
+end
+
+function base = devAdapterBase(name)
+    % dev's own file adapter classes that a project's adapter may subclass, as readers of known formats: the data type
+    % and file types of dev's class (its constants, which a subclass keeps), and the adapter here that reads and writes
+    % a file of each type in its place (builtIn: extension, adapter id per row); [] for any other class. The core and
+    % two-photon modules' classes of the same names only subclass these. As Python's legacyadapters.DEV_ADAPTER_BASES.
+    switch char(name)
+        case {'nansen.dataio.fileadapter.imagestack.ImageStack', 'nansen.module.general.core.fileadapter.ImageStack'}
+            base = struct("dataType", "ImageStack", "extensions", [".ini", ".raw", ".tif", ".tiff", ".avi", ".h5", ".tsm"], ...
+                "builtIn", [".raw", "ophys.binary_stack"; ".tif", "ophys.tiff_stack"; ".tiff", "ophys.tiff_stack"; ...
+                ".avi", "ophys.video_file"; ".h5", "ophys.hdf5_stack"; ".tsm", "ophys.tsm_stack"]);
+        case {'nansen.dataio.fileadapter.roi.RoiGroup', 'nansen.module.ophys.twophoton.fileadapter.RoiGroup'}
+            base = struct("dataType", "RoiArray", "extensions", [".mat", ".npy"], ...
+                "builtIn", [".mat", "ophys.nansen_roi_array"; ".npy", "ophys.suite2p_rois"]);
+        case {'nansen.dataio.fileadapter.roi.RoiArray', 'nansen.internal.dataio.fileadapter.RoiArray'}
+            base = struct("dataType", "RoiArray", "extensions", ".mat", "builtIn", [".mat", "ophys.nansen_roi_array"]);
+        case {'nansen.dataio.fileadapter.timeseries.RoiSignalArray', 'nansen.module.ophys.twophoton.fileadapter.RoiSignalArray'}
+            base = struct("dataType", "RoiSignalArray", "extensions", ".mat", "builtIn", [".mat", "mat"]);
+        case 'nansen.dataio.fileadapter.timeseries.TimeSeries'
+            base = struct("dataType", "timeseries", "extensions", ".mat", "builtIn", [".mat", "mat"]);
+        case 'nansen.dataio.fileadapter.internal.RoiGroupStruct'
+            base = struct("dataType", "struct", "extensions", ".mat", "builtIn", [".mat", "mat"]);
+        case {'nansen.dataio.fileadapter.numpy', 'nansen.module.general.core.fileadapter.Numpy2Mat'}
+            base = struct("dataType", "struct", "extensions", ".npy", "builtIn", [".npy", "npy"]);
+        otherwise
+            base = [];
     end
 end
 

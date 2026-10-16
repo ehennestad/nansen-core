@@ -3,7 +3,8 @@
 dev has two kinds of file adapter, both in a project's (or module's) ``+fileadapter`` package:
 
 - a class that subclasses ``nansen.dataio.FileAdapter``, with ``readData`` (and ``writeData``), its constant
-  ``DataType`` and ``SUPPORTED_FILE_TYPES``;
+  ``DataType`` and ``SUPPORTED_FILE_TYPES``; or that subclasses one of dev's own adapter classes
+  (``DEV_ADAPTER_BASES``: its ``ImageStack``, ``RoiGroup``, ``RoiSignalArray``, ...), whose constants it keeps;
 - a folder ``+<Name>`` with ``fileadapter.json`` (``_type`` FileAdapter: Name, Description, SupportedFileTypes,
   DataType, ReadFunction, WriteFunction) and ``read.m`` / ``write.m`` in it (dev's DynamicFileAdapter).
 
@@ -12,6 +13,12 @@ Importing one copies its code into the project's ``matlab/`` folder, in the same
 class (``load``/``save``, with ``matlab/devcompat``'s ``nansen.dataio.FileAdapter`` as its base) or dev's read and write
 functions (``nansen.legacy.FileAdapterShim``). Python has no way to run dev's MATLAB code in a data read, so there such
 an adapter is ``adapter-unavailable``, naming MATLAB; the methods that use it run in MATLAB anyway.
+
+dev's own adapter classes are readers of known formats. ``matlab/devcompat`` has a class of each of their names that
+reads and writes a file with the adapter here of its file type (``legacyFileAdapter.builtIn``: the ophys module's, or
+a built-in), so a subclass's own code (its readData and writeData, when it has them, and its other methods) runs on top
+of it unchanged. The variables dev read with a subclass that has neither readData nor writeData of its own are read
+with that adapter directly, in both languages.
 
 What the document says is read from the files' text, without running them, by the same rules in both languages
 (``nansen.legacy.analyzeFileAdapter``).
@@ -32,10 +39,41 @@ from .schemas import current_version
 FILE_ADAPTER_CLASS = "nansen.dataio.FileAdapter"
 DEFINITION = "fileadapter.json"
 
+_STACKS = ("ImageStack", [".ini", ".raw", ".tif", ".tiff", ".avi", ".h5", ".tsm"],
+           [(".raw", "ophys.binary_stack"), (".tif", "ophys.tiff_stack"), (".tiff", "ophys.tiff_stack"),
+            (".avi", "ophys.video_file"), (".h5", "ophys.hdf5_stack"), (".tsm", "ophys.tsm_stack")])
+_ROI_GROUP = ("RoiArray", [".mat", ".npy"], [(".mat", "ophys.nansen_roi_array"), (".npy", "ophys.suite2p_rois")])
+_ROI_ARRAY = ("RoiArray", [".mat"], [(".mat", "ophys.nansen_roi_array")])
+_SIGNALS = ("RoiSignalArray", [".mat"], [(".mat", "mat")])
+_NUMPY = ("struct", [".npy"], [(".npy", "npy")])
+# dev's own file adapter classes that a project's adapter may subclass, as readers of known formats: the data type and
+# the file types of dev's class (its constants, which a subclass keeps), and the adapter here that reads and writes a
+# file of each type in its place (the ophys module's, or a built-in). The core and two-photon modules' classes of the
+# same names only subclass these. dev's ImageStack read a .ini (a SciScan recording's header) too; nothing here does.
+DEV_ADAPTER_BASES = {
+    "nansen.dataio.fileadapter.imagestack.ImageStack": _STACKS,
+    "nansen.module.general.core.fileadapter.ImageStack": _STACKS,
+    "nansen.dataio.fileadapter.roi.RoiGroup": _ROI_GROUP,
+    "nansen.module.ophys.twophoton.fileadapter.RoiGroup": _ROI_GROUP,
+    "nansen.dataio.fileadapter.roi.RoiArray": _ROI_ARRAY,
+    "nansen.internal.dataio.fileadapter.RoiArray": _ROI_ARRAY,
+    "nansen.dataio.fileadapter.timeseries.RoiSignalArray": _SIGNALS,
+    "nansen.module.ophys.twophoton.fileadapter.RoiSignalArray": _SIGNALS,
+    "nansen.dataio.fileadapter.timeseries.TimeSeries": ("timeseries", [".mat"], [(".mat", "mat")]),
+    "nansen.dataio.fileadapter.internal.RoiGroupStruct": ("struct", [".mat"], [(".mat", "mat")]),
+    "nansen.dataio.fileadapter.numpy": _NUMPY,
+    "nansen.module.general.core.fileadapter.Numpy2Mat": _NUMPY,
+}
+# those of them that keep each signal as a variable of its own name in the .mat file, as dev's RoiSignalArray does
+NAMED_VARIABLE_BASES = ("nansen.dataio.fileadapter.timeseries.RoiSignalArray",
+                        "nansen.module.ophys.twophoton.fileadapter.RoiSignalArray")
+
 
 def analyze_class(name: str, text: str) -> dict:
-    """What a dev file adapter class's file says: title (its name), description, extensions and dataType.
-    ``unsupported-file`` when the file is not a dev file adapter class."""
+    """What a dev file adapter class's file says: title (its name), description, extensions and dataType; and, for a
+    class built on one of dev's adapter classes (DEV_ADAPTER_BASES), base (that class), builtIn ([(extension, the
+    adapter here)], as DEV_ADAPTER_BASES) and overrides (whether it has a readData or writeData of its own); its data
+    type and extensions are then dev's class's. ``unsupported-file`` when the file is not a dev file adapter class."""
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     first = next((i for i, line in enumerate(lines) if line.strip() and not line.strip().startswith("%")), None)
     if first is None:
@@ -45,17 +83,25 @@ def analyze_class(name: str, text: str) -> dict:
         raise NansenError("unsupported-file", f"{name}.m is not a class, so it is not a dev file adapter")
     match = re.match(r"^classdef\s*(?:\([^)]*\))?\s*[A-Za-z][\w.]*\s*(?:<(.*))?$", declaration)
     supers = [s.strip() for s in (match.group(1) or "").split("&")] if match else []
-    if FILE_ADAPTER_CLASS not in supers:
-        raise NansenError("unsupported-file", f"{name}.m is a class that does not subclass {FILE_ADAPTER_CLASS}, "
-                                              "so it is not a dev file adapter")
-    others = [s for s in supers if s.startswith("nansen.") and s != FILE_ADAPTER_CLASS]
+    bases = [s for s in supers if s in DEV_ADAPTER_BASES]
+    adapter = FILE_ADAPTER_CLASS in supers or bool(bases)
+    others = [s for s in supers if s.startswith("nansen.") and s != FILE_ADAPTER_CLASS and s not in bases]
     if others:
-        raise NansenError("unsupported-file", f"{name}.m also subclasses {', '.join(others)}, which nansen-core "
-                                              "does not have")
+        raise NansenError("unsupported-file", f"{name}.m {'also ' if adapter else ''}subclasses {', '.join(others)}, "
+                                              "which nansen-core does not have")
+    if not adapter:
+        raise NansenError("unsupported-file", f"{name}.m is a class that does not subclass {FILE_ADAPTER_CLASS} "
+                                              "or one of dev's file adapters, so it is not a dev file adapter")
+    if len(bases) > 1:
+        raise NansenError("unsupported-file", f"{name}.m subclasses several of dev's file adapters "
+                                              f"({', '.join(bases)})")
     info: Dict[str, Any] = {"title": name, "description": legacymethods._description(lines, first, name),
                             "extensions": [], "dataType": ""}
+    overrides = False
     for line in lines:
         code = legacymethods._code(line)[0]
+        if re.match(r"^\s*function\s+(?:[^=(]*=\s*)?(?:readData|writeData)\s*(?:\(|$)", code):
+            overrides = True
         data_type = re.match(r"^\s*DataType\s*=\s*(?:'([^']*)'|\"([^\"]*)\")", code)
         if data_type and not info["dataType"]:
             info["dataType"] = (data_type.group(1) or data_type.group(2) or "").strip()
@@ -67,6 +113,10 @@ def analyze_class(name: str, text: str) -> dict:
             ok, value = legacymethods.literal(types.group(1))
             if ok:
                 info["extensions"] = extensions_of(value)
+    if bases:   # dev's class's constants, which a subclass cannot set again
+        data_type, extensions, built_in = DEV_ADAPTER_BASES[bases[0]]
+        info.update({"dataType": data_type, "extensions": list(extensions), "base": bases[0],
+                     "builtIn": list(built_in), "overrides": overrides})
     return info
 
 
@@ -118,8 +168,10 @@ def extensions_of(value: Any) -> List[str]:
 def plan(sources: Sequence[Tuple[str, str]], taken: Sequence[str] = ()) -> Tuple[List[dict], List[str]]:
     """The file adapters of dev's +fileadapter files: sources are (path with its package folders, text), such as
     ('code/+RatNav/+fileadapter/MyFormat.m', text). Returns, per adapter, {document, name (dev's name of it, which
-    dev's variables give as their FileAdapter), files: [(path under matlab/, text)]}, and warnings for the files that
-    are not file adapters."""
+    dev's variables give as their FileAdapter), files: [(path under matlab/, text)]; and for a class on one of dev's
+    adapter classes, base (that class) and reads ({extension: the adapter here}, when the class has no readData or
+    writeData of its own, so that adapter reads its files as the class does; else {})}, and warnings for the files
+    that are not file adapters."""
     entries: List[dict] = []
     warnings: List[str] = []
     ids = set(taken)
@@ -159,6 +211,9 @@ def plan(sources: Sequence[Tuple[str, str]], taken: Sequence[str] = ()) -> Tuple
                 warnings.append(f"file adapter {path}: {error.message}; left out")
                 continue
             implementation, legacy = function, {"kind": "class"}
+            if "base" in info:   # dev's class reads and writes with the adapter here of each file type
+                legacy["base"] = info["base"]
+                legacy["builtIn"] = [{"extension": e, "fileAdapter": a} for e, a in info["builtIn"]]
             name = parts[-1]
             copied = [(_matlab_path(parts[:-1], parts[-1] + ".m"), text)]
         adapter_id = base = "legacy." + legacymethods.snake(name)
@@ -177,7 +232,11 @@ def plan(sources: Sequence[Tuple[str, str]], taken: Sequence[str] = ()) -> Tuple
         document["implementations"] = {"matlab": implementation}
         document["legacyFileAdapter"] = legacy
         check_document(document, "nansen.fileAdapter")
-        entries.append({"document": document, "name": name, "files": copied})
+        entry: Dict[str, Any] = {"document": document, "name": name, "files": copied}
+        if "base" in info:
+            entry["base"] = info["base"]
+            entry["reads"] = {} if info["overrides"] else dict(info["builtIn"])
+        entries.append(entry)
     return entries, warnings
 
 

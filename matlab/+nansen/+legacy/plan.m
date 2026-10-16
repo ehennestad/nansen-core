@@ -6,6 +6,8 @@ function out = plan(export)
 %   tables, dataVariables, fileAdapters (the project's own file adapters, as
 %   nansen.legacy.planFileAdapters plans them), methods (the project's own
 %   session methods, as nansen.legacy.planSessionMethods plans them),
+%   columnMethods (the methods of the computed columns of dev's table
+%   variable functions: document, and files with path and text),
 %   presets (method, name, description, values), preferredPresets,
 %   pipelines, tasks (method, name, entities, values and preset, createdAt
 %   and comment when there are), runs (method, key, finishedAt), settings
@@ -14,14 +16,16 @@ function out = plan(export)
     info = nansen.internal.getField(export, "project", struct());
     [dataset, levels, warnings] = buildDataset(export, warnings);
     [adapters, warnings] = buildFileAdapters(export, warnings);
-    byName = containers.Map("KeyType", "char", "ValueType", "char");   % dev's name of an adapter (lower case) -> its id
+    byName = containers.Map("KeyType", "char", "ValueType", "any");   % dev's name of an adapter (lower case) -> its entry
     for i = 1:numel(adapters)
         if strlength(adapters{i}.name) > 0 && ~isKey(byName, char(lower(adapters{i}.name)))
-            byName(char(lower(adapters{i}.name))) = adapters{i}.document.id;
+            byName(char(lower(adapters{i}.name))) = adapters{i};
         end
     end
     [variables, dataset, warnings] = buildDataVariables(export, dataset, levels, byName, warnings);
     [fragments, tables, warnings] = buildTables(export, dataset, warnings);
+    [fragments, tables, columnMethods, warnings] = buildTableVariables(export, tables, fragments, warnings);
+    [fragments, tables, warnings] = buildLayouts(export, tables, fragments, warnings);
     [methods_, warnings] = buildSessionMethods(export, warnings);
     imported = containers.Map("KeyType", "char", "ValueType", "char");   % dev's function name -> method id
     for i = 1:numel(methods_)
@@ -42,6 +46,9 @@ function out = plan(export)
     for i = 1:numel(tables)
         if isfield(tables{i}, "progress")
             tables{i} = rmfield(tables{i}, "progress");
+        end
+        if isfield(tables{i}, "layout")
+            tables{i} = rmfield(tables{i}, "layout");
         end
     end
     if ~isempty(pipelines)   % sessions keep the pipeline they follow, and its progress, in core.pipeline
@@ -65,10 +72,17 @@ function out = plan(export)
     if title == ""
         title = name;
     end
-    % the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or a
-    % pipeline, preset, task or completed run is of one of its methods
+    % the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or so is a
+    % file of one of the project's own adapters built on dev's, or a pipeline, preset, task or completed run is of
+    % one of its methods
     modules = "core";
     usesOphys = any(cellfun(@(v) startsWith(string(v.fileAdapter), "ophys."), variables));
+    for i = 1:numel(adapters)
+        if isfield(adapters{i}, "reads") && isfield(adapters{i}.document.legacyFileAdapter, "builtIn")
+            usesOphys = usesOphys || any(cellfun(@(b) startsWith(string(b.fileAdapter), "ophys."), ...
+                adapters{i}.document.legacyFileAdapter.builtIn));
+        end
+    end
     for i = 1:numel(pipelines)
         usesOphys = usesOphys || any(cellfun(@(step) startsWith(string(step.method), "ophys."), pipelines{i}.steps));
     end
@@ -78,7 +92,8 @@ function out = plan(export)
     end
     out = struct("name", name, "title", title, "description", textOf(info, "description"), ...
         "dataset", dataset, "modules", modules, "fragments", {fragments}, "tables", {tables}, "dataVariables", {variables}, ...
-        "fileAdapters", {adapters}, "methods", {methods_}, "presets", {presets}, "preferredPresets", {preferred}, ...
+        "fileAdapters", {adapters}, "methods", {methods_}, "columnMethods", {columnMethods}, ...
+        "presets", {presets}, "preferredPresets", {preferred}, ...
         "pipelines", {pipelines}, "tasks", {tasks}, "runs", {runs}, "settings", settingsOf(export), "warnings", {warnings});
 end
 
@@ -464,7 +479,8 @@ end
 function settings = settingsOf(export)
     % dev's app preferences (nansen.App's settings) that are app settings here, in the shape of settings.save:
     % AutosaveMetadataToDataFolders is tables.saveToDataFolders; RunTasksWhenQueued or RunTasksOnStartup is
-    % queue.autoStart (the worker starts with the app, and takes tasks as they are queued)
+    % queue.autoStart (the worker starts with the app, and takes tasks as they are queued); SessionTaskDebug is
+    % queue.debug. (ShowIgnoredEntries is a filter of the tables' views: buildLayouts.)
     settings = struct();
     dev = nansen.internal.getField(export, "settings", struct());
     table = nansen.internal.getField(dev, "MetadataTable", struct());
@@ -482,6 +498,15 @@ function settings = settingsOf(export)
     end
     if ~isempty(flags)
         settings.queue = struct("autoStart", any(flags));
+    end
+    session = nansen.internal.getField(dev, "Session", struct());
+    value = nansen.internal.getField(session, "SessionTaskDebug", []);
+    if islogical(value) && isscalar(value)   % stop in the debugger where a method run now fails
+        if isfield(settings, "queue")
+            settings.queue.debug = value;
+        else
+            settings.queue = struct("debug", value);
+        end
     end
 end
 
@@ -917,6 +942,7 @@ function [variables, dataset, warnings] = buildDataVariables(export, dataset, le
             fileType = "." + fileType;
         end
         adapterName = textOf(item, "fileAdapter");
+        own = [];   % one of the project's own adapters, imported (dev's code)
         switch lower(adapterName)
             case {"default", ""}
                 switch lower(fileType)
@@ -955,7 +981,14 @@ function [variables, dataset, warnings] = buildDataVariables(export, dataset, le
             otherwise
                 adapter = "";
                 if hasKey(legacyAdapters, lower(adapterName))   % one of the project's own, imported (dev's code)
-                    adapter = string(legacyAdapters(char(lower(adapterName))));
+                    own = legacyAdapters(char(lower(adapterName)));
+                    adapter = string(own.document.id);
+                    if isfield(own, "reads") && ~isempty(own.reads)   % read as the class of dev's it is built on is:
+                        at = find(own.reads(:, 1) == lower(fileType), 1);   % by the adapter here of that file type
+                        if ~isempty(at)
+                            adapter = own.reads(at, 2);
+                        end
+                    end
                 end
         end
         if adapter == ""
@@ -1003,7 +1036,10 @@ function [variables, dataset, warnings] = buildDataVariables(export, dataset, le
         end
         document.fileName = char("{session_id}_" + base);
         document.fileAdapter = char(adapter);
-        if adapter == "mat" && ismember(lower(adapterName), ["default", "", "roisignalarray"]) && ~isempty(regexp(legacyName, '^[A-Za-z][A-Za-z0-9_]*$', "once"))
+        named = ismember(lower(adapterName), ["default", "", "roisignalarray"]) || (~isempty(own) && isfield(own, "base") ...
+            && ismember(own.base, ["nansen.dataio.fileadapter.timeseries.RoiSignalArray", ...
+            "nansen.module.ophys.twophoton.fileadapter.RoiSignalArray"]));   % (legacyadapters.NAMED_VARIABLE_BASES)
+        if adapter == "mat" && named && ~isempty(regexp(legacyName, '^[A-Za-z][A-Za-z0-9_]*$', "once"))
             document.variableInFile = char(legacyName);   % dev loaded the variable of the data variable's name
         end
         variables{end + 1} = document; %#ok<AGROW>
@@ -1196,10 +1232,33 @@ function [fragments, tables, warnings] = buildTables(export, dataset, warnings)
                 strjoin(keyNames, " or ")); %#ok<AGROW>
         end
         [notes, warnings] = notesOf(table, identities, keyNames, label, warnings);
+        % what the table variables and dev's column layout are matched with: each dev column's name here, the names
+        % taken, and whether dev opened the table first
+        names = struct();
+        for column = columnNames
+            if isfield(idColumns, column) && ismember(idColumns.(column), [keyNames, attributes])
+                names.(column) = idColumns.(column);
+            elseif isfield(notesColumns, column)
+                names.(column) = notesColumns.(column);
+            elseif isfield(derived, column) && ismember(derived.(column), attributes)
+                names.(column) = derived.(column);
+            end
+        end
+        for column = reshape(string(fieldnames(subject)), 1, [])
+            names.(column) = subject.(column);
+        end
+        for column = reshape(string(fieldnames(renames)), 1, [])
+            names.(column) = renames.(column);
+        end
+        isDefault = nansen.internal.getField(table, "isDefault", []);
+        if ~(islogical(isDefault) && isscalar(isDefault))
+            isDefault = [];
+        end
         title = upper(extractBefore(entityType, 2)) + extractAfter(entityType, 1) + "s";
         tables{end + 1} = struct("entityType", char(entityType), "title", char(title), "key", {key}, ...
             "fragments", {fragmentIds}, "rows", {rows}, "notes", {notes}, ...
-            "progress", struct("label", label, "rows", {keptProgress})); %#ok<AGROW>
+            "progress", struct("label", label, "rows", {keptProgress}), ...
+            "layout", struct("label", label, "names", names, "taken", taken, "isDefault", isDefault)); %#ok<AGROW>
     end
     for entityType = declared(~ismember(declared, done))
         % a table to sync into, for entity types dev kept no table of
@@ -1275,11 +1334,278 @@ function [tables, warnings] = buildView(table, tables, idColumns, warnings)
         warnings{end + 1} = sprintf("table '%s': %d row(s) not found in the %s table; left out of its view", label, unmatched, entityType);
     end
     view = struct("name", char(label), "description", char("Imported from the dev table " + label), "keys", {keys});
+    isDefault = nansen.internal.getField(table, "isDefault", false);
+    if islogical(isDefault) && isscalar(isDefault) && isDefault   % the table dev opened first: the view the table opens with
+        view.default = true;
+    end
     if ~isfield(target, "views")
         target.views = {};
     end
     target.views{end + 1} = view;
     tables{at} = target;
+end
+
+function [fragments, tables, methods_, warnings] = buildTableVariables(export, tables, fragments, warnings)
+    % dev's table variables of the project (code/+<package>/+tablevariable/+<entity type>/<Name>.m) as columns of the
+    % entity type, as columns.import brings them (nansen.Project.importColumn): a class (Name < TableVariable) is the
+    % column dev's table holds, typed in, with the choices of its LIST_ALTERNATIVES (and the values the table holds
+    % besides) and the yes/no default of its DEFAULT_VALUE; a function (value = Name(sessionObject)) makes it a
+    % computed column, of a fragment and method of the name in snake case that calls dev's function, copied beside
+    % it. The values the table holds are kept, and a column it did not hold is added. methods_ are the computed
+    % columns' methods: document, and files (path under matlab/, and text). As Python's legacy._table_variables.
+    methods_ = {};
+    used = strings(1, 0);
+    items = listOf(nansen.internal.getField(export, "tableVariables", {}));
+    files = strings(1, numel(items));
+    for i = 1:numel(items)
+        files(i) = textOf(items{i}, "file");
+    end
+    [~, order] = sort(files);
+    for i = reshape(order, 1, [])
+        file = files(i);
+        where = "table variable " + file;
+        parts = split(file, "/");
+        entityType = "";
+        if numel(parts) >= 3 && parts(end - 2) == "+tablevariable" && startsWith(parts(end - 1), "+")
+            entityType = lower(extractAfter(parts(end - 1), 1));
+        end
+        [~, name] = fileparts(file);
+        name = string(name);
+        at = find(cellfun(@(t) string(t.entityType) == entityType && isfield(t, "layout"), tables), 1);
+        if isempty(at)
+            shown = entityType;
+            if shown == ""
+                shown = "its";
+            end
+            warnings{end + 1} = sprintf("%s: dev kept no table of %s entities here; left out", where, shown); %#ok<AGROW>
+            continue
+        end
+        table = tables{at};
+        text = replace(string(nansen.internal.getField(items{i}, "text", "")), sprintf("\r\n"), newline);
+        try
+            shape = nansen.Project.columnCodeShape(text, name, ".m");
+        catch err
+            if ~isa(err, "nansen.NansenError")
+                rethrow(err)
+            end
+            warnings{end + 1} = sprintf("%s: %s; left out", where, extractAfter(string(err.message), "] ")); %#ok<AGROW>
+            continue
+        end
+        if ~ismember(shape.kind, ["devClass", "devFunction"])
+            warnings{end + 1} = sprintf("%s: %s.m is not dev's table variable (a function value = %s(sessionObject), " + ...
+                "or a class %s < TableVariable); left out", where, name, name, name); %#ok<AGROW>
+            continue
+        end
+        layout = table.layout;
+        fragmentId = "legacy." + entityType;
+        own = find(cellfun(@(f) string(f.id) == fragmentId, fragments), 1);
+        columnName = "";
+        if isfield(layout.names, name)
+            columnName = string(layout.names.(name));
+        end
+        entry = [];
+        if ~isempty(own) && columnName ~= ""
+            entry = find(cellfun(@(c) string(c.name) == columnName, fragments{own}.columns), 1);
+        end
+        if columnName ~= "" && isempty(entry)
+            warnings{end + 1} = sprintf("%s: its column is %s here, which is not one of the project's own; left out", ...
+                where, columnName); %#ok<AGROW>
+            continue
+        end
+        [guessed, default] = nansen.Project.defaultType(shape.default);
+        if isempty(entry)   % a column dev's table did not hold
+            columnName = identifier(name, "column", false);
+            if ismember(columnName, layout.taken)
+                columnName = columnName + "_legacy";
+            end
+            layout.taken(end + 1) = columnName;
+            layout.names.(name) = char(columnName);
+            column = struct("name", char(columnName), "dataType", char(guessed));
+            if guessed == "boolean"
+                column.default = false;
+            end
+            if isempty(own)
+                fragments{end + 1} = struct("schemaType", 'nansen.fragment', "schemaVersion", '0.1.0', ...
+                    "id", char(fragmentId), "version", '1.0.0', ...
+                    "title", char("Columns imported from the " + layout.label + " table"), "columns", {{}}); %#ok<AGROW>
+                own = numel(fragments);
+                table.fragments{end + 1} = char(fragmentId);
+            end
+            fragments{own}.columns{end + 1} = column;
+            entry = numel(fragments{own}.columns);
+        end
+        column = fragments{own}.columns{entry};
+        if string(column.dataType) == "boolean" && ~isempty(default)
+            column.default = default;
+        end
+        fragments{own}.columns{entry} = column;
+        table.layout = layout;
+        tables{at} = table;
+        if shape.kind == "devClass"
+            if ~isempty(shape.choices) && string(column.dataType) == "string"
+                extra = strings(1, 0);
+                for r = 1:numel(table.rows)
+                    value = nansen.internal.getField(table.rows{r}, columnName, []);
+                    if (ischar(value) || isstring(value)) && ~ismember(string(value), [shape.choices, extra])
+                        extra(end + 1) = string(value); %#ok<AGROW>
+                    end
+                end
+                column.choices = cellstr([shape.choices, extra]);
+                fragments{own}.columns{entry} = column;
+                if ~isempty(extra)
+                    warnings{end + 1} = sprintf("%s: the table's values %s are not among its LIST_ALTERNATIVES; " + ...
+                        "added to the column's choices", where, strjoin(extra, ", ")); %#ok<AGROW>
+                end
+            end
+            continue
+        end
+        methodId = string(nansen.Project.snakeCase(name));
+        if isempty(regexp(methodId, "^[a-z][a-z0-9_]*$", "once"))
+            warnings{end + 1} = sprintf("%s: '%s' cannot be the id of its column's method; left out", where, methodId); %#ok<AGROW>
+            continue
+        end
+        [methodId, used] = uniqueName(methodId, used);
+        fragments{own}.columns(entry) = [];
+        if isempty(fragments{own}.columns)
+            fragments(own) = [];
+            table.fragments(strcmp(table.fragments, fragmentId)) = [];
+        end
+        fragmentEntry = nansen.internal.schemaEntry("nansen.fragment");
+        fragments{end + 1} = struct("schemaType", 'nansen.fragment', "schemaVersion", char(fragmentEntry.version), ...
+            "id", char(methodId), "version", '1.0.0', "title", char(name), "columns", {{column}}, ...
+            "compute", struct("method", char(methodId))); %#ok<AGROW>
+        table.fragments{end + 1} = char(methodId);
+        tables{at} = table;
+        methodEntry = nansen.internal.schemaEntry("nansen.method");
+        document = struct("schemaType", 'nansen.method', "schemaVersion", char(methodEntry.version), "id", char(methodId), ...
+            "version", '0.1.0', "title", char(name), "entityType", char(entityType), "batchMode", 'serial', ...
+            "implementations", struct("matlab", char(methodId)), "options", struct("type", 'object', "properties", struct()), ...
+            "description", char("Computes the column " + columnName + ", imported from " + name + ".m (dev's table variable " + name + ")"));
+        nansen.checkDocument(document, ExpectedType="nansen.method");
+        files_ = {struct("path", methodId + ".m", "text", nansen.Project.devColumnMethod(methodId, columnName, name + ".m")), ...
+            struct("path", methodId + "_value.m", "text", nansen.Project.renameFunction(text, methodId + "_value"))};
+        methods_{end + 1} = struct("document", document, "files", {files_}); %#ok<AGROW>
+    end
+end
+
+function [fragments, tables, warnings] = buildLayouts(export, tables, fragments, warnings)
+    % dev's column layout (metatable_column_settings: which columns its table showed, in which order, how wide and
+    % with which labels) and its MetadataTable.ShowIgnoredEntries preference, on the views of each table dev kept: a
+    % view of the whole table, of the master table's name, which the table opens with unless dev opened one of its
+    % filtered tables first, and the views of its filtered tables. The labels are the titles of the project's own
+    % columns. As Python's legacy._layouts.
+    settings = listOf(nansen.internal.getField(export, "columnSettings", {}));
+    settings = settings(cellfun(@isstruct, settings));
+    preferences = nansen.internal.getField(export, "settings", struct());
+    tablePreferences = nansen.internal.getField(preferences, "MetadataTable", struct());
+    showIgnored = nansen.internal.getField(tablePreferences, "ShowIgnoredEntries", []);
+    hideIgnored = islogical(showIgnored) && isscalar(showIgnored) && ~showIgnored;
+    labelsLeft = strings(1, 0);
+    for t = 1:numel(tables)
+        if ~isfield(tables{t}, "layout")
+            continue
+        end
+        table = tables{t};
+        names = table.layout.names;
+        mapped = zeros(1, 0);   % the settings of the variables the table has a column for
+        for i = 1:numel(settings)
+            variable = textOf(settings{i}, "variable");
+            if isvarname(char(variable)) && isfield(names, variable)
+                mapped(end + 1) = i; %#ok<AGROW>
+            end
+        end
+        orders = inf(numel(mapped), 1);   % by their order, those without one last, else as listed
+        hidden = strings(1, 0);
+        widths = struct();
+        for k = 1:numel(mapped)
+            setting = settings{mapped(k)};
+            column = string(names.(textOf(setting, "variable")));
+            value = nansen.internal.getField(setting, "order", []);
+            if isnumeric(value) && isscalar(value) && isfinite(value)
+                orders(k) = double(value);
+            end
+            show = nansen.internal.getField(setting, "show", []);
+            if islogical(show) && isscalar(show) && ~show && ~ismember(column, hidden)
+                hidden(end + 1) = column; %#ok<AGROW>
+            end
+            width = nansen.internal.getField(setting, "width", []);
+            if isnumeric(width) && isscalar(width) && isfinite(width) && width > 0
+                widths.(column) = double(width);
+            end
+        end
+        [~, byOrder] = sortrows([orders, (1:numel(mapped))']);
+        shownOrder = strings(1, 0);
+        for k = reshape(byOrder, 1, [])
+            column = string(names.(textOf(settings{mapped(k)}, "variable")));
+            if ~ismember(column, shownOrder)
+                shownOrder(end + 1) = column; %#ok<AGROW>
+            end
+        end
+        layout = struct();
+        if ~isempty(hidden)
+            layout.hiddenColumns = cellstr(hidden);
+        end
+        if ~isempty(shownOrder)
+            layout.columnOrder = cellstr(shownOrder);
+        end
+        if ~isempty(fieldnames(widths))
+            layout.columnWidths = widths;
+        end
+        if hideIgnored && ismember("core.notes", string(table.fragments))
+            layout.filters = {struct("column", 'ignore', "op", 'is', "value", false)};
+        end
+        own = find(cellfun(@(f) ismember(string(f.id), string(table.fragments)), fragments));
+        for k = 1:numel(mapped)
+            variable = textOf(settings{mapped(k)}, "variable");
+            label = strtrim(textOf(settings{mapped(k)}, "label"));
+            if label == "" || label == variable
+                continue
+            end
+            column = string(names.(variable));
+            placed = false;
+            for f = reshape(own, 1, [])
+                at = find(cellfun(@(c) string(c.name) == column, fragments{f}.columns), 1);
+                if ~isempty(at)
+                    fragments{f}.columns{at}.title = char(label);
+                    placed = true;
+                end
+            end
+            if ~placed
+                labelsLeft(end + 1) = variable + " (" + label + ")"; %#ok<AGROW>
+            end
+        end
+        if isempty(fieldnames(layout))
+            continue
+        end
+        views = nansen.internal.getField(table, "views", {});
+        anyDefault = false;
+        taken = false;
+        for v = 1:numel(views)
+            for field = reshape(string(fieldnames(layout)), 1, [])
+                views{v}.(field) = layout.(field);
+            end
+            anyDefault = anyDefault || (isfield(views{v}, "default") && isequal(views{v}.default, true));
+            taken = taken || string(views{v}.name) == table.layout.label;
+        end
+        name = table.layout.label;
+        if taken
+            name = name + " (all)";
+        end
+        master = struct("name", char(name), ...
+            "description", char("dev's table " + table.layout.label + ", with its columns as dev showed them"));
+        for field = reshape(string(fieldnames(layout)), 1, [])
+            master.(field) = layout.(field);
+        end
+        if ~isequal(table.layout.isDefault, false) && ~anyDefault
+            master.default = true;
+        end
+        table.views = [{master}, reshape(views, 1, [])];
+        tables{t} = table;
+    end
+    if ~isempty(labelsLeft)
+        warnings{end + 1} = sprintf("dev's column labels of %s are not carried over: those columns are keys, dataset " + ...
+            "attributes or a module's, which keep their own titles", strjoin(unique(labelsLeft, "stable"), ", "));
+    end
 end
 
 function [notes, warnings] = notesOf(table, identities, keyNames, label, warnings)

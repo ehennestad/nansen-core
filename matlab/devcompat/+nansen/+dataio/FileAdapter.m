@@ -10,6 +10,13 @@ classdef (Abstract) FileAdapter < handle & matlab.mixin.CustomDisplay
 %   FileType, Writable, load, save, writeData (which refuses, unless the
 %   subclass writes) and writeDataToMat, so a subclass's readData and
 %   writeData run as they did in dev.
+%
+%   dev's own adapter classes, which a project's adapters may subclass
+%   (nansen.dataio.fileadapter.imagestack.ImageStack, ...roi.RoiGroup,
+%   ...timeseries.RoiSignalArray, ...), are in matlab/devcompat too, with
+%   dev's constants: they read and write with CoreAdapter, the adapter here
+%   of the file's type (readWithCoreAdapter, writeWithCoreAdapter), which
+%   the shim sets from legacyFileAdapter.builtIn.
 
     properties (Dependent)
         Filename char
@@ -23,6 +30,13 @@ classdef (Abstract) FileAdapter < handle & matlab.mixin.CustomDisplay
 
     properties
         Writable = false;   % Does the file adapter have write permission?
+    end
+
+    properties (Hidden)
+        % The adapter here that reads and writes the file in place of one of
+        % dev's own adapter classes (its ImageStack, RoiGroup, ...), which
+        % nansen.legacy.FileAdapterShim gives from legacyFileAdapter.builtIn
+        CoreAdapter = []
     end
 
     properties (SetAccess = private, Hidden)
@@ -54,6 +68,11 @@ classdef (Abstract) FileAdapter < handle & matlab.mixin.CustomDisplay
         function S = getDefaultMetadata()
             %getDefaultMetadata Default metadata of the class; subclasses may override
             S = struct();
+        end
+
+        function tf = isName(value)
+            %isName Whether a value is the name of a variable (of a .mat file)
+            tf = (ischar(value) && isrow(value) && isvarname(value)) || (isstring(value) && isscalar(value) && isvarname(char(value)));
         end
     end
 
@@ -153,6 +172,50 @@ classdef (Abstract) FileAdapter < handle & matlab.mixin.CustomDisplay
                 save(obj.Filename, '-struct', 'S', '-append', versionFlag)
             else
                 save(obj.Filename, '-struct', 'S', versionFlag)
+            end
+        end
+
+        function data = readWithCoreAdapter(obj, varargin)
+            %readWithCoreAdapter What dev's own adapter classes read, here: the file read by the adapter here of its type
+            %
+            %   With the name of a variable, the variable of that name when
+            %   the file reads as a struct of them (a .mat file), as dev's
+            %   adapters of .mat files read one by name.
+            if isempty(obj.CoreAdapter)
+                error('NANSEN:FileAdapter:NoCoreAdapter', ...
+                    'nansen-core has no file adapter that reads the .%s files of dev''s %s', obj.FileType, obj.devBase())
+            end
+            data = obj.CoreAdapter.read(obj.Filename);
+            if ~isempty(varargin) && obj.isName(varargin{1}) && isstruct(data) && isscalar(data) && isfield(data, char(varargin{1}))
+                data = data.(char(varargin{1}));
+            end
+        end
+
+        function writeWithCoreAdapter(obj, data, varargin)
+            %writeWithCoreAdapter What dev's own adapter classes write, here: written by the adapter here of the file's type
+            %
+            %   With the name of a variable, a .mat file gets that variable,
+            %   and keeps its others, as dev's adapters of .mat files wrote
+            %   one by name.
+            if ~isempty(varargin) && obj.isName(varargin{1}) && strcmpi(obj.FileType, 'mat')
+                obj.writeDataToMat(struct(char(varargin{1}), {data}))
+                return
+            end
+            if isempty(obj.CoreAdapter)
+                error('NANSEN:FileAdapter:NoCoreAdapter', ...
+                    'nansen-core has no file adapter that writes the .%s files of dev''s %s', obj.FileType, obj.devBase())
+            end
+            obj.CoreAdapter.write(obj.Filename, data);
+        end
+
+        function name = devBase(obj)
+            %devBase The name of the class of dev's this one is or is built on: the one whose package is dev's
+            name = builtin('class', obj);
+            for candidate = reshape(superclasses(obj), 1, [])
+                if startsWith(candidate{1}, 'nansen.') && ~strcmp(candidate{1}, 'nansen.dataio.FileAdapter')
+                    name = candidate{1};
+                    return
+                end
             end
         end
 

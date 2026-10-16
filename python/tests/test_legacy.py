@@ -89,6 +89,42 @@ def test_a_project_without_subject_ids_has_sessions_only():
     assert [(t["entityType"], t["fragments"], t["rows"]) for t in plan["tables"]] == [("session", ["core.notes"], [])]
 
 
+def test_devs_column_layout_and_table_variables_come_with_the_tables(tmp_path):
+    report = convert_legacy(json.loads(CASE.read_text()), tmp_path / "project")
+    assert report["methods"][-1] == "num_rois"
+    project = Project.open(tmp_path / "project")
+    views = project.views("session").list()
+    assert [v["name"] for v in views] == ["Sessions", "Sessions (curated)"]
+    whole, curated = views
+    assert "keys" not in whole and not whole.get("default") and curated["default"]   # dev opened the curated table first
+    assert whole["hiddenColumns"] == ["Time", "ignore", "Quality"] == curated["hiddenColumns"]
+    assert whole["columnOrder"][:3] == ["session_id", "subject_id", "session_date"]
+    assert whole["columnWidths"]["description"] == 240 and "Reviewed" not in whole["columnWidths"]
+    assert whole["filters"] == [{"column": "ignore", "op": "is", "value": False}]   # ShowIgnoredEntries false
+    columns = {c["name"]: c for c in project.fragment("legacy.session").document["columns"]}
+    assert columns["Reviewed"]["title"] == "Reviewed?" and columns["Reviewed"]["default"] is True
+    assert columns["Rig"]["choices"] == ["Rig A", "Rig B", "Rig C"]   # dev's LIST_ALTERNATIVES, and a value the table has
+    assert columns["Stage"] == {"name": "Stage", "dataType": "string", "choices": ["none", "trained", "expert"]}
+    # dev's table variable function: a computed column, keeping dev's values, filled by a method calling dev's code
+    computed = project.fragment("num_rois").document
+    assert computed["compute"] == {"method": "num_rois"} and computed["columns"][0]["title"] == "ROIs"
+    rows = {r["session_id"]: r for r in project.table("session").to_json_rows()}
+    assert rows["m110-001"]["NumRois"] == 120
+    assert project.method("num_rois").document["implementations"] == {"matlab": "num_rois"}
+    value = (tmp_path / "project" / "matlab" / "num_rois_value.m").read_text()
+    assert value.startswith("function numRois = num_rois_value(sessionObject)")
+    assert 'result = struct("NumRois", {value});' in (tmp_path / "project" / "matlab" / "num_rois.m").read_text()
+
+
+def test_without_a_column_layout_the_tables_get_no_view_of_their_own():
+    export = json.loads(CASE.read_text())
+    del export["columnSettings"]
+    export["settings"]["MetadataTable"]["ShowIgnoredEntries"] = True
+    tables = {t["entityType"]: t for t in plan_legacy(export)["tables"]}
+    assert "views" not in tables["subject"]
+    assert [v["name"] for v in tables["session"]["views"]] == ["Sessions (curated)"]
+
+
 def test_regular_expressions_with_groups_keep_the_whole_match():
     export = {"schemaType": "nansen.legacyExport", "schemaVersion": "0.1.0", "project": {"name": "G"},
               "dataLocations": [{"name": "raw", "rootPaths": [{"value": "/r"}], "subfolders": [{"type": "Session"}],
@@ -105,8 +141,9 @@ def test_cli(tmp_path, capsys):
     export.write_text(json.dumps(export_for(raw, processed)))
     assert main(["import-legacy", str(export), str(tmp_path / "project")]) == 0
     out = capsys.readouterr().out
-    # dev's ROI, signal and binary stack variables too, and those read by the project's own file adapters
-    assert "2 subject(s), 2 session(s), 9 data variable(s), 2 file adapter(s), 2 method(s), 6 preset(s), " \
+    # dev's ROI, signal and binary stack variables too, and those read by the project's own file adapters (also those
+    # built on dev's); the method of a table variable's computed column
+    assert "2 subject(s), 2 session(s), 11 data variable(s), 4 file adapter(s), 3 method(s), 6 preset(s), " \
            "3 queued task(s) on hold, 2 completed run(s)" in out
     assert '"saveToDataFolders": true' in out
     assert "note: variable 'MotionCorrected'" not in out

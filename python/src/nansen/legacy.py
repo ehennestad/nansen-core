@@ -19,11 +19,16 @@ What maps over:
   HDF5 or npy files). A variable dev kept in a .mat file under its own name (its Default adapter, and RoiSignalArray,
   which kept all the ROI signals in one file) is that variable of the file (variableInFile);
 - the notes of a ``Notebook`` column go into the entity type's notebook, in the order they were written;
+- the project's own table variables (``code/+<package>/+tablevariable``) come in as ``columns.import`` brings them: a
+  class as the column it is, with its choices, a function as a computed column filled by dev's function;
+- dev's filtered tables become saved views, and its column layout (which columns its table showed, in which order and
+  how wide; its labels become the columns' titles) and its ShowIgnoredEntries preference go onto a view of the whole
+  table and the filtered tables' views; the view of the table dev opened first is the one the table opens with;
 - the project's own session methods (``code/+<package>/+sessionmethod``) become methods of sessions that run dev's
   code unchanged in MATLAB (``nansen.legacymethods``), and pipeline tasks that call them become steps;
-- the project's own file adapters (``code/+<package>/+fileadapter``: classes and function-based ones) become file
-  adapters that run dev's code unchanged in MATLAB (``nansen.legacyadapters``), and the variables dev read with them
-  data variables;
+- the project's own file adapters (``code/+<package>/+fileadapter``: classes, also those built on dev's own adapters
+  such as its ImageStack, and function-based ones) become file adapters that run dev's code unchanged in MATLAB
+  (``nansen.legacyadapters``), and the variables dev read with them data variables;
 - the option presets users made become presets of the methods here: those of the project's own session methods as
   they are, those of NoRMCorre and Quicky with dev's options mapped to the module's (``DEV_OPTIONS``); dev's chosen
   default preset becomes the method's preferred preset;
@@ -38,6 +43,7 @@ Whatever cannot be mapped is left out and named in the report's ``warnings``.
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
@@ -144,6 +150,13 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
     for variable in plan["dataVariables"]:
         project.add_data_variable(variable)
     legacymethods.write(project, plan["methods"])
+    for entry in plan["columnMethods"]:   # the methods of dev's table variable functions, with dev's function
+        for relative, text in entry["files"]:
+            (folder / "matlab").mkdir(exist_ok=True)
+            with open(folder / "matlab" / relative, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+        (folder / "methods").mkdir(exist_ok=True)
+        write_json(folder / "methods" / f"{entry['document']['id']}.method.nansen.json", entry["document"])
     warnings = list(plan["warnings"])
     presets = []
     for preset in plan["presets"]:
@@ -161,7 +174,7 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
     return {"project": str(folder), "rows": rows, "notes": notes,
             "dataVariables": [v["name"] for v in plan["dataVariables"]],
             "fileAdapters": [a["document"]["id"] for a in plan["fileAdapters"]],
-            "methods": [m["document"]["id"] for m in plan["methods"]],
+            "methods": [m["document"]["id"] for m in plan["methods"] + plan["columnMethods"]],
             "presets": presets, "pipelines": [p["id"] for p in plan["pipelines"]], "tasks": tasks,
             "runs": len(plan["runs"]), "settings": plan["settings"], "warnings": warnings}
 
@@ -241,11 +254,13 @@ def plan_legacy(export: dict) -> dict:
     info = export.get("project", {})
     dataset, levels = _dataset(export, warnings)
     adapters = _file_adapters(export, warnings)
-    by_name: Dict[str, str] = {}   # dev's name of each of the project's own file adapters (any case) -> its id
+    by_name: Dict[str, dict] = {}   # dev's name of each of the project's own file adapters (any case) -> its entry
     for adapter in adapters:
-        by_name.setdefault(adapter["name"].lower(), adapter["document"]["id"])
+        by_name.setdefault(adapter["name"].lower(), adapter)
     variables = _data_variables(export, dataset, levels, by_name, warnings)
     fragments, tables = _tables(export, dataset, warnings)
+    column_methods = _table_variables(export, tables, fragments, warnings)
+    _layouts(export, tables, fragments, warnings)
     methods = _session_methods(export, warnings)
     imported = {m["function"]: m["document"]["id"] for m in methods}
     preset_warnings: List[str] = []
@@ -258,21 +273,25 @@ def plan_legacy(export: dict) -> dict:
     runs = _ordered_runs(done + runs)
     for table in tables:
         table.pop("progress", None)
+        table.pop("layout", None)
     if pipelines:   # sessions keep the pipeline they follow, and its progress, in core.pipeline
         for table in tables:
             if table["entityType"] == "session" and "core.pipeline" not in table["fragments"]:
                 table["fragments"].append("core.pipeline")
     name = _identifier(info.get("shortName") or info.get("name") or "imported", "p", sep="_", lower=False)
-    # the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or a
-    # pipeline, preset, task or completed run is of one of its methods
+    # the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or so is a
+    # file of one of the project's own adapters built on dev's, or a pipeline, preset, task or completed run is of
+    # one of its methods
     uses_ophys = any(v["fileAdapter"].startswith("ophys.") for v in variables) or \
+        any(b["fileAdapter"].startswith("ophys.") for a in adapters for b in a["document"]["legacyFileAdapter"].get("builtIn", [])) or \
         any(step["method"].startswith("ophys.") for p in pipelines for step in p["steps"]) or \
         any(item["method"].startswith("ophys.") for item in presets + tasks + runs)
     modules = ["core"] + (["ophys"] if uses_ophys else [])
     return {"name": name, "title": info.get("name") or name, "description": info.get("description") or "",
             "dataset": dataset, "modules": modules, "fragments": fragments, "tables": tables, "dataVariables": variables,
-            "fileAdapters": adapters, "methods": methods, "presets": presets, "preferredPresets": preferred,
-            "pipelines": pipelines, "tasks": tasks, "runs": runs, "settings": _settings(export), "warnings": warnings}
+            "fileAdapters": adapters, "methods": methods, "columnMethods": column_methods, "presets": presets,
+            "preferredPresets": preferred, "pipelines": pipelines, "tasks": tasks, "runs": runs,
+            "settings": _settings(export), "warnings": warnings}
 
 
 # -- session methods, pipelines and presets ----------------------------------------------------
@@ -562,7 +581,8 @@ def _ordered_runs(runs: List[dict]) -> List[dict]:
 def _settings(export: dict) -> dict:
     """dev's app preferences (nansen.App's settings) that are app settings here, in the shape of settings.save:
     AutosaveMetadataToDataFolders is tables.saveToDataFolders; RunTasksWhenQueued or RunTasksOnStartup is
-    queue.autoStart (the worker starts with the app, and takes tasks as they are queued)."""
+    queue.autoStart (the worker starts with the app, and takes tasks as they are queued); SessionTaskDebug is
+    queue.debug. (ShowIgnoredEntries is a filter of the tables' views: _layouts.)"""
     settings = export.get("settings") if isinstance(export.get("settings"), dict) else {}
     table = settings.get("MetadataTable") if isinstance(settings.get("MetadataTable"), dict) else {}
     processor = settings.get("TaskProcessor") if isinstance(settings.get("TaskProcessor"), dict) else {}
@@ -572,6 +592,9 @@ def _settings(export: dict) -> dict:
     flags = [processor[k] for k in ("RunTasksWhenQueued", "RunTasksOnStartup") if isinstance(processor.get(k), bool)]
     if flags:
         out["queue"] = {"autoStart": any(flags)}
+    session = settings.get("Session") if isinstance(settings.get("Session"), dict) else {}
+    if isinstance(session.get("SessionTaskDebug"), bool):   # stop in the debugger where a method run now fails
+        out.setdefault("queue", {})["debug"] = session["SessionTaskDebug"]
     return out
 
 
@@ -749,7 +772,7 @@ def matlab_index_to_slice(expression: str) -> Optional[str]:
 
 # -- data variables ---------------------------------------------------------------------------
 
-def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str]], legacy_adapters: Dict[str, str],
+def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str]], legacy_adapters: Dict[str, dict],
                     warnings: List[str]) -> List[dict]:
     location_ids = {loc["displayName"]: loc["identifier"] for loc in dataset["dataLocations"]}
     layouts = {loc["identifier"]: loc["filesystemSource"]["entityLayout"] for loc in dataset["dataLocations"]}
@@ -769,8 +792,10 @@ def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str
             file_type = "." + file_type
         adapter_name = str(item.get("fileAdapter") or "")
         adapter = ADAPTERS_BY_NAME.get(adapter_name.lower(), "?")
-        if adapter == "?" and adapter_name.lower() != "imagestack" and adapter_name.lower() in legacy_adapters:
-            adapter = legacy_adapters[adapter_name.lower()]   # one of the project's own, imported (dev's code)
+        own = legacy_adapters.get(adapter_name.lower()) if adapter == "?" and adapter_name.lower() != "imagestack" else None
+        if own is not None:   # one of the project's own, imported (dev's code); or, when it reads as the class of
+            # dev's it is built on, the adapter here that reads that file type
+            adapter = own.get("reads", {}).get(file_type.lower(), own["document"]["id"])
         elif adapter is None:
             adapter = ADAPTERS_BY_TYPE.get(file_type.lower())
         elif adapter_name.lower() == "imagestack":
@@ -798,7 +823,8 @@ def _data_variables(export: dict, dataset: dict, levels: Dict[str, Dict[str, str
             document["subfolder"] = subfolder
         document["fileName"] = "{session_id}_" + base
         document["fileAdapter"] = adapter
-        if adapter == "mat" and adapter_name.lower() in NAMED_IN_FILE and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", legacy_name):
+        named = adapter_name.lower() in NAMED_IN_FILE or (own is not None and own.get("base") in legacyadapters.NAMED_VARIABLE_BASES)
+        if adapter == "mat" and named and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", legacy_name):
             document["variableInFile"] = legacy_name   # dev loaded the variable of the data variable's name
         variables.append(document)
     return variables
@@ -905,9 +931,17 @@ def _tables(export: dict, dataset: dict, warnings: List[str]) -> Tuple[List[dict
         if incomplete:
             warnings.append(f"table '{label}': {incomplete} row(s) with no {' or '.join(key_names)}; left out")
         notes = _notes(table, identities, key_names, label, warnings)
+        names = {c: ID_COLUMNS[c] for c in columns if c in ID_COLUMNS and ID_COLUMNS[c] in set(key_names) | attributes}
+        names.update({c: NOTES[c] for c in columns if c in NOTES})
+        names.update({c: derived[c] for c in columns if c in derived and derived[c] in attributes})
+        names.update(subject)
+        names.update(renames)
         tables.append({"entityType": entity_type, "title": f"{entity_type.title()}s", "key": key,
                        "fragments": fragment_ids, "rows": rows, "notes": notes,
-                       "progress": {"label": label, "rows": kept_progress}})
+                       "progress": {"label": label, "rows": kept_progress},
+                       # what the table variables and dev's column layout are matched with: each dev column's name
+                       # here, those taken, and whether dev opened the table first
+                       "layout": {"label": label, "names": names, "taken": taken, "isDefault": table.get("isDefault")}})
     for entity_type in declared:
         if entity_type not in done:  # a table to sync into, for entity types dev kept no table of
             tables.append({"entityType": entity_type, "title": f"{entity_type.title()}s",
@@ -944,7 +978,161 @@ def _view(table: dict, tables: List[dict], declared: List[str], warnings: List[s
             keys.append(key)
     if unmatched:
         warnings.append(f"table '{label}': {unmatched} row(s) not found in the {entity_type} table; left out of its view")
-    target.setdefault("views", []).append({"name": label, "description": f"Imported from the dev table {label}", "keys": keys})
+    view: Dict[str, Any] = {"name": label, "description": f"Imported from the dev table {label}", "keys": keys}
+    if table.get("isDefault"):   # the table dev opened first: the view the table opens with
+        view["default"] = True
+    target.setdefault("views", []).append(view)
+
+
+def _table_variables(export: dict, tables: List[dict], fragments: List[dict], warnings: List[str]) -> List[dict]:
+    """dev's table variables of the project (code/+<package>/+tablevariable/+<entity type>/<Name>.m) as columns of the
+    entity type, as columns.import brings them (Project.import_column): a class (Name < TableVariable) is the column
+    dev's table holds, typed in, with the choices of its LIST_ALTERNATIVES (and the values the table holds besides) and
+    the yes/no default of its DEFAULT_VALUE; a function (value = Name(sessionObject)) makes it a computed column, of a
+    fragment and method of the name in snake case that calls dev's function, copied beside it. The values the table
+    holds are kept. A column dev's table did not hold is added. Returns the methods of the computed columns:
+    {document, files: [(path under matlab/, text)]}."""
+    from .project import column_code_shape, default_type, dev_column_method, rename_function, snake_case
+    from .schemas import current_version
+
+    methods: List[dict] = []
+    used: set = set()
+    for item in sorted(export.get("tableVariables", []), key=lambda i: i["file"]):
+        path = PurePosixPath(item["file"])
+        where = f"table variable {item['file']}"
+        parts = path.parts
+        entity_type = parts[-2][1:].lower() if len(parts) >= 3 and parts[-3] == "+tablevariable" and \
+            parts[-2].startswith("+") else ""
+        name = path.stem
+        table = next((t for t in tables if t["entityType"] == entity_type and "layout" in t), None)
+        if table is None:
+            warnings.append(f"{where}: dev kept no table of {entity_type or 'its'} entities here; left out")
+            continue
+        text = item["text"].replace("\r\n", "\n")
+        try:
+            shape = column_code_shape(text, name, ".m")
+        except NansenError as error:
+            warnings.append(f"{where}: {error.message}; left out")
+            continue
+        if shape["kind"] not in ("devClass", "devFunction"):
+            warnings.append(f"{where}: {name}.m is not dev's table variable (a function value = {name}(sessionObject), "
+                            f"or a class {name} < TableVariable); left out")
+            continue
+        layout = table["layout"]
+        fragment_id = f"legacy.{entity_type}"
+        own = next((f for f in fragments if f["id"] == fragment_id), None)
+        column_name = layout["names"].get(name)
+        entry = next((c for c in own["columns"] if c["name"] == column_name), None) if own and column_name else None
+        if column_name and entry is None:
+            warnings.append(f"{where}: its column is {column_name} here, which is not one of the project's own; left out")
+            continue
+        guessed, default = default_type(shape["default"])
+        if entry is None:   # a column dev's table did not hold
+            column_name = _identifier(name, "column", sep="_", lower=False)
+            if column_name in layout["taken"]:
+                column_name += "_legacy"
+            layout["taken"].add(column_name)
+            layout["names"][name] = column_name
+            entry = {"name": column_name, "dataType": guessed}
+            if guessed == "boolean":
+                entry["default"] = False
+            if own is None:
+                own = {"schemaType": "nansen.fragment", "schemaVersion": "0.1.0", "id": fragment_id, "version": "1.0.0",
+                       "title": f"Columns imported from the {layout['label']} table", "columns": []}
+                fragments.append(own)
+                table["fragments"].append(fragment_id)
+            own["columns"].append(entry)
+        if entry["dataType"] == "boolean" and default is not None:
+            entry["default"] = default
+        if shape["kind"] == "devClass":
+            if shape["choices"] and entry["dataType"] == "string":
+                values = [row.get(column_name) for row in table["rows"]]
+                extra = [v for i, v in enumerate(values) if v is not None and v not in shape["choices"] and v not in values[:i]]
+                entry["choices"] = list(shape["choices"]) + extra
+                if extra:
+                    warnings.append(f"{where}: the table's values {', '.join(extra)} are not among its LIST_ALTERNATIVES; "
+                                    "added to the column's choices")
+            continue
+        method_id = snake_case(name)
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", method_id):
+            warnings.append(f"{where}: {method_id!r} cannot be the id of its column's method; left out")
+            continue
+        method_id = _unique(method_id, used)
+        own["columns"].remove(entry)
+        if not own["columns"]:
+            fragments.remove(own)
+            table["fragments"].remove(fragment_id)
+        fragments.append({"schemaType": "nansen.fragment", "schemaVersion": current_version("nansen.fragment"),
+                          "id": method_id, "version": "1.0.0", "title": name, "columns": [entry],
+                          "compute": {"method": method_id}})
+        table["fragments"].append(method_id)
+        document = {"schemaType": "nansen.method", "schemaVersion": current_version("nansen.method"), "id": method_id,
+                    "version": "0.1.0", "title": name, "entityType": entity_type, "batchMode": "serial",
+                    "implementations": {"matlab": method_id}, "options": {"type": "object", "properties": {}},
+                    "description": f"Computes the column {column_name}, imported from {name}.m (dev's table variable {name})"}
+        methods.append({"document": check_document(document, "nansen.method"),
+                        "files": [(f"{method_id}.m", dev_column_method(method_id, column_name, f"{name}.m")),
+                                  (f"{method_id}_value.m", rename_function(text, name, f"{method_id}_value"))]})
+    return methods
+
+
+def _layouts(export: dict, tables: List[dict], fragments: List[dict], warnings: List[str]) -> None:
+    """dev's column layout (metatable_column_settings: which columns its table showed, in which order, how wide and
+    with which labels) and its MetadataTable.ShowIgnoredEntries preference, on the views of each table dev kept: a
+    view of the whole table, of the master table's name, which the table opens with unless dev opened one of its
+    filtered tables first, and the views of its filtered tables. The labels are the titles of the project's own
+    columns."""
+    settings = [s for s in export.get("columnSettings", []) if isinstance(s, dict)]
+    preferences = export.get("settings") if isinstance(export.get("settings"), dict) else {}
+    table_preferences = preferences.get("MetadataTable") if isinstance(preferences.get("MetadataTable"), dict) else {}
+    hide_ignored = table_preferences.get("ShowIgnoredEntries") is False
+    labels_left: List[str] = []
+    for table in tables:
+        layout = table.get("layout")
+        if layout is None:
+            continue
+        names = layout["names"]
+        mapped = [(i, s) for i, s in enumerate(settings) if str(s.get("variable")) in names]
+        ordered = sorted(mapped, key=lambda p: (p[1]["order"] if _is_number(p[1].get("order")) else math.inf, p[0]))
+        view: Dict[str, Any] = {}
+        hidden = list(dict.fromkeys(names[s["variable"]] for _, s in mapped if s.get("show") is False))
+        order = list(dict.fromkeys(names[s["variable"]] for _, s in ordered))
+        widths = {names[s["variable"]]: s["width"] for _, s in mapped if _is_number(s.get("width")) and s["width"] > 0}
+        if hidden:
+            view["hiddenColumns"] = hidden
+        if order:
+            view["columnOrder"] = order
+        if widths:
+            view["columnWidths"] = widths
+        if hide_ignored and "core.notes" in table["fragments"]:
+            view["filters"] = [{"column": "ignore", "op": "is", "value": False}]
+        own = {c["name"]: c for f in fragments if f["id"] in table["fragments"] for c in f["columns"]}
+        for _, s in mapped:
+            label = str(s.get("label") or "").strip()
+            if label and label != s["variable"]:
+                if names[s["variable"]] in own:
+                    own[names[s["variable"]]]["title"] = label
+                else:
+                    labels_left.append(f"{s['variable']} ({label})")
+        if not view:
+            continue
+        views = table.get("views", [])
+        for existing in views:
+            existing.update(json.loads(json.dumps(view)))
+        label = layout["label"]
+        master: Dict[str, Any] = {"name": label + " (all)" if any(v["name"] == label for v in views) else label,
+                                  "description": f"dev's table {label}, with its columns as dev showed them"}
+        master.update(view)
+        if layout["isDefault"] is not False and not any(v.get("default") for v in views):
+            master["default"] = True
+        table["views"] = [master] + views
+    if labels_left:
+        warnings.append(f"dev's column labels of {', '.join(dict.fromkeys(labels_left))} are not carried over: those "
+                        "columns are keys, dataset attributes or a module's, which keep their own titles")
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _notes(table: dict, identities: Dict[int, Tuple[Any, ...]], key_names: List[str], label: str,

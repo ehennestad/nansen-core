@@ -1,5 +1,5 @@
 {
-  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table); dev's pipelines, with the tasks that have a method here and their rules for new sessions. The project's own session methods (code/+RatNav/+sessionmethod) become methods of sessions that run dev's code (their files copied into matlab/, in the same packages), with the options read from their text; a file that is not a session method is left out, and a pipeline task that calls one of them becomes a step. Its own file adapters (code/+RatNav/+fileadapter: a class and a function-based one) become legacy file adapters with their code copied, and the variables read with them data variables; a function there is left out. The option presets users made become presets: NoRMCorre's with dev's options mapped to the module method's, the session methods' as they are, renamed when called default, with an option that does not fit left out; dev's default preset becomes the preferred one; those of methods not here, or of dev's options with no equivalent, are named. The queued tasks become tasks on hold in dev's order, with dev's options over their preset's, less those not here, not queueable, of sessions not here or naming none; the completed tasks of the history and the finished tasks of the Progress column go into the run journal, and the column's pipeline into core.pipeline. dev's app preferences give the settings.",
+  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table); dev's pipelines, with the tasks that have a method here and their rules for new sessions. The project's own session methods (code/+RatNav/+sessionmethod) become methods of sessions that run dev's code (their files copied into matlab/, in the same packages), with the options read from their text; a file that is not a session method is left out, and a pipeline task that calls one of them becomes a step. Its own file adapters (code/+RatNav/+fileadapter: a class, a function-based one, and classes built on dev's ImageStack and on the two-photon module's RoiGroup) become legacy file adapters with their code copied, and the variables read with them data variables: those of the class on ImageStack, which has no readData of its own, are read by the ophys module's TIFF adapter; a function there, and a class on a class of dev's that is not an adapter, are left out. Its own table variables (code/+RatNav/+tablevariable) come in as columns.import brings them: classes are the columns, with their choices (and a value the table has besides) and default, a function makes its column computed by a method calling dev's code, keeping the values; one of an entity type with no table, one whose column is an attribute here and a file that is no table variable are named. dev's column layout (shown, order, widths, labels as the titles of the project's own columns) and its ShowIgnoredEntries false go onto a view of each whole table and onto the filtered table's view, which is the default since dev opened it first. The option presets users made become presets: NoRMCorre's with dev's options mapped to the module method's, the session methods' as they are, renamed when called default, with an option that does not fit left out; dev's default preset becomes the preferred one; those of methods not here, or of dev's options with no equivalent, are named. The queued tasks become tasks on hold in dev's order, with dev's options over their preset's, less those not here, not queueable, of sessions not here or naming none; the completed tasks of the history and the finished tasks of the Progress column go into the run journal, and the column's pipeline into core.pipeline. dev's app preferences give the settings.",
   "project": {
     "schemaType": "nansen.project",
     "schemaVersion": "0.1.0",
@@ -22,6 +22,7 @@
         "fragments": [
           "core.notes",
           "legacy.session",
+          "num_rois",
           "core.pipeline"
         ]
       }
@@ -190,6 +191,11 @@
                   "name": "RunningSpeed",
                   "pattern": "speed\\.speed$",
                   "cardinality": "one"
+                },
+                {
+                  "name": "MotionStack",
+                  "pattern": "motion_stack\\.tif$",
+                  "cardinality": "one"
                 }
               ]
             }
@@ -228,22 +234,64 @@
           "dataType": "string"
         },
         {
-          "name": "NumRois",
-          "dataType": "integer"
-        },
-        {
           "name": "Quality",
           "dataType": "number"
         },
         {
           "name": "Reviewed",
           "dataType": "boolean",
-          "default": false
+          "default": true,
+          "title": "Reviewed?"
+        },
+        {
+          "name": "Rig",
+          "dataType": "string",
+          "choices": [
+            "Rig A",
+            "Rig B",
+            "Rig C"
+          ]
+        },
+        {
+          "name": "Stage",
+          "dataType": "string",
+          "choices": [
+            "none",
+            "trained",
+            "expert"
+          ]
         }
       ]
+    },
+    {
+      "schemaType": "nansen.fragment",
+      "schemaVersion": "0.1.0",
+      "id": "num_rois",
+      "version": "1.0.0",
+      "title": "NumRois",
+      "columns": [
+        {
+          "name": "NumRois",
+          "dataType": "integer",
+          "title": "ROIs"
+        }
+      ],
+      "compute": {
+        "method": "num_rois"
+      }
     }
   ],
   "dataVariables": [
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "name": "CuratedRois",
+      "entityType": "session",
+      "dataLocation": "processed",
+      "subfolder": "roi_data",
+      "fileName": "{session_id}_curated_rois.mat",
+      "fileAdapter": "legacy.curated_rois"
+    },
     {
       "schemaType": "nansen.dataVariable",
       "schemaVersion": "0.1.0",
@@ -262,6 +310,16 @@
       "dataLocation": "processed",
       "filePattern": "MotionCorrected",
       "fileName": "{session_id}_motion_corrected.tif",
+      "fileAdapter": "ophys.tiff_stack"
+    },
+    {
+      "schemaType": "nansen.dataVariable",
+      "schemaVersion": "0.1.0",
+      "name": "MotionStack",
+      "entityType": "session",
+      "dataLocation": "processed",
+      "filePattern": "MotionStack",
+      "fileName": "{session_id}_motion_stack.tif",
       "fileAdapter": "ophys.tiff_stack"
     },
     {
@@ -381,9 +439,11 @@
         "ignore",
         "description",
         "Time",
-        "NumRois",
         "Quality",
         "Reviewed",
+        "Rig",
+        "Stage",
+        "NumRois",
         "pipeline"
       ],
       "rows": [
@@ -393,9 +453,11 @@
           "ignore": false,
           "description": "Good",
           "Time": "09:30",
-          "NumRois": 120,
           "Quality": 0.8,
           "Reviewed": true,
+          "Rig": "Rig A",
+          "Stage": null,
+          "NumRois": 120,
           "pipeline": "legacy.two_photon_preprocessing"
         },
         {
@@ -404,9 +466,11 @@
           "ignore": true,
           "description": null,
           "Time": null,
-          "NumRois": null,
           "Quality": null,
           "Reviewed": false,
+          "Rig": "Rig C",
+          "Stage": null,
+          "NumRois": null,
           "pipeline": null
         }
       ]
@@ -416,6 +480,7 @@
     "data location 'Processed', Session ID: read by the function RatNav.datalocation.getSessionID; register an extractor named 'getSessionID'",
     "data location 'Processed', Experiment Date: combines several folder levels, which has no DSM rule; left out",
     "data location 'Scratch': no root path, left out",
+    "file adapter code/+RatNav/+fileadapter/WhiskTracker.m: WhiskTracker.m subclasses nansen.dataio.DynamicFileAdapter, which nansen-core does not have; left out",
     "file adapter code/+RatNav/+fileadapter/parseHeader.m: parseHeader.m is not a class, so it is not a dev file adapter; left out",
     "variable 'Whisking': no built-in file adapter for 'WhiskTracker' .wsk files; left out",
     "table 'Sessions': column 'DataLocation' holds values with no table type; left out",
@@ -426,6 +491,11 @@
     "table 'Sessions': 1 note(s) with no time; left out",
     "table 'Subjects': 1 BiologicalSex value(s) not among female, male, not detected; kept as written",
     "table 'Sessions (curated)': 1 row(s) not found in the session table; left out of its view",
+    "table variable code/+RatNav/+tablevariable/+experiment/Arena.m: dev kept no table of experiment entities here; left out",
+    "table variable code/+RatNav/+tablevariable/+session/Date.m: its column is session_date here, which is not one of the project's own; left out",
+    "table variable code/+RatNav/+tablevariable/+session/Rig.m: the table's values Rig C are not among its LIST_ALTERNATIVES; added to the column's choices",
+    "table variable code/+RatNav/+tablevariable/+session/notes.m: notes.m is not dev's table variable (a function value = notes(entity), or a class notes < TableVariable) nor a method notes(entity, options, context); left out",
+    "dev's column labels of SubjectID (Subject), BiologicalSex (Sex), DateOfBirth (Born), sessionID (Session) are not carried over: those columns are keys, dataset attributes or a module's, which keep their own titles",
     "session method code/+RatNav/+sessionmethod/+process/+tools/makeLabel.m: makeLabel.m does not call nansen.session.SessionMethod.setAttributes, so it is not a dev session method; left out",
     "pipeline 'Two-photon preprocessing': task 'Plot stats' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
     "pipeline 'Plots only': task 'Plot stats' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
@@ -540,6 +610,42 @@
       "entityType": "session",
       "views": [
         {
+          "name": "Sessions",
+          "description": "dev's table Sessions, with its columns as dev showed them",
+          "hiddenColumns": [
+            "Time",
+            "ignore",
+            "Quality"
+          ],
+          "columnOrder": [
+            "session_id",
+            "subject_id",
+            "session_date",
+            "Time",
+            "ignore",
+            "NumRois",
+            "Quality",
+            "Reviewed",
+            "description"
+          ],
+          "columnWidths": {
+            "session_id": 90,
+            "subject_id": 80,
+            "session_date": 100,
+            "Time": 60,
+            "ignore": 50,
+            "description": 240,
+            "NumRois": 60
+          },
+          "filters": [
+            {
+              "column": "ignore",
+              "op": "is",
+              "value": false
+            }
+          ]
+        },
+        {
           "name": "Sessions (curated)",
           "description": "Imported from the dev table Sessions (curated)",
           "keys": [
@@ -551,7 +657,74 @@
               "subject_id": "m110",
               "session_id": "m110-002"
             }
+          ],
+          "default": true,
+          "hiddenColumns": [
+            "Time",
+            "ignore",
+            "Quality"
+          ],
+          "columnOrder": [
+            "session_id",
+            "subject_id",
+            "session_date",
+            "Time",
+            "ignore",
+            "NumRois",
+            "Quality",
+            "Reviewed",
+            "description"
+          ],
+          "columnWidths": {
+            "session_id": 90,
+            "subject_id": 80,
+            "session_date": 100,
+            "Time": 60,
+            "ignore": 50,
+            "description": 240,
+            "NumRois": 60
+          },
+          "filters": [
+            {
+              "column": "ignore",
+              "op": "is",
+              "value": false
+            }
           ]
+        }
+      ]
+    },
+    {
+      "schemaType": "nansen.views",
+      "schemaVersion": "0.1.0",
+      "entityType": "subject",
+      "views": [
+        {
+          "name": "Subjects",
+          "description": "dev's table Subjects, with its columns as dev showed them",
+          "hiddenColumns": [
+            "date_of_birth"
+          ],
+          "columnOrder": [
+            "subject_id",
+            "date_of_birth",
+            "sex",
+            "description"
+          ],
+          "columnWidths": {
+            "description": 240,
+            "subject_id": 80,
+            "sex": 50,
+            "date_of_birth": 90
+          },
+          "filters": [
+            {
+              "column": "ignore",
+              "op": "is",
+              "value": false
+            }
+          ],
+          "default": true
         }
       ]
     }
@@ -683,16 +856,67 @@
           }
         }
       }
+    },
+    {
+      "schemaType": "nansen.method",
+      "schemaVersion": "0.1.0",
+      "id": "num_rois",
+      "version": "0.1.0",
+      "title": "NumRois",
+      "entityType": "session",
+      "batchMode": "serial",
+      "implementations": {
+        "matlab": "num_rois"
+      },
+      "options": {
+        "type": "object",
+        "properties": {}
+      },
+      "description": "Computes the column NumRois, imported from NumRois.m (dev's table variable NumRois)"
     }
   ],
   "methodFiles": [
     "+RatNav/+fileadapter/+LickLog/fileadapter.json",
     "+RatNav/+fileadapter/+LickLog/read.m",
+    "+RatNav/+fileadapter/CuratedRois.m",
+    "+RatNav/+fileadapter/MotionStack.m",
     "+RatNav/+fileadapter/SpeedTrace.m",
     "+RatNav/+sessionmethod/+plot/PlotSpeed.m",
-    "+RatNav/+sessionmethod/+process/countTrials.m"
+    "+RatNav/+sessionmethod/+process/countTrials.m",
+    "num_rois.m",
+    "num_rois_value.m"
   ],
   "fileAdapters": [
+    {
+      "schemaType": "nansen.fileAdapter",
+      "schemaVersion": "0.1.0",
+      "id": "legacy.curated_rois",
+      "version": "1.0.0",
+      "title": "CuratedRois",
+      "description": "The ROIs a curator kept.",
+      "extensions": [
+        ".mat",
+        ".npy"
+      ],
+      "dataType": "RoiArray",
+      "implementations": {
+        "matlab": "RatNav.fileadapter.CuratedRois"
+      },
+      "legacyFileAdapter": {
+        "kind": "class",
+        "base": "nansen.module.ophys.twophoton.fileadapter.RoiGroup",
+        "builtIn": [
+          {
+            "extension": ".mat",
+            "fileAdapter": "ophys.nansen_roi_array"
+          },
+          {
+            "extension": ".npy",
+            "fileAdapter": "ophys.suite2p_rois"
+          }
+        ]
+      }
+    },
     {
       "schemaType": "nansen.fileAdapter",
       "schemaVersion": "0.1.0",
@@ -710,6 +934,57 @@
       "legacyFileAdapter": {
         "kind": "function",
         "read": "RatNav.fileadapter.LickLog.read"
+      }
+    },
+    {
+      "schemaType": "nansen.fileAdapter",
+      "schemaVersion": "0.1.0",
+      "id": "legacy.motion_stack",
+      "version": "1.0.0",
+      "title": "MotionStack",
+      "description": "A motion-corrected recording, opened in the lab's viewer.",
+      "extensions": [
+        ".ini",
+        ".raw",
+        ".tif",
+        ".tiff",
+        ".avi",
+        ".h5",
+        ".tsm"
+      ],
+      "dataType": "ImageStack",
+      "implementations": {
+        "matlab": "RatNav.fileadapter.MotionStack"
+      },
+      "legacyFileAdapter": {
+        "kind": "class",
+        "base": "nansen.dataio.fileadapter.imagestack.ImageStack",
+        "builtIn": [
+          {
+            "extension": ".raw",
+            "fileAdapter": "ophys.binary_stack"
+          },
+          {
+            "extension": ".tif",
+            "fileAdapter": "ophys.tiff_stack"
+          },
+          {
+            "extension": ".tiff",
+            "fileAdapter": "ophys.tiff_stack"
+          },
+          {
+            "extension": ".avi",
+            "fileAdapter": "ophys.video_file"
+          },
+          {
+            "extension": ".h5",
+            "fileAdapter": "ophys.hdf5_stack"
+          },
+          {
+            "extension": ".tsm",
+            "fileAdapter": "ophys.tsm_stack"
+          }
+        ]
       }
     },
     {
@@ -988,7 +1263,8 @@
       "saveToDataFolders": true
     },
     "queue": {
-      "autoStart": false
+      "autoStart": false,
+      "debug": false
     }
   }
 }

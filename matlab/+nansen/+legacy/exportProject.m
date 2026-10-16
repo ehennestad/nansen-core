@@ -14,6 +14,10 @@ function export = exportProject(folder, options)
 %     code/+<package>/+sessionmethod/**/*.m         the project's own session methods, with their text
 %     code/+<package>/+fileadapter/**               the project's own file adapters (.m files, and the
 %                                                  fileadapter.json of function-based ones), with their text
+%     code/+<package>/+tablevariable/**/*.m         the project's own table variables, with their text
+%     metadata/tables/metatable_catalog.mat        the table of each kind dev opens first (IsDefault)
+%     metadata/tables/metatable_column_settings.*  the tables' column layout (.json, or the .mat of older
+%                                                  versions): label, shown, width and place of each column
 %
 %   and, from the user's preferences (dev's nansen.prefdir: UserFolder=,
 %   by default prefdir/Nansen/default):
@@ -22,6 +26,9 @@ function export = exportProject(folder, options)
 %     projects/<name>/task_list.mat                the task list: queued tasks (method, sessions, options,
 %                                                  preset, created, comment) and the history (method,
 %                                                  sessions, status, finished)
+%     settings/task_list.mat                       the task list of older versions, one for all the user's
+%                                                  projects (dev's nansen.localpath('TaskList')): read as the
+%                                                  other, after it, less the tasks that one has too
 %     settings/nansen_app_settings.mat             nansen.App's preferences (settings)
 %
 %   Table values become JSON values: text, numbers, logicals and dates.
@@ -35,6 +42,9 @@ function export = exportProject(folder, options)
 %   logicals, cells of text); those that have not are named (skippedOptions).
 %   A task's sessions are its entityId, or the sessionID of the sessions it
 %   was given, or its name (dev names a task of one session by its id).
+%   dev's session objects in a task, which do not load without dev, load
+%   through stand-ins of dev's session classes that keep their ids, so a
+%   task of several sessions (Multisession) names them too.
 %
 %   exportProject(folder, File=path) also writes the export as JSON, which
 %   the Python command `nansen import-legacy` converts as well.
@@ -50,15 +60,25 @@ function export = exportProject(folder, options)
     export.project = readProjectInfo(folder);
     export.dataLocations = readDataLocations(fullfile(folder, "configurations", "datalocation_settings.mat"));
     export.variables = readVariables(fullfile(folder, "configurations", "filepath_settings.mat"));
-    export.tables = readTables(fullfile(folder, "metadata", "tables"));
+    [export.tables, classes] = readTables(fullfile(folder, "metadata", "tables"));
     export.pipelines = readPipelines(fullfile(folder, "configurations", "pipeline_settings.mat"));
     export.presets = [readPresets(fullfile(folder, "configurations", "custom_options")), ...
         readPresets(fullfile(options.UserFolder, "custom_options"))];
     export.sessionMethods = readSessionMethods(folder);
     export.fileAdapters = readFileAdapters(folder);
-    taskList = taskListPath(folder, export.project, options.UserFolder);
-    if taskList ~= ""
-        export.tasks = readTaskList(taskList);
+    export.tableVariables = readTableVariables(folder);
+    columnSettings = readColumnSettings(fullfile(folder, "metadata", "tables"));
+    if ~isempty(columnSettings)
+        export.columnSettings = columnSettings;
+    end
+    % the project's task list, and the one older versions of dev kept for all the user's projects
+    taskLists = taskListPath(folder, export.project, options.UserFolder);
+    older = string(fullfile(options.UserFolder, "settings", "task_list.mat"));
+    if isfile(older)
+        taskLists(end + 1) = older;
+    end
+    if ~isempty(taskLists)
+        export.tasks = readTaskLists(taskLists, classes);
     end
     settings = readSettings(fullfile(options.UserFolder, "settings", "nansen_app_settings.mat"));
     if ~isempty(settings)
@@ -155,11 +175,15 @@ function variables = readVariables(path)
     end
 end
 
-function tables = readTables(folder)
+function [tables, classes] = readTables(folder)
+    % The MetaTables, with whether dev opened each first (the catalog's IsDefault), and the classes of the objects
+    % their rows are (MetaTableClass, ItemClassName)
     tables = {};
+    classes = strings(1, 0);
+    catalog = readCatalog(folder);
     listing = dir(fullfile(folder, "*.mat"));
     for name = sort(string({listing.name}))
-        if name == "metatable_catalog.mat"
+        if ismember(name, ["metatable_catalog.mat", "metatable_column_settings.mat"])
             continue
         end
         S = load(fullfile(folder, name));
@@ -167,6 +191,11 @@ function tables = readTables(folder)
             continue
         end
         className = textOf(S, "MetaTableClass");
+        for given = string({className, textOf(S, "ItemClassName")})
+            if given ~= "" && ~ismember(given, classes)
+                classes(end + 1) = given; %#ok<AGROW>
+            end
+        end
         parts = split(string(className), ".");
         entries = S.MetaTableEntries;
         [columns, skipped, rows, notes, progress] = readEntries(entries);
@@ -176,9 +205,119 @@ function tables = readTables(folder)
             label = char(label);
         end
         isMaster = getOr(S, "IsMaster", true);
-        tables{end + 1} = struct("name", label, "entityClass", char(lower(parts(end))), ...
+        table_ = struct("name", label, "entityClass", char(lower(parts(end))), ...
             "isMaster", ~isempty(isMaster) && logical(isMaster(1)), "columns", {columns}, ...
-            "skippedColumns", {cellstr(skipped)}, "notes", {notes}, "progress", {progress}, "rows", {rows}); %#ok<AGROW>
+            "skippedColumns", {cellstr(skipped)}, "notes", {notes}, "progress", {progress}, "rows", {rows});
+        isDefault = defaultOf(catalog, name, label);
+        if ~isempty(isDefault)
+            table_.isDefault = isDefault;
+        end
+        tables{end + 1} = table_; %#ok<AGROW>
+    end
+end
+
+function catalog = readCatalog(folder)
+    % dev's MetaTableCatalog (metatable_catalog.mat's metaTableCatalog, a table): per MetaTable its FileName,
+    % MetaTableName and IsDefault; [] when there is none
+    catalog = [];
+    path = fullfile(folder, "metatable_catalog.mat");
+    if ~isfile(path)
+        return
+    end
+    S = loadQuietly(path);
+    if isfield(S, "metaTableCatalog") && istable(S.metaTableCatalog)
+        catalog = S.metaTableCatalog;
+    end
+end
+
+function isDefault = defaultOf(catalog, fileName, label)
+    % The catalog's IsDefault of a MetaTable (the one of its class dev opens first), found by its file name or else
+    % its name; [] when the catalog does not say
+    isDefault = [];
+    if isempty(catalog)
+        return
+    end
+    names = string(catalog.Properties.VariableNames);
+    if ~ismember("IsDefault", names)
+        return
+    end
+    at = [];
+    if ismember("FileName", names)
+        at = find(string(catalog.FileName) == string(fileName), 1);
+    end
+    if isempty(at) && ismember("MetaTableName", names)
+        at = find(string(catalog.MetaTableName) == string(label), 1);
+    end
+    if isempty(at)
+        return
+    end
+    value = catalog.IsDefault(at);
+    if iscell(value)
+        value = value{1};
+    end
+    if (islogical(value) || isnumeric(value)) && isscalar(value)
+        isDefault = logical(value);
+    end
+end
+
+function settings = readColumnSettings(folder)
+    % dev's column layout of its tables (its Project's MetatableColumnSettings: metatable_column_settings.json, or the
+    % .mat of older versions): per table variable its label, whether it is shown, its width and its place
+    settings = {};
+    items = {};
+    if isfile(fullfile(folder, "metatable_column_settings.json"))
+        try
+            items = jsondecode(nansen.internal.readText(fullfile(folder, "metatable_column_settings.json")));
+        catch
+            items = {};
+        end
+    elseif isfile(fullfile(folder, "metatable_column_settings.mat"))
+        items = getOr(loadQuietly(fullfile(folder, "metatable_column_settings.mat")), "MetatableColumnSettings", {});
+    end
+    if isstruct(items)
+        items = num2cell(reshape(items, 1, []));
+    elseif ~iscell(items)
+        items = {};
+    end
+    for i = 1:numel(items)
+        item = items{i};
+        if ~(isstruct(item) && isscalar(item)) || isempty(textOf(item, "VariableName"))
+            continue
+        end
+        setting = struct("variable", textOf(item, "VariableName"));
+        if ~isempty(textOf(item, "ColumnLabel"))
+            setting.label = textOf(item, "ColumnLabel");
+        end
+        show = getOr(item, "ShowColumn", []);
+        if (islogical(show) || isnumeric(show)) && isscalar(show)
+            setting.show = logical(show);
+        end
+        for pair = ["ColumnWidth", "width"; "ColumnOrder", "order"]'
+            value = getOr(item, pair(1), []);
+            if isnumeric(value) && isscalar(value) && isfinite(value)
+                setting.(pair(2)) = double(value);
+            end
+        end
+        settings{end + 1} = setting; %#ok<AGROW>
+    end
+end
+
+function variables = readTableVariables(folder)
+    % The .m files of the project's table variable packages (code/+<package>/+tablevariable, with a package per entity
+    % type: +session, +subject), in order of their paths, with their text
+    variables = {};
+    files = strings(0, 1);
+    for package = reshape(dir(fullfile(folder, "code", "+*")), 1, [])
+        root = fullfile(folder, "code", package.name, "+tablevariable");
+        if package.isdir && isfolder(root)
+            files = [files; packageFiles(root, "code/" + string(package.name) + "/+tablevariable/")]; %#ok<AGROW>
+        end
+    end
+    for file = reshape(sort(files), 1, [])
+        [~, name] = fileparts(file);
+        if isvarname(char(name))
+            variables{end + 1} = struct("file", char(file), "text", nansen.internal.readText(fullfile(folder, file))); %#ok<AGROW>
+        end
     end
 end
 
@@ -471,7 +610,7 @@ end
 
 function path = taskListPath(folder, info, userFolder)
     % dev's task list of the project: <user folder>/projects/<name>/task_list.mat, the name being the project's
-    % package (code/+<name>), its short name or its folder's name; "" when there is none
+    % package (code/+<name>), its short name or its folder's name; none (an empty string array) when there is none
     candidates = strings(1, 0);
     for package = reshape(dir(fullfile(folder, "code", "+*")), 1, [])
         if package.isdir
@@ -481,12 +620,84 @@ function path = taskListPath(folder, info, userFolder)
     candidates(end + 1) = string(textOf(info, "shortName"));
     [~, name] = fileparts(folder);
     candidates(end + 1) = string(name);
-    path = "";
+    path = strings(1, 0);
     for candidate = candidates(strlength(candidates) > 0)
         if isfile(fullfile(userFolder, "projects", candidate, "task_list.mat"))
             path = string(fullfile(userFolder, "projects", candidate, "task_list.mat"));
             return
         end
+    end
+end
+
+function tasks = readTaskLists(paths, classes)
+    % The tasks of dev's task lists, in order: the project's, then the one older versions kept in the user's settings
+    % (dev's nansen.localpath('TaskList'), for all the user's projects: the tasks of other projects' sessions are
+    % named as not here when they are converted). A task of the older list that the project's has too is left out.
+    % dev's session objects in the tasks load through stand-ins of dev's session classes (sessionStubs), which keep
+    % their ids, so a task of several sessions names them without dev.
+    stubs = sessionStubs(classes); %#ok<NASGU>   removed when this returns
+    tasks = struct("queue", {{}}, "history", {{}});
+    seen = strings(1, 0);
+    for path = reshape(paths, 1, [])
+        list = readTaskList(path);
+        for kind = ["queue", "history"]
+            for i = 1:numel(list.(kind))
+                task = list.(kind){i};
+                identity = strjoin([kind, string(task.function), strjoin(string(task.entities), ","), ...
+                    string(textOf(task, "createdAt")), string(textOf(task, "finishedAt")), string(textOf(task, "status"))], char(30));
+                if ismember(identity, seen)
+                    continue
+                end
+                seen(end + 1) = identity; %#ok<AGROW>
+                tasks.(kind){end + 1} = task;
+            end
+        end
+    end
+end
+
+function cleanup = sessionStubs(classes)
+    % Stand-ins of dev's session and subject classes (nansen.metadata.type.Session and Subject, and those the tables
+    % name as theirs), so that dev's objects in a task list load without dev, as objects of these: each keeps only
+    % the ids (sessionID, subjectID) of the object saved, and drops the rest of it. None is made of a class that is on
+    % the path (dev's, when dev is). They are written to a temporary folder put on the path, which the returned
+    % onCleanup removes again.
+    folder = string(tempname);
+    added = false;
+    for name = reshape(unique(["nansen.metadata.type.Session", "nansen.metadata.type.Subject", classes], "stable"), 1, [])
+        if isempty(regexp(name, '^[A-Za-z]\w*(\.[A-Za-z]\w*)*$', 'once')) || exist(name, "class") == 8
+            continue
+        end
+        parts = reshape(split(name, "."), 1, []);
+        target = folder;
+        if numel(parts) > 1
+            target = string(fullfile(folder, strjoin("+" + parts(1:end - 1), filesep)));
+        end
+        if ~isfolder(target)
+            mkdir(target);
+        end
+        lines = [
+            "classdef " + parts(end) + " < dynamicprops"
+            "%" + parts(end) + " A stand-in of dev's " + name + " while nansen.legacy.exportProject reads a task list: the ids of a saved object"
+            "    properties"
+            "        sessionID"
+            "        subjectID"
+            "    end"
+            "end"];
+        nansen.internal.writeText(fullfile(target, parts(end) + ".m"), strjoin(lines', newline) + newline);
+        added = true;
+    end
+    if added
+        addpath(folder);
+    end
+    cleanup = onCleanup(@() removeStubs(folder, added));
+end
+
+function removeStubs(folder, added)
+    if added
+        rmpath(folder);
+    end
+    if isfolder(folder)
+        rmdir(folder, "s");
     end
 end
 
@@ -501,7 +712,7 @@ function tasks = readTaskList(path)
     for i = 1:numel(queue)
         item = queue(i);
         task = struct("function", functionOf(getOr(item, "method", '')), "name", textOf(item, "name"), ...
-            "entities", {entityIdsOf(item, true)});
+            "entities", {entityIdsOf(item)});
         args = getOr(item, "args", {});
         if iscell(args) && numel(args) >= 2 && isstruct(args{2}) && isscalar(args{2})
             task.options = jsonOptions(args{2}, "");
@@ -525,7 +736,7 @@ function tasks = readTaskList(path)
     for i = 1:numel(history)
         item = history(i);
         task = struct("function", functionOf(getOr(item, "method", '')), "name", textOf(item, "name"), ...
-            "entities", {entityIdsOf(item, false)}, "status", textOf(item, "status"));
+            "entities", {entityIdsOf(item)}, "status", textOf(item, "status"));
         finished = stampOf(getOr(item, "timeFinished", ''));
         if finished ~= ""
             task.finishedAt = char(finished);
@@ -544,9 +755,11 @@ function name = functionOf(method)
     end
 end
 
-function ids = entityIdsOf(item, queued)
+function ids = entityIdsOf(item)
     % A task's sessions, by id: its entityId (set when it went into the history); else the sessionID of the sessions
-    % it was given (a queued task's first argument), when they load; else its name, unless it is Multisession
+    % it was given (a queued task's first argument, and a finished one's in older versions of dev, which kept it in
+    % the history), which load through sessionStubs' stand-ins of dev's classes; else its name, unless it is
+    % Multisession
     ids = {};
     stored = getOr(item, "entityId", {});
     if (iscellstr(stored) || isstring(stored)) && ~isempty(stored)
@@ -554,17 +767,20 @@ function ids = entityIdsOf(item, queued)
         return
     end
     args = getOr(item, "args", {});
-    if queued && iscell(args) && ~isempty(args)
+    if iscell(args) && ~isempty(args)
         try
             sessions = args{1};
             for k = 1:numel(sessions)
                 id = sessions(k).sessionID;
+                if isstring(id) && isscalar(id)
+                    id = char(id);
+                end
                 if ischar(id) && isrow(id)
                     ids{end + 1} = id; %#ok<AGROW>
                 end
             end
         catch
-            ids = {};   % dev's session objects, which do not load without dev
+            ids = {};   % not sessions (a finished task's options), or objects of a class that did not load
         end
     end
     name = textOf(item, "name");

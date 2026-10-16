@@ -143,7 +143,7 @@ classdef AdapterRegistry < handle
                 addpath(folder);
             end
             if isfield(obj.Declarations(adapterId), "legacyFileAdapter")   % dev's own code, run through dev's base class
-                adapter = nansen.legacy.FileAdapterShim(obj.Declarations(adapterId));
+                adapter = nansen.legacy.FileAdapterShim(obj.Declarations(adapterId), obj);
                 obj.Adapters(adapterId) = adapter;
                 return
             end

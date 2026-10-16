@@ -172,9 +172,70 @@
         }
       }
     },
+    "tableVariables": {
+      "type": "array",
+      "description": "The project's own table variables (the .m files of code/+<package>/+tablevariable/+<entity type>), with their text.",
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "pattern": "^([^/\\\\]+/)*[A-Za-z][A-Za-z0-9_]*\\.m$",
+            "description": "The file's path in the dev project folder, '/'-separated, e.g. code/+RatNav/+tablevariable/+session/numFrames.m. The package after +tablevariable is the entity type, the file's name the column's."
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "columnSettings": {
+      "type": "array",
+      "description": "dev's column layout of its tables (metadata/tables/metatable_column_settings.json, or the MetatableColumnSettings of its .mat): per table variable, in dev's order of them, the label, whether the column is shown, its width and its place.",
+      "items": {
+        "type": "object",
+        "required": [
+          "variable"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "variable": {
+            "type": "string",
+            "description": "VariableName."
+          },
+          "label": {
+            "type": "string",
+            "description": "ColumnLabel: the column's header."
+          },
+          "show": {
+            "type": "boolean",
+            "description": "ShowColumn."
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "ColumnWidth, in pixels."
+          },
+          "order": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "ColumnOrder: the columns are shown in the order of these numbers."
+          }
+        }
+      }
+    },
     "tasks": {
       "type": "object",
-      "description": "dev's task list (task_list.mat in the user's preferences, projects/<name>/), with the entities as dev's ids.",
+      "description": "dev's task lists (task_list.mat in the user's preferences: projects/<name>/, and settings/ of older versions, one list for all the user's projects), with the entities as dev's ids.",
       "additionalProperties": false,
       "properties": {
         "queue": {
@@ -371,6 +432,10 @@
         },
         "isMaster": {
           "type": "boolean"
+        },
+        "isDefault": {
+          "type": "boolean",
+          "description": "IsDefault of the table in metadata/tables/metatable_catalog.mat: the table of its kind dev opened first. Absent when the catalog does not say."
         },
         "columns": {
           "type": "array",
