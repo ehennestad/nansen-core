@@ -276,8 +276,8 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(sent{2}, int16([0 3; 1 4; 2 5]));   % as h5read gives it
             % a group: its attributes, datasets (each followed by its attributes, as MatNWB's data_unit) and groups, as
             % dev's MatNWB object of the node had them
-            h5writeatt(file, "/acquisition/series", "neurodata_type", "TimeSeries");
-            h5writeatt(file, "/acquisition/series/data", "unit", "volts");
+            h5writeatt(file, "/acquisition/series", "neurodata_type", 'TimeSeries');
+            h5writeatt(file, "/acquisition/series/data", "unit", 'volts');
             h5create(file, "/acquisition/series/rate/hz", 1);
             h5write(file, "/acquisition/series/rate/hz", 30);
             result = api.handle(struct("id", 2, "method", "files.send", "params", struct("path", "recording.nwb", "dataset", "/acquisition/series/"))).result;
