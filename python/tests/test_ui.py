@@ -234,6 +234,17 @@ def test_create_the_demo_and_a_project_from_the_projects_page(empty_app, page):
     assert page.locator(".stat .value").all_inner_texts() == ["4", "14"]
 
     page.goto(empty_app["server"].url + "#/projects")
+    # dev's autoUpdateProjectPath: the folder follows the name, beside the last project opened, until one is typed
+    page.click(".action-card:has-text('New project')")
+    folder, name = ".dialog .field:has-text('Folder') input", ".dialog .field:has-text('Name') input"
+    page.locator(name).press_sequentially("Mice")
+    wait_until(lambda: page.locator(folder).input_value() == str((empty_app["folder"] / "demo").resolve().parent / "Mice"))
+    page.locator(name).press_sequentially("2")
+    assert page.locator(folder).input_value() == str((empty_app["folder"] / "demo").resolve().parent / "Mice2")
+    page.fill(folder, "/somewhere/else")
+    page.locator(name).press_sequentially("3")
+    assert page.locator(folder).input_value() == "/somewhere/else"
+    page.locator(".dialog .dialog-foot button:has-text('Cancel')").click()
     page.click(".action-card:has-text('New project')")
     page.click(".dialog-foot button:has-text('Create')")  # nothing filled in: refused
     assert page.locator(".dialog .form-message").inner_text() == "Folder is required · Name is required"
@@ -748,6 +759,11 @@ def test_browse_an_entitys_files(empty_app, page):
     page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
     page.wait_for_selector(f"{tree} li.folder-entry[data-name='extra']")
     assert (folder / "roi" / "extra").is_dir()
+    # dev's file viewer's Create File Adapter for File...: the form starts with the file's type
+    page.click(f"{tree} li[data-name='masks.json'] .adapter-for-file")
+    assert page.locator(".dialog .field:has-text('File extensions') input").input_value() == ".json"
+    assert page.locator(".dialog .field:has-text('Id') input").input_value() == "json_file"
+    page.locator(".dialog .dialog-foot button:has-text('Cancel')").click()
     page.click(f"{tree} li[data-name='masks.json'] .make-variable")
     page.wait_for_selector(".variable-form .variable-adapter option[value='json']", state="attached")
     assert page.locator(".variable-form .variable-file").input_value() == "masks.json"

@@ -783,6 +783,12 @@
                     N.toast("In the workspace", `${sent.name} (read with ${sent.adapter})`, "success");
                   } catch (error) { N.showError(error, "Could not load the file"); }
                 } } }, N.icon("download", 13)) : null,
+                // dev's file viewer's Create File Adapter for File...: one for files of this one's type
+                /\.[A-Za-z0-9]+$/.test(entry.name) ? h("button.btn.ghost.icon.small.adapter-for-file", { title: `Start a file adapter for ${entry.name.match(/\.[A-Za-z0-9]+$/)[0]} files`,
+                  on: { click: () => {
+                    const extension = entry.name.match(/\.[A-Za-z0-9]+$/)[0].toLowerCase();
+                    newAdapterDialog(app, { id: `${extension.slice(1).replace(/[^a-z0-9_]/g, "_")}_file`.replace(/^[^a-z]/, "x"), extensions: extension });
+                  } } }, N.icon("file", 13)) : null,
                 h("button.btn.ghost.icon.small.make-variable", { title: "Make a data variable of this file (for each entity, its file at this place)",
                   on: { click: () => {
                     const relative = child.slice(base.length).replace(/^\/+/, "");
@@ -2295,8 +2301,11 @@
   }
 
   /* Start a project file adapter: its document and a class per language to fill in. */
-  function newAdapterDialog(app) {
+  /** Start a file adapter of the project; values: what the form starts with (from a file in the drawer: its extension,
+   * as dev's file viewer's Create File Adapter for File... gave it). */
+  function newAdapterDialog(app, values = {}) {
     formDialog({
+      values,
       title: "New file adapter",
       intro: "A file adapter reads and writes one kind of file for data variables. NANSEN writes its document into file-adapters/ and a class with read and write for each language, in the project's python/ and matlab/ folders; fill them in.",
       label: "Create",
@@ -2563,6 +2572,7 @@
   }
 
   /* A dialog with a form drawn from a schema; submit gets the values without empty text, and may throw. */
+  /** A dialog of a form from a JSON Schema; returns the form's element. */
   function formDialog({ title, intro, schema, values, label, required, submit }) {
     const form = N.schemaForm(schema, values || {});
     const message = h("div.form-message.hidden");
@@ -2590,10 +2600,11 @@
         } },
       ],
     });
+    return form.el;
   }
 
   function newProjectDialog(app, opened) {
-    formDialog({
+    const el = formDialog({
       title: "New project",
       intro: "The folder must be new or empty. With a dataset config, the project's entity types and data locations come from it.",
       label: "Create",
@@ -2613,6 +2624,22 @@
         await opened(await app.client.request("project.create", params), "Project created");
       },
     });
+    // dev's autoUpdateProjectPath: the folder follows the name, in the folder the last opened project is in, until a
+    // folder of one's own is typed
+    const inputOf = (label) => [...el.querySelectorAll(".field")].find((f) => (f.querySelector("label.name") || {}).textContent === label);
+    const folder = (inputOf("Folder") || el).querySelector("input"), name = (inputOf("Name") || el).querySelector("input");
+    let suggested = "";
+    app.client.request("catalog.list").then((projects) => {
+      const last = (projects || []).find((p) => p.path);
+      if (!last || !folder || !name) return;
+      const sep = last.path.includes("\\") && !last.path.includes("/") ? "\\" : "/";
+      const root = last.path.slice(0, last.path.lastIndexOf(sep));
+      name.addEventListener("input", () => {
+        if (folder.value !== "" && folder.value !== suggested) return;   // a folder of one's own stays
+        suggested = name.value.trim() ? root + sep + name.value.trim() : "";
+        folder.value = suggested;
+      });
+    }).catch(() => {});
   }
 
   function demoDialog(app, opened) {
