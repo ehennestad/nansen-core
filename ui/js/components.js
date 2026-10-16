@@ -68,7 +68,7 @@
       ["/", "Search the table"], ["?", "These shortcuts"], ["Esc", "Close the drawer or a dialog, or leave the search box"],
       ["g then o", "Overview"], ["g then 1…9", "The first, second, … entity table"], ["g then t", "Tasks"],
       ["g then d", "Data"], ["g then p", "Pipelines"], ["g then n", "Notes"], ["g then j", "Projects"], ["g then s", "Settings"],
-      ["Shift + click", "Select a range of rows"],
+      ["Shift + click", "Select a range of rows"], ["w", "Send the selected rows to the workspace"],
       // the stack viewer's keys: imviewer's and roimanager's
       ["In the viewer"],
       ["← →", "A frame back or on (with Shift, 5 frames); the wheel steps through the frames"],

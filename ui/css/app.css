@@ -158,7 +158,14 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 .conn-dot.ok { background: #3ccb7f; box-shadow: 0 0 0 3px rgba(60, 203, 127, 0.18); }
 .conn-dot.bad { background: #f97066; }
 
-.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+/* a page loading its data (app.showLoading): a bar sliding under the top bar, the page shown until then dimmed */
+.page-loading { position: absolute; top: 56px; left: 0; right: 0; height: 3px; overflow: hidden; z-index: 5; display: none; background: var(--accent-soft); }
+.page-loading.on { display: block; }
+.page-loading::before { content: ""; position: absolute; top: 0; bottom: 0; left: -30%; width: 30%; background: var(--accent); animation: page-loading 1.1s ease-in-out infinite; }
+@keyframes page-loading { to { left: 100%; } }
+.content[aria-busy="true"] { opacity: 0.6; transition: opacity 0.15s; }
+@media (prefers-reduced-motion: reduce) { .page-loading::before { animation: none; left: 0; width: 100%; opacity: 0.6; } }
 .topbar {
   height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 22px;
   background: var(--surface); border-bottom: 1px solid var(--border);

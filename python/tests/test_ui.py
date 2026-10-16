@@ -847,6 +847,55 @@ def test_send_the_selection_to_the_workspace(empty_app, page):
     page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
     page.wait_for_selector(".toast:has-text('2 session(s) in chosen')")
     assert len(namespace["chosen"]) == 2
+    rows.nth(3).locator("td.sel input").check()
+    page.keyboard.press("w")   # dev's key: the same, from the keyboard
+    page.fill(".dialog.narrow input", "by_key")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".toast:has-text('3 session(s) in by_key')")
+    assert [e.key for e in namespace["by_key"]] == [e.key for e in namespace["chosen"]] + [namespace["by_key"][2].key]
+
+
+def test_a_page_says_it_is_loading_while_it_waits_for_its_data(empty_app, page):
+    """A page that takes a while to load (a large table) shows a loading bar and marks the page shown busy until it is drawn."""
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/overview")
+    page.wait_for_selector(".stat")
+    assert not page.locator(".page-loading").is_visible()
+    listed = api._methods["entities.list"]
+
+    def slow(params):
+        time.sleep(1.2)
+        return listed(params)
+
+    api._methods["entities.list"] = slow
+    page.click(".sidebar a[href='#/entities/session']")
+    page.wait_for_selector(".page-loading.on", state="visible")
+    assert page.locator(".content").get_attribute("aria-busy") == "true"
+    assert page.locator(".page-loading").get_attribute("role") == "progressbar"
+    page.wait_for_selector(".grid-table tbody td.key")
+    assert not page.locator(".page-loading").is_visible()
+    assert page.locator(".content").get_attribute("aria-busy") is None
+    api._methods["entities.list"] = listed
+    page.click(".sidebar a[href='#/tasks']")   # once a page is drawn, the bar is gone
+    page.wait_for_selector(".crumbs:has-text('Tasks')")
+    page.wait_for_selector(".page-loading", state="hidden")
+
+
+def test_copy_the_keys_of_the_selected_rows(app, page):
+    """dev's Copy SessionID(s): the keys of the selected rows, as tab-separated text with the key's names first."""
+    page.add_init_script("window.copied = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text) => { window.copied.push(text); } } });")
+    open_sessions(app, page)
+    rows(page).nth(0).locator("td.sel input").check()
+    rows(page).nth(1).locator("td.sel input").check()
+    page.click(".selection-bar button:has-text('Copy keys')")
+    page.wait_for_selector(".toast:has-text('2 key(s)')")
+    keys = [row.key for row in app["project"].entities("session")]
+    lines = page.evaluate("window.copied[0]").split("\n")
+    names = list(keys[0])
+    assert lines[0] == "\t".join(names) and len(lines) == 3 and len(set(lines[1:])) == 2
+    for line in lines[1:]:
+        assert dict(zip(names, line.split("\t"))) in keys
 
 
 def test_start_a_method_from_the_data_page(empty_app, page):
@@ -2679,6 +2728,42 @@ def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     assert download.value.suggested_filename == "fov_map_m1.png"
     page.click(".fov-marks li[data-mark='injections-1'] .remove-mark")
     page.wait_for_selector(".fov-marks li[data-mark='injections-1']", state="detached")
+
+
+def test_copy_and_paste_on_the_fov_map_and_its_fine_grid(empty_app, page):
+    """fovmanager's Copy and Paste (an FOV's place onto another session, an injection for the subject again) and Show
+    Fine Grid."""
+    import json
+    s1, s2 = {"subject_id": "m1", "session_id": "s1"}, {"subject_id": "m1", "session_id": "s2"}
+    api = ophys_project(empty_app, [
+        ("entities.update", {"entityType": "session", "key": s1, "values": {"fov_ml": 2.3, "fov_ap": -3.6, "fov_width_um": 600}}),
+        ("modules.saveData", {"module": "ophys", "name": "fovmap", "text": json.dumps({"injections": [
+            {"id": 1, "subject": {"subject_id": "m1"}, "ml": 1.5, "ap": -1.5, "material": "AAV-GCaMP8m", "depth": 300, "spread": 400, "colour": "green"}],
+            "notes": [], "photos": []})})])
+    page.goto(empty_app["server"].url + "#/page/ophys.fovmap")
+    page.wait_for_selector(".fov-canvas")
+    assert page.locator(".fov-canvas").get_attribute("data-grid-lines") == "0"
+    page.check(".fov-fine-grid")   # 12 x 16 mm: a line every 0.2 mm, 61 + 81
+    page.wait_for_selector(".fov-canvas[data-grid-lines='142']")
+    assert page.locator(".fov-paste").is_disabled()
+    page.click(".fov-list li[data-session='m1 / s1']")
+    page.keyboard.press("Control+c")
+    page.wait_for_selector(".toast:has-text('FOV of m1 / s1')")
+    page.click(".fov-list li[data-session='m1 / s2']")
+    page.keyboard.press("Control+v")
+    page.wait_for_selector(".fov-list li[data-session='m1 / s2'] .sub:has-text('AP -3.6, ML 2.3')")
+    row = api.project.table("session").get(s2)
+    assert (row["fov_ml"], row["fov_ap"], row["fov_width_um"]) == (2.3, -3.6, 600)
+    page.click(".fov-undo")   # undone as a placement is
+    wait_until(lambda: api.project.table("session").get(s2)["fov_ml"] is None)
+    page.click(".fov-list li[data-subject='m1']")
+    page.click(".fov-marks li[data-mark='injections-1'] .copy-mark")
+    page.click(".fov-paste")
+    page.wait_for_selector(".fov-marks li[data-mark='injections-2']")
+    marks = json.loads(api.handle({"id": 1, "method": "modules.data", "params": {"module": "ophys", "name": "fovmap"}})["result"]["text"])
+    copy = marks["injections"][1]
+    assert copy["id"] == 2 and (copy["ml"], copy["ap"], copy["material"], copy["spread"]) == (1.5, -1.5, "AAV-GCaMP8m", 400)
+    assert copy["subject"] == {"subject_id": "m1"}
 
 
 def test_review_rois_across_sessions(empty_app, page):

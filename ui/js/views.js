@@ -564,6 +564,8 @@
         h("button.btn.small", { on: { click: () => removeRows(grid.selectedRows()) } }, N.icon("trash", 14), "Remove from table"),
         h("button.btn.small", { on: { click: () => grid.clearSelection() } }, "Clear"));
     }
+    // dev's key w: the selected rows to the workspace, as the selection bar's button
+    if (app.info && app.info.workspace) app.onWorkspaceKey = () => { const rows = grid.selectedRows(); if (rows.length) sendToWorkspace(rows); };
     async function sendToWorkspace(rows) {
       const name = await N.prompt("Send to the workspace", "Variable name", "entities");
       if (!name) return;
