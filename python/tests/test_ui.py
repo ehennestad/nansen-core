@@ -729,6 +729,16 @@ def test_browse_an_entitys_files(empty_app, page):
     page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
     page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='masks.json']")
     assert "2 B" in page.locator(f"{tree} li[data-name='masks.json'] .size").inner_text()
+    # dev's file viewer's Refresh: what came since, in an open folder and in the entity's folder
+    (folder / "roi" / "later.txt").write_text("new")
+    (folder / "later_top.txt").write_text("new")
+    assert page.locator(f"{tree} li[data-name='later.txt']").count() == 0
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .refresh-folder")
+    page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='later.txt']")
+    page.locator(f"{tree} .path-list .refresh-files").first.click()
+    page.wait_for_selector(f"{tree} .path-list > ul.file-tree > li[data-name='later_top.txt']")
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
+    page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='masks.json']")
     # dev's file viewer: preview a file, make a folder, make a data variable of a file
     page.click(f"{tree} li[data-name='masks.json'] .preview-file")
     page.wait_for_selector(".preview-dialog pre:text-is('[]')")
@@ -899,16 +909,28 @@ def test_a_page_says_it_is_loading_while_it_waits_for_its_data(empty_app, page):
 
 
 def test_copy_the_keys_of_the_selected_rows(app, page):
-    """dev's Copy SessionID(s): the keys of the selected rows, as tab-separated text with the key's names first."""
+    """dev's Copy SessionID(s): the keys of the selected rows quoted and separated by commas, as dev copied them; or as
+    tab-separated text with the key's names first."""
     page.add_init_script("window.copied = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text) => { window.copied.push(text); } } });")
     open_sessions(app, page)
     rows(page).nth(0).locator("td.sel input").check()
     rows(page).nth(1).locator("td.sel input").check()
-    page.click(".selection-bar button:has-text('Copy keys')")
-    page.wait_for_selector(".toast:has-text('2 key(s)')")
     keys = [row.key for row in app["project"].entities("session")]
-    lines = page.evaluate("window.copied[0]").split("\n")
     names = list(keys[0])
+    page.click(".selection-bar button:has-text('Copy keys')")
+    page.click(".menu .item:has-text('IDs, quoted')")
+    page.wait_for_selector(".toast:has-text('2 key(s)')")
+    copied = page.evaluate("window.copied[0]")
+    entries = copied.split("; ") if len(names) > 1 else [copied]
+    for entry in entries:   # 'm1', 's1' (a key of several columns), or 's1', 's2' (of one)
+        values = [v.strip().strip("'") for v in entry.split(", ")]
+        assert all(v.startswith("'") and v.endswith("'") for v in entry.split(", "))
+        if len(names) > 1:
+            assert dict(zip(names, values)) in keys
+    page.click(".selection-bar button:has-text('Copy keys')")
+    page.click(".menu .item:has-text('As a table')")
+    page.wait_for_function("window.copied.length === 2")
+    lines = page.evaluate("window.copied[1]").split("\n")
     assert lines[0] == "\t".join(names) and len(lines) == 3 and len(set(lines[1:])) == 2
     for line in lines[1:]:
         assert dict(zip(names, line.split("\t"))) in keys
@@ -1453,6 +1475,20 @@ def test_an_edit_survives_a_reload_of_the_table(app, page):
     wait_until(lambda: "typed while the table reloads" in page.locator(".grid-table tbody").inner_text())
     rows = app["api"].handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"]
     assert sum(r["values"].get("description") == "typed while the table reloads" for r in rows) == 1
+
+
+def test_reload_the_table_from_its_file(app, page):
+    """dev's Refresh Table / Reload Metatable: what was written to the table's file outside the app shows."""
+    open_sessions(app, page)
+    project = app["project"]
+    key = project.entities("session")[0].key
+    table = project.table("session")
+    table.update(key, description="written by a script")
+    table.write()
+    assert "written by a script" not in page.locator(".grid-table tbody").inner_text()
+    page.click(".toolbar .reload-table")
+    page.wait_for_selector(".toast:has-text('Table read again')")
+    wait_until(lambda: "written by a script" in page.locator(".grid-table tbody").inner_text())
 
 
 def test_edit_a_column(empty_app, page):

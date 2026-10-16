@@ -429,6 +429,12 @@
       type.fragments.includes("core.notes") ? hideIgnored : null,
       columnsButton,
       lockButton,
+      // dev's Refresh Table / Reload Metatable: the table read again from its file, with what a script, another app or
+      // a spreadsheet wrote there since (what this app or its workers write comes by itself)
+      h("button.btn.icon.reload-table", { title: "Read the table again from its file (what a script or another app wrote since)", on: { click: async () => {
+        await app.reloadEntities();
+        N.toast("Table read again", `${grid.counts().all} row(s)`, "success", 2000);
+      } } }, N.icon("refresh")),
       app.project.dataset ? h("button.btn", { on: { click: () => app.sync(entityType) } }, N.icon("sync"), "Sync") : null,
       h("button.btn.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play"), "Run method"));
 
@@ -554,12 +560,8 @@
       N.fill(selectionBar, 
         h("span", `${rows.length} selected`),
         h("button.btn.small.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play", 14), "Run method"),
-        h("button.btn.small", { title: "Copy the keys as tab-separated text", on: { click: () => {
-          const selected = grid.selectedRows();
-          const names = grid.data.key;
-          const text = [names.join("\t"), ...selected.map((r) => names.map((n) => r.key[n]).join("\t"))].join("\n");
-          N.copyText(text).then(() => N.toast("Copied", `${selected.length} key(s)`, "success"), (error) => N.showError(error, "Could not copy"));
-        } } }, N.icon("copy", 14), "Copy keys"),
+        h("button.btn.small.copy-keys", { title: "Copy the keys of the selected rows", on: { click: (event) => copyMenu(event.currentTarget, grid.selectedRows()) } },
+          N.icon("copy", 14), "Copy keys"),
         h("button.btn.small", { on: { click: (e) => pipelineMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("layers", 14), "Pipeline"),
         h("button.btn.small", { on: { click: (e) => addToViewMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("list", 14), "View"),
         app.info && app.info.workspace ? h("button.btn.small.send-workspace", {
@@ -567,6 +569,19 @@
           on: { click: () => sendToWorkspace(grid.selectedRows()) } }, N.icon("download", 14), "To workspace") : null,
         h("button.btn.small", { on: { click: () => removeRows(grid.selectedRows()) } }, N.icon("trash", 14), "Remove from table"),
         h("button.btn.small", { on: { click: () => grid.clearSelection() } }, "Clear"));
+    }
+    /** The keys of the selected rows to the clipboard: as dev's Copy SessionID(s), quoted and separated by commas
+     * ('s1', 's2': to paste into code; a key of several columns as its values, a row of them per entity, rows separated by
+     * semicolons), or as a table with the key's names first (tab-separated, for a spreadsheet). */
+    function copyMenu(anchor, selected) {
+      const names = grid.data.key;
+      const quote = (v) => `'${String(v).replace(/'/g, "''")}'`;
+      const copy = (text) => N.copyText(text).then(() => N.toast("Copied", `${selected.length} key(s)`, "success"), (error) => N.showError(error, "Could not copy"));
+      N.menu(anchor, [{ heading: `${selected.length} selected row(s)` },
+        { label: names.length === 1 ? "IDs, quoted ('s1', 's2')" : "IDs, quoted ('m1', 's1'; 'm1', 's2')", icon: "copy",
+          onClick: () => copy(selected.map((r) => names.map((n) => quote(r.key[n])).join(", ")).join(names.length === 1 ? ", " : "; ")) },
+        { label: "As a table, with the key's names", icon: "list",
+          onClick: () => copy([names.join("\t"), ...selected.map((r) => names.map((n) => r.key[n]).join("\t"))].join("\n")) }]);
     }
     // dev's key w: the selected rows to the workspace, as the selection bar's button
     if (app.info && app.info.workspace) app.onWorkspaceKey = () => { const rows = grid.selectedRows(); if (rows.length) sendToWorkspace(rows); };
@@ -805,6 +820,13 @@
                   row.classList.add("open");
                 } catch (error) { N.showError(error, "Could not make the folder"); }
               } } }, N.icon("plus", 13)),
+              // dev's file viewer's Refresh: the folder listed again, open, with what came or went since
+              h("button.btn.ghost.icon.small.refresh-folder", { title: "List this folder again", on: { click: () => {
+                if (open) open.remove();
+                open = tree(child, base);
+                row.after(open);
+                row.classList.add("open");
+              } } }, N.icon("refresh", 13)),
               current(child),
               pathActions(child));
             return row;
@@ -817,6 +839,12 @@
         if (shown && shown.classList.contains("file-tree")) { shown.remove(); return; }
         li().after(tree(p));
       } } }, N.icon("list", 13));
+      // dev's file viewer's Refresh: the entity's folder listed again (its open folders closed)
+      const relist = (p, li) => h("button.btn.ghost.icon.small.refresh-files", { title: "List the files again", on: { click: () => {
+        const shown = li().nextElementSibling;
+        if (shown && shown.classList.contains("file-tree")) shown.remove();
+        li().after(tree(p));
+      } } }, N.icon("refresh", 13));
       // Several folders are this entity (dev's duplicate sessions): any but one can be left out of scans, by name
       const paths = loc.paths || [];
       const duplicate = paths.length > 1 && loc.fileSystemType !== "file";
@@ -844,7 +872,8 @@
           duplicate ? h("span.pill.warn", { title: "More than one folder is this entity: keep one by excluding the others" }, `${paths.length} folders`) : null),
         h("ul.path-list", paths.map((p) => {
           let li = null;
-          li = h("li", h("span.path-text", p), browse(p, () => li), loc.fileSystemType !== "file" ? current(p) : null, pathActions(p), duplicate ? exclude(p) : null);
+          li = h("li", h("span.path-text", p), browse(p, () => li), loc.fileSystemType !== "file" ? relist(p, () => li) : null,
+            loc.fileSystemType !== "file" ? current(p) : null, pathActions(p), duplicate ? exclude(p) : null);
           return li;
         })),
         files.length ? h("dl.props", { style: { marginTop: "8px" } }, files.map(([name, paths]) => [h("dt", name),
