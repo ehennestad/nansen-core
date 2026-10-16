@@ -1,0 +1,8 @@
+PhysicalSizeX: 500.0
+PhysicalSizeY: 400.0
+PhysicalSizeZ: 0.002
+PhysicalSizeXUnit: nm
+PhysicalSizeYUnit: nanometer
+PhysicalSizeZUnit: mm
+TimeIncrement: 50.0
+TimeIncrementUnit: millisecond

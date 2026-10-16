@@ -125,6 +125,57 @@ def test_without_a_column_layout_the_tables_get_no_view_of_their_own():
     assert [v["name"] for v in tables["session"]["views"]] == ["Sessions (curated)"]
 
 
+def test_devs_history_becomes_finished_tasks_with_their_log_that_can_be_retried(tmp_path):
+    from nansen.tasks import TaskQueue
+
+    report = convert_legacy(json.loads(CASE.read_text()), tmp_path / "project")
+    assert (report["tasks"], report["history"], report["runs"]) == (3, 3, 2)
+    project = Project.open(tmp_path / "project")
+    queue = TaskQueue(project)
+    finished = {t["status"]: t for t in queue.list() if t["status"] != "queued"}
+    assert sorted(finished) == ["cancelled", "completed", "failed"]
+    failed = finished["failed"]
+    assert failed["error"]["message"] == "No running speed for m110-002" and failed["finishedAt"] == "2025-05-30T12:10:00"
+    assert queue.log(failed["id"]) == "Counting trials of m110-002\n"   # dev's Diary, as the Tasks page shows a log
+    assert finished["cancelled"]["comment"] == "too slow" and "log" not in finished["cancelled"]
+    again = queue.retry(failed["id"])   # its method is here: it can run again, with dev's options
+    assert again["status"] == "queued" and again["options"]["values"] == {"MinDuration": 3, "Method": "peaks"}
+    assert again["language"] == "matlab"
+
+
+def test_devs_local_root_paths_are_roots_of_an_environment(tmp_path):
+    export = json.loads(CASE.read_text())
+    raw = export["dataLocations"][0]
+    raw["localRootPaths"] = [{"key": "local", "value": str(tmp_path / "here")},
+                             {"key": "local", "value": str(tmp_path / "again")}]   # a second gets a numbered identifier
+    (tmp_path / "here").mkdir()
+    plan = plan_legacy(export)
+    roots = plan["dataset"]["dataLocations"][0]["filesystemSource"]["rootStoragePaths"]
+    assert roots == [{"identifier": "local", "path": "/data/rawdata", "volumeName": "LabDisk"},
+                     {"identifier": "local-dev-local", "path": str(tmp_path / "here"), "environment": "dev-local"},
+                     {"identifier": "local-dev-local-2", "path": str(tmp_path / "again"), "environment": "dev-local"}]
+    convert_legacy(export, tmp_path / "project")
+    # the default environment keeps the project's roots; in dev-local, the computer's are there too
+    paths = lambda environment: [str(r.path) for r in Project.open(tmp_path / "project", environment=environment).dataset.roots()
+                                 if r.data_location == "rawdata"]
+    assert str(tmp_path / "here") not in paths("windows-lab")
+    assert str(tmp_path / "here") in paths("dev-local")
+
+
+@pytest.mark.parametrize("size, edits, expected", [
+    (8, True, {"textSize": "compact", "locked": False}), (9, None, {"textSize": "compact"}),
+    (10, False, {"textSize": "normal", "locked": True}), (12.5, None, {"textSize": "normal"}),
+    (13, None, {"textSize": "large"}), ("big", None, {}), (0, None, {}),
+])
+def test_devs_table_font_size_and_editing_lock(size, edits, expected):
+    table = {"TableFontSize": size}
+    if edits is not None:
+        table["AllowTableEdits"] = edits
+    export = {"schemaType": "nansen.legacyExport", "schemaVersion": "0.1.0", "project": {"name": "T"},
+              "settings": {"MetadataTable": table}}
+    assert plan_legacy(export)["settings"].get("tables", {}) == expected
+
+
 def test_regular_expressions_with_groups_keep_the_whole_match():
     export = {"schemaType": "nansen.legacyExport", "schemaVersion": "0.1.0", "project": {"name": "G"},
               "dataLocations": [{"name": "raw", "rootPaths": [{"value": "/r"}], "subfolders": [{"type": "Session"}],
@@ -144,6 +195,6 @@ def test_cli(tmp_path, capsys):
     # dev's ROI, signal and binary stack variables too, and those read by the project's own file adapters (also those
     # built on dev's); the method of a table variable's computed column
     assert "2 subject(s), 2 session(s), 11 data variable(s), 4 file adapter(s), 3 method(s), 6 preset(s), " \
-           "3 queued task(s) on hold, 2 completed run(s)" in out
+           "3 queued task(s) on hold, 3 finished task(s) of dev's history, 2 completed run(s)" in out
     assert '"saveToDataFolders": true' in out
     assert "note: variable 'MotionCorrected'" not in out

@@ -57,7 +57,9 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "saveToDataFolders": { "type": "boolean", "default": false, "description": "When a row is edited in the app, write it as <entity type>_info.json into each of its entity's folders, as dev's AutosaveMetadataToDataFolders." }
+            "saveToDataFolders": { "type": "boolean", "default": false, "description": "When a row is edited in the app, write it as <entity type>_info.json into each of its entity's folders, as dev's AutosaveMetadataToDataFolders." },
+            "textSize": { "enum": ["compact", "normal", "large"], "default": "normal", "description": "The size of the text and rows in the dashboard's entity tables (dev's TableFontSize), in a browser that has not chosen its own." },
+            "locked": { "type": "boolean", "default": false, "description": "Editing is off in the dashboard's tables until it is unlocked (dev's AllowTableEdits off), in a browser that has not chosen its own." }
           }
         }
       }

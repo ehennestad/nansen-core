@@ -8,8 +8,9 @@ function report = importProject(legacyFolder, folder, options)
 %
 %   importProject(..., ExportFile=path) also keeps the intermediate export.
 %   importProject(..., UserFolder=path) reads the user's dev preferences
-%   (option presets of dev's methods, the task list, the app's settings)
-%   from path, dev's nansen.prefdir; by default prefdir/Nansen/default.
+%   (option presets of dev's methods, the task list, the local root paths,
+%   the app's settings) from path, dev's nansen.prefdir; by default
+%   prefdir/Nansen/default.
     arguments
         legacyFolder (1,1) string
         folder (1,1) string

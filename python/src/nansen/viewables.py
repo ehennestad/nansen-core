@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+from . import devyaml
 from .adapters import AdapterRegistry
 from .errors import NansenError
 from .methods import Method
@@ -222,7 +223,7 @@ class Viewables:
                     raise
                 problems.append(f"{candidate}: {error.message}")
                 continue
-            return _image_stack(stack, path.name), candidate
+            return devyaml.with_sidecar(_image_stack(stack, path.name), path), candidate   # and dev's metadata file
         raise NansenError("invalid-data", f"{path.name} could not be read as a stack: " + "; ".join(problems))
 
     def _read_rois(self, rois: PathOrValue) -> dict:

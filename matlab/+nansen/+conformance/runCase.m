@@ -86,6 +86,8 @@ function [actual, written] = evaluate(kind, folder, expected)
             actual = evaluateLegacy(folder);
         case "jsontext"
             actual = evaluateJsonText(folder);
+        case "yaml"   % dev's metadata files (nansen.internal.parseDevYaml)
+            actual = struct("value", {nansen.internal.parseDevYaml(nansen.internal.readText(fullfile(folder, "input.yaml")))});
         case "api"
             actual = struct();   % handled by runApiCase
         case "projects"
@@ -166,9 +168,22 @@ function actual = evaluateLegacy(folder)
             presets{end + 1} = nansen.internal.readJson(fullfile(listing(i).folder, listing(i).name)); %#ok<AGROW>
         end
     end
-    tasks = readAll(fullfile(target, "tasks"), "*.task.nansen.json");   % in their queue order, without their ids
+    % queued tasks in their queue order, then the finished ones by when they were made and finished; without their ids
+    % (new ones each time), and with the text of their log in place of its path
+    tasks = readAll(fullfile(target, "tasks"), "*.task.nansen.json");
     if ~isempty(tasks)
-        [~, order] = sort(cellfun(@(t) double(t.order), tasks));
+        keys = strings(1, numel(tasks));
+        for i = 1:numel(tasks)
+            if isfield(tasks{i}, "order")
+                keys(i) = sprintf("0|%09d", tasks{i}.order);
+            else
+                keys(i) = "1|" + string(tasks{i}.createdAt) + "|" + string(nansen.internal.getField(tasks{i}, "finishedAt", ""));
+            end
+            if isfield(tasks{i}, "log")
+                tasks{i}.log = string(nansen.internal.readText(fullfile(target, tasks{i}.log)));
+            end
+        end
+        [~, order] = sort(keys);
         tasks = cellfun(@(t) rmfield(t, "id"), tasks(order), UniformOutput=false);
     end
     runs = {};

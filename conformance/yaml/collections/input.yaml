@@ -1,0 +1,17 @@
+Channels:
+- name: green
+  color: [0, 255, 0]
+- name: red
+  color: [255, 0, 0]
+Planes:
+  - - 1
+    - 2
+  - [3, 4, 5]
+  -
+    depth: 120.5
+Nested: {a: {b: [x, 'y, z', {c: d}]}, e: [], f: {}, g, h: }
+Wrapped: [one two,
+  three
+  four, five]
+Mixed: [1, two, false, ~]
+Last: end

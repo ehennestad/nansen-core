@@ -26,7 +26,7 @@ def default_catalog_path() -> Path:
 
 
 DEFAULT_SETTINGS = {"queue": {"autoStart": True, "worker": "thread", "debug": False}, "addons": {"folder": ""}, "workers": {"python": "", "matlab": ""},
-                    "tables": {"saveToDataFolders": False}}
+                    "tables": {"saveToDataFolders": False, "textSize": "normal", "locked": False}}
 
 
 class Catalog:

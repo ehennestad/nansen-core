@@ -1,0 +1,9 @@
+{
+  "description": "Keys: those that are not MATLAB names (2ndTry, 'with space') or are its keywords (end, for) are left out with their values, in block and flow mappings alike, so a mapping is the same struct in MATLAB; quoted keys are their text; a key given twice keeps its first place and its last value; ... ends the document.",
+  "value": {
+    "Name": "last",
+    "Quoted": "kept",
+    "Double": "kept too",
+    "Group": {"ok": 1}
+  }
+}

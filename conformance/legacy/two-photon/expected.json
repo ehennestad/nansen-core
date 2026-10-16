@@ -1,5 +1,5 @@
 {
-  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table); dev's pipelines, with the tasks that have a method here and their rules for new sessions. The project's own session methods (code/+RatNav/+sessionmethod) become methods of sessions that run dev's code (their files copied into matlab/, in the same packages), with the options read from their text; a file that is not a session method is left out, and a pipeline task that calls one of them becomes a step. Its own file adapters (code/+RatNav/+fileadapter: a class, a function-based one, and classes built on dev's ImageStack and on the two-photon module's RoiGroup) become legacy file adapters with their code copied, and the variables read with them data variables: those of the class on ImageStack, which has no readData of its own, are read by the ophys module's TIFF adapter; a function there, and a class on a class of dev's that is not an adapter, are left out. Its own table variables (code/+RatNav/+tablevariable) come in as columns.import brings them: classes are the columns, with their choices (and a value the table has besides) and default, a function makes its column computed by a method calling dev's code, keeping the values; one of an entity type with no table, one whose column is an attribute here and a file that is no table variable are named. dev's column layout (shown, order, widths, labels as the titles of the project's own columns) and its ShowIgnoredEntries false go onto a view of each whole table and onto the filtered table's view, which is the default since dev opened it first. The option presets users made become presets: NoRMCorre's with dev's options mapped to the module method's, the session methods' as they are, renamed when called default, with an option that does not fit left out; dev's default preset becomes the preferred one; those of methods not here, or of dev's options with no equivalent, are named. The queued tasks become tasks on hold in dev's order, with dev's options over their preset's, less those not here, not queueable, of sessions not here or naming none; the completed tasks of the history and the finished tasks of the Progress column go into the run journal, and the column's pipeline into core.pipeline. dev's app preferences give the settings.",
+  "description": "A dev project with two data locations, file path settings and session and subject tables. Covers each folder rule (index range, regular expression, function, several levels), the defaults for ids, adapters with and without a built-in equivalent, derived and skipped columns, rows without a key and duplicates, and notes: on kept, duplicate and left-out rows, without a time, of an unknown type, and two in the same second; and a filtered table, which becomes a view (one of its rows is not in the master table); dev's pipelines, with the tasks that have a method here and their rules for new sessions. The project's own session methods (code/+RatNav/+sessionmethod) become methods of sessions that run dev's code (their files copied into matlab/, in the same packages), with the options read from their text; a file that is not a session method is left out, and a pipeline task that calls one of them becomes a step. Its own file adapters (code/+RatNav/+fileadapter: a class, a function-based one, and classes built on dev's ImageStack and on the two-photon module's RoiGroup) become legacy file adapters with their code copied, and the variables read with them data variables: those of the class on ImageStack, which has no readData of its own, are read by the ophys module's TIFF adapter; a function there, and a class on a class of dev's that is not an adapter, are left out. Its own table variables (code/+RatNav/+tablevariable) come in as columns.import brings them: classes are the columns, with their choices (and a value the table has besides) and default, a function makes its column computed by a method calling dev's code, keeping the values; one of an entity type with no table, one whose column is an attribute here and a file that is no table variable are named. dev's column layout (shown, order, widths, labels as the titles of the project's own columns) and its ShowIgnoredEntries false go onto a view of each whole table and onto the filtered table's view, which is the default since dev opened it first. The option presets users made become presets: NoRMCorre's with dev's options mapped to the module method's, the session methods' as they are, renamed when called default, with an option that does not fit left out; dev's default preset becomes the preferred one; those of methods not here, or of dev's options with no equivalent, are named. The queued tasks become tasks on hold in dev's order, with dev's options over their preset's, less those not here, not queueable, of sessions not here or naming none; the tasks of the history (completed, failed, canceled) become finished tasks of the queue with dev's log (Diary) and error (ErrorStack), less those of a method or session not here; its completed tasks and the finished tasks of the Progress column go into the run journal, and the column's pipeline into core.pipeline. dev's local root paths become roots of the environment dev-local (one the same as the project's, or of a root the location has not, is passed over). dev's app preferences give the settings, its table font size and AllowTableEdits the dashboard's table text size and lock.",
   "project": {
     "schemaType": "nansen.project",
     "schemaVersion": "0.1.0",
@@ -87,6 +87,12 @@
             {
               "identifier": "local",
               "path": "/data/rawdata",
+              "volumeName": "LabDisk"
+            },
+            {
+              "identifier": "local-dev-local",
+              "path": "/Volumes/LabDisk/rawdata",
+              "environment": "dev-local",
               "volumeName": "LabDisk"
             }
           ],
@@ -480,6 +486,7 @@
     "data location 'Processed', Session ID: read by the function RatNav.datalocation.getSessionID; register an extractor named 'getSessionID'",
     "data location 'Processed', Experiment Date: combines several folder levels, which has no DSM rule; left out",
     "data location 'Scratch': no root path, left out",
+    "data locations: 1 of dev's local root paths (the roots on the computer whose preferences were read) are roots of the environment 'dev-local'; on that computer, open the project in that environment",
     "file adapter code/+RatNav/+fileadapter/WhiskTracker.m: WhiskTracker.m subclasses nansen.dataio.DynamicFileAdapter, which nansen-core does not have; left out",
     "file adapter code/+RatNav/+fileadapter/parseHeader.m: parseHeader.m is not a class, so it is not a dev file adapter; left out",
     "variable 'Whisking': no built-in file adapter for 'WhiskTracker' .wsk files; left out",
@@ -510,7 +517,7 @@
     "queued task 'm110-001' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here; left out",
     "queued task 'Multisession' (RatNav.sessionmethod.process.countTrials): m999-001 not in the session table; left out of it",
     "queued task 'Multisession' (RatNav.sessionmethod.process.countTrials): the task list does not name its sessions; left out",
-    "task history: 1 completed task(s) recorded in the run journal; 2 left out (not completed, or of a method or session not here)",
+    "task history: 3 task(s) are finished tasks of the queue, with dev's log, 1 completed one(s) also in the run journal; 2 left out (of a method or session not here, or neither completed, failed nor cancelled)",
     "option preset 'Broken' of legacy.count_trials: option 'MinDuration' does not fit the method's options; left out",
     "queued task 'm110-001' (legacy.plot_speed): legacy.plot_speed cannot run as a background task; left out",
     "queued task 'Multisession' (legacy.count_trials): option 'Method' does not fit the method's options; left out"
@@ -1227,6 +1234,117 @@
       "language": "matlab",
       "order": 2,
       "onHold": true
+    },
+    {
+      "schemaType": "nansen.task",
+      "schemaVersion": "0.1.0",
+      "method": {
+        "id": "ophys.extract_signals",
+        "version": "1.0.0"
+      },
+      "entities": [
+        {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-001"
+          }
+        }
+      ],
+      "options": {
+        "values": {
+          "stack": "TwoPhotonSeries_Corrected",
+          "rois": "RoiArray",
+          "output": "RoiSignals_MeanF",
+          "neuropilOutput": "RoiSignals_NeuropilF",
+          "excludeOverlaps": false,
+          "neuropilMethod": "ring",
+          "neuropilGap": 1,
+          "neuropilWidth": 3,
+          "neuropilExpansionFactor": 4,
+          "neuropilSeparation": 0,
+          "maxNeuropilRadius": 50,
+          "numNeuropilSlices": 1,
+          "includeRejected": false,
+          "firstFrame": 1,
+          "lastFrame": 0,
+          "channel": 1,
+          "plane": 1
+        }
+      },
+      "status": "completed",
+      "createdAt": "2025-05-30T11:00:00",
+      "progress": 1,
+      "startedAt": "2025-05-30T11:30:00",
+      "finishedAt": "2025-05-30T12:00:00",
+      "log": "Extracting signals of m110-001\nDone.\n"
+    },
+    {
+      "schemaType": "nansen.task",
+      "schemaVersion": "0.1.0",
+      "method": {
+        "id": "legacy.count_trials",
+        "version": "1.0.0"
+      },
+      "entities": [
+        {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-002"
+          }
+        }
+      ],
+      "options": {
+        "values": {
+          "MinDuration": 3,
+          "Method": "peaks"
+        }
+      },
+      "status": "failed",
+      "createdAt": "2025-05-30T12:05:00",
+      "progress": 0,
+      "language": "matlab",
+      "startedAt": "2025-05-30T12:06:00",
+      "finishedAt": "2025-05-30T12:10:00",
+      "log": "Counting trials of m110-002\n",
+      "error": {
+        "identifier": "RatNav:countTrials:NoSpeed",
+        "message": "No running speed for m110-002",
+        "stack": [
+          "RatNav.sessionmethod.process.countTrials (line 12)",
+          "nansen.session.SessionMethod.run (line 40)"
+        ]
+      }
+    },
+    {
+      "schemaType": "nansen.task",
+      "schemaVersion": "0.1.0",
+      "method": {
+        "id": "legacy.count_trials",
+        "version": "1.0.0"
+      },
+      "entities": [
+        {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m110",
+            "session_id": "m110-001"
+          }
+        }
+      ],
+      "options": {
+        "values": {
+          "MinDuration": 2.5,
+          "Method": "threshold"
+        }
+      },
+      "status": "cancelled",
+      "createdAt": "2025-05-31T08:00:00",
+      "progress": 0,
+      "language": "matlab",
+      "finishedAt": "2025-05-31T09:00:00",
+      "comment": "too slow"
     }
   ],
   "runs": [
@@ -1259,7 +1377,9 @@
   ],
   "settings": {
     "tables": {
-      "saveToDataFolders": true
+      "saveToDataFolders": true,
+      "textSize": "large",
+      "locked": true
     },
     "queue": {
       "autoStart": false,

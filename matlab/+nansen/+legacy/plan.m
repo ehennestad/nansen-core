@@ -10,8 +10,10 @@ function out = plan(export)
 %   variable functions: document, and files with path and text),
 %   presets (method, name, description, values), preferredPresets,
 %   pipelines, tasks (method, name, entities, values and preset, createdAt
-%   and comment when there are), runs (method, key, finishedAt), settings
-%   and warnings; see nansen.legacy.convert.
+%   and comment when there are; a task of dev's history also has status,
+%   and startedAt, finishedAt, log and error when there are), runs
+%   (method, key, finishedAt), settings and warnings; see
+%   nansen.legacy.convert.
     warnings = {};
     info = nansen.internal.getField(export, "project", struct());
     [dataset, levels, warnings] = buildDataset(export, warnings);
@@ -402,30 +404,9 @@ function [tasks, runs, warnings] = buildTaskList(export, session, imported, pres
         if isempty(keys)
             continue
         end
-        devName = textOf(item, "preset");
-        options = nansen.internal.getField(item, "options", struct());
-        if ~(isstruct(options) && isscalar(options))
-            options = struct();
-        end
-        preset = "";
-        if isKey(presetNames, char("k:" + method + "|" + devName))
-            preset = string(presetNames(char("k:" + method + "|" + devName)));
-        end
-        if hasKey(imported, functionName)
-            values = options;
-        elseif ismember(method, ["ophys.normcorre", "ophys.quicky"])
-            values = mappedOptions(method, options);
-            if preset == ""
-                preset = devPreset(method, devName);
-            end
-        else
-            values = struct();
-            if preset == ""
-                preset = devPreset(method, devName);
-            end
-            if ~isempty(fieldnames(options)) && preset == ""
-                warnings{end + 1} = sprintf("%s: dev's options are not the method's here; it starts from the method's defaults", where); %#ok<AGROW>
-            end
+        [values, preset, unmapped] = taskOptions(item, functionName, method, imported, presetNames);
+        if unmapped
+            warnings{end + 1} = sprintf("%s: dev's options are not the method's here; it starts from the method's defaults", where); %#ok<AGROW>
         end
         task = struct("method", char(method), "name", char(label), "entities", {keys}, "values", values);
         if preset ~= ""
@@ -438,25 +419,87 @@ function [tasks, runs, warnings] = buildTaskList(export, session, imported, pres
         end
         tasks{end + 1} = task; %#ok<AGROW>
     end
+    finished = {};
     recorded = 0;
     left = 0;
     for entry = listOf(nansen.internal.getField(taskList, "history", {}))
         item = entry{1};
-        method = methodOf(textOf(item, "function"), imported);
+        functionName = textOf(item, "function");
+        method = methodOf(functionName, imported);
         keys = sessionKeys(session, string(nansen.internal.asCellstr(nansen.internal.getField(item, "entities", {}))));
+        switch lower(textOf(item, "status"))   % dev's TaskProcessor: Completed, Failed, Canceled
+            case "completed"
+                status = "completed";
+            case "failed"
+                status = "failed";
+            case {"canceled", "cancelled"}
+                status = "cancelled";
+            otherwise
+                status = "";
+        end
+        if method == "" || isempty(keys) || status == ""
+            left = left + 1;
+            continue
+        end
         finishedAt = textOf(item, "finishedAt");
-        if lower(textOf(item, "status")) == "completed" && method ~= "" && ~isempty(keys) && finishedAt ~= ""
+        if status == "completed" && finishedAt ~= ""
             for k = 1:numel(keys)
                 runs{end + 1} = struct("method", char(method), "key", keys{k}, "finishedAt", char(finishedAt)); %#ok<AGROW>
             end
             recorded = recorded + 1;
-        else
-            left = left + 1;
         end
+        [values, preset] = taskOptions(item, functionName, method, imported, presetNames);
+        task = struct("method", char(method), "name", char(textOf(item, "name")), "entities", {keys}, ...
+            "values", values, "status", char(status));
+        if preset ~= ""
+            task.preset = char(preset);
+        end
+        for field = ["createdAt", "startedAt", "finishedAt", "comment", "log"]
+            if textOf(item, field) ~= ""
+                task.(field) = char(textOf(item, field));
+            end
+        end
+        problem = nansen.internal.getField(item, "error", []);
+        if isstruct(problem) && isscalar(problem)
+            task.error = problem;
+        end
+        finished{end + 1} = task; %#ok<AGROW>
     end
-    if recorded || left
-        warnings{end + 1} = sprintf("task history: %d completed task(s) recorded in the run journal; %d left out " + ...
-            "(not completed, or of a method or session not here)", recorded, left);
+    if ~isempty(finished) || left
+        warnings{end + 1} = sprintf("task history: %d task(s) are finished tasks of the queue, with dev's log, " + ...
+            "%d completed one(s) also in the run journal; %d left out " + ...
+            "(of a method or session not here, or neither completed, failed nor cancelled)", numel(finished), recorded, left);
+    end
+    tasks = [tasks, finished];
+end
+
+function [values, preset, unmapped] = taskOptions(item, functionName, method, imported, presetNames)
+    % A dev task's options here, the preset they are over ("" for none), and whether dev's options were left out (they
+    % are not the method's, and no preset holds dev's values): the project's own methods take dev's options as they
+    % are; NoRMCorre and Quicky dev's mapped (devOptions) over the module's preset of dev's; other methods start from
+    % that preset. As Python's _task_options.
+    devName = textOf(item, "preset");
+    options = nansen.internal.getField(item, "options", struct());
+    if ~(isstruct(options) && isscalar(options))
+        options = struct();
+    end
+    preset = "";
+    if isKey(presetNames, char("k:" + method + "|" + devName))
+        preset = string(presetNames(char("k:" + method + "|" + devName)));
+    end
+    unmapped = false;
+    if hasKey(imported, functionName)
+        values = options;
+        return
+    end
+    if preset == ""
+        preset = devPreset(method, devName);
+    end
+    if ismember(method, ["ophys.normcorre", "ophys.quicky"])
+        values = mappedOptions(method, options);
+    else
+        values = struct();
+        unmapped = ~isempty(fieldnames(options)) && preset == "";
     end
 end
 
@@ -478,16 +521,36 @@ end
 
 function settings = settingsOf(export)
     % dev's app preferences (nansen.App's settings) that are app settings here, in the shape of settings.save:
-    % AutosaveMetadataToDataFolders is tables.saveToDataFolders; RunTasksWhenQueued or RunTasksOnStartup is
-    % queue.autoStart (the worker starts with the app, and takes tasks as they are queued); SessionTaskDebug is
-    % queue.debug. (ShowIgnoredEntries is a filter of the tables' views: buildLayouts.)
+    % AutosaveMetadataToDataFolders is tables.saveToDataFolders; TableFontSize is tables.textSize (compact up to 9,
+    % large from 13, else normal: dev's default, 10, is normal); AllowTableEdits off is tables.locked;
+    % RunTasksWhenQueued or RunTasksOnStartup is queue.autoStart (the worker starts with the app, and takes tasks as
+    % they are queued); SessionTaskDebug is queue.debug. (ShowIgnoredEntries is a filter of the tables' views:
+    % buildLayouts.)
     settings = struct();
     dev = nansen.internal.getField(export, "settings", struct());
     table = nansen.internal.getField(dev, "MetadataTable", struct());
     processor = nansen.internal.getField(dev, "TaskProcessor", struct());
+    tables = struct();
     value = nansen.internal.getField(table, "AutosaveMetadataToDataFolders", []);
     if islogical(value) && isscalar(value)
-        settings.tables = struct("saveToDataFolders", value);
+        tables.saveToDataFolders = value;
+    end
+    value = nansen.internal.getField(table, "TableFontSize", []);
+    if isnumeric(value) && isscalar(value) && isfinite(value) && value > 0
+        if value <= 9
+            tables.textSize = 'compact';
+        elseif value >= 13
+            tables.textSize = 'large';
+        else
+            tables.textSize = 'normal';
+        end
+    end
+    value = nansen.internal.getField(table, "AllowTableEdits", []);
+    if islogical(value) && isscalar(value)
+        tables.locked = ~value;
+    end
+    if ~isempty(fieldnames(tables))
+        settings.tables = tables;
     end
     flags = false(1, 0);
     for name = ["RunTasksWhenQueued", "RunTasksOnStartup"]
@@ -668,11 +731,13 @@ function [dataset, entityLevels, warnings] = buildDataset(export, warnings)
     locations = {};
     entityLevels = struct();
     used = strings(1, 0);
+    localCount = 0;
     for item = nansen.internal.asCellOfStructs(nansen.internal.getField(export, "dataLocations", []))
         location = item{1};
         name = textOf(location, "name");
         [id, used] = uniqueName(identifier(name, "location", true), used);
         roots = {};
+        rootKeys = strings(1, 0);   % dev's key of each root
         rootItems = nansen.internal.asCellOfStructs(nansen.internal.getField(location, "rootPaths", []));
         for index = 1:numel(rootItems)
             root = rootItems{index};
@@ -685,11 +750,13 @@ function [dataset, entityLevels, warnings] = buildDataset(export, warnings)
                 entry.volumeName = char(textOf(root, "diskName"));
             end
             roots{end + 1} = entry; %#ok<AGROW>
+            rootKeys(end + 1) = textOf(root, "key"); %#ok<AGROW>
         end
         if isempty(roots)
             warnings{end + 1} = sprintf("data location '%s': no root path, left out", name); %#ok<AGROW>
             continue
         end
+        [roots, added] = localRoots(location, roots, rootKeys);
         [layout, byType] = buildLayout(nansen.internal.asCellOfStructs(nansen.internal.getField(location, "subfolders", [])));
         if ~isfield(byType, "session")
             warnings{end + 1} = sprintf("data location '%s': no folder levels, left out", name); %#ok<AGROW>
@@ -715,6 +782,12 @@ function [dataset, entityLevels, warnings] = buildDataset(export, warnings)
             "dataCategory", char(category), "access", char(access), "sourceType", 'filesystem', ...
             "filesystemSource", source); %#ok<AGROW>
         entityLevels.(id) = byType;
+        localCount = localCount + added;
+    end
+    if localCount > 0
+        warnings{end + 1} = sprintf("data locations: %d of dev's local root paths (the roots on the computer whose " + ...
+            "preferences were read) are roots of the environment '%s'; on that computer, open the project in that environment", ...
+            localCount, localEnvironment());
     end
     hasSubject = ismember("subject_id", defNames);
     entityTypes = {};
@@ -1708,6 +1781,39 @@ function [name, used] = uniqueName(name, used)
     end
     name = candidate;
     used(end + 1) = name;
+end
+
+function [roots, added] = localRoots(location, roots, rootKeys)
+    % dev's local root paths of a location (its LocalRootPathManager's, for the computer dev ran on: by the key of the
+    % root they stand for) that differ from the root, added to the roots as roots of the environment dev-local; how
+    % many. A key the location has no root of is passed over, as dev did.
+    added = 0;
+    for item = nansen.internal.asCellOfStructs(nansen.internal.getField(location, "localRootPaths", []))
+        root = item{1};
+        value = textOf(root, "value");
+        k = find(rootKeys == textOf(root, "key"), 1);
+        if value == "" || isempty(k) || value == string(roots{k}.path)
+            continue
+        end
+        base = string(roots{k}.identifier) + "-" + localEnvironment();
+        rootId = base;
+        n = 2;
+        while any(cellfun(@(r) string(r.identifier) == rootId, roots))
+            rootId = base + "-" + n;
+            n = n + 1;
+        end
+        entry = struct("identifier", char(rootId), "path", char(value), "environment", char(localEnvironment()));
+        if textOf(root, "diskName") ~= ""
+            entry.volumeName = char(textOf(root, "diskName"));
+        end
+        roots{end + 1} = entry; %#ok<AGROW>
+        added = added + 1;
+    end
+end
+
+function name = localEnvironment()
+    % The DSM environment of dev's local root paths (dev keeps them per computer, without naming it)
+    name = "dev-local";
 end
 
 function id = rootIdentifier(key, index, roots)

@@ -17,7 +17,7 @@ from .errors import NansenError
 from .project import Project
 from .tables import EntityTable
 
-KINDS = ("documents", "tables", "projects", "entities", "data", "legacy", "jsontext", "api")
+KINDS = ("documents", "tables", "projects", "entities", "data", "legacy", "jsontext", "yaml", "api")
 
 
 @dataclass
@@ -86,6 +86,10 @@ def _evaluate(kind: str, case: Path, expected: dict):
         return _evaluate_legacy(case), None
     if kind == "jsontext":
         return _evaluate_jsontext(case), None
+    if kind == "yaml":   # dev's metadata files (nansen.devyaml)
+        from . import devyaml
+
+        return {"value": devyaml.parse((case / "input.yaml").read_bytes().decode("utf-8"))}, None
     project = Project.open(case / "project")
     tables = {}
     for name in project.entity_types:
@@ -168,8 +172,11 @@ def _evaluate_legacy(case: Path) -> dict:
             table = project.table(name)
             tables[name] = {"key": table.spec.key, "columns": table.spec.column_names, "rows": table.to_json_rows()}
         presets = sorted(folder.glob("options/*/*.options.nansen.json"), key=lambda p: p.relative_to(folder).as_posix())
-        # tasks in their queue order, without their ids (new ones each time)
-        tasks = sorted(documents("tasks/*.task.nansen.json"), key=lambda t: t.get("order", 0))
+        # queued tasks in their queue order, then the finished ones by when they were made and finished; without their
+        # ids (new ones each time), and with the text of their log in place of its path
+        tasks = sorted(documents("tasks/*.task.nansen.json"), key=lambda t: (
+            f"0|{t['order']:09d}" if "order" in t else f"1|{t['createdAt']}|{t.get('finishedAt', '')}"))
+        tasks = [dict(t, log=(folder / t["log"]).read_text(encoding="utf-8")) if "log" in t else t for t in tasks]
         runs = folder / "runs" / "session.runs.jsonl"
         return {"project": json.loads((folder / "project.nansen.json").read_text(encoding="utf-8")),
                 "fileAdapters": documents("file-adapters/*.fileAdapter.nansen.json"),

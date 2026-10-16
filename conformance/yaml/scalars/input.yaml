@@ -1,0 +1,43 @@
+%YAML 1.1
+--- # dev's metadata, edited by hand
+nothing: ~
+alsoNothing: null
+empty:
+yes1: yes
+no1: Off
+truth: TRUE
+integer: -42
+grouped: 1_000_000
+float: +.5
+exponent: 6.02e23
+dotted: 3.
+notNumbers: [0x1F, 1:30, '12', "3.5", 1.2.3]
+plain: a plain value # with a comment
+url: http://example.org/a#b
+windows: C:\Data\TwoPhoton
+continued: the first line
+  and the second,
+
+  after an empty one
+single: 'it''s # not a comment'
+double: "tab\there, quote \" and \u00e9"
+folded: "a line
+  folded, and an
+
+  empty one kept"
+joined: "no \
+  space"
+literal: |
+  first
+    indented
+  last
+foldedBlock: >-
+  one
+  two
+
+  three
+kept: |+
+  end
+
+stripped: |-
+  done

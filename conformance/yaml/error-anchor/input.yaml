@@ -1,0 +1,2 @@
+base: &rate 30.0
+copy: *rate

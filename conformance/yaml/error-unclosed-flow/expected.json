@@ -1,0 +1,4 @@
+{
+  "description": "A flow sequence that is not closed: a file cut short, or not YAML.",
+  "error": "invalid-data"
+}

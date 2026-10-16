@@ -51,7 +51,9 @@
       this.status = "all";
       this.hidden = new Set();
       this.hideIgnored = false;
-      this.locked = store("nansen.locked") === true;   // editing is off in every table until unlocked
+      // editing is off in every table until unlocked: as this browser was left, else the user's default (tables.locked)
+      const locked = store("nansen.locked");
+      this.locked = locked === null ? Boolean(N.tableDefaults && N.tableDefaults.locked) : locked === true;
       this.filters = [];       // [{column, op, ...}]: every one must pass
       this.viewKeys = null;    // a Set of key ids when a view with keys is shown
       this.lastClicked = null;

@@ -1,0 +1,29 @@
+{
+  "description": "Scalars as YAML 1.1 reads them, after a directive and a --- with a comment: null (~, null, nothing), booleans (yes, Off, TRUE), decimal integers (with _), floats (+.5, 6.02e23, 3.), and text for what is none of those (hex, 1:30, quoted numbers); comments after a space only; a plain value continued on more indented lines; single and double quotes with their escapes, folded over lines (a \\ at the end joins without a space); literal and folded blocks with their chomping.",
+  "value": {
+    "nothing": null,
+    "alsoNothing": null,
+    "empty": null,
+    "yes1": true,
+    "no1": false,
+    "truth": true,
+    "integer": -42,
+    "grouped": 1000000,
+    "float": 0.5,
+    "exponent": 6.02e23,
+    "dotted": 3,
+    "notNumbers": ["0x1F", "1:30", "12", "3.5", "1.2.3"],
+    "plain": "a plain value",
+    "url": "http://example.org/a#b",
+    "windows": "C:\\Data\\TwoPhoton",
+    "continued": "the first line and the second,\nafter an empty one",
+    "single": "it's # not a comment",
+    "double": "tab\there, quote \" and é",
+    "folded": "a line folded, and an\nempty one kept",
+    "joined": "no space",
+    "literal": "first\n  indented\nlast\n",
+    "foldedBlock": "one two\nthree",
+    "kept": "end\n\n",
+    "stripped": "done"
+  }
+}

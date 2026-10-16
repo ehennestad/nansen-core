@@ -46,6 +46,7 @@
           h("h3", "Cannot reach the NANSEN core"), String(error.message || error)));
         return;
       }
+      await N.loadTableDefaults(this.client);
       this.client.on("task", (task) => this.taskEvent(task));
       this.client.on("removed", () => this.refreshTaskCount());
       this.client.on("log", (event) => this.onLogEvent && this.onLogEvent(event));
@@ -328,9 +329,21 @@
   }
 
   N.theme = { load: loadTheme, save: saveTheme, apply: applyTheme };
-  // The tables' text size: compact, normal or large (dev's table font size), kept in this browser
+  // The tables' defaults, from the user's settings (tables.textSize, tables.locked: dev's TableFontSize and
+  // AllowTableEdits, which the legacy import brings), for a browser that has not chosen its own
+  N.tableDefaults = { textSize: "normal", locked: false };
+  N.loadTableDefaults = async function (client) {
+    try {
+      const tables = (await client.request("settings.get")).tables || {};
+      N.tableDefaults = { textSize: tables.textSize || "normal", locked: tables.locked === true };
+    } catch (error) { /* no catalog: the built-in defaults */ }
+    N.tableSize.apply(N.tableSize.load());
+  };
+  // The tables' text size: compact, normal or large (dev's table font size), kept in this browser, else the user's default
   N.tableSize = {
-    load() { try { return localStorage.getItem("nansen.tableSize") || "normal"; } catch (e) { return "normal"; } },
+    load() {
+      try { return localStorage.getItem("nansen.tableSize") || N.tableDefaults.textSize; } catch (e) { return N.tableDefaults.textSize; }
+    },
     apply(size) {
       if (size === "normal") document.documentElement.removeAttribute("data-table-size");
       else document.documentElement.setAttribute("data-table-size", size);

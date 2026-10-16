@@ -32,10 +32,14 @@ What maps over:
 - the option presets users made become presets of the methods here: those of the project's own session methods as
   they are, those of NoRMCorre and Quicky with dev's options mapped to the module's (``DEV_OPTIONS``); dev's chosen
   default preset becomes the method's preferred preset;
-- the queued tasks of dev's task list become queued tasks, on hold; the completed tasks of its history and the
-  finished tasks of the ``Progress`` column become lines of the run journal, and the column's pipeline the session's
-  pipeline (``core.pipeline``);
-- dev's app preferences that are app settings here are in the report's ``settings`` (``legacy.import`` saves them).
+- the queued tasks of dev's task list become queued tasks, on hold; the tasks of its history become finished tasks
+  of the queue (completed, failed or cancelled), with dev's log (Diary) and error (ErrorStack), which can be retried;
+  its completed tasks and the finished tasks of the ``Progress`` column also become lines of the run journal, and the
+  column's pipeline the session's pipeline (``core.pipeline``);
+- dev's local root paths (the roots of the computer whose preferences were read) become roots of the DSM environment
+  ``dev-local``;
+- dev's app preferences that are app settings here are in the report's ``settings`` (``legacy.import`` saves them),
+  its table font size and AllowTableEdits among them as the dashboard's table text size and lock.
 
 Whatever cannot be mapped is left out and named in the report's ``warnings``.
 """
@@ -68,6 +72,10 @@ NOTE_TYPES = {"informal": "informal", "important": "important", "todo": "todo", 
 # Columns the dev tables filled from the folder names; the DSM attributes hold them now.
 DERIVED = {"session": {"Date": "session_date", "Time": "session_time"}}
 ADAPTERS_BY_TYPE = {".mat": "mat", ".json": "json", ".txt": "text"}
+# the statuses of dev's task history (TaskProcessor: Completed, Failed, Canceled) and of a finished task here
+HISTORY_STATUS = {"completed": "completed", "failed": "failed", "canceled": "cancelled", "cancelled": "cancelled"}
+# the DSM environment of dev's local root paths (dev keeps them per computer, without naming it)
+LOCAL_ENVIRONMENT = "dev-local"
 ADAPTERS_BY_NAME = {"default": None, "": None, "matfile": "mat", "mat": "mat", "json": "json", "text": "text",
                     "roiarray": "ophys.nansen_roi_array", "roigroup": "ophys.nansen_roi_array", "roisignalarray": "mat"}
 # dev's ImageStack adapter read stacks of many file types; the ophys module's adapters read these (a .raw is dev's
@@ -169,14 +177,14 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
         project.set_preferred_preset(preferred["method"], preferred["preset"])
     for pipeline in plan["pipelines"]:
         project.save_pipeline(pipeline)
-    tasks = _write_tasks(project, plan["tasks"], warnings)
+    tasks, history = _write_tasks(project, plan["tasks"], warnings)
     _write_runs(project, plan["runs"])
     return {"project": str(folder), "rows": rows, "notes": notes,
             "dataVariables": [v["name"] for v in plan["dataVariables"]],
             "fileAdapters": [a["document"]["id"] for a in plan["fileAdapters"]],
             "methods": [m["document"]["id"] for m in plan["methods"] + plan["columnMethods"]],
             "presets": presets, "pipelines": [p["id"] for p in plan["pipelines"]], "tasks": tasks,
-            "runs": len(plan["runs"]), "settings": plan["settings"], "warnings": warnings}
+            "history": history, "runs": len(plan["runs"]), "settings": plan["settings"], "warnings": warnings}
 
 
 def _fitting(method, values: dict, where: str, warnings: List[str]) -> dict:
@@ -193,17 +201,20 @@ def _fitting(method, values: dict, where: str, warnings: List[str]) -> dict:
     return kept
 
 
-def _write_tasks(project: Project, planned: List[dict], warnings: List[str]) -> int:
-    """dev's queued tasks as queued tasks on hold, in dev's queue order, so nothing runs before it is released."""
+def _write_tasks(project: Project, planned: List[dict], warnings: List[str]) -> Tuple[int, int]:
+    """dev's queued tasks as queued tasks on hold, in dev's queue order, so nothing runs before it is released; and
+    the tasks of its history as finished tasks (completed, failed or cancelled), with dev's log (Diary) as the task's
+    log and dev's error (ErrorStack), which can be retried. Returns how many of each."""
     import uuid
 
     from .schemas import current_version
     from .tasks import now, write_task
 
-    count = 0
+    queued = finished = 0
     for item in planned:
         method = project.method(item["method"])
-        where = f"queued task '{item['name']}' ({method.id})"
+        status = item.get("status")
+        where = f"{'finished' if status else 'queued'} task '{item['name']}' ({method.id})"
         if not method.queueable:
             warnings.append(f"{where}: {method.id} cannot run as a background task; left out")
             continue
@@ -212,20 +223,36 @@ def _write_tasks(project: Project, planned: List[dict], warnings: List[str]) -> 
         task: Dict[str, Any] = {"schemaType": "nansen.task", "schemaVersion": current_version("nansen.task"),
                                 "id": str(uuid.uuid4()), "method": {"id": method.id, "version": method.version},
                                 "entities": [{"entityType": "session", "key": key} for key in item["entities"]],
-                                "options": {"values": values}, "status": "queued",
-                                "createdAt": item.get("createdAt") or now(), "progress": 0}
+                                "options": {"values": values}, "status": status or "queued",
+                                "createdAt": item.get("createdAt") or item.get("finishedAt") or now(),
+                                "progress": 1 if status == "completed" else 0}
         if item.get("preset"):
             task["options"]["preset"] = item["preset"]
         if len(method.languages) == 1:   # only that language's worker takes it
             task["language"] = method.languages[0]
-        task["order"] = count
-        task["onHold"] = True
+        if status:
+            for field in ("startedAt", "finishedAt"):
+                if item.get(field):
+                    task[field] = item[field]
+            if item.get("log"):
+                task["log"] = f"tasks/{task['id']}.log"
+            if item.get("error"):
+                task["error"] = dict(item["error"])
+        else:
+            task["order"] = queued
+            task["onHold"] = True
         if item.get("comment"):
             task["comment"] = item["comment"]
         (project.folder / "tasks").mkdir(exist_ok=True)
+        if task.get("log"):
+            with open(project.folder / task["log"], "w", encoding="utf-8", newline="") as f:
+                f.write(item["log"])
         write_task(project.folder / "tasks" / f"{task['id']}.task.nansen.json", task)
-        count += 1
-    return count
+        if status:
+            finished += 1
+        else:
+            queued += 1
+    return queued, finished
 
 
 def _write_runs(project: Project, planned: List[dict]) -> None:
@@ -530,19 +557,9 @@ def _task_list(export: dict, session: Optional[dict], imported: Dict[str, str], 
                             ("left out of it" if keys else "left out"))
         if not keys:
             continue
-        dev_preset = str(item.get("preset") or "")
-        options = item.get("options") or {}
-        preset = preset_names.get((method, dev_preset))
-        if function in imported:
-            values = dict(options)
-        elif method in DEV_OPTIONS:
-            values = _mapped_options(method, options)[0]
-            preset = preset or _dev_preset(method, dev_preset or "default")
-        else:
-            values = {}
-            preset = preset or _dev_preset(method, dev_preset or "default")
-            if options and not preset:
-                warnings.append(f"{where}: dev's options are not the method's here; it starts from the method's defaults")
+        values, preset, unmapped = _task_options(item, function, method, imported, preset_names)
+        if unmapped:
+            warnings.append(f"{where}: dev's options are not the method's here; it starts from the method's defaults")
         task = {"method": method, "name": label, "entities": keys, "values": values}
         if preset:
             task["preset"] = preset
@@ -551,19 +568,49 @@ def _task_list(export: dict, session: Optional[dict], imported: Dict[str, str], 
                 task[field] = item[field]
         tasks.append(task)
     runs: List[dict] = []
+    finished: List[dict] = []
     recorded = left = 0
     for item in task_list.get("history", []):
-        method = _method_of(str(item.get("function") or ""), imported)
+        function = str(item.get("function") or "")
+        method = _method_of(function, imported)
         keys = _session_keys(session, item.get("entities", []))[0]
-        if str(item.get("status") or "").lower() == "completed" and method and keys and item.get("finishedAt"):
+        status = HISTORY_STATUS.get(str(item.get("status") or "").lower())
+        if not (method and keys and status):
+            left += 1
+            continue
+        if status == "completed" and item.get("finishedAt"):
             runs.extend({"method": method, "key": key, "finishedAt": item["finishedAt"]} for key in keys)
             recorded += 1
-        else:
-            left += 1
-    if recorded or left:
-        warnings.append(f"task history: {recorded} completed task(s) recorded in the run journal; {left} left out "
-                        "(not completed, or of a method or session not here)")
-    return tasks, runs
+        values, preset, _ = _task_options(item, function, method, imported, preset_names)
+        task = {"method": method, "name": str(item.get("name") or ""), "entities": keys, "values": values,
+                "status": status}
+        if preset:
+            task["preset"] = preset
+        for field in ("createdAt", "startedAt", "finishedAt", "comment", "log", "error"):
+            if item.get(field):
+                task[field] = item[field]
+        finished.append(task)
+    if finished or left:
+        warnings.append(f"task history: {len(finished)} task(s) are finished tasks of the queue, with dev's log, "
+                        f"{recorded} completed one(s) also in the run journal; {left} left out "
+                        "(of a method or session not here, or neither completed, failed nor cancelled)")
+    return tasks + finished, runs
+
+
+def _task_options(item: dict, function: str, method: str, imported: Dict[str, str],
+                  preset_names: Dict[Tuple[str, str], str]) -> Tuple[dict, Optional[str], bool]:
+    """A dev task's options here, the preset they are over, and whether dev's options were left out (they are not the
+    method's, and no preset holds dev's values): the project's own methods take dev's options as they are; NoRMCorre
+    and Quicky dev's mapped (DEV_OPTIONS) over the module's preset of dev's; other methods start from that preset."""
+    dev_preset = str(item.get("preset") or "")
+    options = item.get("options") or {}
+    preset = preset_names.get((method, dev_preset))
+    if function in imported:
+        return dict(options), preset, False
+    preset = preset or _dev_preset(method, dev_preset or "default")
+    if method in DEV_OPTIONS:
+        return _mapped_options(method, options)[0], preset, False
+    return {}, preset, bool(options) and not preset
 
 
 def _ordered_runs(runs: List[dict]) -> List[dict]:
@@ -580,15 +627,21 @@ def _ordered_runs(runs: List[dict]) -> List[dict]:
 
 def _settings(export: dict) -> dict:
     """dev's app preferences (nansen.App's settings) that are app settings here, in the shape of settings.save:
-    AutosaveMetadataToDataFolders is tables.saveToDataFolders; RunTasksWhenQueued or RunTasksOnStartup is
-    queue.autoStart (the worker starts with the app, and takes tasks as they are queued); SessionTaskDebug is
-    queue.debug. (ShowIgnoredEntries is a filter of the tables' views: _layouts.)"""
+    AutosaveMetadataToDataFolders is tables.saveToDataFolders; TableFontSize is tables.textSize (compact up to 9,
+    large from 13, else normal: dev's default, 10, is normal); AllowTableEdits off is tables.locked; RunTasksWhenQueued
+    or RunTasksOnStartup is queue.autoStart (the worker starts with the app, and takes tasks as they are queued);
+    SessionTaskDebug is queue.debug. (ShowIgnoredEntries is a filter of the tables' views: _layouts.)"""
     settings = export.get("settings") if isinstance(export.get("settings"), dict) else {}
     table = settings.get("MetadataTable") if isinstance(settings.get("MetadataTable"), dict) else {}
     processor = settings.get("TaskProcessor") if isinstance(settings.get("TaskProcessor"), dict) else {}
     out: Dict[str, Any] = {}
     if isinstance(table.get("AutosaveMetadataToDataFolders"), bool):
         out["tables"] = {"saveToDataFolders": table["AutosaveMetadataToDataFolders"]}
+    size = table.get("TableFontSize")
+    if not isinstance(size, bool) and isinstance(size, (int, float)) and math.isfinite(size) and size > 0:
+        out.setdefault("tables", {})["textSize"] = "compact" if size <= 9 else "large" if size >= 13 else "normal"
+    if isinstance(table.get("AllowTableEdits"), bool):
+        out.setdefault("tables", {})["locked"] = not table["AllowTableEdits"]
     flags = [processor[k] for k in ("RunTasksWhenQueued", "RunTasksOnStartup") if isinstance(processor.get(k), bool)]
     if flags:
         out["queue"] = {"autoStart": any(flags)}
@@ -606,10 +659,12 @@ def _dataset(export: dict, warnings: List[str]) -> Tuple[dict, Dict[str, Dict[st
     locations: List[dict] = []
     entity_levels: Dict[str, Dict[str, str]] = {}
     used: set = set()
+    local_roots = 0
     for location in export.get("dataLocations", []):
         name = location.get("name", "")
         identifier = _unique(_identifier(name, "location", sep="_", lower=True), used)
         roots = []
+        by_key: Dict[str, dict] = {}   # dev's key of each root -> its root here
         for index, root in enumerate(location.get("rootPaths", []), start=1):
             if not root.get("value"):
                 continue
@@ -617,9 +672,11 @@ def _dataset(export: dict, warnings: List[str]) -> Tuple[dict, Dict[str, Dict[st
             if root.get("diskName"):
                 entry["volumeName"] = root["diskName"]
             roots.append(entry)
+            by_key.setdefault(root.get("key", ""), entry)
         if not roots:
             warnings.append(f"data location '{name}': no root path, left out")
             continue
+        added = _local_roots(location, roots, by_key)
         layout, by_type = _layout(location.get("subfolders", []))
         if "session" not in by_type:
             warnings.append(f"data location '{name}': no folder levels, left out")
@@ -631,6 +688,11 @@ def _dataset(export: dict, warnings: List[str]) -> Tuple[dict, Dict[str, Dict[st
                           "filesystemSource": {"rootStoragePaths": roots, "entityLayout": layout,
                                                "metadataMapping": mapping}})
         entity_levels[identifier] = by_type
+        local_roots += added
+    if local_roots:
+        warnings.append(f"data locations: {local_roots} of dev's local root paths (the roots on the computer whose "
+                        f"preferences were read) are roots of the environment '{LOCAL_ENVIRONMENT}'; on that computer, "
+                        "open the project in that environment")
     has_subject = "subject_id" in definitions
     entity_types = []
     if has_subject:
@@ -650,6 +712,26 @@ def _dataset(export: dict, warnings: List[str]) -> Tuple[dict, Dict[str, Dict[st
     dataset = {"schemaVersion": "0.1.0", "entityTypes": entity_types, "metadataDefinitions": ordered,
                "dataLocations": locations}
     return dataset, entity_levels
+
+
+def _local_roots(location: dict, roots: List[dict], by_key: Dict[str, dict]) -> int:
+    """dev's local root paths of a location (its LocalRootPathManager's, for the computer dev ran on: by the key of the
+    root they stand for) that differ from the root, added to the roots as roots of the environment dev-local; how many.
+    A key the location has no root of is passed over, as dev did."""
+    added = 0
+    for root in location.get("localRootPaths", []):
+        original = by_key.get(root.get("key", ""))
+        if not root.get("value") or original is None or root["value"] == original["path"]:
+            continue
+        identifier, n = f"{original['identifier']}-{LOCAL_ENVIRONMENT}", 2
+        while any(r["identifier"] == identifier for r in roots):
+            identifier, n = f"{original['identifier']}-{LOCAL_ENVIRONMENT}-{n}", n + 1
+        entry = {"identifier": identifier, "path": root["value"], "environment": LOCAL_ENVIRONMENT}
+        if root.get("diskName"):
+            entry["volumeName"] = root["diskName"]
+        roots.append(entry)
+        added += 1
+    return added
 
 
 def _layout(subfolders: List[dict]) -> Tuple[List[dict], Dict[str, str]]:

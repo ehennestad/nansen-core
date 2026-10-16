@@ -1625,7 +1625,8 @@ classdef Api < handle
             end
             result = nansen.internal.signalTraces(names, arrays, reshape(columns, 1, []), nansen.internal.getField(params, "start", 0), ...
                 nansen.internal.getField(params, "stop", []), nansen.internal.getField(params, "maxPoints", 2000));
-            result.frameRate = nansen.Api.frameRate(params, entity);
+            sidecar = project.sidecarMetadata(entity, string(names{1}));
+            result.frameRate = nansen.Api.frameRate(params, entity, nansen.internal.getField(sidecar, "frameRate", []));
             for i = 1:numel(result.traces)   % what each column is, when the data variable says (a time series' columns)
                 columnNames = nansen.internal.getField(project.dataVariable(string(names{i})).Document, "columnNames", {});
                 if ~isempty(columnNames)
@@ -2670,14 +2671,22 @@ classdef Api < handle
             end
         end
 
-        function rate = frameRate(params, entity)
-            % data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive number; [] (null) when neither
+        function rate = frameRate(params, entity, sidecar)
+            % data.traces' frames per second: the frameRate given, else the one dev's metadata file of the signals
+            % says (sidecar, [] for none), else the entity's frame_rate when it is a positive number; [] (null) when none
+            if nargin < 3
+                sidecar = [];
+            end
             given = nansen.internal.getField(params, "frameRate", []);
             if ~isempty(given)
                 if ~(isnumeric(given) && isscalar(given) && isfinite(given) && given > 0)
                     nansen.internal.throwError("invalid-params", "frameRate is a positive number of frames per second")
                 end
                 rate = double(given);
+                return
+            end
+            if ~isempty(sidecar)
+                rate = double(sidecar);
                 return
             end
             rate = entity.get("frame_rate", []);

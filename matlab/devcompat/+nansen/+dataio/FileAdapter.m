@@ -4,8 +4,9 @@ classdef (Abstract) FileAdapter < handle & matlab.mixin.CustomDisplay
 %   nansen.legacy.FileAdapterShim makes dev's file adapter classes, imported
 %   unchanged, read and write here: obj = Adapter(filename) and
 %   obj.load(), or obj = Adapter(filename, '-w') and obj.save(data). This is
-%   dev's base class less what needs the rest of dev (its metadata files,
-%   uigetfile dialogs and .npy conversion): the same abstract properties
+%   dev's base class less what needs the rest of dev (writing its metadata
+%   files, which Metadata reads, nansen.internal.parseDevYaml; uigetfile
+%   dialogs and .npy conversion): the same abstract properties
 %   (DataType, SUPPORTED_FILE_TYPES) and readData, the same Filename, Name,
 %   FileType, Writable, load, save, writeData (which refuses, unless the
 %   subclass writes) and writeDataToMat, so a subclass's readData and
@@ -150,7 +151,29 @@ classdef (Abstract) FileAdapter < handle & matlab.mixin.CustomDisplay
         end
 
         function metadata = get.Metadata(obj)
+            % dev's metadata file beside the data (<name>.yaml, else <name>.yaml.txt), as dev's adapter read it
+            % (its File, Data and Custom groups); the adapter's default metadata when there is none, or it is not read
             metadata = obj.getDefaultMetadata();
+            if isempty(obj.Filename)
+                return
+            end
+            [folder, name] = fileparts(string(obj.Filename));
+            candidates = [fullfile(folder, name + ".yaml"), fullfile(folder, name + ".yaml.txt")];
+            found = candidates(isfile(candidates));
+            if isempty(found)
+                return
+            end
+            try
+                document = nansen.internal.parseDevYaml(nansen.internal.readText(found(1)));
+            catch err
+                if ~isa(err, "nansen.NansenError")
+                    rethrow(err)
+                end
+                return
+            end
+            if isstruct(document) && isscalar(document)
+                metadata = document;
+            end
         end
     end
 

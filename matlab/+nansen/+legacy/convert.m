@@ -4,10 +4,11 @@ function report = convert(export, folder)
 %   report = nansen.legacy.convert(export, folder) takes the export as a
 %   struct (from nansen.legacy.exportProject, or decoded from its JSON file)
 %   and returns a struct with fields project, rows, notes, dataVariables,
-%   fileAdapters, methods, presets, pipelines, tasks (how many), runs (how
-%   many), settings (dev's app preferences as settings.save takes them) and
-%   warnings. The rules are those of the Python nansen.legacy module, and
-%   the cases in conformance/legacy hold the two to the same result:
+%   fileAdapters, methods, presets, pipelines, tasks (how many queued),
+%   history (how many finished), runs (how many), settings (dev's app
+%   preferences as settings.save takes them) and warnings. The rules are
+%   those of the Python nansen.legacy module, and the cases in
+%   conformance/legacy hold the two to the same result:
 %
 %   - data locations, with their roots, folder levels and metadata rules,
 %     become a DSM config;
@@ -34,9 +35,12 @@ function report = convert(export, folder)
 %   - the option presets users made become presets of the methods here,
 %     and dev's chosen default preset the method's preferred one;
 %   - the queued tasks of dev's task list become queued tasks, on hold, in
-%     dev's order; its completed tasks and the finished tasks of the
+%     dev's order; the tasks of its history become finished tasks of the
+%     queue (completed, failed or cancelled), with dev's log (Diary) and
+%     error (ErrorStack); its completed tasks and the finished tasks of the
 %     Progress column go into the run journal, and the column's pipeline
-%     into core.pipeline.
+%     into core.pipeline;
+%   - dev's local root paths become roots of the DSM environment dev-local.
 %
 %   Whatever cannot be mapped is left out and named in report.warnings.
     arguments
@@ -130,12 +134,12 @@ function report = convert(export, folder)
         project.savePipeline(plan.pipelines{i});
         pipelineIds{end + 1} = plan.pipelines{i}.id; %#ok<AGROW>
     end
-    [tasks, warnings] = writeTasks(project, plan.tasks, warnings);
+    [tasks, history, warnings] = writeTasks(project, plan.tasks, warnings);
     writeRuns(project, plan.runs);
     adapterIds = cellfun(@(a) a.document.id, plan.fileAdapters, UniformOutput=false);
     report = struct("project", char(folder), "rows", rows, "notes", notes, "dataVariables", {names}, ...
         "fileAdapters", {adapterIds}, "methods", {methodIds}, "presets", {presets}, "pipelines", {pipelineIds}, ...
-        "tasks", tasks, "runs", numel(plan.runs), "settings", plan.settings, "warnings", {warnings});
+        "tasks", tasks, "history", history, "runs", numel(plan.runs), "settings", plan.settings, "warnings", {warnings});
 end
 
 function [kept, warnings] = fitting(method, values, where, warnings)
@@ -152,14 +156,22 @@ function [kept, warnings] = fitting(method, values, where, warnings)
     end
 end
 
-function [count, warnings] = writeTasks(project, planned, warnings)
-    % dev's queued tasks as queued tasks on hold, in dev's queue order, so nothing runs before it is released
+function [count, finished, warnings] = writeTasks(project, planned, warnings)
+    % dev's queued tasks as queued tasks on hold, in dev's queue order, so nothing runs before it is released; and the
+    % tasks of its history as finished tasks (completed, failed or cancelled), with dev's log (Diary) as the task's log
+    % and dev's error (ErrorStack), which can be retried. count and finished are how many of each.
     count = 0;
+    finished = 0;
     folder = fullfile(project.Folder, "tasks");
     for i = 1:numel(planned)
         item = planned{i};
         method = project.method(item.method);
-        where = sprintf("queued task '%s' (%s)", item.name, method.Id);
+        status = string(nansen.internal.getField(item, "status", ""));
+        kind = "queued";
+        if status ~= ""
+            kind = "finished";
+        end
+        where = sprintf("%s task '%s' (%s)", kind, item.name, method.Id);
         if ~method.Queueable
             warnings{end + 1} = sprintf("%s: %s cannot run as a background task; left out", where, method.Id); %#ok<AGROW>
             continue
@@ -177,19 +189,44 @@ function [count, warnings] = writeTasks(project, planned, warnings)
         createdAt = char(nansen.internal.timestamp());
         if isfield(item, "createdAt")
             createdAt = char(item.createdAt);
+        elseif isfield(item, "finishedAt")
+            createdAt = char(item.finishedAt);
         end
         references = cellfun(@(key) struct("entityType", 'session', "key", key), item.entities, UniformOutput=false);
         entry = nansen.internal.schemaEntry("nansen.task");
+        progress = 0;
+        if status == "completed"
+            progress = 1;
+        end
+        taskStatus = 'queued';
+        if status ~= ""
+            taskStatus = char(status);
+        end
         task = struct("schemaType", 'nansen.task', "schemaVersion", char(entry.version), ...
             "id", char(nansen.internal.uuid4()), ...
             "method", struct("id", char(method.Id), "version", char(method.Version)), ...
-            "entities", {references}, "options", optionsEntry, "status", 'queued', "createdAt", createdAt, "progress", 0);
+            "entities", {references}, "options", optionsEntry, "status", taskStatus, "createdAt", createdAt, ...
+            "progress", progress);
         languages = string(method.Languages);
         if isscalar(languages)   % only that language's worker takes it
             task.language = char(languages);
         end
-        task.order = count;
-        task.onHold = true;
+        if status ~= ""
+            for field = ["startedAt", "finishedAt"]
+                if isfield(item, field)
+                    task.(field) = char(item.(field));
+                end
+            end
+            if isfield(item, "log")
+                task.log = char("tasks/" + string(task.id) + ".log");
+            end
+            if isfield(item, "error")
+                task.error = item.error;
+            end
+        else
+            task.order = count;
+            task.onHold = true;
+        end
         if isfield(item, "comment")
             task.comment = char(item.comment);
         end
@@ -197,8 +234,15 @@ function [count, warnings] = writeTasks(project, planned, warnings)
         if ~isfolder(folder)
             mkdir(folder);
         end
+        if isfield(task, "log")
+            nansen.internal.writeText(fullfile(project.Folder, task.log), string(item.log));
+        end
         nansen.internal.writeJson(fullfile(folder, string(task.id) + ".task.nansen.json"), task)
-        count = count + 1;
+        if status ~= ""
+            finished = finished + 1;
+        else
+            count = count + 1;
+        end
     end
 end
 

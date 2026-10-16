@@ -1,0 +1,28 @@
+{
+  "description": "An image stack's metadata file as dev's StackMetadata writes it with SnakeYAML: a block mapping of plain scalars, numbers as Java writes doubles (1.0, -1.5E-4), a date quoted because YAML 1.1 would read it as a number, flow sequences of numbers, empty ones, and one wrapped onto a second, more indented line.",
+  "value": {
+    "DimensionArrangement": "YXT",
+    "Size": [512, 512, 1000],
+    "Class": "uint16",
+    "SizeX": 512,
+    "SizeY": 512,
+    "SizeZ": 1,
+    "SizeC": 1,
+    "SizeT": 1000,
+    "PhysicalSizeX": 1.2,
+    "PhysicalSizeY": 1.25,
+    "PhysicalSizeZ": 1,
+    "PhysicalSizeXUnit": "micrometer",
+    "PhysicalSizeYUnit": "micrometer",
+    "PhysicalSizeZUnit": "pixel",
+    "TimeIncrement": 0.03225806451612903,
+    "TimeIncrementUnit": "second",
+    "StartTime": "2023_01_05_10_11_12_000",
+    "SpatialPosition": [0, 0, -0.00015],
+    "ChannelDescription": [],
+    "ChannelIndicator": [],
+    "ChannelColor": [],
+    "FrameTimes": [0, 0.03225806451612903, 0.06451612903225806, 0.0967741935483871, 0.12903225806451613, 0.16129032258064516, 0.1935483870967742],
+    "FramePositions": []
+  }
+}

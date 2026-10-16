@@ -1,0 +1,7 @@
+File:
+  Description: This file contains image stack / video data
+  FileAdapter: nansen.dataio.fileadapter.imagestack.ImageStack
+  Filename: adapter.npy
+  Details: ['']
+Data: {}
+Custom: {SampleRate: 15.5, PhysicalSizeX: 2.0, PhysicalSizeXUnit: um}

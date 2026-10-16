@@ -2235,8 +2235,23 @@ classdef Project < handle
                 stack = nansen.Stack.fromArray(obj.load(entity, name));
             end
             stack.MaxFrames = obj.StackFrameLimit;
+            ordered = nansen.internal.naturalOrder(paths);
+            stack = nansen.internal.withDevMetadata(stack, ordered(1));   % what dev's metadata file says, if it is there
             if nargin >= 4 && ~isempty(frames)
                 stack = stack.cut(frames(1), frames(2));
+            end
+        end
+
+        function metadata = sidecarMetadata(obj, entity, name)
+            %sidecarMetadata What dev's metadata file beside the variable's (first) file says of the recording
+            %
+            %   frameRate, pixelSize, zStep (nansen.internal.devStackMetadata);
+            %   struct() when there is none. As Python's Project.sidecar_metadata.
+            metadata = struct();
+            paths = obj.existingFiles(entity, name);
+            if ~isempty(paths)
+                ordered = nansen.internal.naturalOrder(paths);
+                metadata = nansen.internal.devStackMetadata(ordered(1));
             end
         end
 
@@ -2283,6 +2298,7 @@ classdef Project < handle
                     continue
                 end
                 stack.MaxFrames = obj.StackFrameLimit;
+                stack = nansen.internal.withDevMetadata(stack, path);   % and dev's metadata file beside it
                 adapterId = candidate;
                 return
             end

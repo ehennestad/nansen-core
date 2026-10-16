@@ -1,0 +1,10 @@
+Name: first
+2ndTry: left out
+with space: left out
+end: a MATLAB keyword, left out
+'Quoted': kept
+"Double": kept too
+Group: {ok: 1, not ok: 2, for: 3}
+Name: last
+...
+Ignored: after the end of the document

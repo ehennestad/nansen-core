@@ -1,0 +1,15 @@
+File:
+  Description: This file contains extracted and processed roi signals
+  FileAdapter: nansen.dataio.fileadapter.timeseries.RoiSignalArray
+  Filepath: /data/processed/m110/session-m110-001/roisignals
+  Filename: m110-001_roi_signals_mean_f.mat
+  Details: ['']
+Data:
+  VariableNames: ['']
+  NumSamples: 0.0
+  NumRois: 0.0
+  StartTimeNum: 739000.5
+  StartTimeStr: ''
+  SampleRate: 30.9
+  TimeUnits: seconds
+Custom: {start_time: '2023-05-01 10:00', note: 'Max''s rig: 2P', flag: true}
