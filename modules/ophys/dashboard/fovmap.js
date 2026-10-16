@@ -9,15 +9,27 @@
  * fovmanager's Copy and Paste (Ctrl+C, Ctrl+V): the FOV, window or mark picked last is copied, and pasted as the selected
  * session's FOV, the selected subject's window, or a new mark of the selected subject at the same place; its Show Fine
  * Grid draws a line every 0.2 mm, stronger at whole millimetres.
+ *
+ * The module's data (fovmap) is {injections, notes, photos, outlines, headbars}, each a list of marks with an id:
+ * - injections: {id, subject?, ml, ap, material?, depth? (µm), volume? (nL), spread? (µm), colour?};
+ * - notes: {id, subject?, ml, ap, text};
+ * - photos: {id, subject?, path, dataLocation?, width (mm), opacity, height? (mm; else as the image's sides),
+ *   offset? ([ml, ap] mm of its centre from the window's)}: a photo of the subject's window, centred on it, turned with
+ *   it and cut to its outline; or, with session (a key), an image of that session's FOV, shown in its FOV;
+ * - outlines: {id, subject, ellipse: [rx, ry]} or {id, subject, polygon: [[x, y], ...]} (mm from the window's centre,
+ *   before its rotation): a window's outline that is none of the fixed shapes, as fovmanager kept them;
+ * - headbars: {id, subject, label}: a subject's headbar label, as fovmanager's.
+ * Import dev FOV inventory (legacy.importFovInventory) brings an inventory of dev's fovmanager (.mat) onto the map.
  */
 "use strict";
 const { h } = N;
 let atlasCache = null;
 
-const SHAPES = {   // half sizes in mm: [half width (ML), half height (AP)], round or not
+const SHAPES = {   // half sizes in mm: [half width (ML), half height (AP)], round or not, a trapezoid's half width in front
   "round 2.5 mm": [1.25, 1.25, true], "round 3 mm": [1.5, 1.5, true], "round 4 mm": [2, 2, true],
-  "round 5 mm": [2.5, 2.5, true], "trapezoid 3 x 5 mm": [1.5, 2.5, false],
+  "round 5 mm": [2.5, 2.5, true], "trapezoid 3 x 5 mm": [2.5, 2.5, false, 1.5],   // dev's: 3 mm wide in front, 5 behind, 5 long
 };
+const MARK_KINDS = ["injections", "notes", "photos", "outlines", "headbars"];
 
 async function loadAtlas(app) {
   if (!atlasCache) {
@@ -117,9 +129,11 @@ function svgContext(width, height) {
   const stack = [];
   let state = { transform: [], dash: [], fillStyle: "#000", strokeStyle: "#000", lineWidth: 1, globalAlpha: 1, font: "11px sans-serif", textAlign: "start" };
   let path = "";
+  let clips = 0;
   const escape = (text) => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const n = (v) => Math.round(v * 100) / 100;
-  const attrs = () => (state.transform.length ? ` transform="${state.transform.join(" ")}"` : "") + (state.globalAlpha < 1 ? ` opacity="${state.globalAlpha}"` : "");
+  const attrs = () => (state.transform.length ? ` transform="${state.transform.join(" ")}"` : "") + (state.globalAlpha < 1 ? ` opacity="${state.globalAlpha}"` : "") +
+    (state.clip ? ` clip-path="url(#${state.clip})"` : "");
   const strokeAttrs = () => ` stroke="${state.strokeStyle}" stroke-width="${state.lineWidth}"` + (state.dash.length ? ` stroke-dasharray="${state.dash.join(" ")}"` : "");
   const ctx = {
     get fillStyle() { return state.fillStyle; }, set fillStyle(v) { state.fillStyle = v; },
@@ -132,6 +146,10 @@ function svgContext(width, height) {
     clearRect() {},
     save() { stack.push({ ...state, transform: state.transform.slice(), dash: state.dash.slice() }); },
     restore() { if (stack.length) state = stack.pop(); },
+    clip() {   // what is drawn after it is cut to the path, until restore (in the same user space as what is drawn)
+      state.clip = `clip${++clips}`;
+      parts.push(`<clipPath id="${state.clip}"><path d="${path}"/></clipPath>`);
+    },
     translate(x, y) { state.transform.push(`translate(${n(x)} ${n(y)})`); },
     rotate(a) { state.transform.push(`rotate(${n(a * 180 / Math.PI)})`); },
     setLineDash(d) { state.dash = d.slice(); },
@@ -206,10 +224,74 @@ function photoForm(locations, photo = {}) {
   });
 }
 
+/**
+ * A window's outline (an ellipse, its width and height, or a polygon, its corners: "x, y" a line, mm from the window's
+ * centre before its rotation, x to the right, y to the front), as fovmanager's windows of other shapes; null when
+ * cancelled.
+ */
+function outlineForm(outline = {}) {
+  return new Promise((resolve) => {
+    const kind = h("select.input", { name: "kind" }, ["ellipse", "polygon"].map((k) =>
+      h("option", { value: k, selected: k === (outline.polygon ? "polygon" : "ellipse") }, k)));
+    const [rx, ry] = outline.ellipse || [1.5, 1.5];
+    const width = h("input.input", { name: "width", type: "number", step: "any", min: 0, value: String(2 * rx) });
+    const height = h("input.input", { name: "height", type: "number", step: "any", min: 0, value: String(2 * ry) });
+    const points = h("textarea.input.mono", { name: "points", rows: 5,
+      placeholder: "-1.5, 2.5\n-2.5, -2.5\n2.5, -2.5\n1.5, 2.5" }, (outline.polygon || []).map((p) => p.join(", ")).join("\n"));
+    const finish = (close) => {
+      let values;
+      if (kind.value === "ellipse") {
+        values = { ellipse: [Number(width.value) / 2, Number(height.value) / 2] };
+        if (!values.ellipse.every((v) => v > 0)) { N.toast("Check the fields", "A width and a height above 0 mm", "error"); return; }
+      } else {
+        const corners = points.value.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => line.split(/[\s,;]+/).map(Number));
+        if (corners.length < 3 || !corners.every((p) => p.length === 2 && p.every((v) => isFinite(v)))) {
+          N.toast("Check the corners", "Three or more lines of x, y (mm)", "error");
+          return;
+        }
+        values = { polygon: corners };
+      }
+      resolve(values);
+      close();
+    };
+    const d = N.dialog({
+      title: "Window outline", narrow: true,
+      content: h("div.mark-form",
+        h("div.field", h("label.name", "An ellipse, or the corners of a polygon (mm from the window's centre, before its rotation)"), kind),
+        h("div.field", h("label.name", "Width (mm)"), width), h("div.field", h("label.name", "Height (mm)"), height),
+        h("div.field.outline-points", h("label.name", "Corners: x, y a line"), points)),
+      buttons: [{ label: "Cancel", onClick: (close) => { resolve(null); close(); } }, { label: "OK", kind: "primary", onClick: finish }],
+      onClose: () => resolve(null),
+    });
+    d.el.classList.add("outline-dialog");
+  });
+}
+
+/** A text asked for in a small dialog (a headbar label, an inventory's file); null when cancelled. */
+function textForm(title, label, value = "", className = "text-dialog", placeholder = "") {
+  return new Promise((resolve) => {
+    const input = h("input.input", { name: "text", value, placeholder });
+    const finish = (close) => {
+      if (!input.value.trim()) { N.toast("Check the field", `${label} is empty`, "error"); return; }
+      resolve(input.value.trim());
+      close();
+    };
+    const d = N.dialog({
+      title, narrow: true, content: h("div.mark-form", h("div.field", h("label.name", label), input)),
+      buttons: [{ label: "Cancel", onClick: (close) => { resolve(null); close(); } }, { label: "OK", kind: "primary", onClick: finish }],
+      onClose: () => resolve(null),
+    });
+    d.el.classList.add(className);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") finish(d.close); });
+    setTimeout(() => input.focus(), 0);
+  });
+}
+
 const keyText = (key) => Object.values(key).join(" / ");
 const sameKey = (a, b) => Object.keys(a).every((k) => a[k] === b[k]);
 const number = (v) => (typeof v === "number" && isFinite(v) ? v : null);
-const COLOURS = { magenta: "#d81b60", green: "#2e7d32", red: "#c62828", blue: "#1565c0", orange: "#ef6c00", purple: "#6a1b9a" };
+const COLOURS = { magenta: "#d81b60", green: "#2e7d32", red: "#c62828", blue: "#1565c0", orange: "#ef6c00", purple: "#6a1b9a",
+  cyan: "#00838f", yellow: "#f9a825" };   // cyan and yellow: dev's other colours of injections
 const colourOf = (mark) => COLOURS[mark.colour] || COLOURS.magenta;
 
 /** A dialog with the fields of an injection or a note; resolves to the values, or null when cancelled. */
@@ -277,15 +359,19 @@ N.registerPage({
     const history = [], future = [];   // undo and redo: {undo, redo} of changes to the marks and to placements
     let sessions = [];
     let subjects = [];
-    let marks = { injections: [], notes: [], photos: [] };   // the module's data: injection sites, notes and window photos
+    // the module's data: injection sites, notes, photos (of windows and FOVs), window outlines and headbar labels
+    let marks = Object.fromEntries(MARK_KINDS.map((kind) => [kind, []]));
     let revision = 0;
 
     async function loadMarks() {
       const stored = await app.client.request("modules.data", { module, name: "fovmap" });
-      const value = JSON.parse(stored.text);
-      marks = { injections: (value && value.injections) || [], notes: (value && value.notes) || [], photos: (value && value.photos) || [] };
+      const value = JSON.parse(stored.text) || {};
+      marks = Object.fromEntries(MARK_KINDS.map((kind) => [kind, Array.isArray(value[kind]) ? value[kind] : []]));
       revision = stored.revision;
     }
+    const ofOwner = (list, s) => list.find((m) => m.subject && sameKey(m.subject, s.key));   // a subject's outline or headbar
+    const windowPhotos = () => marks.photos.filter((p) => !p.session);
+    const fovPhoto = (session) => marks.photos.find((p) => p.session && sameKey(p.session, session.key));
     // Change the marks and save them; if another window saved first, start again from what it saved. Undoable.
     async function changeMarks(change, undoable = true) {
       const before = JSON.stringify(marks);
@@ -438,6 +524,46 @@ N.registerPage({
         refresh();
       } catch (error) { N.showError(error, "Could not add the photo"); }
     } } }, N.icon("image", 13), "Photo");
+    // a subject's window outline or headbar label: one each, set in place of the one it had
+    const setOwn = (kind, values) => changeMarks((all) => {
+      all[kind] = all[kind].filter((m) => !(m.subject && sameKey(m.subject, state.subject)));
+      all[kind].push({ id: nextId(all[kind]), subject: state.subject, ...values });
+    });
+    const setOutline = h("button.btn.small.set-outline", { title: "Give the subject's window an outline of its own: an ellipse, or a polygon (fovmanager's windows of other shapes)",
+      on: { click: async () => {
+        const values = await outlineForm(ofOwner(marks.outlines, { key: state.subject }));
+        if (!values) return;
+        try { await setOwn("outlines", values); refresh(); } catch (error) { N.showError(error, "Could not set the outline"); }
+      } } }, N.icon("polygon", 13), "Outline");
+    const setHeadbar = h("button.btn.small.set-headbar", { title: "The subject's headbar label, as fovmanager's", on: { click: async () => {
+      const current = ofOwner(marks.headbars, { key: state.subject });
+      const label = await textForm("Headbar label", "Label", current ? current.label : "", "headbar-dialog");
+      if (!label) return;
+      try { await setOwn("headbars", { label }); refresh(); } catch (error) { N.showError(error, "Could not set the label"); }
+    } } }, "Headbar");
+    // fovmanager's Load Fov Inventory: dev's inventory (.mat) onto this map, read by the backend
+    const importButton = h("button.btn.ghost.small.import-inventory", { title: "Bring an inventory of NANSEN dev's fovmanager (its Save Fov Inventory .mat file) onto this map: windows, FOVs, images, injections, notes, headbar labels",
+      on: { click: () => importInventory() } }, N.icon("file", 13), "Import dev FOV inventory…");
+    async function importInventory() {
+      const path = await textForm("Import dev FOV inventory",
+        "The .mat file of fovmanager's Save Fov Inventory, or its JSON export (nansen.legacy.exportFovInventory); a full path, or relative to the project folder",
+        "", "inventory-dialog", "fov_inventory.mat");
+      if (!path) return;
+      try {
+        const report = await app.client.request("legacy.importFovInventory", { path });
+        imageCache.clear();   // its images may be new files of the same names
+        await load();
+        refresh();
+        N.toast("Imported from dev's fovmanager", [`${report.sessions.length} FOV(s)`, `${report.subjects.length} window(s)`,
+          `${report.injections} injection(s)`, `${report.notes} note(s)`, `${report.photos} image(s)`].join(" · "), "success", 7000);
+        if (report.warnings.length) {
+          const d = N.dialog({ title: "Not carried over", content: h("div", { style: { padding: "16px 20px" } },
+            h("p.muted", { style: { marginTop: 0 } }, "The import left these out:"),
+            h("ul.notes", report.warnings.map((w) => h("li", w)))), buttons: [{ label: "OK", kind: "primary" }] });
+          d.el.classList.add("inventory-warnings");
+        }
+      } catch (error) { N.showError(error, "Could not import the inventory"); }
+    }
 
     const scale = () => canvas.width / (atlas.width / atlas.pixelsPerMm);   // px per mm
     const toCanvas = (ml, ap) => [(ml - atlas.origin[0]) * scale(), (atlas.origin[1] + atlas.height / atlas.pixelsPerMm - ap) * scale()];
@@ -483,38 +609,58 @@ N.registerPage({
       const [bx, by] = toCanvas(0, 0);   // bregma
       ctx.strokeStyle = "rgba(20, 24, 33, 0.8)";
       ctx.beginPath(); ctx.moveTo(bx - 6, by); ctx.lineTo(bx + 6, by); ctx.moveTo(bx, by - 6); ctx.lineTo(bx, by + 6); ctx.stroke();
-      marks.photos.filter(ofSubject).forEach((photo) => {   // a photo of the window, centred on it and turned with it
-        const s = subjects.find((x) => photo.subject && sameKey(x.key, photo.subject));
-        const ml = s && number(s.values.window_ml), ap = s && number(s.values.window_ap);
-        const image = photoImage(photo);
-        if (ml === null || ap === null || !s || !image) return;
+      // a window's outline as a path, in its own frame (x right, y to the front, mm): its outline in the module's data
+      // (fovmanager's windows fitted to a photo, or of other sizes), else its shape
+      const windowPath = (s) => {
+        const outline = ofOwner(marks.outlines, s);
+        const k = scale();
+        ctx.beginPath();
+        if (outline && Array.isArray(outline.polygon) && outline.polygon.length > 2) {
+          outline.polygon.forEach(([px, py], i) => (i ? ctx.lineTo(px * k, -py * k) : ctx.moveTo(px * k, -py * k)));
+          ctx.closePath();
+        } else if (outline && Array.isArray(outline.ellipse)) {
+          ctx.ellipse(0, 0, outline.ellipse[0] * k, outline.ellipse[1] * k, 0, 0, 2 * Math.PI);
+        } else {
+          const [hw, hh, round, front] = SHAPES[s.values.window_shape] || SHAPES["round 3 mm"];
+          if (round) ctx.ellipse(0, 0, hw * k, hh * k, 0, 0, 2 * Math.PI);
+          else { ctx.moveTo(-front * k, -hh * k); ctx.lineTo(front * k, -hh * k); ctx.lineTo(hw * k, hh * k); ctx.lineTo(-hw * k, hh * k); ctx.closePath(); }
+        }
+      };
+      const atWindow = (s) => {   // the window's frame: at its centre, turned with it; false when it is not placed
+        const ml = number(s.values.window_ml), ap = number(s.values.window_ap);
+        if (ml === null || ap === null) return false;
         const [x, y] = toCanvas(ml, ap);
-        const w = photo.width * scale(), hgt = w * image.height / image.width;
-        ctx.save();
         ctx.translate(x, y);
         ctx.rotate(-(number(s.values.window_rotation) || 0) * Math.PI / 180);
+        return true;
+      };
+      windowPhotos().filter(ofSubject).forEach((photo) => {   // a photo of the window, on it, turned with it, cut to it
+        const s = subjects.find((x) => photo.subject && sameKey(x.key, photo.subject));
+        const image = photoImage(photo);
+        if (!s || !image) return;
+        ctx.save();
+        if (!atWindow(s)) { ctx.restore(); return; }
+        const w = photo.width * scale(), hgt = (number(photo.height) || photo.width * image.height / image.width) * scale();
+        const [dx, dy] = Array.isArray(photo.offset) ? photo.offset.map((v) => v * scale()) : [0, 0];
+        windowPath(s);
+        ctx.clip();
         ctx.globalAlpha = photo.opacity;
-        ctx.drawImage(image, -w / 2, -hgt / 2, w, hgt);
+        ctx.drawImage(image, dx - w / 2, -dy - hgt / 2, w, hgt);
         ctx.restore();
         drawnPhotos++;
       });
+      let outlines = 0;
       subjects.forEach((s) => {
-        const ml = number(s.values.window_ml), ap = number(s.values.window_ap);
-        if (ml === null || ap === null) return;
-        const [hw, hh, round] = SHAPES[s.values.window_shape] || SHAPES["round 3 mm"];
         const selected = state.subject && sameKey(s.key, state.subject);
-        const [x, y] = toCanvas(ml, ap);
         ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(-(number(s.values.window_rotation) || 0) * Math.PI / 180);
+        if (!atWindow(s)) { ctx.restore(); return; }
         ctx.lineWidth = selected ? 3 : 1.5;
         ctx.strokeStyle = selected ? "#3d5afe" : "rgba(20, 24, 33, 0.55)";
         ctx.setLineDash(selected ? [] : [5, 4]);
-        ctx.beginPath();
-        if (round) ctx.ellipse(0, 0, hw * scale(), hh * scale(), 0, 0, 2 * Math.PI);
-        else { ctx.moveTo(-hw * 0.7 * scale(), -hh * scale()); ctx.lineTo(hw * 0.7 * scale(), -hh * scale()); ctx.lineTo(hw * scale(), hh * scale()); ctx.lineTo(-hw * scale(), hh * scale()); ctx.closePath(); }
+        windowPath(s);
         ctx.stroke();
         ctx.restore();
+        if (ofOwner(marks.outlines, s)) outlines++;
       });
       marks.injections.filter(ofSubject).forEach((m) => {   // injection sites: the spread, a dot, and what was injected
         const [x, y] = position(m);
@@ -548,8 +694,10 @@ N.registerPage({
         const w = (number(s.values.fov_width_um) || 500) / 1000 * scale(), hgt = (number(s.values.fov_height_um) || number(s.values.fov_width_um) || 500) / 1000 * scale();
         const [x, y] = toCanvas(ml, ap);
         const selected = state.session && sameKey(s.key, state.session);
-        const image = state.images && state.imageVariable ? fovImage(s) : null;
-        if (image) {   // the FOV's own image in its place, as fovmanager's FOV images
+        // the FOV's own image in its place, as fovmanager's FOV images: its image variable's, else the one fovmanager kept
+        const photo = state.images ? fovPhoto(s) : null;
+        const image = (state.images && state.imageVariable ? fovImage(s) : null) || (photo ? photoImage(photo) : null);
+        if (image) {
           ctx.save();
           ctx.globalAlpha = state.opacity;
           ctx.drawImage(image, x - w / 2, y - hgt / 2, w, hgt);
@@ -575,6 +723,7 @@ N.registerPage({
       if (ctx === canvas.getContext("2d")) {
         canvas.dataset.images = String(drawnImages); canvas.dataset.photos = String(drawnPhotos); canvas.dataset.rois = String(drawnRois);
         canvas.dataset.gridLines = String(gridLines);
+        canvas.dataset.outlines = String(outlines);
       }
     }
 
@@ -583,8 +732,9 @@ N.registerPage({
         h("span.grow", "All"), h("span.muted", String(sessions.length))),
       subjects.map((s) => h("li" + (state.subject && sameKey(s.key, state.subject) ? ".selected" : ""), { dataset: { subject: keyText(s.key) },
         on: { click: () => { state.subject = s.key; state.session = null; state.picked = { kind: "window", key: s.key }; refresh(); } } },
-        h("span.grow", keyText(s.key)),
-        number(s.values.window_ml) === null ? h("span.muted", "no window") : h("span.pill.plain", s.values.window_shape || "window"))));
+        h("span.grow", keyText(s.key), ofOwner(marks.headbars, s) ? h("span.muted.headbar", ` · ${ofOwner(marks.headbars, s).label}`) : null),
+        number(s.values.window_ml) === null ? h("span.muted", "no window")
+          : h("span.pill.plain", ofOwner(marks.outlines, s) ? "outline" : s.values.window_shape || "window"))));
       N.fill(sessionList, shown().map((s) => {
         const placed = number(s.values.fov_ml) !== null && number(s.values.fov_ap) !== null;
         return h("li" + (state.session && sameKey(s.key, state.session) ? ".selected" : ""), { dataset: { session: keyText(s.key) },
@@ -596,16 +746,25 @@ N.registerPage({
       placeWindow.disabled = !state.subject || !windowType;
       placeInjection.disabled = !state.subject;
       const subjectRow = state.subject && subjects.find((x) => sameKey(x.key, state.subject));
-      addPhoto.disabled = !subjectRow || number(subjectRow.values.window_ml) === null;
+      addPhoto.disabled = setOutline.disabled = !subjectRow || number(subjectRow.values.window_ml) === null;
+      setHeadbar.disabled = !subjectRow;
+      imageToggle.disabled = !imageVariables.length && !marks.photos.some((p) => p.session);
+      const owner = (m) => (m.subject ? ` · ${keyText(m.subject)}` : "");
+      const outlineText = (m) => (Array.isArray(m.ellipse) ? `ellipse ${round2(2 * m.ellipse[0])} × ${round2(2 * m.ellipse[1])} mm`
+        : `polygon of ${(m.polygon || []).length} corners`);
       const listed = [...marks.injections.filter(ofSubject).map((m) => ["injections", m, injectionText(m)]),
         ...marks.notes.filter(ofSubject).map((m) => ["notes", m, m.text]),
-        ...marks.photos.filter(ofSubject).map((m) => ["photos", m, `Photo: ${m.path.split("/").pop()}`])];
+        ...marks.photos.filter(ofSubject).map((m) => ["photos", m, `${m.session ? "FOV image" : "Photo"}: ${m.path.split("/").pop()}`]),
+        ...marks.outlines.filter(ofSubject).map((m) => ["outlines", m, `Window outline: ${outlineText(m)}`]),
+        ...marks.headbars.filter(ofSubject).map((m) => ["headbars", m, `Headbar: ${m.label}`])];
+      const detail = (kind, m) => (kind === "photos" ? (m.session ? keyText(m.session) : `${m.width} mm wide · opacity ${m.opacity}${owner(m)}`)
+        : kind === "outlines" || kind === "headbars" ? owner(m).slice(3)
+          : `AP ${m.ap}, ML ${m.ml}` + (number(m.spread) ? ` · spread ${m.spread} µm` : "") + owner(m));
       N.fill(markList, listed.length ? listed.map(([kind, m, label]) => h("li", { dataset: { mark: `${kind}-${m.id}` }, title: "Edit",
         on: { click: () => { state.picked = { kind, mark: m }; edit(kind, m); } } },
         kind === "injections" ? h("span.swatch", { style: { background: colourOf(m) } }) : kind === "photos" ? N.icon("image", 12) : h("span.dot.plain"),
-        h("div.grow", h("div", label), h("div.sub.muted", kind === "photos" ? `${m.width} mm wide · opacity ${m.opacity}` + (m.subject ? ` · ${keyText(m.subject)}` : "")
-          : `AP ${m.ap}, ML ${m.ml}` + (number(m.spread) ? ` · spread ${m.spread} µm` : "") + (m.subject ? ` · ${keyText(m.subject)}` : ""))),
-        h("button.btn.ghost.icon.small.copy-mark", { title: "Copy (paste it for another subject)", on: { click: (event) => {
+        h("div.grow", h("div", label), h("div.sub.muted", detail(kind, m))),
+        kind === "photos" && m.session ? null : h("button.btn.ghost.icon.small.copy-mark", { title: "Copy (paste it for another subject)", on: { click: (event) => {
           event.stopPropagation();
           state.picked = { kind, mark: m };
           copy();
@@ -614,7 +773,7 @@ N.registerPage({
           event.stopPropagation();
           try { await changeMarks((all) => { all[kind] = all[kind].filter((x) => x.id !== m.id); }); refresh(); }
           catch (error) { N.showError(error, "Could not remove it"); }
-        } } }, N.icon("trash", 12)))) : h("li.muted", "No injections, notes or photos"));
+        } } }, N.icon("trash", 12)))) : h("li.muted", "No injections, notes, photos or outlines"));
     }
 
     function refresh() { renderLists(); draw(); }
@@ -633,7 +792,8 @@ N.registerPage({
       } else {
         const { id, subject, ...rest } = picked.mark;   // eslint-disable-line no-unused-vars
         values = JSON.parse(JSON.stringify(rest));
-        label = picked.kind === "injections" ? injectionText(picked.mark) : picked.mark.text;
+        label = picked.kind === "injections" ? injectionText(picked.mark) : picked.kind === "outlines" ? "Window outline"
+          : picked.kind === "headbars" ? `Headbar ${picked.mark.label}` : picked.kind === "photos" ? picked.mark.path : picked.mark.text;
       }
       state.copied = { kind: picked.kind, values, label };
       pasteButton.disabled = false;
@@ -650,8 +810,10 @@ N.registerPage({
           if (!state.subject || !windowType) { N.toast("Select a subject", "The copied window is pasted as the selected subject's", "error"); return; }
           await place(windowType.name, state.subject, copied.values, false);
         } else {
-          if (copied.kind === "injections" && !state.subject) { N.toast("Select a subject", "The copied injection is pasted for the selected subject", "error"); return; }
-          await changeMarks((all) => { all[copied.kind].push({ id: nextId(all[copied.kind]), subject: state.subject, ...JSON.parse(JSON.stringify(copied.values)) }); });
+          const own = copied.kind === "outlines" || copied.kind === "headbars";   // one of each per subject
+          if ((copied.kind === "injections" || own) && !state.subject) { N.toast("Select a subject", "What was copied is pasted for the selected subject", "error"); return; }
+          if (own) await setOwn(copied.kind, JSON.parse(JSON.stringify(copied.values)));
+          else await changeMarks((all) => { all[copied.kind].push({ id: nextId(all[copied.kind]), subject: state.subject, ...JSON.parse(JSON.stringify(copied.values)) }); });
         }
         await load();
         refresh();
@@ -675,10 +837,16 @@ N.registerPage({
     };
     const round2 = (v) => Math.round(v * 100) / 100;
     async function edit(kind, mark) {
-      const values = kind === "photos" ? await photoForm(locations, mark) : await markForm(kind, mark);
+      const values = kind === "photos" ? await photoForm(locations, mark) : kind === "outlines" ? await outlineForm(mark)
+        : kind === "headbars" ? await textForm("Headbar label", "Label", mark.label, "headbar-dialog").then((label) => label && { label })
+          : await markForm(kind, mark);
       if (!values) return;
       try {
-        await changeMarks((all) => { const m = all[kind].find((x) => x.id === mark.id); if (m) Object.assign(m, values); });
+        await changeMarks((all) => {
+          const m = all[kind].find((x) => x.id === mark.id);
+          if (m && kind === "outlines") { delete m.ellipse; delete m.polygon; }   // an ellipse or a polygon, not both
+          if (m) Object.assign(m, values);
+        });
         refresh();
       } catch (error) { N.showError(error, "Could not change it"); }
     }
@@ -800,14 +968,14 @@ N.registerPage({
       h("div.fov-layout",
         h("div.card.fov-side", h("div.card-head", h("h3", windowType ? N.titleCase(windowType.name) : "Subjects")), subjectList),
         h("div.card.fov-map",
-          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, addPhoto, h("div.spacer"), copyButton, pasteButton, undoButton, redoButton),
+          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, addPhoto, setOutline, setHeadbar, h("div.spacer"), copyButton, pasteButton, undoButton, redoButton),
           h("div.fov-bar.fov-view-bar", h("label.fov-labels", labels, "Region labels"), h("label.fov-labels", fineGrid, "Fine grid"), h("label.fov-labels", imageToggle, "FOV images"), imagePick, opacityPick,
             h("label.fov-labels", { title: "Each FOV's ROIs in its place: accepted green, rejected red" }, roiToggle, "ROIs"),
-            h("div.spacer"), exportButton, svgButton),
+            h("div.spacer"), importButton, exportButton, svgButton),
           canvas, where),
         h("div.fov-side-column",
           h("div.card.fov-side", h("div.card-head", h("h3", N.titleCase(fovType.name))), sessionList),
-          h("div.card.fov-side", h("div.card-head", h("h3", "Injections and notes")), markList))));
+          h("div.card.fov-side", h("div.card-head", h("h3", "Injections, notes and images")), markList))));
     refresh();
   },
 });

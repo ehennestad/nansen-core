@@ -2755,6 +2755,80 @@ def test_the_selected_rois_neuropil_is_shown_as_signal_extraction_takes_it(empty
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_import_a_dev_fov_inventory_onto_the_fov_map(empty_app, page):
+    """fovmanager's Load Fov Inventory: dev's .mat inventory onto the map, its window's own outline (an ellipse), photo
+    (cut to the outline) and headbar label, its FOV with its image, its injection and annotation; an outline set by
+    hand; and what was left out named."""
+    import json
+    scipy_io = pytest.importorskip("scipy.io")
+    pytest.importorskip("imageio")
+    import numpy as np
+    api = ophys_project(empty_app)
+
+    def structs(items):
+        array = np.zeros((1, len(items)), dtype=[(f, object) for f in items[0]] if items else [("center", object)])
+        for i, item in enumerate(items):
+            for f, v in item.items():
+                array[0, i][f] = v
+        return array
+    photo = np.zeros((20, 30, 3), dtype=np.uint8)
+    photo[:, :, 0] = 220   # red
+    fov = structs([{"center": np.array([[2.3, -3.6]]), "edge": np.array([[2.05, -3.35], [2.05, -3.85], [2.55, -3.85], [2.55, -3.35]]),
+                    "orientation": {"theta": 0.0}, "currentSession": "s1",
+                    "listOfSessions": structs([{"sessionID": "s1", "fovImage": np.arange(64.0).reshape(8, 8)}]),
+                    "image": np.zeros((0, 0))}])
+    window = structs([{"center": np.array([[2.0, -3.0]]), "shape": "Round 2.5mm", "image": photo, "orientation": {"theta": 0.0},
+                       "edge": np.array([[3.6, -3.0], [2.0, -2.0], [0.4, -3.0], [2.0, -4.0]]), "fovArray": fov}])
+    db = structs([{"MouseId": "1", "HeadbarLabel": "HB-1", "Windows": window,
+                   "Injections": structs([{"center": np.array([[1.5, -2.0]]), "name": "AAV-GCaMP6s", "color": "g", "depth": "250"}]),
+                   "Annotations": structs([{"center": np.array([[2.5, -2.5]]), "name": "vessel", "color": "r"}])}])
+    inventory = empty_app["folder"] / "fov_inventory.mat"
+    scipy_io.savemat(inventory, {"fovDb": db})
+
+    page.goto(empty_app["server"].url + "#/page/ophys.fovmap")
+    page.wait_for_selector(".fov-canvas")
+    page.click(".import-inventory")
+    page.fill(".inventory-dialog input[name=text]", str(inventory))
+    page.click(".inventory-dialog .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".fov-canvas[data-outlines='1'][data-photos='1']")   # the window's ellipse and its photo
+    assert "HB-1" in page.inner_text(".fov-list li[data-subject='m1']")
+    assert page.locator(".fov-list li[data-subject='m1'] .pill").inner_text() == "outline"
+    marks = page.inner_text(".fov-marks")
+    assert "AAV-GCaMP6s · 250 µm deep" in marks and "vessel" in marks and "Window outline: ellipse 3.2 × 2 mm" in marks
+    assert "FOV image: fov-s1.bmp" in marks and "Headbar: HB-1" in marks
+    row = api.project.table("session").get({"subject_id": "m1", "session_id": "s1"})
+    assert (row["fov_ml"], row["fov_ap"], row["fov_width_um"], row["brain_region"]) == (2.3, -3.6, 500, "V1")
+    assert api.project.table("subject").get({"subject_id": "m1"})["window_shape"] == "round 2.5 mm"
+    # the photo is red only inside the window's outline: red at its centre, not at a corner of the photo's box
+    red = lambda ml, ap: page.evaluate("""([x, y]) => { const c = document.querySelector('.fov-canvas');
+        const d = c.getContext('2d').getImageData(Math.round(x * c.width), Math.round(y * c.height), 1, 1).data; return d[0] > 150 && d[1] < 120; }""",
+        [(ml + 6) / 12, (7 - ap) / 16])
+    assert red(2.0, -3.4) and not red(0.55, -2.1)
+    page.check(".fov-images")   # the FOV's image fovmanager kept, where the project has none of its own
+    page.wait_for_selector(".fov-canvas[data-images='1']")
+
+    # an outline of one's own: a polygon, in place of the ellipse
+    page.click(".fov-list li[data-subject='m1']")
+    page.click(".set-outline")
+    page.select_option(".outline-dialog select[name=kind]", "polygon")
+    page.fill(".outline-dialog textarea[name=points]", "-1.5, 1\n1.5, 1\n2, -1\n-2, -1")
+    page.click(".outline-dialog .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".fov-marks li:has-text('polygon of 4 corners')")
+    stored = json.loads(api.handle({"id": 9, "method": "modules.data", "params": {"module": "ophys", "name": "fovmap"}})["result"]["text"])
+    assert stored["outlines"] == [{"id": 1, "subject": {"subject_id": "m1"}, "polygon": [[-1.5, 1], [1.5, 1], [2, -1], [-2, -1]]}]
+    with page.expect_download() as download:   # the photo cut to the window, in the SVG too
+        page.click(".fov-export-svg")
+    assert "<clipPath" in open(download.value.path()).read()
+
+    # an inventory with a mouse that is not here: the import says what it left out
+    db[0, 0]["MouseId"] = "99"
+    scipy_io.savemat(inventory, {"fovDb": db})
+    page.click(".import-inventory")
+    page.fill(".inventory-dialog input[name=text]", str(inventory))
+    page.click(".inventory-dialog .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".inventory-warnings li:has-text('mouse 99: no subject of that id')")
+
+
 def test_fov_map_images_photos_undo_and_svg(empty_app, page):
     import json
     imageio = pytest.importorskip("imageio.v2")
