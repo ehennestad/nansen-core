@@ -62,6 +62,8 @@ Each step was usable without a GUI before the next one started.
 | MATLAB only | MATLAB R2023a+ and Python 3.9+, held to the same behaviour by shared conformance cases |
 | ~360 unit tests with a throwaway user session | Unit tests in both languages, conformance cases shared by both, browser tests for the dashboard |
 
+[Parity](parity.md) goes through dev feature by feature: menus, keys, methods, apps and formats, with pointers into both languages, the dashboard and the tests.
+
 Not carried over, by choice or not yet:
 
 - **Nothing of the two-photon module.** The `ophys` module brings over dev's two-photon workflow natively in both languages (see [modules](reference/modules.md#the-ophys-module)): Quicky as `ophys.quicky` (and dev's flufinder as `ophys.flufinder`: the toolbox in MATLAB, its pipeline written out in Python), DeepInterpolation as `ophys.deep_interpolation` (and native smoothing, `ophys.denoise`, which needs no trained network), and wrappers for suite2p, NoRMCorre, EXTRACT, Flow-Registration and CaImAn; suite2p, NoRMCorre and DeepInterpolation in either language (the MATLAB Suite2P and DeepInterpolation-MATLAB, as dev ran them, and CaImAn's port of NoRMCorre in Python; suite2p's sparse mode, which the MATLAB Suite2P lacks, is run from MATLAB in Python's suite2p). Each wrapper is run against its real tool in CI. The imviewer, roimanager and roiclassifier apps are the dashboard's viewer (frames, projections, ROIs over them, curation), fovmanager is the module's FOV map page (windows, FOVs, any number of injection sites and notes per subject), and the multi-session ROI classifier is its ROI review page; `ophys.open_in_imviewer` still opens dev's imviewer where it is installed, and in Python napari, or else the dashboard's viewer.

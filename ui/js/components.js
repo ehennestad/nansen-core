@@ -19,25 +19,46 @@
     N.toast(title, code + (error && error.message ? error.message : String(error)), "error", 7000);
   };
 
-  /** Open a modal dialog. Returns {close, el}. content: Node; buttons: [{label, kind, onClick}] */
+  // What the keyboard can reach in an element, in order
+  const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+  const focusables = (el) => [...el.querySelectorAll(FOCUSABLE)].filter((e) => e.offsetParent !== null || e === document.activeElement);
+
+  /** Open a modal dialog. Returns {close, el}. content: Node; buttons: [{label, kind, onClick}]
+   *  The keyboard stays in it (Tab goes round), and goes back where it was when the dialog closes. */
   N.dialog = function ({ title, content, buttons = [], narrow = false, onClose }) {
+    const before = document.activeElement;
     const close = () => {
       backdrop.remove();
       document.removeEventListener("keydown", onKey);
+      if (before && before !== document.body && document.body.contains(before) && !document.querySelector(".backdrop")) before.focus({ preventScroll: true });
       if (onClose) onClose();
     };
     const onKey = (event) => { if (event.key === "Escape") close(); };
     const foot = h("div.dialog-foot", h("div.spacer"),
       buttons.map((b) => h("button.btn" + (b.kind ? "." + b.kind : ""), {
         on: { click: () => b.onClick ? b.onClick(close) : close() }, disabled: b.disabled }, b.icon ? N.icon(b.icon) : null, b.label)));
-    const dialog = h("div.dialog" + (narrow ? ".narrow" : ""),
-      h("div.dialog-head", h("h2", title), h("div.spacer"),
+    const heading = h("h2", title);
+    heading.id = "dialog-title-" + Math.random().toString(36).slice(2, 10);
+    const dialog = h("div.dialog" + (narrow ? ".narrow" : ""), { tabindex: "-1" },
+      h("div.dialog-head", heading, h("div.spacer"),
         h("button.btn.ghost.icon", { on: { click: close }, title: "Close" }, N.icon("x"))),
       h("div.dialog-body", content),
       buttons.length ? foot : null);
-    const backdrop = h("div.backdrop", { on: { mousedown: (e) => { if (e.target === backdrop) close(); } } }, dialog);
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", heading.id);
+    const backdrop = h("div.backdrop", { on: { mousedown: (e) => { if (e.target === backdrop) close(); },
+      keydown: (event) => {   // Tab and Shift+Tab go round the dialog's controls
+        if (event.key !== "Tab") return;
+        const items = focusables(dialog);
+        if (!items.length) { event.preventDefault(); return; }
+        const at = items.indexOf(document.activeElement);
+        if (event.shiftKey && at <= 0) { event.preventDefault(); items[items.length - 1].focus(); }
+        else if (!event.shiftKey && (at === -1 || at === items.length - 1)) { event.preventDefault(); items[0].focus(); }
+      } } }, dialog);
     document.body.appendChild(backdrop);
     document.addEventListener("keydown", onKey);
+    dialog.focus({ preventScroll: true });   // the dialog itself: its keys (a viewer's) still work, and Tab goes to its first control
     return { close, el: dialog, foot };
   };
 
@@ -107,11 +128,11 @@
   /** Popup menu next to an anchor element. items: [{label, icon, onClick} | {heading} | {node}] */
   N.menu = function (anchor, items) {
     document.querySelectorAll(".menu").forEach((m) => m.remove());
-    const menu = h("div.menu");
+    const menu = h("div.menu", { role: "menu" });
     for (const item of items) {
       if (item.heading) menu.appendChild(h("div.heading", item.heading));
       else if (item.node) menu.appendChild(item.node);
-      else menu.appendChild(h("div.item", { on: { click: () => { if (!item.keepOpen) close(); item.onClick(); } } },
+      else menu.appendChild(h("div.item", { role: "menuitem", tabindex: "-1", on: { click: () => { if (!item.keepOpen) close(); item.onClick(); } } },
         item.icon ? N.icon(item.icon) : null, item.label));
     }
     document.body.appendChild(menu);
@@ -119,9 +140,38 @@
     const left = Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8);
     menu.style.left = Math.max(8, left) + "px";
     menu.style.top = Math.min(rect.bottom + 4, window.innerHeight - menu.offsetHeight - 8) + "px";
-    const close = () => { menu.remove(); document.removeEventListener("mousedown", outside, true); };
-    const outside = (e) => { if (!menu.contains(e.target) && !anchor.contains(e.target)) close(); };
+    const close = (refocus = true) => {
+      const had = menu.contains(document.activeElement);
+      menu.remove();
+      document.removeEventListener("mousedown", outside, true);
+      window.removeEventListener("keydown", onKey, true);
+      if (refocus && had && document.body.contains(anchor)) anchor.focus({ preventScroll: true });
+    };
+    const outside = (e) => { if (!menu.contains(e.target) && !anchor.contains(e.target)) close(false); };
+    // The keyboard: arrows move between the items, Enter or Space picks one, Escape and Tab close the menu. Taken
+    // before the page's own keys (a viewer's arrows), and Escape closes only the menu, not a dialog under it.
+    const entries = () => [...menu.querySelectorAll(".item[role=menuitem], .item input")];   // items, and the boxes of items that are
+    const onKey = (event) => {
+      if (!document.body.contains(menu)) { window.removeEventListener("keydown", onKey, true); return; }
+      const list = entries();
+      const at = list.indexOf(document.activeElement);
+      const inside = at >= 0;
+      const move = (to) => { if (list.length) list[(to + list.length) % list.length].focus(); };
+      if (event.key === "Escape") close();
+      else if (event.key === "Tab") { close(); return; }
+      else if (event.key === "ArrowDown") move(inside ? at + 1 : 0);
+      else if (event.key === "ArrowUp") move(inside ? at - 1 : list.length - 1);
+      else if (event.key === "Home" && inside) move(0);
+      else if (event.key === "End" && inside) move(list.length - 1);
+      else if ((event.key === "Enter" || event.key === " ") && inside) list[at].click();
+      else return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener("keydown", onKey, true);
     setTimeout(() => document.addEventListener("mousedown", outside, true), 0);
+    const first = entries()[0];
+    if (first) first.focus({ preventScroll: true });
     return { close, el: menu };
   };
 
