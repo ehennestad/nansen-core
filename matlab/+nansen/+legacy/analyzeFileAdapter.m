@@ -85,7 +85,7 @@ function info = analyzeFileAdapter(name, text, options)
     overrides = false;
     for i = 1:numel(lines)
         code = codeOf(lines(i));
-        if ~isempty(regexp(code, '^\s*function\s+(?:[^=(]*=\s*)?(?:readData|writeData)\s*(?:\(|$)', 'once'))
+        if any(declaredFunction(code) == ["readData", "writeData"])
             overrides = true;
         end
         value = quotedValue(code, 'DataType');
@@ -272,5 +272,25 @@ function code = codeOf(line)
             code = line(1:k - 1);
             return
         end
+    end
+end
+
+function name = declaredFunction(code)
+    % The name of the function a line declares ("" for none): function [out =] name[(...)], read a part at a time
+    % (as Python's one expression, whose optional groups MATLAB's regexp did not match)
+    name = "";
+    code = strtrim(char(code));
+    if ~startsWith(code, "function") || numel(code) < 9 || ~any(code(9) == [' ', sprintf('\t'), '['])
+        return
+    end
+    rest = strtrim(code(9:end));
+    equals = find(rest == '=', 1);
+    open = find(rest == '(', 1);
+    if ~isempty(equals) && (isempty(open) || equals < open)
+        rest = strtrim(rest(equals + 1:end));
+    end
+    found = regexp(rest, '^[A-Za-z]\w*', 'match', 'once');
+    if ~isempty(found)
+        name = string(found);
     end
 end
