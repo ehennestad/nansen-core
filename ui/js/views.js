@@ -629,6 +629,28 @@
     search.focus();
   };
 
+  /**
+   * #/viewer/<entity type>/<key>/<variable> (each part URI-encoded, the key as JSON): the entity type's table, with the
+   * viewer open on the entity's variable. Python's ophys.open_in_imviewer opens this page where napari is not installed.
+   */
+  N.views.entityViewer = async function (app, content, arg) {
+    const [entityType, keyText, variable] = (arg || "").split("/").map((part) => decodeURIComponent(part));
+    let key = null;
+    try { key = JSON.parse(keyText); } catch (error) { key = null; }
+    app.replace(`#/entities/${entityType}`);   // the table's page, which the viewer is opened over
+    app.route = { name: "entities", arg: entityType };
+    app.renderNav();
+    await N.views.entities(app, content, entityType);
+    if (!key || typeof key !== "object" || !variable) return;
+    setTimeout(async () => {   // once the table is shown
+      try {
+        const detail = await app.client.request("entities.get", { entityType, key });
+        const data = detail.data || [];
+        N.views.stackViewer(app, entityType, detail.key, variable, roiVariablesOf(data), data.filter(N.isSignalVariable).map((r) => r.name));
+      } catch (error) { N.showError(error, "Could not open the viewer"); }
+    }, 0);
+  };
+
   N.views.entityDrawer = async function (app, entityType, key) {
     let detail;
     try {

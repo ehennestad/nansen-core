@@ -128,7 +128,7 @@
         "github": "VervaekeLab/NANSEN"
       },
       "check": "imviewer",
-      "description": "imviewer and flufinder (ophys.open_in_imviewer, ophys.flufinder), put on the path after this NANSEN; imviewer also needs the Widgets Toolbox - Compatibility Support (File Exchange 66235)",
+      "description": "imviewer and flufinder (ophys.open_in_imviewer, ophys.flufinder, in MATLAB), put on the path after this NANSEN; imviewer also needs the Widgets Toolbox - Compatibility Support (File Exchange 66235)",
       "url": "https://github.com/VervaekeLab/NANSEN",
       "pathOrder": "end"
     },
@@ -185,8 +185,19 @@
         "conda": "caiman"
       },
       "check": "caiman",
-      "description": "Deconvolution (ophys.caiman_deconvolution)",
+      "description": "Deconvolution, cell extraction and motion correction by its port of NoRMCorre (ophys.caiman_deconvolution, ophys.cnmf, ophys.normcorre)",
       "url": "https://github.com/flatironinstitute/CaImAn"
+    },
+    {
+      "id": "napari",
+      "title": "napari",
+      "language": "python",
+      "source": {
+        "pip": "napari[all]"
+      },
+      "check": "napari",
+      "description": "An image viewer, the Python counterpart of dev's imviewer (ophys.open_in_imviewer); without it the method opens the dashboard's viewer",
+      "url": "https://napari.org"
     },
     {
       "id": "tifffile",

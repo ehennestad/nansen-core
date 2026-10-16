@@ -139,10 +139,10 @@ jobs:
       - name: Install the package
         run: pip install -e ".[test,npy,ophys]"
 
-      - name: Run the wrapper with CaImAn
+      - name: Run the wrappers with CaImAn (deconvolution, CNMF and its NoRMCorre, ophys.normcorre in Python)
         env:
           NANSEN_REQUIRE_TOOLS: caiman
-        run: pytest -v -rs python/tests/test_external_tools.py -k caiman
+        run: pytest -v -rs python/tests/test_external_tools.py -k "caiman or normcorre"
 
   matlab-tools:
     name: External tools (MATLAB ${{ matrix.release }})

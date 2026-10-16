@@ -8,12 +8,30 @@ function result = suite2p(entity, options, context)
 %   extractSignalsSurroundNeuropil2, cells told by classifyROI, and spikes by
 %   wrapperDECONV (OASIS, whose oasisAR1 CaImAn-MATLAB has) of each signal
 %   less neuropilCoefficient times its neuropil. The options go to Suite2P
-%   under its names (ophys.internal.suite2pOps); sparseMode, spatialScale
-%   and denoise are suite2p's (Python) sparse detection, which the MATLAB
-%   Suite2P does not have. Suite2P's results file and input.tif are kept in
-%   a suite2p folder next to the ROI file, as Python's ophys_methods.suite2p
-%   keeps suite2p's output. Suite2P uses the Image Processing, Signal
-%   Processing and Statistics toolboxes.
+%   under its names (ophys.internal.suite2pOps). Suite2P's results file and
+%   input.tif are kept in a suite2p folder next to the ROI file, as Python's
+%   ophys_methods.suite2p keeps suite2p's output. Suite2P uses the Image
+%   Processing, Signal Processing and Statistics toolboxes.
+%
+%   The MATLAB Suite2P has no sparse mode (it finds cells with sourcery
+%   only), so with sparseMode the method runs in Python's suite2p instead,
+%   with these options (spatialScale and denoise too): as a task for Python
+%   run now by a Python with nansen-core and suite2p
+%   (nansen.internal.runInPython), so its results are Python's. Without
+%   such a Python that is dependency-missing; turn sparseMode off to run the
+%   MATLAB Suite2P.
+    if isequal(nansen.internal.getField(options, "sparseMode", false), true)
+        if ~isa(context.Project, "nansen.Project")
+            nansen.internal.throwError("method-unavailable", ...
+                "ophys.suite2p's sparse mode runs Python's suite2p on a project's entity, as a task, which a preview or a stack viewed without a project cannot; turn sparseMode off to run the MATLAB Suite2P (sourcery)")
+        end
+        context.log("%s: sparse mode is suite2p's in Python: running ophys.suite2p there", ophys.internal.entityName(entity));
+        result = nansen.internal.runInPython(context.Project, "ophys.suite2p", {entity}, options, ...
+            Hint="or turn sparseMode off to run the MATLAB Suite2P (sourcery)");
+        context.log("%s: suite2p in Python kept %d ROIs", ophys.internal.entityName(entity), ...
+            round(double(nansen.internal.getField(result, "rois", 0))));
+        return
+    end
     needed = ["build_ops3", "reg2P", "sourcery", "extractSignalsSurroundNeuropil2", "classifyROI", ...
         "get_clustrules", "opsChanges", "wrapperDECONV"];
     if ~all(arrayfun(@(name) exist(name, "file") == 2, needed))

@@ -43,6 +43,7 @@ class AppServer(ThreadingHTTPServer):
         self.closing = threading.Event()
         self.token = secrets.token_urlsafe(24)
         super().__init__(address, _Handler)
+        api.app_url = self.url   # for methods that open one of the dashboard's pages (ophys.open_in_imviewer)
 
     @property
     def url(self) -> str:

@@ -1439,6 +1439,28 @@ def ophys_project(empty_app, steps=()):
     return api
 
 
+def test_open_in_imviewer_without_napari_opens_the_dashboards_viewer(empty_app, page, monkeypatch):
+    """ophys.open_in_imviewer in Python with no napari: the app's open-URL hook gets the viewer's page of the entity's
+    variable (#/viewer/...), which shows the table with the viewer open on it."""
+    import sys
+    monkeypatch.setitem(sys.modules, "napari", None)   # not installed
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    api = ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}})])
+    opened = []
+    api.open_url = opened.append
+    response = api.handle({"id": 9, "method": "methods.run", "params": {
+        "methodId": "ophys.open_in_imviewer", "entityType": "session", "keys": s1, "options": {"stack": "TwoPhotonSeries_Corrected"}}})
+    result = response["result"]["results"][0]
+    assert result["opened"] and result["viewer"] == "dashboard" and opened == [result["url"]]
+    assert result["url"].startswith(empty_app["server"].url + "#/viewer/session/")
+    page.goto(result["url"])
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    assert "TwoPhotonSeries_Corrected" in page.locator(".dialog-title, .viewer-dialog").first.inner_text()
+    assert page.evaluate("location.hash") == "#/entities/session"   # the table's page, under the viewer
+    page.wait_for_selector(".grid-table tbody td.key")
+
+
 def test_other_roi_groups_shown_with_the_one_edited(empty_app, page):   # roimanager's showRoiGroups
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     api = ophys_project(empty_app, [

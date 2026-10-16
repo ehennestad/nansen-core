@@ -1460,6 +1460,171 @@ def flowreg(entity, options, context):
     return {"frames": frames}
 
 
+def normcorre_grid(height, width, options):
+    """NoRMCorre's grid_size as ophys.normcorre sets it in both languages: round([height, width] / patches) (at least 1)
+    with patches above 0 (dev's numRows and numCols), the whole frame with gridSize 0, else gridSize square."""
+    patches = int(options.get("patches", 0))
+    if patches > 0:
+        return max(1, _half_up(height / patches)), max(1, _half_up(width / patches))
+    if int(options.get("gridSize", 0)) == 0:
+        return height, width
+    return int(options["gridSize"]), int(options["gridSize"])
+
+
+def normcorre(entity, options, context):
+    """Motion correction by CaImAn's port of NoRMCorre (caiman.motion_correction.MotionCorrect), rigid or piecewise
+    rigid, as MATLAB's ophys.normcorre runs NoRMCorre: the same grid (normcorre_grid; rigid when it is the whole frame),
+    and the aligned stack (in the stack's type, rounded half away from zero and cut to its range, as MATLAB's cast) and
+    each frame's shift (rows then columns, averaged over the patches; the shift applied to the frame, as NoRMCorre
+    reports it) saved in the same variables.
+
+    The options under CaImAn's names: maxShift is max_shifts, the grid strides, overlap overlaps (each cut so that a
+    patch fits in the frame), maxDeviation max_deviation_rigid. CaImAn registers a chunk of frames at a time to one
+    template, so binWidth is the length of its chunks (splits_rig and splits_els of ceil(frames / binWidth)); the
+    first template is the median of the first initialBatchSize frames (NoRMCorre's init_batch). With updateTemplate,
+    iterations rigid passes renew it (CaImAn's niter_rig: after each the template is the median of the chunks' aligned
+    means; NoRMCorre renews it as it goes, every bin_width frames) before the frames are aligned to it; without, the
+    first template is kept. Shifts are found to 1/10 of a pixel, CaImAn's own (upsample_factor_fft): its MotionCorrect
+    takes no us_fac. Frames are moved by Fourier shifts (rigid) or CaImAn's interpolation between the patches'
+    shifts, and filled at the edges by the nearest frame values (border_nan 'copy', NoRMCorre's boundary 'copy').
+    Its results are CaImAn's, close to NoRMCorre's but not the same."""
+    try:
+        from caiman.motion_correction import MotionCorrect
+    except ImportError as error:
+        raise NansenError("dependency-missing", f"ophys.normcorre needs CaImAn ({error}) in Python: conda install -c conda-forge caiman, see https://github.com/flatironinstitute/CaImAn") from None
+    import os
+    import tempfile
+    try:
+        import tifffile
+    except ImportError:
+        raise NansenError("dependency-missing", "ophys.normcorre hands the stack to CaImAn as a TIFF file, which needs tifffile: pip install tifffile") from None
+    stack = _open_stack(entity, options["stack"], context, options)
+    height, width, frames = stack.shape
+    video = np.ascontiguousarray(np.moveaxis(np.asarray(stack[:, :, 0:frames], dtype=np.float32), 2, 0))   # frames x rows x columns
+    grid = normcorre_grid(height, width, options)
+    rigid = grid[0] >= height and grid[1] >= width
+    overlap = int(options.get("overlap", 32))
+    overlaps = (max(0, min(overlap, height - grid[0])), max(0, min(overlap, width - grid[1])))
+    max_shift = int(options["maxShift"])
+    splits = max(1, math.ceil(frames / int(options.get("binWidth", 200))))
+    update = bool(options.get("updateTemplate", True))
+    template = np.median(video[:max(1, min(int(options.get("initialBatchSize", 100)), frames))], axis=0)
+    context.log(f"{_name(entity)}: running CaImAn's NoRMCorre ({'rigid' if rigid else f'patches of {grid[0]} x {grid[1]}'}) on {frames} frames")
+    with tempfile.TemporaryDirectory(prefix="nansen-normcorre-") as folder:
+        path = os.path.join(folder, "stack.tif")
+        tifffile.imwrite(path, video, photometric="minisblack")
+        corrector = MotionCorrect(path, min_mov=float(video.min()), max_shifts=(max_shift, max_shift),
+                                  niter_rig=int(options.get("iterations", 1)) if update else 1, splits_rig=splits,
+                                  strides=tuple(grid), overlaps=overlaps, splits_els=splits,
+                                  max_deviation_rigid=int(options.get("maxDeviation", 3)), shifts_opencv=False,
+                                  nonneg_movie=False, border_nan="copy", pw_rigid=not rigid)
+        context.check_cancelled()
+        if rigid and update:
+            corrector.motion_correct_rigid(template=template)
+            corrector.niter_rig = 1   # the frames aligned to the renewed template
+            corrector.motion_correct_rigid(template=np.nanmedian(np.dstack(corrector.templates_rig), -1))
+        elif rigid:
+            corrector.motion_correct_rigid(template=template)
+        if rigid:
+            shifts = np.array([[float(s[0]), float(s[1])] for s in corrector.shifts_rig])
+        else:
+            if update:
+                corrector.motion_correct_rigid(template=template)
+                template = np.nanmedian(np.dstack(corrector.templates_rig), -1)
+            context.check_cancelled()
+            corrector.motion_correct_pwrigid(template=template, save_movie=False)
+            shifts = np.array([[float(np.mean(x)), float(np.mean(y))] for x, y in zip(corrector.x_shifts_els, corrector.y_shifts_els)])
+        context.progress(0.8, "applying the shifts")
+        aligned = np.moveaxis(np.asarray(corrector.apply_shifts_movie(path, remove_min=False), dtype=np.float64), 0, 2)
+    if np.issubdtype(stack.dtype, np.integer):
+        limits = np.iinfo(stack.dtype)
+        aligned = np.nan_to_num(aligned, nan=0.0)
+        aligned = np.clip(np.where(aligned < 0, np.ceil(aligned - 0.5), np.floor(aligned + 0.5)), limits.min, limits.max)
+    _save(entity, options["output"], aligned.astype(stack.dtype), context)
+    _save(entity, options.get("shiftsOutput", ""), shifts.reshape(frames, 2), context)
+    largest = float(np.abs(shifts).max()) if shifts.size else 0.0
+    return {"frames": frames, "maxShift": round_to(max(0.0, largest), 4)}
+
+
+def viewer_page(entity, variable):
+    """The dashboard's page that opens its viewer on an entity's variable: #/viewer/<entity type>/<key>/<variable>, each
+    part URI-encoded and the key as JSON."""
+    from urllib.parse import quote
+    key = json.dumps(dict(entity.key), separators=(",", ":"))
+    return "#/viewer/" + "/".join(quote(str(part), safe="") for part in (entity.entity_type, key, variable))
+
+
+# The napari process the app starts (napari's window needs a main thread, and the app runs methods on others):
+# argv is this folder, the project's folder and environment, the entity type, its key and the options, as JSON.
+NAPARI_PROCESS = "import sys; sys.path.insert(0, sys.argv[1]); import ophys_methods; ophys_methods.napari_process(sys.argv[2:])"
+
+
+def open_in_imviewer(entity, options, context):
+    """The stack in napari, the Python counterpart of dev's imviewer, when napari is installed: its frames
+    firstFrame..lastFrame of its channel and plane, as one image layer (frames first). On the main thread (a script or
+    a notebook) the viewer opens here and napari.run() runs its window; from the app, which runs methods on other
+    threads, a napari process of this Python opens it (napari_process). Without napari, the dashboard's viewer on the
+    entity's variable: its page (viewer_page) opened through the app's open-URL hook (the method context's open_url and
+    app_url, which the app gives), or, outside the app, the page and how to open it returned."""
+    name = options["stack"]
+    try:
+        import napari
+    except ImportError:
+        napari = None
+    if napari is not None:
+        import threading
+        if threading.current_thread() is threading.main_thread():
+            show_in_napari(napari, entity, options, context)
+            context.log(f"{_name(entity)}: opened {name} in napari")
+            napari.run()
+            return {"opened": True, "viewer": "napari"}
+        import subprocess
+        import sys
+        project = context.project
+        arguments = [str(Path(__file__).resolve().parent), str(project.folder), project.environment or "", entity.entity_type,
+                     json.dumps(dict(entity.key)), json.dumps(options)]
+        process = subprocess.Popen([sys.executable, "-c", NAPARI_PROCESS] + arguments, start_new_session=True)
+        context.log(f"{_name(entity)}: opening {name} in napari (process {process.pid})")
+        return {"opened": True, "viewer": "napari", "process": process.pid}
+    page = viewer_page(entity, name)
+    app_url = getattr(context, "app_url", None)
+    open_url = getattr(context, "open_url", None)
+    if app_url and open_url is not None:
+        url = app_url.rstrip("/") + "/" + page
+        open_url(url)
+        context.log(f"{_name(entity)}: napari is not installed; opened {name} in the dashboard's viewer")
+        return {"opened": True, "viewer": "dashboard", "url": url}
+    folder = getattr(context.project, "folder", "<project folder>")
+    message = (f"napari is not installed (pip install \"napari[all]\"), so {name} was not opened. To see it in the "
+               f"dashboard's viewer, open the app (nansen app \"{folder}\") and go to its page {page}")
+    context.log(f"{_name(entity)}: {message}")
+    return {"opened": False, "viewer": "dashboard", "url": app_url.rstrip("/") + "/" + page if app_url else None,
+            "page": page, "message": message}
+
+
+def show_in_napari(napari, entity, options, context):
+    """A napari viewer with the stack (_open_stack: the options' frames, channel and plane) as an image layer, frames
+    first; returns the viewer."""
+    stack = _open_stack(entity, options["stack"], context, options)
+    data = np.moveaxis(np.asarray(stack[:, :, 0:stack.shape[2]]), 2, 0)
+    viewer = napari.Viewer(title=f"{options['stack']} · {_name(entity)}")
+    viewer.add_image(data, name=options["stack"])
+    return viewer
+
+
+def napari_process(argv):
+    """The napari process open_in_imviewer starts from the app (NAPARI_PROCESS): the project's folder and environment,
+    the entity type, its key and the options (JSON); runs napari until its window is closed."""
+    import napari
+    from nansen.methods import MethodContext
+    from nansen.project import Project
+    folder, environment, entity_type, key, options = argv
+    project = Project.open(folder, environment=environment or None)
+    entity = project.entity(entity_type, json.loads(key))
+    show_in_napari(napari, entity, json.loads(options), MethodContext(project=project))
+    napari.run()
+
+
 def cnmf(entity, options, context):
     """Cells found by CaImAn's CNMF (greedy initialisation, spatial and temporal updates, merging) on the whole stack,
     saved as ROIs (the 8-connected pixels around each footprint's peak above threshold times it), their traces

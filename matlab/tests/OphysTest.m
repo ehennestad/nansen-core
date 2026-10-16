@@ -481,7 +481,7 @@ classdef OphysTest < matlab.unittest.TestCase
             raw = project.load(entity, "TwoPhotonSeries_Original");
             frames = size(raw, 3);
             scale = 1 + double(max(raw, [], "all") > 2^15);   % Suite2P's binary halves values above 2^15
-            result = project.run("ophys.suite2p", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", ...
+            result = project.run("ophys.suite2p", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "sparseMode", false, ...
                 "registration", false, "nonrigid", false, "framesPerSecond", 15, "cellDiameter", 6, "tau", 0.7, ...
                 "thresholdScaling", 2.5, "maxIterations", 7, "innerNeuropilRadius", 3, "minNeuropilPixels", 200, ...
                 "neuropilCoefficient", 0.5));
@@ -506,7 +506,7 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(project.load(entity, "RoiSignals_Deconvolved", Cached=false), ...
                 (signals - 0.5 * neuropil) * 0.7 + 15, AbsTol=1e-3);   % the stub's: traces x sensorTau + fs
             % registered by reg2P, whose range moves the pixels; every ROI kept
-            project.run("ophys.suite2p", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "onlyCells", false));
+            project.run("ophys.suite2p", {entity}, Options=struct("stack", "TwoPhotonSeries_Original", "onlyCells", false, "sparseMode", false));
             saved = load(fullfile(folder, "F_nansen_suite2p_plane1.mat"));
             testCase.verifyTrue(saved.ops.registered);
             testCase.verifyEqual([saved.ops.diameter, saved.ops.sensorTau, saved.ops.nonrigid, saved.ops.doRegistration, ...
@@ -516,6 +516,77 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(rois{1}.pixels, [1, 3; 1, 4; 2, 3]);
             testCase.verifyEqual(rois{2}.pixels, [4, 5]);
             testCase.verifySize(project.load(entity, "RoiSignals_MeanF", Cached=false), [frames, 2]);
+        end
+
+        function suite2pSparseModeRunsInPython(testCase)
+            % the MATLAB Suite2P has no sparse mode: ophys.suite2p hands the run to Python as a task, run by
+            % python -m nansen run-task; a stand-in Python (NANSEN_PYTHON) does to the task what outcome.json says
+            testCase.assumeFalse(ispc, "the stand-in Python is a script with a shebang");
+            [status, ~] = system("python3 --version");
+            testCase.assumeEqual(status, 0, "python3 is needed for the stand-in Python");
+            project = testCase.ophysProject();
+            entity = project.entity("session", struct("subject_id", "m1", "session_id", "s2"));
+            fake = fullfile(testCase.Folder, "python");
+            nansen.internal.writeText(fake, strjoin([
+                "#!/usr/bin/env python3"
+                "import json, os, sys"
+                "assert sys.argv[1:4] == ['-m', 'nansen', 'run-task'], sys.argv"
+                "folder, task_id = sys.argv[4], sys.argv[5]"
+                "outcome = json.load(open(os.path.join(folder, 'outcome.json')))"
+                "if outcome.get('exit'):"
+                "    sys.exit('No module named nansen')"
+                "path = os.path.join(folder, 'tasks', task_id + '.task.nansen.json')"
+                "task = json.load(open(path))"
+                "json.dump(dict(task, claimed=os.path.isdir(os.path.join(folder, 'tasks', task_id + '.claim'))), open(os.path.join(folder, 'seen.json'), 'w'))"
+                "task.update(outcome)"
+                "json.dump(task, open(path + '.tmp', 'w'))"
+                "os.replace(path + '.tmp', path)"
+                ], newline) + newline);
+            system(sprintf('chmod +x "%s"', fake));
+            previous = getenv("NANSEN_PYTHON");
+            setenv("NANSEN_PYTHON", fake);
+            testCase.addTeardown(@() setenv("NANSEN_PYTHON", previous));
+            testCase.verifyEqual(nansen.internal.pythonExecutable(), string(fake));
+            outcome = @(text) nansen.internal.writeText(fullfile(project.Folder, "outcome.json"), text);
+            options = struct("stack", "TwoPhotonSeries_Original", "spatialScale", 2, "denoise", true);   % sparseMode: on by default
+
+            outcome('{"status": "completed", "result": {"rois": 3, "frames": 40}}');
+            result = project.run("ophys.suite2p", {entity}, Options=options);
+            testCase.verifyEqual([result{1}.rois, result{1}.frames], [3, 40]);   % what Python's suite2p returned
+            seen = jsondecode(nansen.internal.readText(fullfile(project.Folder, "seen.json")));
+            testCase.verifyEqual([string(seen.method.id), string(seen.language), string(seen.status)], ["ophys.suite2p", "python", "queued"]);
+            testCase.verifyTrue(seen.claimed);   % no Python worker takes it as well
+            testCase.verifyEqual(seen.entities.key, struct("subject_id", 'm1', "session_id", 's2'));
+            testCase.verifyTrue(seen.options.values.sparseMode);
+            testCase.verifyTrue(seen.options.values.denoise);
+            testCase.verifyEqual(seen.options.values.spatialScale, 2);
+            queue = nansen.TaskQueue(project);
+            tasks = queue.list();
+            testCase.verifyEqual(string(tasks{end}.status), "completed");
+            testCase.verifyFalse(isfolder(queue.claimPath(string(tasks{end}.id))));   % released
+
+            % Python's own error comes with its code: here suite2p is not installed there
+            outcome('{"status": "failed", "error": {"identifier": "NansenError", "message": "[dependency-missing] ophys.suite2p needs suite2p"}}');
+            testCase.verifyError(@() project.run("ophys.suite2p", {entity}, Options=options), "nansen:DependencyMissing");
+            outcome('{"status": "failed", "error": {"identifier": "ValueError", "message": "no cells"}}');
+            testCase.verifyError(@() project.run("ophys.suite2p", {entity}, Options=options), "nansen:TaskFailed");
+            % a Python without nansen-core, or none at all: the task is marked failed
+            outcome('{"exit": true}');
+            testCase.verifyError(@() project.run("ophys.suite2p", {entity}, Options=options), "nansen:DependencyMissing");
+            tasks = queue.list();
+            testCase.verifyEqual(string(tasks{end}.status), "failed");
+            testCase.verifySubstring(string(tasks{end}.error.message), "No module named nansen");
+            setenv("NANSEN_PYTHON", fullfile(testCase.Folder, "no-such-python"));
+            try
+                project.run("ophys.suite2p", {entity}, Options=options);
+                testCase.verifyFail("ran without a Python");
+            catch err
+                testCase.verifyEqual(string(err.identifier), "nansen:DependencyMissing");
+                testCase.verifySubstring(string(err.message), "turn sparseMode off");
+            end
+            % in a preview, which saves nothing, it cannot be handed to Python
+            testCase.verifyError(@() nansen.internal.previewMethod(project, "ophys.suite2p", entity, options, "", 10), ...
+                "nansen:MethodUnavailable");
         end
 
         function deepInterpolationPredictsTheFramesItCan(testCase)

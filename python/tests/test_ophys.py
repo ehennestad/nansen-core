@@ -1013,3 +1013,168 @@ def test_every_plane_is_processed_in_one_run_as_each_would_be_alone(tmp_path):
         assert error.value.code == "invalid-options"
     finally:
         api.close()
+
+
+# --- ophys.flufinder in Python, ophys.normcorre's CaImAn and ophys.open_in_imviewer's napari ---------------------------
+
+flufinder = load_object("ophys_flufinder:flufinder", PYTHON).__globals__
+
+
+def test_strel_disks_are_matlabs():
+    """flufinder's disks are MATLAB's strel('disk', r): exact below 3, else Adams' periodic-line octagons."""
+    def picture(radius):
+        offsets = flufinder["strel_disk"](radius)
+        n = max(abs(y) for y, _ in offsets)
+        image = np.zeros((2 * n + 1, 2 * n + 1), dtype=int)
+        for y, x in offsets:
+            image[y + n, x + n] = 1
+        return image
+    assert picture(1).sum() == 5 and picture(2).sum() == 13   # within the radius
+    assert (picture(3) == 1).all() and picture(3).shape == (5, 5)
+    assert picture(4).tolist() == [[0, 0, 1, 1, 1, 0, 0], [0, 1, 1, 1, 1, 1, 0]] + [[1] * 7] * 3 + [[0, 1, 1, 1, 1, 1, 0], [0, 0, 1, 1, 1, 0, 0]]
+    assert picture(5).shape == (9, 9) and picture(5).sum() == 69 and picture(5)[0].tolist() == [0, 0, 1, 1, 1, 1, 1, 0, 0]
+
+
+def test_flufinder_steps():
+    rng = np.random.default_rng(2)
+    data = rng.random((20, 24, 6))
+    # removeBackground's imgaussfilt with circular edges: 2 ceil(2 sigma) + 1 taps around a circle
+    sigma, half = 1.5, 3
+    taps = np.exp(-np.arange(-half, half + 1) ** 2 / (2 * sigma ** 2))
+    taps /= taps.sum()
+    direct = sum(w * np.roll(data, -k, axis=0) for k, w in zip(range(-half, half + 1), taps))
+    direct = sum(w * np.roll(direct, -k, axis=1) for k, w in zip(range(-half, half + 1), taps))
+    assert np.allclose(flufinder["gaussian_circular"](data, sigma), direct, atol=1e-12)
+    processed = flufinder["preprocess"](data)
+    assert processed.min() == 0 and processed.max() == 1
+    # dev's histcounts over the unique pixels: the last bin holds the last two of them
+    image = flufinder["_component_image"](np.array([3, 3, 5, 9, 9, 9]), 12)
+    assert image.tolist() == [0, 0, 0, 2, 0, 4, 0, 0, 0, 0, 0, 0]
+    # bwconncomp's order: by the first pixel, column after column; 0-based column-major indices
+    mask = np.zeros((4, 4), dtype=bool)
+    mask[0, 3] = mask[3, 3] = mask[1, 1] = mask[2, 1] = True
+    assert [a.tolist() for a in flufinder["conncomp"](mask)] == [[5, 6], [12], [15]]
+    # overlapping ROIs merged into their intersection, as mergeOverlappingRois; one far away kept
+    roi = flufinder["Roi"]
+    a, b, c = roi(range(0, 40), 10), roi(range(1, 41), 10), roi([95, 96, 97], 10)
+    merged = flufinder["merge_overlapping"]([a, b, c], 0.8, 10)
+    assert [sorted(r.set) for r in merged] == [[95, 96, 97], list(range(1, 40))]
+    assert merged[0].center == (10.0, 7.0)   # (x, y): the mean 1-based column and row
+
+
+def test_flufinder_finds_the_cells_of_the_synthetic_recording():
+    """flufinder's pipeline on the two-photon quickstart's synthetic recording, held still: every cell found, few else."""
+    from nansen.demo import cell_centres, synthetic_recording, tutorial_dir
+    from nansen.stacks import from_array
+    plan = json.loads((tutorial_dir() / "tutorial.json").read_text(encoding="utf-8"))
+    plan["recording"]["moveChance"] = 0.0
+    for fov, seed in ((100, 110), (200, 210)):
+        rois = flufinder["auto_segmentation"](from_array(synthetic_recording(plan, fov, seed)), 8.0)
+        found = [np.array(r.pixels()).mean(axis=0) for r in rois]
+        centres = cell_centres(plan, fov)
+        assert sum(any(np.hypot(*(f - c)) <= 4 for f in found) for c in centres) == len(centres) == 12
+        assert len(rois) <= 14
+        assert all(20 <= r.area <= 120 for r in rois)
+
+
+def test_flufinder_runs_on_an_entity(tmp_path):
+    from nansen.demo import cell_centres, create_two_photon_demo, tutorial_dir
+    plan = json.loads((tutorial_dir() / "tutorial.json").read_text(encoding="utf-8"))
+    project = create_two_photon_demo(tmp_path / "tp")
+    entity = project.entity("session", {"subject_id": "m1", "session_id": "s2"})
+    result = project.run("ophys.flufinder", [entity], {"stack": "TwoPhotonSeries_Original", "roiDiameter": 8})[0]
+    saved = project.load(entity, "RoiArray")
+    assert result == {"rois": len(saved["rois"]), "frames": 300} and saved["imageSize"] == [64, 64]
+    assert [r["id"] for r in saved["rois"]] == list(range(1, result["rois"] + 1))
+    assert all(r["pixels"] == sorted(r["pixels"]) for r in saved["rois"])   # row-major, as MATLAB's wrapper saves them
+    centres = cell_centres(plan, 100)
+    assert sum(any(np.hypot(*(np.array(r["center"]) - c)) <= 4 for r in saved["rois"]) for c in centres) >= 11
+
+
+def test_normcorre_says_what_is_missing():
+    try:
+        import caiman  # noqa: F401
+        pytest.skip("caiman is installed")
+    except ImportError:
+        pass
+    with pytest.raises(NansenError) as error:
+        ophys["normcorre"](None, {}, None)
+    assert error.value.code == "dependency-missing" and "CaImAn" in error.value.message
+
+
+def test_normcorre_cuts_the_frame_as_matlab_does():
+    grid = ophys["normcorre_grid"]
+    assert grid(128, 96, {"patches": 4, "gridSize": 0}) == (32, 24)   # dev's numRows and numCols
+    assert grid(10, 10, {"patches": 4}) == (3, 3) and grid(3, 3, {"patches": 8}) == (1, 1)   # round half away, at least 1
+    assert grid(128, 96, {"patches": 0, "gridSize": 0}) == (128, 96)   # rigid
+    assert grid(128, 96, {"patches": 0, "gridSize": 40}) == (40, 40)
+
+
+class _FakeNapari(types.ModuleType):
+    """napari as open_in_imviewer uses it: a Viewer that keeps its layers, and run."""
+
+    def __init__(self):
+        super().__init__("napari")
+        self.viewers, self.runs = [], 0
+        fake = self
+
+        class Viewer:
+            def __init__(self, title=""):
+                self.title, self.layers = title, []
+                fake.viewers.append(self)
+
+            def add_image(self, data, name=None):
+                self.layers.append((name, np.asarray(data)))
+
+        self.Viewer = Viewer
+
+    def run(self):
+        self.runs += 1
+
+
+def test_open_in_imviewer_opens_napari(tmp_path, monkeypatch):
+    import threading
+    napari = _FakeNapari()
+    monkeypatch.setitem(sys.modules, "napari", napari)
+    api = _ophys_api(tmp_path)
+    try:
+        result = _run(api, "ophys.open_in_imviewer", {"stack": "TwoPhotonSeries_Original", "firstFrame": 3, "lastFrame": 12})
+        assert result == {"opened": True, "viewer": "napari"} and napari.runs == 1
+        (viewer,) = napari.viewers
+        name, data = viewer.layers[0]
+        raw = api.project.load(api.project.entity("session", {"subject_id": "m1", "session_id": "s2"}), "TwoPhotonSeries_Original")
+        assert name == "TwoPhotonSeries_Original" and "m1 / s2" in viewer.title
+        assert np.array_equal(data, np.moveaxis(raw[:, :, 2:12], 2, 0))   # frames first
+        # from the app's threads napari opens in a process of its own, which shows the same
+        started = []
+        monkeypatch.setattr("subprocess.Popen", lambda command, **kw: started.append(command) or types.SimpleNamespace(pid=42))
+        out = []
+        thread = threading.Thread(target=lambda: out.append(_run(api, "ophys.open_in_imviewer", {"stack": "TwoPhotonSeries_Original"})))
+        thread.start()
+        thread.join()
+        assert out == [{"opened": True, "viewer": "napari", "process": 42}]
+        command = started[0]
+        assert command[:3] == [sys.executable, "-c", ophys["NAPARI_PROCESS"]] and command[3] == str(PYTHON)
+        assert command[6] == "session" and json.loads(command[7]) == {"subject_id": "m1", "session_id": "s2"}
+        ophys["napari_process"](command[4:])
+        assert napari.runs == 2 and napari.viewers[-1].layers[0][1].shape == (raw.shape[2], 32, 32)
+    finally:
+        api.close()
+
+
+def test_open_in_imviewer_without_napari_opens_the_dashboard(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "napari", None)   # not installed
+    api = _ophys_api(tmp_path)
+    try:
+        # outside the app: the dashboard's page of the variable, and how to open it
+        result = _run(api, "ophys.open_in_imviewer", {"stack": "TwoPhotonSeries_Original"})
+        page = "#/viewer/session/%7B%22subject_id%22%3A%22m1%22%2C%22session_id%22%3A%22s2%22%7D/TwoPhotonSeries_Original"
+        assert result["opened"] is False and result["url"] is None and result["page"] == page
+        assert "napari" in result["message"] and page in result["message"]
+        # in the app: opened through its open-URL hook
+        opened = []
+        api.open_url, api.app_url = opened.append, "http://127.0.0.1:9999/"
+        result = _run(api, "ophys.open_in_imviewer", {"stack": "TwoPhotonSeries_Original"})
+        assert result == {"opened": True, "viewer": "dashboard", "url": "http://127.0.0.1:9999/" + page} and opened == [result["url"]]
+    finally:
+        api.close()

@@ -164,6 +164,8 @@ class Api:
         self.open_folder: Callable[[Path], None] = open_in_file_browser
         self.open_file: Callable[[Path], None] = open_in_file_browser  # the file's default app
         self.open_url: Callable[[str], Any] = _open_url   # a web page in the system's browser
+        # The dashboard's address, which the server that serves this Api sets (methods.run gives it to methods)
+        self.app_url: Optional[str] = None
         self.edit_file: Callable[[Path], None] = edit_in_editor
         # Where workspace.send puts entities: a namespace such as a notebook's globals(), or None for none
         self.workspace: Optional[Dict[str, Any]] = None
@@ -1585,7 +1587,7 @@ class Api:
         """Run a project tool now; its result and log."""
         project = self._require_project()
         method = project.method(params["methodId"])
-        context = MethodContext(project=project, method=method)
+        context = MethodContext(project=project, method=method, app_url=self.app_url, open_url=self.open_url)
         result = project.run_tool(method.id, params.get("options"), params.get("preset"), context)
         self.emit("entities", {"entityTypes": project.entity_types})
         return {"result": result, "log": context.lines}
@@ -1654,8 +1656,9 @@ class Api:
             done = project.already_done(method.id, entities, dict(values, **(params.get("options") or {})))
             skipped = [dict(e.key) for e, d in zip(entities, done) if d]
             entities = [e for e, d in zip(entities, done) if not d]
+        context = MethodContext(project=project, method=method, app_url=self.app_url, open_url=self.open_url)
         try:
-            results = project.run(params["methodId"], entities, params.get("options"), params.get("preset")) if entities else []
+            results = project.run(params["methodId"], entities, params.get("options"), params.get("preset"), context) if entities else []
         except Exception:
             self._debug_error()
             raise
