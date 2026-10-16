@@ -2,6 +2,7 @@
 
 import math
 import time
+from pathlib import Path
 
 import pytest
 
@@ -750,10 +751,10 @@ def test_browse_an_entitys_files(empty_app, page):
     tree = ".drawer .loc:has(.loc-head:has-text('processed'))"
     page.locator(f"{tree} .path-list .browse").first.click()
     page.wait_for_selector(f"{tree} ul.file-tree > li[data-name]")
-    names = page.eval_on_selector_all(f"{tree} .path-list > ul.file-tree > li[data-name]", "els => els.map(e => e.dataset.name)")
+    names = page.eval_on_selector_all(f"{tree} .path-list > li.subtree > ul.file-tree > li[data-name]", "els => els.map(e => e.dataset.name)")
     assert names[0] == "roi" and len(names) > 1  # folders first
     page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
-    page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='masks.json']")
+    page.wait_for_selector(f"{tree} li.folder-entry.open + li.subtree > ul.file-tree > li[data-name='masks.json']")
     assert "2 B" in page.locator(f"{tree} li[data-name='masks.json'] .size").inner_text()
     # dev's file viewer: preview a file, make a folder, make a data variable of a file
     page.click(f"{tree} li[data-name='masks.json'] .preview-file")
@@ -1000,7 +1001,8 @@ def test_lock_editing_and_keyboard_shortcuts(empty_app, page):
     page.keyboard.press("Escape")  # out of the search box, which has the focus
     page.keyboard.press("?")
     page.wait_for_selector(".dialog .shortcuts")
-    assert page.locator(".dialog .shortcuts .shortcut-section").inner_text() == "In the viewer"   # and the viewer's keys
+    assert page.locator(".dialog .shortcuts .shortcut-section").all_inner_texts() == [   # and the keys of the table, the viewer, ...
+        "In a table", "In lists", "In the viewer", "In a signal plot", "On the FOV map"]
     assert page.locator(".dialog .shortcuts tr:has-text('Improve the selected ROIs') kbd").inner_text() == "i"
     page.keyboard.press("Escape")
     opened = []
@@ -1095,6 +1097,339 @@ def test_text_has_enough_contrast_in_either_theme(app, scheme):
         assert page.evaluate(CONTRAST) == []
     finally:
         page.close()
+
+
+# axe-core 4.10.0 (Deque Systems; MPL-2.0, its notice in the file and in axe.min.js.LICENSE), vendored so the check runs
+# offline: the rules of WCAG 2.0 and 2.1, levels A and AA
+AXE = Path(__file__).with_name("axe.min.js")
+WCAG_AA = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]
+
+
+def axe(page):
+    """The WCAG 2.1 A and AA violations axe-core finds on the page as it is, as 'rule: elements' lines."""
+    if not page.evaluate("!!window.axe"):
+        page.add_script_tag(path=str(AXE))
+    # after the page's transitions (a dialog fading in is not yet its colours), not its endless ones (a spinner)
+    return page.evaluate("""async (tags) => {
+        await Promise.all(document.getAnimations().filter((a) => a.effect.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)));
+        return (await axe.run(document, { runOnly: { type: "tag", values: tags } })).violations
+          .map((v) => `${v.id}: ${v.nodes.map((n) => `${n.target.join(" ")} (${(n.failureSummary || "").split("\\n")[1] || ""})`).join(", ")}`); }""", WCAG_AA)
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_the_pages_and_dialogs_meet_wcag_21_aa_by_axe(app, scheme):
+    """axe-core's WCAG 2.1 A and AA rules (names of controls, roles, lists, landmarks, contrast, ...) on the main pages,
+    menus and dialogs of the demo project, in the light and the dark theme: no violations."""
+    page = app["browser"].new_page(viewport={"width": 1400, "height": 900}, color_scheme=scheme)
+    seen = {}
+    try:
+        url = app["server"].url
+        page.goto(url + "#/overview")
+        page.wait_for_selector(".stat")
+        seen["overview"] = axe(page)
+        open_sessions(app, page)
+        rows(page).nth(0).locator("td.sel input").click()   # a selected row and the selection bar
+        seen["table"] = axe(page)
+        page.click(".grid-table th:has-text('Description') .col-menu")
+        seen["column menu"] = axe(page)
+        page.keyboard.press("Escape")
+        page.click(".toolbar button:has-text('Columns')")   # boxes among its items
+        seen["columns menu"] = axe(page)
+        page.keyboard.press("Escape")
+        page.click(".toolbar button:has-text('Columns')")
+        page.click(".menu .item:has-text('Add a column')")
+        page.wait_for_selector(".dialog")
+        seen["add a column"] = axe(page)
+        page.keyboard.press("Escape")
+        page.click(".selection-bar button:has-text('Run method')")
+        page.click(".method-item:has-text('Wait')")
+        page.wait_for_selector(".method-detail:has(h3:text-is('Wait')) .preset-row")
+        seen["run dialog"] = axe(page)
+        page.keyboard.press("Escape")
+        rows(page).first.locator("td.key").first.click()
+        page.wait_for_selector(".drawer.open .note-form")
+        page.locator(".drawer .path-list .browse").first.click()   # a folder's files, opened in place
+        page.wait_for_selector(".drawer .path-list li.subtree")
+        seen["drawer"] = axe(page)
+        page.keyboard.press("Escape")
+        page.locator("body").press("?")
+        page.wait_for_selector(".dialog .shortcuts")
+        seen["shortcuts"] = axe(page)
+        page.keyboard.press("Escape")
+        for name, ready in [("tasks", ".hero h1:has-text('Tasks')"), ("pipelines", ".hero h1"), ("data", ".data-locations"), ("notes", ".hero h1"),
+                            ("settings", ".addon-list"), ("projects", ".welcome")]:
+            page.goto(url + "#/" + name)
+            page.wait_for_selector(ready)
+            seen[name] = axe(page)
+        page.goto(url + "#/data")
+        page.click(".data-locations .edit-config")
+        page.wait_for_selector(".loc-dialog .loc-roots")
+        seen["data locations"] = axe(page)
+    finally:
+        page.close()
+    assert {name: found for name, found in seen.items() if found} == {}
+
+
+def test_the_viewer_fov_map_and_roi_review_meet_wcag_21_aa_by_axe(app, empty_app):
+    """The same on the module and viewer pages: the stack viewer with ROIs, its gallery, the signal plot, the FOV map and
+    the ROI review, light and dark."""
+    s1, s3 = {"subject_id": "m1", "session_id": "s1"}, {"subject_id": "m1", "session_id": "s3"}
+    run = lambda method, keys, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": keys, "options": options})
+    ophys_project(empty_app, [run("ophys.motion_correction", [s1, s3], referenceFrames=1), run("ophys.image_stats", [s1, s3]),
+                              run("ophys.detect_rois", [s1], threshold=0.25, border=4), run("ophys.extract_signals", [s1]),
+                              run("ophys.compute_dff", [s1]), run("ophys.align_sessions", [s1, s3]),
+                              ("entities.update", {"entityType": "subject", "key": {"subject_id": "m1"}, "values": {"window_ml": 2, "window_ap": -2}})])
+    url = empty_app["server"].url
+    seen = {}
+    for scheme in ["light", "dark"]:
+        page = app["browser"].new_page(viewport={"width": 1400, "height": 900}, color_scheme=scheme)
+        try:
+            page.goto(url + "#/entities/session")
+            page.wait_for_selector(".grid-table tbody td.key")
+            page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+            page.click(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+            page.wait_for_selector(".viewer-dialog .viewer-status:has-text('3 ROIs')")
+            page.locator(".viewer-roi-list li").first.click()
+            page.click(".viewer-add")   # a tool on: its cursor
+            seen[f"viewer {scheme}"] = axe(page)
+            page.click(".viewer-gallery")
+            page.wait_for_selector(".roi-gallery-body .roi-tile")
+            seen[f"gallery {scheme}"] = axe(page)
+            for _ in range(3):   # the gallery, the tool, the viewer
+                page.keyboard.press("Escape")
+            page.wait_for_selector(".backdrop", state="detached")
+            page.wait_for_selector(".grid-table tbody td.key")
+            page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+            page.click(".drawer.open li[data-variable='RoiSignals_Dff'] .plot-data")
+            page.wait_for_selector(".traces-dialog .trace-roi-list li")
+            seen[f"signals {scheme}"] = axe(page)
+            page.keyboard.press("Escape")
+            page.wait_for_selector(".backdrop", state="detached")
+            page.goto(url + "#/page/ophys.fovmap")
+            page.wait_for_selector(".fov-canvas")
+            page.click(".fov-list li[data-subject='m1']")
+            seen[f"fov map {scheme}"] = axe(page)
+            page.goto(url + "#/page/ophys.roireview")
+            page.wait_for_selector(".rr-table tbody tr")
+            seen[f"roi review {scheme}"] = axe(page)
+        finally:
+            page.close()
+    assert {name: found for name, found in seen.items() if found} == {}
+
+
+def test_a_table_is_moved_through_selected_and_edited_from_the_keyboard(empty_app, page):
+    """WCAG 2.1.1: the table is a grid with one cell in the Tab order. The arrows move between cells; Enter or F2 edits
+    one, Enter saves and Escape cancels, Tab saves and goes to the next cell; Space selects a row (Shift + Space a range)
+    or ticks a yes/no cell; Enter on a key opens the drawer with the focus in it, and Escape gives it back to the cell.
+    A column's menu moves and widens it, as dragging its header and its edge do."""
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    value = lambda i, name: api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"][i]["values"][name]
+    page.goto(empty_app["server"].url + "#/overview")
+    page.wait_for_selector(".stat")
+    page.locator(".stat:has-text('Sessions')").focus()   # a card of the overview, as a link
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".grid-table[role='grid'] tbody td.key")
+    at = lambda: page.evaluate("""(() => { const td = document.activeElement.closest('td[data-col]');
+        return td ? [Number(td.parentElement.getAttribute('aria-rowindex')), td.dataset.col] : document.activeElement.tagName; })()""")
+    assert page.locator(".grid-table tbody td[tabindex='0']").count() == 1   # one cell in the Tab order
+    page.locator(".grid-table tbody td[tabindex='0']").focus()
+    assert at() == [2, "subject_id"]
+    for key in ["ArrowDown", "ArrowRight", "ArrowRight", "ArrowRight"]:
+        page.keyboard.press(key)
+    assert at() == [3, "description"]
+    page.keyboard.press("Enter")   # edit, save
+    page.wait_for_selector(".grid-table td.editing input:focus")
+    page.keyboard.press("Control+A")
+    page.keyboard.type("typed with keys")
+    page.keyboard.press("Enter")
+    wait_until(lambda: value(1, "description") == "typed with keys")
+    page.wait_for_selector(".grid-table td.editing", state="detached")
+    assert at() == [3, "description"]
+    page.keyboard.press("F2")   # edit, cancel
+    page.keyboard.type(" and more")
+    page.keyboard.press("Escape")
+    page.wait_for_selector(".grid-table td.editing", state="detached")
+    assert at() == [3, "description"] and page.locator(".drawer.open").count() == 0
+    page.keyboard.press("Enter")   # edit, Tab: saved, on to the next cell
+    page.keyboard.press("End")
+    page.keyboard.type("!")
+    page.keyboard.press("Tab")
+    wait_until(lambda: value(1, "description") == "typed with keys!")
+    wait_until(lambda: at() == [3, "n_files"])
+    page.keyboard.press("ArrowLeft")
+    page.keyboard.press("ArrowLeft")   # the yes/no cell: Space ticks it
+    ignored = value(1, "ignore")
+    page.keyboard.press("Space")
+    wait_until(lambda: value(1, "ignore") is (not ignored))
+    wait_until(lambda: at() == [3, "ignore"])
+    page.keyboard.press("Home")
+    assert at() == [3, "__sel"]
+    page.keyboard.press("Space")   # select the row, then a range
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Shift+Space")
+    wait_until(lambda: page.locator(".grid-table tbody tr[aria-selected='true']").count() == 3)
+    page.keyboard.press("Control+End")
+    assert at() == [15, "__sel"]
+    page.keyboard.press("Control+Home")
+    page.keyboard.press("ArrowRight")
+    page.keyboard.press("Enter")   # the drawer, with the focus in it; Escape gives the focus back
+    page.wait_for_selector(".drawer.open")
+    wait_until(lambda: page.evaluate("!!document.activeElement.closest('.drawer')"))
+    page.keyboard.press("Escape")
+    page.wait_for_selector(".drawer.open", state="detached")
+    assert at() == [2, "subject_id"]
+    # the column's menu: what dragging its header and its edge do
+    order = lambda: page.eval_on_selector_all(".grid-table thead th[data-column]", "els => els.map((e) => e.dataset.column)")
+    page.focus(".grid-table th[data-column='description'] .col-menu")
+    page.keyboard.press("Enter")
+    while page.evaluate("document.activeElement.innerText.trim()") != "Move right":
+        page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    wait_until(lambda: order().index("description") == order().index("n_files") + 1)
+    width = page.evaluate("document.querySelector(\".grid-table th[data-column='description']\").getBoundingClientRect().width")
+    page.focus(".grid-table th[data-column='description'] .col-menu")
+    page.keyboard.press("Enter")
+    while page.evaluate("document.activeElement.innerText.trim()") != "Wider":
+        page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    wait_until(lambda: page.evaluate("document.querySelector(\".grid-table th[data-column='description']\").getBoundingClientRect().width") >= width + 39)
+    # a task's title is its button: Enter shows its details
+    task = api.handle({"id": 3, "method": "tasks.submit", "params": {"methodId": "core.wait", "entityType": "session",
+                                                                    "keys": [api.project.entities("session")[0].key], "options": {"seconds": 0}}})["result"]
+    page.goto(empty_app["server"].url + "#/tasks")
+    page.focus(f".task[data-id='{task['id']}'] .task-pick")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(f".task.selected[data-id='{task['id']}']")
+    page.wait_for_selector("#task-log")
+    assert page.evaluate("document.activeElement.classList.contains('task-pick')")
+
+
+def test_rois_are_drawn_measured_and_selected_from_the_keyboard(empty_app, page):
+    """WCAG 2.1.1 in the viewer: a tool turned on from the keyboard puts the keyboard on the image, where the arrows move a
+    cursor and Space places: a round ROI, the corners of a polygon (Enter closes it), the ends of a measurement. Ctrl + A
+    selects every ROI, Shift + J adds the next, and the ROI list is a listbox (arrows pick, Ctrl + Space adds)."""
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}}),
+        ("methods.run", {"methodId": "ophys.detect_rois", "entityType": "session", "keys": s1, "options": {"threshold": 0.25, "border": 4}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.click(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32 · 3 ROIs')")
+    count = lambda: page.locator(".viewer-roi-list li").count()
+    cursor = lambda: page.get_attribute(".viewer-canvas", "data-cursor")
+    # a round ROI: the tool's button pressed with Enter, the cursor moved, Space
+    page.focus(".viewer-add")
+    page.keyboard.press("Enter")
+    assert page.get_attribute(".viewer-add", "aria-pressed") == "true"
+    assert page.evaluate("document.activeElement.classList.contains('viewer-canvas')")
+    assert cursor() == "16,16"   # the middle
+    for key in ["ArrowLeft", "Shift+ArrowLeft", "ArrowUp"]:
+        page.keyboard.press(key)
+    assert cursor() == "15,10"
+    page.keyboard.press("Space")
+    wait_until(lambda: count() == 4)
+    page.keyboard.press("Escape")   # the tool off
+    assert page.get_attribute(".viewer-add", "aria-pressed") == "false"
+    # a polygon: three corners, Enter closes it
+    page.focus(".viewer-polygon")
+    page.keyboard.press("Enter")
+    for keys in [["Shift+ArrowDown", "Shift+ArrowDown"], ["Shift+ArrowRight"], ["Shift+ArrowUp"]]:
+        for key in keys:
+            page.keyboard.press(key)
+        page.keyboard.press("Space")
+    page.keyboard.press("Enter")
+    wait_until(lambda: count() == 5)
+    page.keyboard.press("Escape")
+    # a measurement: Space at each end
+    page.focus(".viewer-measure")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Space")
+    for _ in range(4):
+        page.keyboard.press("ArrowRight")
+    page.keyboard.press("Space")
+    assert page.locator(".viewer-measurement").inner_text().startswith("4.0 px")
+    page.keyboard.press("Escape")
+    # selecting: every ROI, then the list from the keyboard
+    page.focus(".viewer-canvas")
+    page.keyboard.press("Control+a")
+    wait_until(lambda: page.locator(".viewer-roi-list li.selected").count() == 5)
+    page.locator(".viewer-roi-list li").first.click()   # picked; the focus goes to the image, where the arrows move ROIs
+    assert page.evaluate("document.activeElement.classList.contains('viewer-canvas')")
+    page.focus(".viewer-roi-list li[tabindex='0']")   # the list's one stop in the Tab order: the ROI picked
+    page.keyboard.press("ArrowDown")   # the listbox picks the next
+    wait_until(lambda: page.locator(".viewer-roi-list li.selected").all_inner_texts()[0].startswith("ROI 2"))
+    assert page.evaluate("document.activeElement.getAttribute('role')") == "option"
+    page.keyboard.press("Control+ArrowDown")   # moves without picking; Ctrl + Space adds it
+    page.keyboard.press("Control+Space")
+    wait_until(lambda: page.locator(".viewer-roi-list li.selected").count() == 2)
+    page.focus(".viewer-canvas")
+    page.keyboard.press("Shift+J")   # and the next after it
+    wait_until(lambda: page.locator(".viewer-roi-list li.selected").count() == 3)
+
+
+def test_the_fov_map_and_the_signal_plot_from_the_keyboard(empty_app, page):
+    """WCAG 2.1.1 on the FOV map: a session picked in its list with the arrows, its FOV placed with the map's cursor
+    (arrows, Enter), a note added there, and moved by its place in its form (as a drag); and on a signal plot: the arrows
+    move its cursor, + zooms around it and 0 shows every frame (as a drag across and a double click)."""
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    run = lambda method, **options: ("methods.run", {"methodId": method, "entityType": "session", "keys": [s1], "options": options})
+    api = ophys_project(empty_app, [run("ophys.motion_correction", referenceFrames=1), run("ophys.detect_rois", threshold=0.25, border=4),
+                                    run("ophys.extract_signals"), run("ophys.compute_dff")])
+    page.goto(empty_app["server"].url + "#/page/ophys.fovmap")
+    page.wait_for_selector(".fov-canvas")
+    page.click(".fov-list li[data-subject='m1']")
+    page.locator(".fov-list li[data-session]").first.focus()
+    page.keyboard.press("Enter")   # the first session picked
+    page.wait_for_selector(".fov-list li[data-session][aria-selected='true']")
+    picked = page.get_attribute(".fov-list li[data-session][aria-selected='true']", "data-session")
+    page.focus(".place-fov")
+    page.keyboard.press("Enter")
+    page.focus(".fov-canvas")
+    page.keyboard.press("ArrowUp")
+    start = [float(v) for v in page.get_attribute(".fov-canvas", "data-cursor").split(",")]
+    page.keyboard.press("Shift+ArrowRight")
+    page.keyboard.press("Shift+ArrowUp")
+    ml, ap = [float(v) for v in page.get_attribute(".fov-canvas", "data-cursor").split(",")]
+    assert (round(ml - start[0], 2), round(ap - start[1], 2)) == (0.5, 0.5)
+    page.keyboard.press("Enter")   # the FOV placed at the cursor
+    session = lambda: next(r for r in api.handle({"id": 1, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"]
+                           if " / ".join(r["key"].values()) == picked)
+    wait_until(lambda: session()["values"].get("fov_ml") == ml and session()["values"].get("fov_ap") == ap)
+    page.focus(".place-note")
+    page.keyboard.press("Enter")
+    page.focus(".fov-canvas")
+    page.keyboard.press("Shift+ArrowLeft")
+    page.keyboard.press("Enter")   # a note at the cursor
+    page.wait_for_selector(".mark-dialog")
+    page.keyboard.type("seen from the keyboard")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".fov-marks .mark-edit:has-text('seen from the keyboard')")
+    page.focus(".fov-marks .mark-edit")
+    page.keyboard.press("Enter")   # its form has its place: moved from the keyboard
+    page.wait_for_selector(".mark-dialog input[name=ap]")
+    page.fill(".mark-dialog input[name=ap]", "-1.5")
+    page.locator(".mark-dialog input[name=ap]").press("Enter")
+    page.wait_for_selector(".fov-marks li:has-text('AP -1.5')")
+
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.click(".drawer.open li[data-variable='RoiSignals_Dff'] .plot-data")
+    page.wait_for_selector(".traces-dialog .trace-status:has-text('drag across')")
+    page.focus(".traces-dialog .trace-canvas")
+    page.keyboard.press("End")
+    page.keyboard.press("Shift+ArrowLeft")
+    assert page.get_attribute(".traces-dialog .trace-canvas", "data-hover") == "35"   # 40 frames: a tenth back from the last
+    page.keyboard.press("+")
+    page.wait_for_selector(".traces-dialog .trace-status:has-text('showing')")
+    page.keyboard.press("0")
+    page.wait_for_selector(".traces-dialog .trace-status:has-text('drag across')")
+    page.keyboard.press("ArrowDown")   # the list's keys still work from the plot
+    page.wait_for_selector(".trace-roi-list li[data-column='1'][aria-selected='true']")
 
 
 def test_run_a_project_tool_from_the_overview(empty_app, page):
@@ -1735,10 +2070,13 @@ def test_other_roi_groups_shown_with_the_one_edited(empty_app, page):   # roiman
     cyan = lambda rgb: rgb[1] > rgb[0] + 60 and rgb[2] > rgb[0] + 60
     assert not cyan(pixel())
     page.click(".viewer-roi-groups")
-    page.check(".menu .viewer-roi-group[data-variable='HandRois'] input")
+    group = ".menu .viewer-roi-group[data-variable='HandRois']"   # an item of the menu that is ticked (menuitemcheckbox)
+    page.click(group)
     wait_until(lambda: cyan(pixel()))   # HandRois' outline, in the first group colour, over RoiArray's ROIs
     assert page.locator(".viewer-roi-list li").count() == 3   # the ROIs edited are still RoiArray's
-    page.uncheck(".menu .viewer-roi-group[data-variable='HandRois'] input")
+    assert page.get_attribute(group, "aria-checked") == "true"
+    page.keyboard.press("Space")   # the focus is on it: Space unticks it
+    page.wait_for_selector(group + "[aria-checked='false']")
     wait_until(lambda: not cyan(pixel()))
 
 

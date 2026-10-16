@@ -23,6 +23,8 @@ if (!document.getElementById("ophys-roireview-style")) {
     .rr-table tr { cursor: pointer; }
     .rr-table td.rr-id { text-align: left; font-size: 13px; white-space: nowrap; }
     .rr-crop { width: 64px; height: 64px; image-rendering: pixelated; border-radius: 6px; display: block; margin: auto; }
+    .rr-edit { all: unset; display: block; cursor: pointer; border-radius: 6px; margin: auto; }
+    .rr-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .rr-missing { width: 64px; height: 64px; border-radius: 6px; border: 1px dashed var(--border); display: grid; place-items: center; font-size: 11px; color: var(--muted); margin: auto; }
     .rr-wrap { overflow: auto; max-height: 70vh; }
   `;
@@ -118,8 +120,11 @@ N.registerPage({
             const roi = s.rois.find((r) => r.id === id);
             // a double-click edits the ROI in that session's viewer (dev's multi-session editRois); the review reads
             // the sessions again when the viewer closes
-            return h("td", { title: roi ? "Double-click to edit it in this session" : "", on: { dblclick: () => editIn(s, id) } },
-              roi ? crop(s.frame, roi, 8) : h("div.rr-missing", "none"));
+            // the keyboard's way: the crops of the selected ROI are buttons in the Tab order, Enter edits
+            return h("td", { title: roi ? "Double-click to edit it in this session (Enter)" : "", on: { dblclick: () => editIn(s, id) } },
+              roi ? h("button.rr-edit", { tabindex: id === (state.selected ?? list[0]) ? "0" : "-1", "aria-label": `Edit ROI ${id} in ${keyText(s.key)}`,
+                on: { keydown: (event) => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); editIn(s, id); } } } },
+              crop(s.frame, roi, 8)) : h("div.rr-missing", "none"));
           })))))
         : h("div.empty", h("p.muted", "No session has both variables yet.")));
     }
@@ -137,9 +142,17 @@ N.registerPage({
 
     function select(id) {
       state.selected = id;
+      const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest("td");
+      const column = focused && table.contains(focused) ? focused.cellIndex : -1;
       table.querySelectorAll("tr.selected").forEach((tr) => tr.classList.remove("selected"));
+      table.querySelectorAll(".rr-edit").forEach((button) => { button.tabIndex = -1; });
       const row = table.querySelector(`tr[data-roi="${id}"]`);
-      if (row) { row.classList.add("selected"); row.scrollIntoView({ block: "nearest" }); }
+      if (!row) return;
+      row.classList.add("selected");
+      row.scrollIntoView({ block: "nearest" });
+      row.querySelectorAll(".rr-edit").forEach((button) => { button.tabIndex = 0; });
+      const same = column >= 0 && row.cells[column] && row.cells[column].querySelector(".rr-edit");   // the keyboard goes along
+      if (same) same.focus({ preventScroll: true });
     }
 
     async function classify(label) {

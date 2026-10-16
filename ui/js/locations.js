@@ -52,16 +52,16 @@
     const entityTypes = (config.entityTypes || []).map((t) => t.name);
     const fields = Object.keys(config.metadataDefinitions || {});
     let selected = 0;
-    const list = h("ul.loc-list");
+    const list = N.listbox(h("ul.loc-list"), "Data locations");
     const form = h("div.loc-form");
     const message = h("div.form-message.hidden");
     const found = h("div.loc-found.muted");
 
     const fs = (location) => (location.filesystemSource = location.filesystemSource || { rootStoragePaths: [], entityLayout: [] });
     const input = (value, change, attrs = {}) => h("input.input" + (attrs.mono ? ".mono" : ""), {
-      value: value === undefined || value === null ? "" : String(value), placeholder: attrs.placeholder || "", name: attrs.name,
+      value: value === undefined || value === null ? "" : String(value), placeholder: attrs.placeholder || "", name: attrs.name, "aria-label": attrs.label,
       on: { input: (event) => change(event.target.value) } });
-    const select = (value, options, change, attrs = {}) => h("select.input", { name: attrs.name, on: { change: (event) => change(event.target.value) } },
+    const select = (value, options, change, attrs = {}) => h("select.input", { name: attrs.name, "aria-label": attrs.label, on: { change: (event) => change(event.target.value) } },
       options.map((option) => { const [v, label] = Array.isArray(option) ? option : [option, option || "–"];
         return h("option", { value: v, selected: v === (value || "") }, label); }));
     const field = (label, control, hint) => h("div.field", h("label.name", label), control, hint ? h("div.hint.muted", hint) : null);
@@ -69,10 +69,10 @@
     const move = (array, index, by) => { const [item] = array.splice(index, 1); array.splice(index + by, 0, item); render(); };
 
     function renderList() {
-      N.fill(list, config.dataLocations.map((location, index) => h("li" + (index === selected ? ".selected" : ""),
+      N.listbox.fill(list, config.dataLocations.map((location, index) => N.option(h("li" + (index === selected ? ".selected" : ""),
         { dataset: { location: location.identifier }, on: { click: () => { selected = index; render(); } } },
         h("div.grow", h("div", location.displayName || location.identifier), h("div.muted.mono", location.identifier)),
-        h("span.pill." + (location.access === "readwrite" ? "accent" : "plain"), location.access === "readwrite" ? "written" : "read"))));
+        h("span.pill." + (location.access === "readwrite" ? "accent" : "plain"), location.access === "readwrite" ? "written" : "read")), index === selected)));
     }
 
     function renderForm() {
@@ -101,9 +101,9 @@
         h("h4", "Roots", h("span.muted", " where the location's folders are, on this machine or another")),
         h("table.simple.loc-roots", h("thead", h("tr", ["Identifier", "Path", "Environment", ""].map((t) => h("th", t)))),
           h("tbody", roots.map((root, i) => h("tr",
-            h("td", input(root.identifier, (v) => { root.identifier = v; }, { mono: true, name: "rootIdentifier" })),
-            h("td", input(root.path, (v) => { root.path = v; }, { mono: true, name: "rootPath", placeholder: "/data/raw, or relative to the project" })),
-            h("td", input(root.environment, (v) => { if (v) root.environment = v; else delete root.environment; }, { name: "rootEnvironment", placeholder: "any" })),
+            h("td", input(root.identifier, (v) => { root.identifier = v; }, { mono: true, name: "rootIdentifier", label: `Root ${i + 1}: identifier` })),
+            h("td", input(root.path, (v) => { root.path = v; }, { mono: true, name: "rootPath", label: `Root ${i + 1}: path`, placeholder: "/data/raw, or relative to the project" })),
+            h("td", input(root.environment, (v) => { if (v) root.environment = v; else delete root.environment; }, { name: "rootEnvironment", label: `Root ${i + 1}: environment`, placeholder: "any" })),
             h("td", remove("Remove the root", () => roots.splice(i, 1))))))),
         h("button.btn.small.loc-add-root", { on: { click: () => { roots.push({ identifier: identifierOf("root", roots.map((r) => r.identifier)), path: "" }); render(); } } },
           N.icon("plus", 13), "Add root"),
@@ -123,9 +123,9 @@
               remove("Remove the level", () => levels.splice(i, 1)))),
           h("div.loc-files",
             (level.filePatterns || []).map((pattern, k) => h("div.loc-file",
-              h("span.muted", "file"), input(pattern.name, (v) => { pattern.name = v; }, { name: "fileName", placeholder: "name" }),
-              input(pattern.pattern, (v) => { pattern.pattern = v; }, { mono: true, name: "filePattern", placeholder: "\\.tif$" }),
-              select(pattern.cardinality || "many", [["one", "one file"], ["many", "any number"]], (v) => { pattern.cardinality = v; }),
+              h("span.muted", "file"), input(pattern.name, (v) => { pattern.name = v; }, { name: "fileName", label: `File pattern ${k + 1} of ${level.name}: name`, placeholder: "name" }),
+              input(pattern.pattern, (v) => { pattern.pattern = v; }, { mono: true, name: "filePattern", label: `File pattern ${k + 1} of ${level.name}: pattern`, placeholder: "\\.tif$" }),
+              select(pattern.cardinality || "many", [["one", "one file"], ["many", "any number"]], (v) => { pattern.cardinality = v; }, { label: `File pattern ${k + 1} of ${level.name}: how many` }),
               remove("Remove the file pattern", () => { level.filePatterns.splice(k, 1); if (!level.filePatterns.length) delete level.filePatterns; }))),
             h("button.btn.ghost.small.loc-add-file", { on: { click: () => { (level.filePatterns = level.filePatterns || []).push({ name: "", pattern: "", cardinality: "one" }); render(); } } },
               N.icon("plus", 12), "File pattern"))))),
@@ -137,12 +137,12 @@
             const extraction = rule.extraction = rule.extraction || { method: "regex" };
             const valueKey = extraction.method === "fixed" ? "value" : extraction.method === "function" ? "functionName" : "pattern";
             return h("tr",
-              h("td", select(rule.metadataRef, fields.includes(rule.metadataRef) ? fields : [rule.metadataRef, ...fields], (v) => { rule.metadataRef = v; }, { name: "ruleField" })),
-              h("td", select(extraction.entityLayoutLevel, [["", "–"], ...levelNames.map((n) => [n, n])], (v) => { if (v) extraction.entityLayoutLevel = v; else delete extraction.entityLayoutLevel; }, { name: "ruleLevel" })),
-              h("td", select(extraction.method, METHODS.includes(extraction.method) ? METHODS : [extraction.method, ...METHODS], (v) => { extraction.method = v; render(); }, { name: "ruleMethod" })),
-              h("td", input(extraction[valueKey], (v) => { extraction[valueKey] = v; }, { mono: true, name: "rulePattern",
+              h("td", select(rule.metadataRef, fields.includes(rule.metadataRef) ? fields : [rule.metadataRef, ...fields], (v) => { rule.metadataRef = v; }, { name: "ruleField", label: `Rule ${i + 1}: field` })),
+              h("td", select(extraction.entityLayoutLevel, [["", "–"], ...levelNames.map((n) => [n, n])], (v) => { if (v) extraction.entityLayoutLevel = v; else delete extraction.entityLayoutLevel; }, { name: "ruleLevel", label: `Rule ${i + 1}: from level` })),
+              h("td", select(extraction.method, METHODS.includes(extraction.method) ? METHODS : [extraction.method, ...METHODS], (v) => { extraction.method = v; render(); }, { name: "ruleMethod", label: `Rule ${i + 1}: method` })),
+              h("td", input(extraction[valueKey], (v) => { extraction[valueKey] = v; }, { mono: true, name: "rulePattern", label: `Rule ${i + 1}: pattern or value`,
                 placeholder: { regex: "^ses-(.+)$", substring: "0:8", template: "{session_date}_{subject_id}", fixed: "value", function: "extractor name" }[extraction.method] || "" })),
-              h("td", input(extraction.valueFormat, (v) => { if (v) extraction.valueFormat = v; else delete extraction.valueFormat; }, { mono: true, name: "ruleFormat", placeholder: "yyyy_MM_dd" })),
+              h("td", input(extraction.valueFormat, (v) => { if (v) extraction.valueFormat = v; else delete extraction.valueFormat; }, { mono: true, name: "ruleFormat", label: `Rule ${i + 1}: format`, placeholder: "yyyy_MM_dd" })),
               h("td", remove("Remove the rule", () => rules.splice(i, 1))));
           }))),
         fields.length ? h("button.btn.small.loc-add-rule", { on: { click: () => { rules.push({ metadataRef: fields[0], extraction: { method: "regex", pattern: "", entityLayoutLevel: levelNames[levelNames.length - 1] } }); render(); } } },

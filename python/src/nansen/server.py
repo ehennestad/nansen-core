@@ -9,6 +9,7 @@ Requests whose Host is not this machine (DNS rebinding) or whose Origin is anoth
 
 from __future__ import annotations
 
+import gzip
 import json
 import mimetypes
 import hmac
@@ -73,12 +74,15 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # keep the console quiet
         pass
 
-    def _send(self, status: int, body: bytes, content_type: str) -> None:
+    def _send(self, status: int, body: bytes, content_type: str, encoding: Optional[str] = None) -> None:
         try:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            if encoding:
+                self.send_header("Content-Encoding", encoding)
+                self.send_header("Vary", "Accept-Encoding")
             self.end_headers()
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
@@ -138,7 +142,13 @@ class _Handler(BaseHTTPRequestHandler):
         if target.name == "index.html":   # the page gets the token it answers with
             body = body.replace(b'<meta charset="utf-8">',
                                 b'<meta charset="utf-8">\n  <meta name="nansen-token" content="' + self.server.token.encode() + b'">', 1)
-        self._send(HTTPStatus.OK, body, content_type)
+        # the scripts and the stylesheet, compressed for a browser that takes it: a quarter of the bytes to load
+        encoding = None
+        textual = content_type.startswith(("text/", "application/javascript", "application/json", "image/svg+xml"))
+        if textual and "gzip" in (self.headers.get("Accept-Encoding") or "") and len(body) > 1024:
+            body = gzip.compress(body, compresslevel=6)
+            encoding = "gzip"
+        self._send(HTTPStatus.OK, body, content_type, encoding)
 
     def _stream_events(self):
         events: "queue.Queue[dict]" = queue.Queue()

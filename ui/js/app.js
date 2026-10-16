@@ -226,6 +226,7 @@
           return;
         }
         if (event.key === "w" && this.onWorkspaceKey) { event.preventDefault(); this.onWorkspaceKey(); return; }   // dev's w: to the workspace
+        if (event.key === "Escape" && this.shellEl && this.shellEl.classList.contains("nav-open")) { this.shellEl.classList.remove("nav-open"); return; }   // the sidebar on a phone
         if (event.key === "Escape" && N.drawer.isOpen()) { N.drawer.close(); return; }
       });
     },

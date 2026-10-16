@@ -27,8 +27,22 @@
       else el.setAttribute(key, value === true ? "" : value);
     }
     append(el, children);
+    if (el.classList.contains("field")) labelField(el);
     return el;
   };
+
+  // A field (div.field: its label.name, then its input, select or textarea) is one labelled control: the label names
+  // the control for assistive technology (WCAG 1.3.1, 4.1.2), as a label's for does; a click on it focuses the control.
+  // A field of several controls (a list of steps) names each of its own.
+  let fieldIds = 0;
+  function labelField(field) {
+    const label = [...field.children].find((c) => c.tagName === "LABEL" && c.classList.contains("name"));
+    const controls = field.querySelectorAll("input:not([type=hidden]), select, textarea");
+    const control = controls[0];
+    if (!label || controls.length !== 1 || label.htmlFor) return;
+    if (!control.id) control.id = `nansen-field-${++fieldIds}`;
+    label.htmlFor = control.id;
+  }
 
   function append(el, children) {
     for (const child of children.flat(Infinity)) {
@@ -82,6 +96,8 @@
     pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>',
     "arrow-up": '<path d="M12 19V5M6 11l6-6 6 6"/>',
     "arrow-down": '<path d="M12 5v14M6 13l6 6 6-6"/>',
+    "arrow-left": '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+    "arrow-right": '<path d="M5 12h14M13 6l6 6-6 6"/>',
     refresh: '<path d="M20 11a8 8 0 0 0-14.6-4.6L4 8M4 4v4h4M4 13a8 8 0 0 0 14.6 4.6L20 16m0 4v-4h-4"/>',
     scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/>',
     sync: '<path d="M4 12a8 8 0 0 1 13.7-5.7L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.7L4 15.5M4 20v-4.5h4.5"/>',

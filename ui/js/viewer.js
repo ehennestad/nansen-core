@@ -288,11 +288,13 @@
       // imviewer's channel colours and volume display: channels counted, shown together (null: not decided yet, on for a
       // stack with channels), which are shown in which colour, each one's contrast; planes one, side by side, or projected
       channels: 1, composite: null, shown: [], colors: [], channelLimits: [], planes: 1, volume: "single" };
-    const canvas = h("canvas.viewer-canvas");
+    // the image: the keyboard reaches it (Tab), and with a tool on, moves a cursor over it (cursorKey)
+    const canvas = h("canvas.viewer-canvas", { tabindex: "0", role: "application", "aria-roledescription": "image",
+      "aria-label": "The image. With a tool on, the arrow keys move a cursor over it and Space or Enter places there; the viewer's keys work here (?)" });
     const overlay = h("canvas.viewer-overlay");
     const holder = h("div.viewer-holder", canvas, overlay);
     const stage = h("div.viewer-stage", holder);
-    const slider = h("input.viewer-slider", { type: "range", min: 0, max: 0, value: 0, on: { input: () => { state.frame = Number(slider.value); show(); } } });
+    const slider = h("input.viewer-slider", { type: "range", min: 0, max: 0, value: 0, "aria-label": "Frame", on: { input: () => { state.frame = Number(slider.value); show(); } } });
     const frameLabel = h("span.viewer-frame.mono", "");
     const playButton = h("button.btn.ghost.icon.small.viewer-play", { title: "Play", on: { click: () => toggle() } }, N.icon("play", 14));
     // imviewer's playback speed: ` halves it, ~ doubles it
@@ -344,7 +346,7 @@
       counts.forEach((n, k) => { const tall = Math.round(Math.sqrt(n / most) * histogram.height); ctx.fillRect(k * 4, histogram.height - tall, 3, tall); });
       histogram.dataset.pixels = String(bytes.length);
     }
-    const mode = h("select.input.viewer-mode", { on: { change: () => { state.mode = mode.value; show(); } } },
+    const mode = h("select.input.viewer-mode", { title: "Show", on: { change: () => { state.mode = mode.value; show(); } } },
       h("option", { value: "frame" }, "Frames"), h("option", { value: "mean" }, "Average"), h("option", { value: "meanClahe" }, "Mean CLAHE"),
       h("option", { value: "max" }, "Maximum"),
       h("option", { value: "min" }, "Minimum"), h("option", { value: "std" }, "Standard deviation"), h("option", { value: "correlation" }, "Local correlation"),
@@ -360,11 +362,11 @@
         ["absGradient", "Absolute gradient"], ["clahe", "CLAHE"]].map(([value, label]) => h("option", { value }, label)));
     const colormapPick = h("select.input.viewer-colormap", { title: "Colormap", on: { change: () => { state.colormap = colormapPick.value; redraw(); } } },
       N.colormaps.map((name) => h("option", { value: name }, name)));
-    const low = h("input.input.viewer-low", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.low = Number(low.value); show(); } } });
-    const high = h("input.input.viewer-high", { type: "number", step: "any", on: { change: () => { state.auto = false; auto.checked = false; state.high = Number(high.value); show(); } } });
+    const low = h("input.input.viewer-low", { type: "number", step: "any", title: "Lowest value shown (black)", on: { change: () => { state.auto = false; auto.checked = false; state.low = Number(low.value); show(); } } });
+    const high = h("input.input.viewer-high", { type: "number", step: "any", title: "Highest value shown (white)", on: { change: () => { state.auto = false; auto.checked = false; state.high = Number(high.value); show(); } } });
     const auto = h("input", { type: "checkbox", checked: true, on: { change: () => { state.auto = auto.checked; show(); } } });
     const roiToggle = h("input.viewer-rois", { type: "checkbox", checked: state.showRois, on: { change: () => { state.showRois = roiToggle.checked; show(); } } });
-    const roiPick = roiVariables.length > 1 ? h("select.input.viewer-roi-variable", { on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; state.groupRois = null; select(null); show(); } } },
+    const roiPick = roiVariables.length > 1 ? h("select.input.viewer-roi-variable", { title: "The ROIs shown and edited", on: { change: () => { state.roiVariable = roiPick.value; state.rois = null; state.groupRois = null; select(null); show(); } } },
       roiVariables.map((v) => h("option", { value: v }, v))) : null;
     // roimanager's showRoiGroups: other ROI variables shown with the one edited, as outlines in colours of their own
     state.groups = new Set();
@@ -454,7 +456,7 @@
       select.style.display = count > 1 ? "" : "none";
     };
     // the ruler: drag across the image to measure a distance, as dev's imviewer measurement tool
-    const measureButton = h("button.btn.ghost.icon.small.viewer-measure", { title: "Measure a distance: drag across the image", on: { click: () => setTool(state.tool === "measure" ? null : "measure") } }, N.icon("ruler", 14));
+    const measureButton = h("button.btn.ghost.icon.small.viewer-measure", { title: "Measure a distance: drag across the image", "aria-pressed": "false", on: { click: (event) => toolClicked(event, "measure") } }, N.icon("ruler", 14));
     const measurement = h("span.viewer-measurement.mono", "");
     const gridButton = h("button.btn.ghost.icon.small.viewer-grid", { title: "Show a grid", on: { click: () => {
       state.grid = !state.grid;
@@ -614,7 +616,7 @@
         ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
         ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
       }
-      if (state.tool === "polygon" && state.polygon.length) {
+      if ((state.tool === "polygon" || state.tool === "draw") && state.polygon.length) {   // corners, also those placed with the keyboard
         ctx.strokeStyle = "rgba(255, 210, 60, 0.95)";
         ctx.fillStyle = "rgba(255, 210, 60, 0.95)";
         ctx.lineWidth = 2 * last.width / width;
@@ -683,6 +685,21 @@
       if (state.selection.size > 1 && roisOn() && state.rois) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
         state.rois.filter((r) => state.selection.has(r.id)).forEach((roi) => edge(roi).forEach(([y, x]) => ctx.fillRect(x, y, 1, 1)));
+      }
+      if (state.tool && state.cursor) {   // the keyboard's cursor: a cross on its pixel, the tool's circle, the next edge of an outline
+        const [cy, cx] = [state.cursor[0] + 0.5, state.cursor[1] + 0.5];
+        const arm = 3 * last.width / width + 1.5;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.lineWidth = 2.5 * last.width / width;
+        ctx.beginPath();
+        ctx.moveTo(cx - arm, cy); ctx.lineTo(cx + arm, cy); ctx.moveTo(cx, cy - arm); ctx.lineTo(cx, cy + arm);
+        if (state.tool === "circle" || state.tool === "detect") { ctx.moveTo(cx + state.radius + 0.5, cy); ctx.arc(cx, cy, state.radius + 0.5, 0, 2 * Math.PI); }
+        const corner = state.polygon[state.polygon.length - 1];
+        if (corner) { ctx.moveTo(corner[0], corner[1]); ctx.lineTo(cx, cy); }
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";   // and dark inside it: seen on light and dark images
+        ctx.lineWidth = 1 * last.width / width;
+        ctx.stroke();
       }
       if (last.tiles) labelTiles(ctx, last.tiles, 1, Math.max(4, 12 * last.width / width));   // the plane montage
       canvas.dataset.tiles = last.tiles ? String(last.tiles.length) : "";
@@ -797,15 +814,19 @@
     canvas.addEventListener("click", (event) => {
       if (!last || !state.rois || state.tool !== "polygon") return;
       const [py, px] = pointAt(event);
+      addCorner(py, px);
+    });
+    /** A corner of the polygon being drawn (image coordinates); one near the first closes it. */
+    function addCorner(py, px) {
       const points = state.polygon;
       const first = points[0];
       const near = first && Math.hypot(first[0] - px, first[1] - py) < 1.5 && points.length >= 3;
       if (near) { finishPolygon(); return; }   // a click on the first corner closes it
       const previous = points[points.length - 1];
       if (!previous || previous[0] !== px || previous[1] !== py) points.push([px, py]);
-      status.textContent = `${points.length} corner(s): click the first one or double-click to finish, Esc to start again`;
+      status.textContent = `${points.length} corner(s): click the first one or double-click to finish (Enter with the keyboard), Esc to start again`;
       drawOverlay();
-    });
+    }
     canvas.addEventListener("dblclick", (event) => {
       if (state.tool !== "polygon") return;
       event.stopPropagation();
@@ -819,9 +840,14 @@
       if (pixels.length) edit({ add: [{ pixels }] });
       else status.textContent = "A polygon needs three corners or more around some pixels";
     }
-    canvas.addEventListener("click", async (event) => {
+    canvas.addEventListener("click", (event) => {
       if (!last || !state.rois || (state.tool !== "circle" && state.tool !== "detect")) return;
       const [y, x] = pixelAt(event);
+      addAt(y, x);
+    });
+    /** A round ROI (the Circle tool) or one detected (the Detect tool) around a pixel. */
+    async function addAt(y, x) {
+      if (!last || !state.rois) return;
       if (state.tool === "circle") {
         const pixels = [];
         const r = state.radius;
@@ -838,7 +864,46 @@
         if (found.pixels.length) edit({ add: [{ pixels: found.pixels }] });
         else status.textContent = "No cell found there: click on its bright middle, or draw it";
       } catch (error) { N.showError(error, "Could not detect an ROI"); }
-    });
+    }
+
+    // --- the keyboard's cursor: what the pointer does on the image, from the keyboard (WCAG 2.1.1) -------------------
+    // With a tool on, the arrow keys move a cursor over the image (Shift: 5 pixels), and Space or Enter does what a click
+    // there does: a round ROI or a detected one; a corner of a polygon or of a freehand outline (Enter closes it); the
+    // two ends of a measurement.
+    function moveCursor(dy, dx) {
+      if (!last) return;
+      const [y, x] = state.cursor || [Math.floor(last.height / 2), Math.floor(last.width / 2)];
+      state.cursor = [Math.min(last.height - 1, Math.max(0, y + dy)), Math.min(last.width - 1, Math.max(0, x + dx))];
+      const [cy, cx] = state.cursor;
+      canvas.dataset.cursor = `${cy},${cx}`;
+      where.textContent = `row ${cy}, column ${cx}` + (roiAt(cy, cx) ? ` · ROI ${roiAt(cy, cx).id}` : "");
+      if (state.measuring) { state.measure.to = [cx + 0.5, cy + 0.5]; showMeasurement(state.measure); }
+      drawOverlay();
+    }
+    function actAtCursor(finish) {
+      if (!state.cursor) { moveCursor(0, 0); return; }   // the first press shows the cursor, in the middle
+      const [y, x] = state.cursor;
+      if (state.tool === "circle" || state.tool === "detect") addAt(y, x);
+      else if ((state.tool === "polygon" || state.tool === "draw") && state.rois) {
+        if (finish && state.polygon.length >= 3) finishPolygon();
+        else addCorner(y + 0.5, x + 0.5);
+      } else if (state.tool === "measure") {
+        if (!state.measuring) { state.measure = { from: [x + 0.5, y + 0.5], to: [x + 0.5, y + 0.5] }; state.measuring = true; showMeasurement(state.measure); }
+        else state.measuring = false;
+        drawOverlay();
+      }
+    }
+    function cursorKey(event) {
+      const arrows = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+      const target = event.target;
+      const control = target && target.closest && target.closest("button, a, input, select, textarea, [role=option], [role=menuitem]");
+      if (arrows[event.key] && !event.altKey) {
+        const step = event.shiftKey ? 5 : 1;
+        moveCursor(arrows[event.key][0] * step, arrows[event.key][1] * step);
+      } else if ((event.key === " " || event.key === "Enter") && !control) actAtCursor(event.key === "Enter");
+      else return false;
+      return true;
+    }
 
     // --- the ROI panel: actions, tools, the list --------------------------------------------------------------------
     const actions = [
@@ -859,7 +924,7 @@
       ["draw", "freehand", "Draw an ROI: drag around the cell", ".viewer-draw"],
       ["polygon", "polygon", "Draw an ROI as a polygon: click its corners, then the first one again or double-click", ".viewer-polygon"],
       ["detect", "crosshair", "Detect the cell around where you click; keys 1-5 pick dev's detection mode", ".viewer-detect"]].map(([name, icon, title, cls]) =>
-      h(`button.btn.ghost.icon.small${cls}`, { title, dataset: { tool: name }, on: { click: () => setTool(state.tool === name ? null : name) } }, N.icon(icon, 13)));
+      h(`button.btn.ghost.icon.small${cls}`, { title, dataset: { tool: name }, "aria-pressed": "false", on: { click: (event) => toolClicked(event, name) } }, N.icon(icon, 13)));
     // roimanager's autoDetect modes, picked with keys 1-5 while the Detect tool is on (rois.detect mode)
     const DETECT_MODES = { 1: "the activity-weighted mean of the cell's box, its edge (dev's default)", 2: "the box's peak activity, thresholded",
       3: "the average, thresholded", 4: "the average in a wider box, thresholded", 5: "the average, its edge" };
@@ -876,12 +941,25 @@
       state.tool = name;
       detectModeLabel.hidden = name !== "detect";
       state.polygon = [];
+      state.measuring = false;
+      if (!name) { state.cursor = null; delete canvas.dataset.cursor; }
       drawOverlay();
-      tools.forEach((b) => b.classList.toggle("active", b.dataset.tool === name));
+      tools.forEach((b) => { b.classList.toggle("active", b.dataset.tool === name); b.setAttribute("aria-pressed", String(b.dataset.tool === name)); });
       measureButton.classList.toggle("active", name === "measure");
+      measureButton.setAttribute("aria-pressed", String(name === "measure"));
       if (name !== "measure") { state.measure = null; measurement.textContent = ""; }
       canvas.classList.toggle("adding", name === "circle" || name === "detect");
       canvas.classList.toggle("drawing", name === "draw" || name === "polygon" || name === "measure");
+    }
+    /** A tool's button: the tool on, or off again. Pressed with the keyboard, the keyboard goes on to the image, where
+     *  the arrows move its cursor and Space places (cursorKey). */
+    function toolClicked(event, name) {
+      setTool(state.tool === name ? null : name);
+      if (event.detail === 0 && state.tool) {
+        canvas.focus({ preventScroll: true });
+        moveCursor(0, 0);
+        status.textContent = "The arrow keys move the cursor (Shift: 5 pixels); Space places, Enter closes an outline, Esc leaves the tool";
+      }
     }
     // Find ROIs: run a segmentation method on this entity from here (dev's roimanager autosegmentation), then show its ROIs
     const findButton = h("button.btn.ghost.icon.small.viewer-find-rois", { title: "Find ROIs with a segmentation method", on: { click: () => findRois() } }, N.icon("zap", 13));
@@ -1046,7 +1124,8 @@
         if (neuropilAsked && neuropilAsked.roi === roi && neuropilAsked.rois === rois) neuropilAsked = null;
       }
     }
-    const roiList = h("ul.viewer-roi-list");
+    // a click picks an ROI and puts the focus on the image, so the arrow keys move the ROIs picked (roimanager's)
+    const roiList = N.listbox(h("ul.viewer-roi-list"), "ROIs", true, canvas);
     // where a viewable's ROIs are saved (dev's roimanager saves them beside the file): its ROI file, or memory for an array
     const roiFileNote = viewable ? h("div.muted.viewer-roi-file", { title: viewable.roiFile || "" },
       viewable.roiFile ? `Saved to ${viewable.roiFile.split(/[\\/]/).pop()}` : "Kept while the app is open (an array has no folder)") : null;
@@ -1068,7 +1147,7 @@
       onPick: (frame) => { if (state.mode !== "frame") { state.mode = "frame"; mode.value = "frame"; } state.frame = frame; slider.value = String(frame); show(); },
       onRange: (start, stop) => { signal.range = [start, stop]; showSignal(); },
     }) : null;
-    const signalPick = h("select.input.viewer-signal-pick", { on: { change: () => { signal.variable = signalPick.value; showSignal(); } } },
+    const signalPick = h("select.input.viewer-signal-pick", { title: "The signal shown", on: { change: () => { signal.variable = signalPick.value; showSignal(); } } },
       signalVariables.map((v) => h("option", { value: v, selected: v === signal.variable }, v)),
       h("option", { value: LIVE, selected: signal.variable === LIVE }, "Live from the stack"));
     if (tracePlot) tracePlot.el.style.visibility = "hidden";   // its room kept, so the image does not move when it shows
@@ -1117,13 +1196,13 @@
     }
 
     function renderList() {
-      N.fill(roiList, visible().map((roi) => h("li" + (state.selection.has(roi.id) ? ".selected" : ""), { dataset: { roi: roi.id },
+      N.listbox.fill(roiList, visible().map((roi) => N.option(h("li" + (state.selection.has(roi.id) ? ".selected" : ""), { dataset: { roi: roi.id },
         on: { click: (event) => select(roi.id, several(event)) } },
         h("span.swatch", { style: { background: `rgb(${colorOf(roi, state.rois.indexOf(roi), state.colorBy).join(",")})` } }),
         h("span.grow", `ROI ${roi.id}`, roi.cellType ? h("span.muted.roi-cell-type", ` · ${roi.cellType}`) : null,
           roi.links && roi.links.length ? h("span.muted.roi-links", { title: `Linked with ${roi.links.map((i) => "ROI " + i).join(", ")}` }, ` ↔ ${roi.links.join(", ")}`) : null),
         h("span.muted", `${roi.pixels.length} px`),
-        roi.classification ? h("span.pill." + ({ accepted: "good", rejected: "bad" }[roi.classification] || "warn"), roi.classification) : null)));
+        roi.classification ? h("span.pill." + ({ accepted: "good", rejected: "bad" }[roi.classification] || "warn"), roi.classification) : null), state.selection.has(roi.id))));
       actions.forEach((b) => { b.disabled = state.selection.size === 0; });
       mergeButton.disabled = state.selection.size < 2;
       growButton.disabled = shrinkButton.disabled = state.selection.size !== 1;
@@ -1262,17 +1341,28 @@
     }
     function onKey(event) {
       if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName) || !document.body.contains(canvas) || onSelect) return;
+      // the ROI list moves between its items itself (N.listbox)
+      if (roiList.contains(event.target) && !event.altKey && ["ArrowUp", "ArrowDown", "Home", "End", "Enter", " "].includes(event.key)) return;
+      if (event.target.classList && event.target.classList.contains("trace-canvas") && ["ArrowLeft", "ArrowRight", "Home", "End", "Enter", "+", "-", "=", "0", " "].includes(event.key)) return;   // the signal plot's own keys
       const rois = Boolean(state.rois) && state.volume === "single";   // the ROIs are of one plane
       if (event.ctrlKey || event.metaKey) {
         if (!rois) return;
         if (event.key.toLowerCase() === "z") { if (event.shiftKey) redo(); else undo(); }
         else if (event.key.toLowerCase() === "y") redo();
+        else if (event.key.toLowerCase() === "a" && !event.shiftKey) {   // every ROI shown: the rectangle dragged with Shift, from the keyboard
+          state.selection = new Set(visible().map((r) => r.id));
+          state.selected = state.selection.size ? [...state.selection][0] : null;
+          redraw();
+          renderList();
+          showSignal();
+        }
         else return;
         event.preventDefault();
         return;
       }
-      if (event.key === "Escape" && state.tool === "polygon" && state.polygon.length) { state.polygon = []; drawOverlay(); event.stopPropagation(); return; }
+      if (event.key === "Escape" && (state.tool === "polygon" || state.tool === "draw") && state.polygon.length) { state.polygon = []; drawOverlay(); event.stopPropagation(); return; }
       if (event.key === "Escape" && state.tool) { setTool(null); event.stopPropagation(); return; }
+      if (state.tool && cursorKey(event)) { event.preventDefault(); event.stopPropagation(); return; }
       if ((rois && roiKey(event)) || viewerKey(event)) event.preventDefault();
     }
     /** roimanager's keys (its RoiDisplayInputHandler, with the selected ROIs; and the rebuild's): true when one was used. */
@@ -1304,6 +1394,10 @@
       else if (some && (key === "Delete" || key === "Backspace")) remove();
       else if (key === "j" || (!some && key === "ArrowDown" && order.length)) select(order[Math.min(order.length - 1, at + 1)] ?? null);
       else if (key === "k" || (!some && key === "ArrowUp" && order.length)) select(order[Math.max(0, at - 1)] ?? null);
+      else if ((key === "J" || key === "K") && order.length) {   // the ROI after or before added to the selection: Ctrl + click, from the keyboard
+        const next = order[Math.min(order.length - 1, Math.max(0, at + (key === "J" ? 1 : -1)))];
+        if (!state.selection.has(next)) select(next, true);
+      }
       else return false;
       return true;
     }
@@ -1536,7 +1630,7 @@
         h("option", { value: "unresolved" }, "Unresolved"), h("option", { value: "none" }, "Unclassified"));
       let sortBy = "id";
       const grid = h("div.roi-gallery");
-      const sortPick = h("select.input.roi-gallery-sort", { on: { change: async () => {
+      const sortPick = h("select.input.roi-gallery-sort", { title: "Order", on: { change: async () => {
         sortBy = sortPick.value;
         if (sortBy === "peak" && !Object.keys(peaks).length) {
           try { await loadPeaks(); } catch (error) { N.showError(error, "Could not read the ΔF/F of the ROIs"); }
@@ -1619,7 +1713,7 @@
     const paneStage = h("div.viewer-linked-stage", h("div.viewer-holder", paneCanvas));
     const paneTitle = h("span.viewer-linked-title.mono", "");
     const paneFrame = h("span.viewer-linked-frame.mono.muted", "");
-    const paneSlider = h("input.viewer-linked-slider", { type: "range", min: 0, max: 0, value: 0, on: { input: () => goLinked(Number(paneSlider.value)) } });
+    const paneSlider = h("input.viewer-linked-slider", { type: "range", min: 0, max: 0, value: 0, "aria-label": "Frame of the linked stack", on: { input: () => goLinked(Number(paneSlider.value)) } });
     const paneToggle = h("input.viewer-linked-toggle", { type: "checkbox", checked: true, on: { change: () => setLinked(paneToggle.checked) } });
     const linkedPanel = h("div.viewer-linked", { style: { display: "none" } }, paneStage,
       h("div.viewer-linked-bar", paneSlider, paneFrame),

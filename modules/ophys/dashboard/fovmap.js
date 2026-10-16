@@ -215,32 +215,35 @@ const colourOf = (mark) => COLOURS[mark.colour] || COLOURS.magenta;
 /** A dialog with the fields of an injection or a note; resolves to the values, or null when cancelled. */
 function markForm(kind, mark = {}) {
   return new Promise((resolve) => {
-    const fields = kind === "injections"
+    const fields = (kind === "injections"
       ? [["material", "What was injected (virus or tracer)", "text"], ["depth", "Depth (µm)", "number"], ["volume", "Volume (nL)", "number"],
         ["spread", "Spread (µm, radius)", "number"], ["colour", "Colour", "colour"]]
-      : [["text", "Note", "text"]];
+      : [["text", "Note", "text"]])
+      // a mark on the map is moved by dragging it, or here by its place: what the drag does, from the keyboard
+      .concat(mark.id !== undefined ? [["ap", "AP (mm from bregma)", "place"], ["ml", "ML (mm from the midline)", "place"]] : []);
     const inputs = {};
     const rows = fields.map(([name, label, type]) => {
       const value = mark[name] === undefined || mark[name] === null ? "" : String(mark[name]);
       inputs[name] = type === "colour"
         ? h("select.input", { name }, Object.keys(COLOURS).map((c) => h("option", { value: c, selected: c === (mark.colour || "magenta") }, c)))
-        : h("input.input", { name, type, value, step: type === "number" ? "any" : undefined, min: type === "number" ? 0 : undefined });
+        : h("input.input", { name, type: type === "text" ? "text" : "number", value, step: type === "text" ? undefined : "any", min: type === "number" ? 0 : undefined });
       return h("div.field", h("label.name", label), inputs[name]);
     });
     const read = () => {
       const values = {};
       for (const [name, , type] of fields) {
         const raw = inputs[name].value.trim();
-        values[name] = type === "number" ? (raw === "" ? null : Number(raw)) : raw;
+        values[name] = type === "number" || type === "place" ? (raw === "" ? null : Number(raw)) : raw;
       }
       return values;
     };
     const valid = () => {
       const values = read();
       return fields.every(([name, , type]) => type !== "number" || values[name] === null || (isFinite(values[name]) && values[name] >= 0)) &&
+        fields.every(([name, , type]) => type !== "place" || (values[name] !== null && isFinite(values[name]))) &&
         (kind !== "notes" || values.text);
     };
-    const finish = (close) => { if (!valid()) { N.toast("Check the fields", "Numbers are 0 or more, and a note has text", "error"); return; } resolve(read()); close(); };
+    const finish = (close) => { if (!valid()) { N.toast("Check the fields", "Numbers are 0 or more, a place is AP and ML in mm, and a note has text", "error"); return; } resolve(read()); close(); };
     const d = N.dialog({
       title: (mark.id ? "Edit " : "New ") + (kind === "injections" ? "injection site" : "note"), narrow: true,
       content: h("div.mark-form", rows),
@@ -248,7 +251,8 @@ function markForm(kind, mark = {}) {
       onClose: () => resolve(null),
     });
     d.el.classList.add("mark-dialog");
-    Object.values(inputs).forEach((input) => input.addEventListener("keydown", (e) => { if (e.key === "Enter") finish(d.close); }));
+    // Enter is OK; prevented, so it does not also press the button the focus goes back to as the dialog closes
+    Object.values(inputs).forEach((input) => input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); finish(d.close); } }));
     setTimeout(() => inputs[fields[0][0]].focus(), 0);
   });
 }
@@ -406,10 +410,11 @@ N.registerPage({
     const subjectOf = (session) => subjects.find((s) => Object.keys(s.key).every((k) => session.values[k] === s.key[k])) || null;
     const shown = () => sessions.filter((s) => !state.subject || (subjectOf(s) && sameKey(subjectOf(s).key, state.subject)));
 
-    const canvas = h("canvas.fov-canvas", { width: 600, height: 800 });
+    const canvas = h("canvas.fov-canvas", { width: 600, height: 800, tabindex: "0", role: "application", "aria-roledescription": "map",
+      "aria-label": "The map. The arrow keys move a cursor (Shift: 0.5 mm), Enter or Space places, selects or edits there, as a click does" });
     const where = h("div.fov-where.mono.muted", "");
-    const subjectList = h("ul.fov-list");
-    const sessionList = h("ul.fov-list");
+    const subjectList = N.listbox(h("ul.fov-list"), "Subjects");
+    const sessionList = N.listbox(h("ul.fov-list"), "Fields of view");
     const placeFov = h("button.btn.small.place-fov", { on: { click: () => setPlacing("fov") } }, N.icon("plus", 13), "Place FOV");
     const placeWindow = h("button.btn.small.place-window", { on: { click: () => setPlacing("window") } }, N.icon("plus", 13), "Place window");
     const placeInjection = h("button.btn.small.place-injection", { on: { click: () => setPlacing("injection") } }, N.icon("plus", 13), "Add injection");
@@ -572,6 +577,17 @@ N.registerPage({
         ctx.setLineDash([]);
         ctx.strokeRect(x - w / 2, y - hgt / 2, w, hgt);
       });
+      if (ctx === canvas.getContext("2d") && state.cursor) {   // the keyboard's cursor (not in the saved map)
+        const [x, y] = toCanvas(...state.cursor);
+        ctx.setLineDash([]);
+        for (const [colour, width] of [["rgba(255, 255, 255, 0.95)", 4], ["#111827", 1.5]]) {
+          ctx.strokeStyle = colour;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y); ctx.moveTo(x, y - 9); ctx.lineTo(x, y + 9);
+          ctx.stroke();
+        }
+      }
       if (ctx === canvas.getContext("2d")) {
         canvas.dataset.images = String(drawnImages); canvas.dataset.photos = String(drawnPhotos); canvas.dataset.rois = String(drawnRois);
         canvas.dataset.gridLines = String(gridLines);
@@ -579,18 +595,20 @@ N.registerPage({
     }
 
     function renderLists() {
-      N.fill(subjectList, h("li" + (!state.subject ? ".selected" : ""), { on: { click: () => { state.subject = null; refresh(); } } },
-        h("span.grow", "All"), h("span.muted", String(sessions.length))),
-      subjects.map((s) => h("li" + (state.subject && sameKey(s.key, state.subject) ? ".selected" : ""), { dataset: { subject: keyText(s.key) },
+      N.listbox.fill(subjectList, N.option(h("li" + (!state.subject ? ".selected" : ""), { on: { click: () => { state.subject = null; refresh(); } } },
+        h("span.grow", "All"), h("span.muted", String(sessions.length))), !state.subject),
+      subjects.map((s) => N.option(h("li" + (state.subject && sameKey(s.key, state.subject) ? ".selected" : ""), { dataset: { subject: keyText(s.key) },
         on: { click: () => { state.subject = s.key; state.session = null; state.picked = { kind: "window", key: s.key }; refresh(); } } },
         h("span.grow", keyText(s.key)),
-        number(s.values.window_ml) === null ? h("span.muted", "no window") : h("span.pill.plain", s.values.window_shape || "window"))));
-      N.fill(sessionList, shown().map((s) => {
+        number(s.values.window_ml) === null ? h("span.muted", "no window") : h("span.pill.plain", s.values.window_shape || "window")),
+        Boolean(state.subject && sameKey(s.key, state.subject)))));
+      N.listbox.fill(sessionList, shown().map((s) => {
         const placed = number(s.values.fov_ml) !== null && number(s.values.fov_ap) !== null;
-        return h("li" + (state.session && sameKey(s.key, state.session) ? ".selected" : ""), { dataset: { session: keyText(s.key) },
+        return N.option(h("li" + (state.session && sameKey(s.key, state.session) ? ".selected" : ""), { dataset: { session: keyText(s.key) },
           on: { click: () => { state.session = s.key; state.picked = { kind: "fov", key: s.key }; refresh(); } } },
           h("span.dot." + (placed ? "good" : "warn")),
-          h("div.grow", h("div", keyText(s.key)), h("div.sub.muted", placed ? `${s.values.brain_region || "–"} · AP ${s.values.fov_ap}, ML ${s.values.fov_ml}` : "not placed")));
+          h("div.grow", h("div", keyText(s.key)), h("div.sub.muted", placed ? `${s.values.brain_region || "–"} · AP ${s.values.fov_ap}, ML ${s.values.fov_ml}` : "not placed"))),
+          Boolean(state.session && sameKey(s.key, state.session)));
       }));
       placeFov.disabled = !state.session;
       placeWindow.disabled = !state.subject || !windowType;
@@ -603,7 +621,8 @@ N.registerPage({
       N.fill(markList, listed.length ? listed.map(([kind, m, label]) => h("li", { dataset: { mark: `${kind}-${m.id}` }, title: "Edit",
         on: { click: () => { state.picked = { kind, mark: m }; edit(kind, m); } } },
         kind === "injections" ? h("span.swatch", { style: { background: colourOf(m) } }) : kind === "photos" ? N.icon("image", 12) : h("span.dot.plain"),
-        h("div.grow", h("div", label), h("div.sub.muted", kind === "photos" ? `${m.width} mm wide · opacity ${m.opacity}` + (m.subject ? ` · ${keyText(m.subject)}` : "")
+        // its name is a button: the keyboard's way to edit it (the pointer clicks anywhere on the item, or on the map)
+        h("div.grow", h("button.mark-edit", { title: "Edit (also its place: AP and ML)" }, label), h("div.sub.muted", kind === "photos" ? `${m.width} mm wide · opacity ${m.opacity}` + (m.subject ? ` · ${keyText(m.subject)}` : "")
           : `AP ${m.ap}, ML ${m.ml}` + (number(m.spread) ? ` · spread ${m.spread} µm` : "") + (m.subject ? ` · ${keyText(m.subject)}` : ""))),
         h("button.btn.ghost.icon.small.copy-mark", { title: "Copy (paste it for another subject)", on: { click: (event) => {
           event.stopPropagation();
@@ -761,8 +780,33 @@ N.registerPage({
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     canvas.addEventListener("click", async (event) => {
-      const [ml, ap] = toMm(...pointer(event));
       if (!state.placing && markAt(pointer(event))) return;   // a mark: edited or moved on mouseup
+      clickAt(pointer(event));
+    });
+    // The keyboard (WCAG 2.1.1): with the map focused, the arrow keys move a cursor (0.1 mm; Shift: 0.5 mm) and Enter or
+    // Space does what a click there does: place what is being placed, select the FOV there, or edit the mark there (and
+    // move it: its AP and ML)
+    canvas.addEventListener("keydown", (event) => {
+      const arrows = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (arrows[event.key]) {
+        const step = event.shiftKey ? 0.5 : 0.1;
+        const [ml, ap] = state.cursor || toMm(canvas.width / 2, canvas.height / 2);
+        state.cursor = [round2(ml + arrows[event.key][0] * step), round2(ap + arrows[event.key][1] * step)];
+        canvas.dataset.cursor = state.cursor.join(",");
+        where.textContent = `ML ${state.cursor[0].toFixed(2)} mm, AP ${state.cursor[1].toFixed(2)} mm` +
+          (regionAt(atlas, ...state.cursor) ? ` · ${regionAt(atlas, ...state.cursor)}` : "");
+        draw();
+      } else if ((event.key === "Enter" || event.key === " ") && state.cursor) {
+        const at = toCanvas(...state.cursor);
+        const hit = !state.placing && markAt(at);
+        if (hit) { state.picked = { kind: hit[0], mark: hit[1] }; edit(hit[0], hit[1]); }
+        else clickAt(at);
+      } else return;
+      event.preventDefault();
+    });
+    async function clickAt(point) {
+      const [ml, ap] = toMm(...point);
       try {
         if (state.placing === "fov" && state.session) {
           await place(fovType.name, state.session, { fov_ml: round2(ml), fov_ap: round2(ap) }, (fovType.fragments || []).includes("ophys.fov_region"));
@@ -789,7 +833,7 @@ N.registerPage({
         await load();
         refresh();
       } catch (error) { N.showError(error, "Could not place it"); }
-    });
+    }
 
     await load();
     await loadChoices();
@@ -798,7 +842,7 @@ N.registerPage({
       h("div.hero", h("div", h("h1", "FOV map"),
         h("p", `Cranial windows (${windowType ? N.titleCase(windowType.name) : "no entity type has them"}) and fields of view (${N.titleCase(fovType.name)}) on ${atlas.name}, in mm from bregma.`))),
       h("div.fov-layout",
-        h("div.card.fov-side", h("div.card-head", h("h3", windowType ? N.titleCase(windowType.name) : "Subjects")), subjectList),
+        h("div.card.fov-side", h("div.card-head", h("h2", windowType ? N.titleCase(windowType.name) : "Subjects")), subjectList),
         h("div.card.fov-map",
           h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, addPhoto, h("div.spacer"), copyButton, pasteButton, undoButton, redoButton),
           h("div.fov-bar.fov-view-bar", h("label.fov-labels", labels, "Region labels"), h("label.fov-labels", fineGrid, "Fine grid"), h("label.fov-labels", imageToggle, "FOV images"), imagePick, opacityPick,
@@ -806,8 +850,8 @@ N.registerPage({
             h("div.spacer"), exportButton, svgButton),
           canvas, where),
         h("div.fov-side-column",
-          h("div.card.fov-side", h("div.card-head", h("h3", N.titleCase(fovType.name))), sessionList),
-          h("div.card.fov-side", h("div.card-head", h("h3", "Injections and notes")), markList))));
+          h("div.card.fov-side", h("div.card-head", h("h2", N.titleCase(fovType.name))), sessionList),
+          h("div.card.fov-side", h("div.card-head", h("h2", "Injections and notes")), markList))));
     refresh();
   },
 });
