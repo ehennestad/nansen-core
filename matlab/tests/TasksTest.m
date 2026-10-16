@@ -206,5 +206,73 @@ classdef TasksTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(done.status), "completed");
             testCase.verifyEqual(done.result.count, 2);
         end
+
+        function changesOthersMakeToTheTaskFilesAreReported(testCase)
+            % A worker of the other language or another process writes task files without telling this app: a look
+            % at the folder (pollChanges) reports them as task and removed events, not the changes this queue made
+            store = containers.Map("KeyType", "double", "ValueType", "any");
+            app = nansen.TaskQueue(testCase.Project, OnEvent=@(kind, data) collect(store, kind, data));
+            other = nansen.TaskQueue(testCase.Project);   % another process: its own queue on the same folder, telling no one
+            sessions = testCase.sessions();
+            testCase.verifyEmpty(app.pollChanges());   % the first look takes stock
+            ours = app.submit("core.wait", sessions(1), Options=struct("seconds", 0, "steps", 1));
+            forget(store);
+            testCase.verifyEmpty(app.pollChanges());   % its own change was reported when it made it
+            testCase.verifyEqual(store.Count, 0);
+            theirs = other.submit("core.wait", sessions(1), Options=struct("seconds", 0, "steps", 1));
+            testCase.verifyEqual(app.pollChanges(), string(theirs.id));
+            testCase.verifyEqual(collected(store), "task " + string(theirs.id) + " queued");
+            testCase.verifyEmpty(app.pollChanges());   % once
+            forget(store);
+            other.runNext();   % runs ours, the oldest, writing only to its file
+            testCase.verifyEqual(app.pollChanges(), string(ours.id));
+            got = collected(store);
+            testCase.verifyEqual(got(end), "task " + string(ours.id) + " completed");
+            forget(store);
+            other.remove(string(ours.id));
+            app.remove(string(theirs.id));
+            testCase.verifyEqual(app.pollChanges(), string(ours.id));
+            testCase.verifyEqual(collected(store), ["removed " + string(theirs.id), "removed " + string(ours.id)]);
+        end
+
+        function aWatchedFolderReportsChangesOnItsOwn(testCase)
+            % watch(): a timer looks at the folder while MATLAB is free; the app (nansen.Api.watch) turns it on
+            store = containers.Map("KeyType", "double", "ValueType", "any");
+            api = nansen.Api(Project=testCase.Project);
+            api.subscribe(@(message) collect(store, string(message.event), message.data));
+            api.watch(true);
+            stopper = onCleanup(@() delete(api));   % stops the timer
+            testCase.verifyTrue(api.Queue.isWatching());
+            task = nansen.TaskQueue(testCase.Project).submit("core.wait", testCase.sessions(), Options=struct("seconds", 0));
+            deadline = tic;
+            while ~any(collected(store) == "task " + string(task.id) + " queued") && toc(deadline) < 10
+                pause(0.1);   % the timer runs while MATLAB waits
+            end
+            testCase.verifyTrue(any(collected(store) == "task " + string(task.id) + " queued"));
+            api.watch(false);
+            testCase.verifyFalse(api.Queue.isWatching());
+        end
+    end
+end
+
+function collect(store, kind, data)
+    % an event, as "<kind> <task id>[ <status>]"
+    text = string(kind) + " " + string(data.id);
+    if isfield(data, "status")
+        text = text + " " + string(data.status);
+    end
+    store(store.Count + 1) = text;
+end
+
+function list = collected(store)
+    list = strings(1, 0);
+    for i = 1:store.Count
+        list(end + 1) = store(i); %#ok<AGROW>
+    end
+end
+
+function forget(store)
+    if store.Count
+        remove(store, num2cell(1:store.Count));
     end
 end

@@ -700,6 +700,32 @@ def test_hold_reorder_and_change_queued_tasks(empty_app, page):
     page.wait_for_selector(f".task[data-id='{ids[0]}'] .hold")
 
 
+def test_the_tasks_page_follows_task_files_changed_on_disk_without_polling(empty_app, page):
+    """A worker of the other language, or another process, writes task files without telling this app: the server
+    watches the tasks folder and sends task and removed events, so the page shows the change and makes no requests of
+    its own while nothing happens, also with a task queued."""
+    from nansen.tasks import TaskQueue
+
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    other = TaskQueue(api.project)   # another process's queue on the same folder, telling no one
+    sessions = api.project.entities("session")
+    first = other.submit("core.wait", sessions[:1], {"seconds": 0, "steps": 1, "message": "first"})
+    page.goto(empty_app["server"].url + "#/tasks")
+    page.wait_for_selector(f".task[data-id='{first['id']}']")
+    requests = []
+    page.on("request", lambda request: requests.append(request.url) if request.url.endswith("/api") else None)
+    page.wait_for_timeout(3000)   # a task queued: the page used to ask every 1.5 s
+    assert requests == []
+    second = other.submit("core.wait", sessions[1:2], {"seconds": 0, "steps": 1, "message": "second"})
+    page.wait_for_selector(f".task[data-id='{second['id']}']:has-text('queued')", timeout=5000)
+    other.run_next()   # the other worker runs the first: running and completed, written to its file only
+    page.wait_for_selector(f".task[data-id='{first['id']}'] .pill:has-text('completed')", timeout=5000)
+    other.remove(first["id"])
+    page.wait_for_selector(f".task[data-id='{first['id']}']", state="detached", timeout=5000)
+    assert page.locator(".nav a:has-text('Tasks') .count").inner_text() == "1"   # the second, still queued
+
+
 def test_browse_an_entitys_files(empty_app, page):
     api = empty_app["api"]
     from pathlib import Path

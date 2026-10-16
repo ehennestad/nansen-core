@@ -35,6 +35,9 @@ classdef Api < handle
     properties (Access = private)
         Methods
         Listeners (1,:) cell = {}
+        % Whether the project's task folder is watched for changes others make (TaskQueue.watch), so they reach the
+        % listeners as task events: on while the app shows the dashboard (watch), so its Tasks page need not poll
+        WatchTasks (1,1) logical = false
     end
 
     methods
@@ -73,6 +76,23 @@ classdef Api < handle
         function delete(obj)
             if ~isempty(obj.Queue)
                 obj.Queue.stop();
+                obj.Queue.unwatch();
+            end
+        end
+
+        function watch(obj, on)
+            %watch Watch the task folder of the project open now and of those opened later, or stop
+            arguments
+                obj
+                on (1,1) logical = true
+            end
+            obj.WatchTasks = on;
+            if ~isempty(obj.Queue)
+                if on
+                    obj.Queue.watch();
+                else
+                    obj.Queue.unwatch();
+                end
             end
         end
 
@@ -2478,6 +2498,7 @@ classdef Api < handle
         function setProject(obj, project)
             if ~isempty(obj.Queue)
                 obj.Queue.stop();
+                obj.Queue.unwatch();
             end
             obj.Project = project;
             worker = "thread";   % the user's setting (queue.worker) when there is a catalog
@@ -2490,6 +2511,9 @@ classdef Api < handle
             end
             if obj.StartQueue
                 obj.Queue.start();
+            end
+            if obj.WatchTasks
+                obj.Queue.watch();
             end
         end
 

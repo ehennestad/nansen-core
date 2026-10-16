@@ -45,6 +45,8 @@ class AppServer(ThreadingHTTPServer):
         self.token = secrets.token_urlsafe(24)
         super().__init__(address, _Handler)
         api.app_url = self.url   # for methods that open one of the dashboard's pages (ophys.open_in_imviewer)
+        # task files written by a worker of the other language or another process reach the page as task events
+        api.watch(True)
 
     @property
     def url(self) -> str:
@@ -53,6 +55,7 @@ class AppServer(ThreadingHTTPServer):
 
     def shutdown(self) -> None:
         self.closing.set()
+        self.api.watch(False)
         super().shutdown()
 
     def handle_error(self, request, client_address) -> None:

@@ -16,6 +16,7 @@
     viewables: [],   // what `nansen view` or nansen.view was given to view without a project (view.list)
     reloadEntities: null,
     onTaskEvent: null,
+    onTaskRemoved: null,
     onLogEvent: null,
     onNotesEvent: null,
     onDrawerNotesEvent: null,
@@ -48,7 +49,7 @@
       }
       await N.loadTableDefaults(this.client);
       this.client.on("task", (task) => this.taskEvent(task));
-      this.client.on("removed", () => this.refreshTaskCount());
+      this.client.on("removed", (data) => { if (this.onTaskRemoved) this.onTaskRemoved(data); this.refreshTaskCount(); });
       this.client.on("log", (event) => this.onLogEvent && this.onLogEvent(event));
       this.client.on("entities", (data) => this.entitiesEvent(data));
       this.client.on("pipelines", () => this.onPipelinesEvent && this.onPipelinesEvent());
@@ -294,9 +295,8 @@
       this.reloadEntities = null;
       clearTimeout(this.entitiesTimer);
       if (this.shellEl) this.shellEl.classList.remove("nav-open");
-      clearInterval(this.viewTimer);
-      this.viewTimer = null;
       this.onTaskEvent = null;
+      this.onTaskRemoved = null;
       this.onLogEvent = null;
       this.onNotesEvent = null;
       this.onPipelinesEvent = null;

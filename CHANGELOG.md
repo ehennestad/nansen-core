@@ -163,6 +163,7 @@ The first release covers every step of the plan in [docs/architecture.md](docs/a
 - The viewer's filters are dev's imviewer Filter Images list (`stack.process.filter2`) besides smooth and gradient: `gauss2d` (σ 0.5), `gaussian` (dev's gauss2dtest, σ 1), `absGradient` (dev's absgradient, saturated and stretched as imadjustn) and `clahe`, written out in both languages with the same results (conformance `view` #43-48).
 - The FOV map copies and pastes its objects, as fovmanager's Copy and Paste (Ctrl+C, Ctrl+V): an FOV's place onto the selected session, a window onto the selected subject, an injection or a note as a new one of the selected subject, saved and undone as the others are; and shows a fine grid (a line every 0.2 mm), as its Show Fine Grid.
 - In a table, `w` sends the selected rows to the workspace, as dev's key; the page's keys also work with the focus on a row's tick box. A page that takes a while to load its data shows a loading bar and marks the page shown busy.
+- The Tasks page no longer polls: the app that serves the dashboard (Python's server, MATLAB's `nansen.App`) watches the project's tasks folder (`TaskQueue.watch`, `poll_changes` / `pollChanges`: a stat of the task files every 0.5 s, reading only those that changed) and sends `task` and `removed` events for the task files a worker of the other language, a headless worker, MATLAB's background worker or another process wrote; so MATLAB's background tasks now show their progress as they run.
 
 **Import**
 

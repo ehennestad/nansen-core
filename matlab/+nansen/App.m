@@ -8,7 +8,9 @@ classdef App < handle
 %   (nansen.view does this). The frontend sends
 %   requests with sendEventToMATLAB("request", json); the app answers with
 %   sendEventToHTMLSource(..., "response", json) and pushes core events as
-%   "event". Tasks run on backgroundPool, polled by a timer. Needs R2023a+.
+%   "event". Tasks run on backgroundPool, polled by a timer; the tasks
+%   folder is watched on another (TaskQueue.watch), so task files written
+%   by the worker or by Python arrive as task events. Needs R2023a+.
 
     properties (SetAccess = private)
         Figure
@@ -41,6 +43,8 @@ classdef App < handle
                 options.StartQueue = settings.queue.autoStart;
             end
             obj.Api.StartQueue = logical(options.StartQueue);   % also for projects opened later from the dashboard
+            % task files that the background worker, a Python worker or another process writes reach the page as events
+            obj.Api.watch(true);
             if ~isempty(options.Project)
                 folder = options.Project;
                 if isa(folder, "nansen.Project")

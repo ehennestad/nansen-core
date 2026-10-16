@@ -1486,7 +1486,7 @@
     const detailEl = h("div");
     const queueControls = h("div", { style: { display: "flex", gap: "8px", alignItems: "center" } });
 
-    // A list or an event can be older than what the view already shows (a poll answered just before a task
+    // A list or an event can be older than what the view already shows (a list answered just before a task
     // finished), so a task only moves forward: queued, running, then finished, with progress only growing.
     const stage = (task) => ({ queued: 0, running: 1 }[task.status] ?? 2);
     function newer(incoming, shown) {
@@ -1676,10 +1676,13 @@
       if (index >= 0) tasks[index] = newer(task, tasks[index]); else tasks.push(task);
       render();
     };
-    // Events can pass while the view loads; the task files are the truth, so poll while tasks are active.
-    app.viewTimer = setInterval(() => {
-      if (tasks.some((t) => t.status === "queued" || t.status === "running")) load();
-    }, 1500);
+    app.onTaskRemoved = ({ id }) => {
+      tasks = tasks.filter((t) => t.id !== id);
+      if (selectedId === id) selectedId = null;
+      render();
+    };
+    // No polling: the backend watches the tasks folder, so a task file another worker or process writes (the other
+    // language's worker, nansen worker) arrives as a task event as this app's own changes do
     app.onLogEvent = (event) => {
       if (event.id === selectedId) {
         const log = document.getElementById("task-log");

@@ -12,6 +12,12 @@ classdef TaskQueue < handle
 %   backgroundPool, "process" a process pool of the Parallel Computing
 %   Toolbox (the current one, or a new one), for methods that cannot run on
 %   a thread, as dev ran tasks.
+%
+%   A worker of the other language, the background worker or another
+%   process writes task files without telling this app, so an app that
+%   shows the queue watches the folder: watch() looks at it on a timer
+%   (pollChanges) and reports what changed there to OnEvent as task and
+%   removed events, until unwatch().
 
     properties
         OnEvent = []
@@ -28,6 +34,13 @@ classdef TaskQueue < handle
         Future = []
         FutureTaskId (1,1) string = ""
         LastCreated = datetime.empty   % creation times this queue gives out only grow, so tasks keep the order they were queued in
+        % Watching the folder (watch, pollChanges): whether it was looked at yet, each task file's date and size at
+        % the last look, its text when it was last read, the tasks this queue removed since, and the timer that looks
+        Looked (1,1) logical = false
+        Seen = []
+        Texts = []
+        Removed (1,:) string = strings(1, 0)
+        WatchTimer = []
     end
 
     methods
@@ -45,6 +58,7 @@ classdef TaskQueue < handle
 
         function delete(obj)
             obj.stop();
+            obj.unwatch();
         end
 
         % -- documents --------------------------------------------------------------------
@@ -130,6 +144,7 @@ classdef TaskQueue < handle
             temporary = path + "." + string(suffix) + ".tmp";
             nansen.internal.writeJson(temporary, task)
             movefile(temporary, path, "f");
+            obj.remember(string(task.id));
             obj.emit("task", task)
         end
 
@@ -427,6 +442,7 @@ classdef TaskQueue < handle
                 end
             end
             obj.release(taskId);
+            obj.Removed(end + 1) = string(taskId);   % reported now, so not again at the next look at the folder
             obj.emit("removed", struct("id", char(taskId)))
         end
 
@@ -573,9 +589,139 @@ classdef TaskQueue < handle
         function tf = isRunning(obj)
             tf = ~isempty(obj.Timer) && isvalid(obj.Timer) && string(obj.Timer.Running) == "on";
         end
+
+        % -- watching the folder ----------------------------------------------------------
+
+        function changed = pollChanges(obj)
+            %pollChanges Report the task files changed by others since the last look
+            %
+            %   A worker of the other language, the background worker (backgroundPool or a process pool) or
+            %   another process writes task files without telling this app. Emits a task event for each task
+            %   file that is new or changed, and removed for each one gone; returns their ids. The first look
+            %   only takes stock. A file is read only when its date or size changed, or when it changed within
+            %   the last two seconds, finer than some file systems keep the date.
+            changed = strings(1, 0);
+            listing = [];
+            if isfolder(obj.Folder)
+                listing = dir(fullfile(obj.Folder, "*.task.nansen.json"));
+            end
+            current = containers.Map("KeyType", "char", "ValueType", "char");
+            for i = 1:numel(listing)
+                current(char(extractBefore(string(listing(i).name), ".task.nansen.json"))) = nansen.TaskQueue.signature(listing(i));
+            end
+            if ~obj.Looked
+                obj.Looked = true;
+                obj.Seen = current;
+                obj.Texts = containers.Map("KeyType", "char", "ValueType", "char");
+                obj.Removed = strings(1, 0);
+                return
+            end
+            for i = 1:numel(listing)
+                id = char(extractBefore(string(listing(i).name), ".task.nansen.json"));
+                path = fullfile(obj.Folder, listing(i).name);
+                same = isKey(obj.Seen, id) && strcmp(obj.Seen(id), current(id));
+                recent = (now - listing(i).datenum) * 86400 < 2;
+                if same && ~recent
+                    continue
+                end
+                try
+                    text = char(nansen.internal.readText(path));
+                catch
+                    text = '';   % removed meanwhile
+                end
+                if isKey(obj.Texts, id) && strcmp(obj.Texts(id), text)
+                    continue   % as reported last
+                end
+                if same && ~isKey(obj.Texts, id)
+                    obj.Texts(id) = text;   % as it was at the first look
+                    continue
+                end
+                task = nansen.TaskQueue.readTask(path);
+                if isempty(task)   % being replaced, or broken: looked at again next time
+                    if isKey(obj.Seen, id)
+                        current(id) = obj.Seen(id);
+                    else
+                        remove(current, id);
+                    end
+                    continue
+                end
+                try
+                    text = char(nansen.internal.readText(path));   % as read now, whole
+                catch   % removed meanwhile: the text read before
+                end
+                obj.Texts(id) = text;
+                obj.emit("task", task)
+                changed(end + 1) = string(id); %#ok<AGROW>
+            end
+            for id = reshape(string(keys(obj.Seen)), 1, [])
+                if isKey(current, char(id))
+                    continue
+                end
+                if ~ismember(id, obj.Removed)   % this queue's own removal was reported when it made it
+                    obj.emit("removed", struct("id", char(id)))
+                    changed(end + 1) = id; %#ok<AGROW>
+                end
+                if isKey(obj.Texts, char(id))
+                    remove(obj.Texts, char(id));
+                end
+            end
+            obj.Removed = strings(1, 0);
+            obj.Seen = current;
+        end
+
+        function watch(obj, period)
+            %watch Look at the task files every period seconds (pollChanges) on a timer, until unwatch()
+            %
+            %   What others change there reaches OnEvent as this queue's own changes do. A look is a dir of
+            %   the folder; a file is read only when it changed.
+            arguments
+                obj
+                period (1,1) double = 0.5
+            end
+            if obj.isWatching()
+                return
+            end
+            obj.pollChanges();   % take stock now: changes from here on are reported
+            obj.WatchTimer = timer(ExecutionMode="fixedSpacing", Period=period, BusyMode="drop", ...
+                TimerFcn=@(~, ~) obj.lookQuietly(), Name="nansen-task-watch");
+            start(obj.WatchTimer);
+        end
+
+        function unwatch(obj)
+            if ~isempty(obj.WatchTimer) && isvalid(obj.WatchTimer)
+                stop(obj.WatchTimer);
+                delete(obj.WatchTimer);
+            end
+            obj.WatchTimer = [];
+        end
+
+        function tf = isWatching(obj)
+            tf = ~isempty(obj.WatchTimer) && isvalid(obj.WatchTimer) && string(obj.WatchTimer.Running) == "on";
+        end
     end
 
     methods (Access = private)
+        function lookQuietly(obj)
+            try
+                obj.pollChanges();
+            catch
+                % the folder unreadable for a moment; looked at again next time
+            end
+        end
+
+        function remember(obj, taskId)
+            %remember This queue's own change of a task file, reported as it is made: not again at the next look
+            if ~obj.Looked
+                return
+            end
+            info = dir(obj.path(taskId));
+            if isempty(info)
+                return
+            end
+            obj.Seen(char(taskId)) = nansen.TaskQueue.signature(info);
+            obj.Texts(char(taskId)) = char(nansen.internal.readText(obj.path(taskId)));
+        end
+
         function poll(obj)
             if ~isempty(obj.Future)
                 if ~ismember(string(obj.Future.State), ["finished", "failed"])
@@ -643,6 +789,11 @@ classdef TaskQueue < handle
                 end
                 pause(0.02);
             end
+        end
+
+        function text = signature(info)
+            %signature A file's date and size, as dir gives them: what a look at the folder compares
+            text = sprintf('%.17g|%d', info.datenum, info.bytes);
         end
 
         function tf = hasProcessPools()

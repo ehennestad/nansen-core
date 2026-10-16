@@ -48,6 +48,8 @@ Events flow from the core to the frontend:
 | `log` | A running task logged a line | `{id, line}` |
 | `moduleData` | A module's data was saved | `{module, name, revision}` |
 
+`task` and `removed` also come for changes this app did not make: a worker of the other language, a headless worker (`nansen worker`, `nansen.worker`), MATLAB's background worker or another process writes task files without telling the app, so the app that serves the dashboard watches the project's `tasks` folder (Python's server and MATLAB's `nansen.App`; `TaskQueue.watch`, `TaskQueue.pollChanges`). Every 0.5 s it compares each task file's date and size (and in Python its inode) with the last look, reads only the files that changed, and sends `task` with the document when it differs from the one last sent, or `removed` for a file that is gone. The dashboard does not poll.
+
 ## Transports
 
 - **HTTP (Python).** `POST /api` takes a request and returns the response. `GET /events` is a Server-Sent Events stream of events. Static files are served from `ui/`. The server listens on this machine only and answers only the page it served: it writes a random token into the `index.html` it serves (`<meta name="nansen-token">`), and `POST /api` needs it in an `X-Nansen-Token` header, `GET /events` as `?token=`. Requests whose `Host` is not this machine (DNS rebinding) or whose `Origin` is another site get 403, so another web page open in the browser cannot drive the app.

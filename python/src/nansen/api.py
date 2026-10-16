@@ -173,6 +173,9 @@ class Api:
         # how queued tasks run: "thread" or "process"; without one given, the user's setting (queue.worker)
         self.executor = executor or (catalog.settings()["queue"]["worker"] if catalog is not None else "thread")
         self.start_queue = start_queue
+        # Whether the project's task folder is watched for changes others make (TaskQueue.watch), so they reach the
+        # listeners as task events: on while a dashboard is served (serve turns it on), so its Tasks page need not poll
+        self.watch_tasks = False
         self._listeners: List[Listener] = []
         # Opens a folder in the system's file browser; tests put their own here
         self.open_folder: Callable[[Path], None] = open_in_file_browser
@@ -239,9 +242,19 @@ class Api:
             except Exception:  # a broken listener must not stop the others
                 pass
 
+    def watch(self, on: bool = True) -> None:
+        """Watch the task folder of the project open now and of those opened later (watch_tasks), or stop."""
+        self.watch_tasks = on
+        if self.queue is not None:
+            if on:
+                self.queue.watch()
+            else:
+                self.queue.unwatch(timeout=5)
+
     def close(self) -> None:
         if self.queue is not None:
             self.queue.stop(timeout=5)
+            self.queue.unwatch(timeout=5)
 
     # -- helpers ---------------------------------------------------------------------------------
 
@@ -253,11 +266,14 @@ class Api:
     def _set_project(self, project: Project) -> None:
         if self.queue is not None:
             self.queue.stop(timeout=5)
+            self.queue.unwatch(timeout=5)
         self.project = project
         self.queue = TaskQueue(project, executor=self.executor,
                                on_event=lambda kind, data: self.emit(kind, data))
         if self.start_queue:
             self.queue.start()
+        if self.watch_tasks:
+            self.queue.watch()
         if self.catalog is not None:
             self.catalog.add(project)
 
