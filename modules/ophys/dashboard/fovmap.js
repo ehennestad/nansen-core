@@ -6,6 +6,9 @@
  * and notes on the map are the module's data (modules.data, modules.saveData), in the project's module-data folder:
  * an injection has what was injected, its depth (µm), volume (nL), spread (µm, drawn as a circle) and a colour. Marks
  * are edited by clicking them (on the map or in the list) and moved by dragging them; the map can be saved as PNG.
+ * fovmanager's Copy and Paste (Ctrl+C, Ctrl+V): the FOV, window or mark picked last is copied, and pasted as the selected
+ * session's FOV, the selected subject's window, or a new mark of the selected subject at the same place; its Show Fine
+ * Grid draws a line every 0.2 mm, stronger at whole millimetres.
  */
 "use strict";
 const { h } = N;
@@ -268,7 +271,8 @@ N.registerPage({
       return;
     }
     const atlas = await loadAtlas(app);
-    const state = { subject: null, session: null, placing: null, labels: true, hover: null, images: false, imageVariable: "", opacity: 0.8, rois: false, roiVariable: "" };
+    const state = { subject: null, session: null, placing: null, labels: true, hover: null, images: false, imageVariable: "", opacity: 0.8, rois: false, roiVariable: "",
+      fineGrid: false, picked: null, copied: null };   // picked: what Copy copies ({kind, key} or {kind, mark}); copied: {kind, values}
     const imageCache = new Map();   // FOV images and window photos, by what they were read from: a canvas, or null when unreadable
     const history = [], future = [];   // undo and redo: {undo, redo} of changes to the marks and to placements
     let sessions = [];
@@ -412,6 +416,10 @@ N.registerPage({
     const placeNote = h("button.btn.small.place-note", { on: { click: () => setPlacing("note") } }, N.icon("note", 13), "Add note");
     const markList = h("ul.fov-list.fov-marks");
     const labels = h("input", { type: "checkbox", checked: true, on: { change: () => { state.labels = labels.checked; draw(); } } });
+    const fineGrid = h("input.fov-fine-grid", { type: "checkbox", on: { change: () => { state.fineGrid = fineGrid.checked; draw(); } } });
+    const copyButton = h("button.btn.ghost.icon.small.fov-copy", { title: "Copy the FOV, window or mark picked last (Ctrl+C)", on: { click: () => copy() } }, N.icon("copy", 14));
+    const pasteButton = h("button.btn.ghost.small.fov-paste", { title: "Paste: the selected session's FOV, the selected subject's window, or a new mark of the selected subject (Ctrl+V)",
+      disabled: true, on: { click: () => paste() } }, "Paste");
     const exportButton = h("button.btn.ghost.icon.small.fov-export", { title: "Save the map as PNG", on: { click: () => saveMap() } }, N.icon("download", 14));
     const svgButton = h("button.btn.ghost.small.fov-export-svg", { title: "Save the map as SVG (vectors, for figures)", on: { click: () => saveSvg() } }, "SVG");
     const undoButton = h("button.btn.ghost.icon.small.fov-undo", { title: "Undo (Ctrl+Z)", on: { click: () => step(history, future, "undo") } }, N.icon("undo", 14));
@@ -449,6 +457,23 @@ N.registerPage({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(atlasImage(atlas), 0, 0, canvas.width, canvas.height);
+      let gridLines = 0;
+      if (state.fineGrid) {   // fovmanager's Show Fine Grid: a line every 0.2 mm, stronger at whole millimetres
+        const [left, top] = toMm(0, 0), [right, bottom] = toMm(canvas.width, canvas.height);
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        for (const across of [true, false]) {
+          const [low, high] = across ? [left, right] : [bottom, top];
+          for (let k = Math.ceil(low * 5); k <= Math.floor(high * 5); k++) {
+            ctx.strokeStyle = k % 5 === 0 ? "rgba(20, 24, 33, 0.35)" : "rgba(20, 24, 33, 0.12)";
+            ctx.beginPath();
+            if (across) { const [x] = toCanvas(k / 5, 0); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+            else { const [, y] = toCanvas(0, k / 5); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+            ctx.stroke();
+            gridLines++;
+          }
+        }
+      }
       ctx.font = "11px system-ui, sans-serif";
       ctx.textAlign = "center";
       if (state.labels) {
@@ -549,6 +574,7 @@ N.registerPage({
       });
       if (ctx === canvas.getContext("2d")) {
         canvas.dataset.images = String(drawnImages); canvas.dataset.photos = String(drawnPhotos); canvas.dataset.rois = String(drawnRois);
+        canvas.dataset.gridLines = String(gridLines);
       }
     }
 
@@ -556,13 +582,13 @@ N.registerPage({
       N.fill(subjectList, h("li" + (!state.subject ? ".selected" : ""), { on: { click: () => { state.subject = null; refresh(); } } },
         h("span.grow", "All"), h("span.muted", String(sessions.length))),
       subjects.map((s) => h("li" + (state.subject && sameKey(s.key, state.subject) ? ".selected" : ""), { dataset: { subject: keyText(s.key) },
-        on: { click: () => { state.subject = s.key; state.session = null; refresh(); } } },
+        on: { click: () => { state.subject = s.key; state.session = null; state.picked = { kind: "window", key: s.key }; refresh(); } } },
         h("span.grow", keyText(s.key)),
         number(s.values.window_ml) === null ? h("span.muted", "no window") : h("span.pill.plain", s.values.window_shape || "window"))));
       N.fill(sessionList, shown().map((s) => {
         const placed = number(s.values.fov_ml) !== null && number(s.values.fov_ap) !== null;
         return h("li" + (state.session && sameKey(s.key, state.session) ? ".selected" : ""), { dataset: { session: keyText(s.key) },
-          on: { click: () => { state.session = s.key; refresh(); } } },
+          on: { click: () => { state.session = s.key; state.picked = { kind: "fov", key: s.key }; refresh(); } } },
           h("span.dot." + (placed ? "good" : "warn")),
           h("div.grow", h("div", keyText(s.key)), h("div.sub.muted", placed ? `${s.values.brain_region || "–"} · AP ${s.values.fov_ap}, ML ${s.values.fov_ml}` : "not placed")));
       }));
@@ -575,10 +601,15 @@ N.registerPage({
         ...marks.notes.filter(ofSubject).map((m) => ["notes", m, m.text]),
         ...marks.photos.filter(ofSubject).map((m) => ["photos", m, `Photo: ${m.path.split("/").pop()}`])];
       N.fill(markList, listed.length ? listed.map(([kind, m, label]) => h("li", { dataset: { mark: `${kind}-${m.id}` }, title: "Edit",
-        on: { click: () => edit(kind, m) } },
+        on: { click: () => { state.picked = { kind, mark: m }; edit(kind, m); } } },
         kind === "injections" ? h("span.swatch", { style: { background: colourOf(m) } }) : kind === "photos" ? N.icon("image", 12) : h("span.dot.plain"),
         h("div.grow", h("div", label), h("div.sub.muted", kind === "photos" ? `${m.width} mm wide · opacity ${m.opacity}` + (m.subject ? ` · ${keyText(m.subject)}` : "")
           : `AP ${m.ap}, ML ${m.ml}` + (number(m.spread) ? ` · spread ${m.spread} µm` : "") + (m.subject ? ` · ${keyText(m.subject)}` : ""))),
+        h("button.btn.ghost.icon.small.copy-mark", { title: "Copy (paste it for another subject)", on: { click: (event) => {
+          event.stopPropagation();
+          state.picked = { kind, mark: m };
+          copy();
+        } } }, N.icon("copy", 12)),
         h("button.btn.ghost.icon.small.remove-mark", { title: "Remove", on: { click: async (event) => {
           event.stopPropagation();
           try { await changeMarks((all) => { all[kind] = all[kind].filter((x) => x.id !== m.id); }); refresh(); }
@@ -587,6 +618,46 @@ N.registerPage({
     }
 
     function refresh() { renderLists(); draw(); }
+
+    // fovmanager's Copy and Paste: what is copied is kept as values, pasted onto what is selected then, undoably
+    const PLACEMENT = { fov: ["fov_ml", "fov_ap", "fov_width_um", "fov_height_um"], window: ["window_ml", "window_ap", "window_shape", "window_rotation"] };
+    function copy() {
+      const picked = state.picked;
+      if (!picked) { N.toast("Nothing to copy", "Pick an FOV, a window or a mark first"); return; }
+      let values = null, label = "";
+      if (picked.kind === "fov" || picked.kind === "window") {
+        const row = (picked.kind === "fov" ? sessions : subjects).find((r) => sameKey(r.key, picked.key));
+        values = row && Object.fromEntries(PLACEMENT[picked.kind].filter((c) => row.values[c] !== undefined && row.values[c] !== null).map((c) => [c, row.values[c]]));
+        if (!values || number(values[`${picked.kind}_ml`]) === null) { N.toast("Not placed", `${keyText(picked.key)} has no ${picked.kind === "fov" ? "FOV" : "window"} on the map`, "error"); return; }
+        label = `${picked.kind === "fov" ? "FOV" : "Window"} of ${keyText(picked.key)}`;
+      } else {
+        const { id, subject, ...rest } = picked.mark;   // eslint-disable-line no-unused-vars
+        values = JSON.parse(JSON.stringify(rest));
+        label = picked.kind === "injections" ? injectionText(picked.mark) : picked.mark.text;
+      }
+      state.copied = { kind: picked.kind, values, label };
+      pasteButton.disabled = false;
+      N.toast("Copied", label, "success", 2000);
+    }
+    async function paste() {
+      const copied = state.copied;
+      if (!copied) return;
+      try {
+        if (copied.kind === "fov") {
+          if (!state.session) { N.toast("Select a session", "The copied FOV is pasted as the selected session's", "error"); return; }
+          await place(fovType.name, state.session, copied.values, (fovType.fragments || []).includes("ophys.fov_region"));
+        } else if (copied.kind === "window") {
+          if (!state.subject || !windowType) { N.toast("Select a subject", "The copied window is pasted as the selected subject's", "error"); return; }
+          await place(windowType.name, state.subject, copied.values, false);
+        } else {
+          if (copied.kind === "injections" && !state.subject) { N.toast("Select a subject", "The copied injection is pasted for the selected subject", "error"); return; }
+          await changeMarks((all) => { all[copied.kind].push({ id: nextId(all[copied.kind]), subject: state.subject, ...JSON.parse(JSON.stringify(copied.values)) }); });
+        }
+        await load();
+        refresh();
+        N.toast("Pasted", copied.label, "success", 2000);
+      } catch (error) { N.showError(error, "Could not paste it"); }
+    }
 
     // Marks: where one is drawn (while it is dragged, where it is dragged to), which is under the pointer
     let drag = null;
@@ -658,10 +729,14 @@ N.registerPage({
       return true;
     };
     const onKey = (event) => {
-      if (gone() || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z" || document.querySelector(".dialog")) return;
+      const key = event.key.toLowerCase();
+      if (gone() || !(event.ctrlKey || event.metaKey) || !["z", "c", "v"].includes(key) || document.querySelector(".dialog")) return;
       if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+      if (key === "c" && String(window.getSelection() || "")) return;   // text selected: copied as text
       event.preventDefault();
-      if (event.shiftKey) step(future, history, "redo"); else step(history, future, "undo");
+      if (key === "c") copy();
+      else if (key === "v") paste();
+      else if (event.shiftKey) step(future, history, "redo"); else step(history, future, "undo");
     };
     document.addEventListener("keydown", onKey);
     const onMove = (event) => {
@@ -675,7 +750,7 @@ N.registerPage({
       const done = drag;
       if (gone() || !done) return;
       canvas.classList.remove("dragging");
-      if (!done.moved) { drag = null; edit(done.kind, done.mark); return; }
+      if (!done.moved) { drag = null; state.picked = { kind: done.kind, mark: done.mark }; edit(done.kind, done.mark); return; }
       const [ml, ap] = toMm(...done.at);
       try {
         await changeMarks((all) => { const m = all[done.kind].find((x) => x.id === done.mark.id); if (m) { m.ml = round2(ml); m.ap = round2(ap); } });
@@ -725,8 +800,8 @@ N.registerPage({
       h("div.fov-layout",
         h("div.card.fov-side", h("div.card-head", h("h3", windowType ? N.titleCase(windowType.name) : "Subjects")), subjectList),
         h("div.card.fov-map",
-          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, addPhoto, h("div.spacer"), undoButton, redoButton),
-          h("div.fov-bar.fov-view-bar", h("label.fov-labels", labels, "Region labels"), h("label.fov-labels", imageToggle, "FOV images"), imagePick, opacityPick,
+          h("div.fov-bar", placeFov, placeWindow, placeInjection, placeNote, addPhoto, h("div.spacer"), copyButton, pasteButton, undoButton, redoButton),
+          h("div.fov-bar.fov-view-bar", h("label.fov-labels", labels, "Region labels"), h("label.fov-labels", fineGrid, "Fine grid"), h("label.fov-labels", imageToggle, "FOV images"), imagePick, opacityPick,
             h("label.fov-labels", { title: "Each FOV's ROIs in its place: accepted green, rejected red" }, roiToggle, "ROIs"),
             h("div.spacer"), exportButton, svgButton),
           canvas, where),

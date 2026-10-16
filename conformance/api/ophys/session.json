@@ -14674,6 +14674,81 @@
       "expect": {
         "error": "invalid-data"
       }
+    },
+    {
+      "request": {
+        "method": "entities.update",
+        "id": 9801,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "values": {
+            "frame_rate": 12.5,
+            "pixel_size_um": 2.25,
+            "z_step_um": 3
+          }
+        }
+      },
+      "expect": {
+        "result": {}
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9802,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Corrected",
+          "frame": 0
+        }
+      },
+      "expect": {
+        "result": {
+          "metadata": {
+            "frameRate": 12.5,
+            "pixelSize": [
+              2.25,
+              2.25
+            ],
+            "zStep": 3
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "data.frame",
+        "id": 9803,
+        "params": {
+          "entityType": "session",
+          "key": {
+            "subject_id": "m1",
+            "session_id": "s1"
+          },
+          "variable": "TwoPhotonSeries_Original",
+          "frame": 0
+        }
+      },
+      "expect": {
+        "result": {
+          "metadata": {
+            "frameRate": 30.9,
+            "pixelSize": [
+              16.0,
+              12.0
+            ],
+            "zStep": 3
+          }
+        }
+      }
     }
   ]
 }

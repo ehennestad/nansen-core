@@ -381,6 +381,119 @@ def test_any_file_goes_to_the_workspace(tmp_path):
         api.close()
 
 
+def test_the_working_folder_changes_and_figures_close(tmp_path, monkeypatch):
+    """dev's Change Current Folder, its file viewer's Make Current Folder, and Close All Figures."""
+    import sys
+    import types
+    from nansen.demo import create_demo
+    from nansen.server import open_app
+
+    project = create_demo(tmp_path / "demo")
+    api = Api(project=project, start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    try:
+        assert call("app.info")["result"]["changeFolder"] is False   # served on its own: no one's folder to change
+        assert call("app.changeFolder")["error"]["code"] == "no-workspace"
+        folders = []
+        api.change_folder = folders.append
+        assert call("app.info")["result"]["changeFolder"] is True
+        assert call("app.changeFolder")["result"]["path"] == str(project.folder.resolve())
+        assert call("app.changeFolder", path="tables")["result"]["path"] == str((project.folder / "tables").resolve())
+        assert folders == [project.folder.resolve(), (project.folder / "tables").resolve()]
+        assert call("app.changeFolder", path="project.nansen.json")["error"]["code"] == "invalid-params"
+        assert call("app.changeFolder", path="no/such")["error"]["code"] == "file-not-found"
+        assert call("app.changeFolder", path="../..")["error"]["code"] == "invalid-params"
+
+        # matplotlib's figures, when pyplot is imported (a stand-in here)
+        monkeypatch.delitem(sys.modules, "matplotlib.pyplot", raising=False)
+        assert call("app.closeFigures")["result"] == {"closed": 0}
+        figures = [1, 2]
+        pyplot = types.SimpleNamespace(get_fignums=lambda: list(figures), close=lambda which: figures.clear() if which == "all" else None)
+        monkeypatch.setitem(sys.modules, "matplotlib.pyplot", pyplot)
+        assert call("app.closeFigures")["result"] == {"closed": 2}
+        assert figures == [] and call("app.closeFigures")["result"] == {"closed": 0}
+    finally:
+        api.close()
+
+    # opened from a Python session, the app changes that session's working folder
+    monkeypatch.chdir(tmp_path)
+    server = open_app(project, catalog=Catalog(tmp_path / "catalog.json"), open_browser=False)
+    try:
+        assert server.api.handle({"id": 1, "method": "app.changeFolder", "params": {"path": "tables"}})["result"]
+        assert Path.cwd() == (project.folder / "tables").resolve()
+    finally:
+        server.shutdown()
+        server.api.close()
+
+
+def test_one_dataset_of_an_hdf5_file_goes_to_the_workspace(tmp_path):
+    """dev's file viewer's NWB node Assign to Workspace."""
+    h5py = pytest.importorskip("h5py")
+    import numpy as np
+    from nansen.demo import create_demo
+
+    api = Api(project=create_demo(tmp_path / "demo"), start_queue=False)
+    with h5py.File(api.project.folder / "recording.nwb", "w") as f:
+        f.create_dataset("acquisition/series/data", data=np.arange(6, dtype=np.int16).reshape(2, 3))
+        f.create_dataset("identifier", data="m1-s1", dtype=h5py.string_dtype())
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    try:
+        assert call("files.send", path="recording.nwb", dataset="/acquisition/series/data")["error"]["code"] == "no-workspace"
+        api.workspace = {}
+        result = call("files.send", path="recording.nwb", dataset="/acquisition/series/data")["result"]
+        assert result["name"] == "data" and result["shape"] == [2, 3] and result["dataType"] == "int16"
+        assert api.workspace["data"].tolist() == [[0, 1, 2], [3, 4, 5]]
+        assert call("files.send", path="recording.nwb", dataset="/identifier", name="ident")["result"]["shape"] == []
+        assert api.workspace["ident"] == "m1-s1"
+        assert call("files.send", path="recording.nwb", dataset="/acquisition")["error"]["code"] == "invalid-params"
+        assert call("files.send", path="recording.nwb", dataset="data")["error"]["code"] == "invalid-params"
+        assert call("files.send", path="project.nansen.json", dataset="/data")["error"]["code"] == "unsupported-file"
+    finally:
+        api.close()
+
+
+def test_a_file_method_runs_on_a_file(tmp_path):
+    """dev's project filemethods on the file viewer's menu: its example, Download File, fetches a placeholder."""
+    import shutil
+    from nansen.demo import create_demo
+
+    case = Path(__file__).resolve().parents[2] / "conformance" / "api" / "files"
+    project = create_demo(tmp_path / "demo")
+    for folder, name in (("methods", "lab.download_file.method.nansen.json"), ("python", "lab_download_file.py")):
+        (project.folder / folder).mkdir(exist_ok=True)
+        shutil.copy(case / "project" / folder / name, project.folder / folder / name)
+    archive = tmp_path / "archive"
+    (archive / "raw" / "m1").mkdir(parents=True)
+    (archive / "raw" / "m1" / "big.tif").write_bytes(b"frames")
+    (project.folder / "raw" / "m1").mkdir(parents=True, exist_ok=True)
+    (project.folder / "raw" / "m1" / "big.tif").write_bytes(b"")   # a placeholder
+    api = Api(project=project, start_queue=False)
+    call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
+    try:
+        method = next(m for m in call("methods.list")["result"] if m["id"] == "lab.download_file")
+        assert method["entityType"] == "@file" and method["tool"] is False
+        assert all(m["id"] != "lab.download_file" for m in call("methods.list", entityType="session")["result"])
+        result = call("files.run", methodId="lab.download_file", path="raw/m1/big.tif", options={"archive": str(archive)})["result"]
+        assert result["result"] == {"downloaded": True, "bytes": 6} and result["log"][0].endswith("downloaded big.tif")
+        assert (project.folder / "raw" / "m1" / "big.tif").read_bytes() == b"frames"
+        assert call("files.run", methodId="lab.download_file", path="raw/m1/big.tif")["result"]["result"]["downloaded"] is False
+        # a file in a data location: its root is that location's
+        root = Path(call("files.resolve", dataLocation="raw", path="")["result"]["path"])
+        stem = next(p for p in root.rglob("*") if p.is_file())
+        relative = stem.relative_to(root)
+        (archive / "located" / relative).parent.mkdir(parents=True)
+        (archive / "located" / relative).write_bytes(b"x")
+        stem.write_bytes(b"")
+        result = call("files.run", methodId="lab.download_file", dataLocation="raw", path=relative.as_posix(),
+                      options={"archive": str(archive / "located")})["result"]
+        assert result["result"]["bytes"] == 1 and stem.read_bytes() == b"x"
+        assert call("files.run", methodId="core.file_stats", path="raw/m1/big.tif")["error"]["code"] == "wrong-entity-type"
+        assert call("methods.run", methodId="lab.download_file", entityType="session",
+                    keys=[call("entities.list", entityType="session")["result"]["rows"][0]["key"]])["error"]["code"] == "wrong-entity-type"
+    finally:
+        api.close()
+
+
 def test_projects_are_renamed_moved_and_deleted(tmp_path):
     catalog = Catalog(tmp_path / "catalog.json")
     one, two = Project.create(tmp_path / "one", "One"), Project.create(tmp_path / "two", "Two")

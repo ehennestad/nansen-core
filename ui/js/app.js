@@ -165,6 +165,7 @@
       this.switchEl = h("button.project-switch", { on: { click: () => this.go("#/projects") } });
       this.crumbsEl = h("div.crumbs");
       this.contentEl = h("div.content");
+      this.loadingEl = h("div.page-loading", { role: "progressbar", "aria-label": "Loading the page", "aria-hidden": "true" });
       const themeButton = h("button.btn.ghost.icon", { title: "Light or dark", on: { click: () => {
         const next = { auto: "dark", dark: "light", light: "auto" }[loadTheme()];
         saveTheme(next);
@@ -187,7 +188,7 @@
         h("aside.sidebar",
           h("div.brand", h("div.brand-mark", N.icon("compass", 18)), h("div", h("div.brand-name", "NANSEN"), h("div.brand-sub", "neuroscience data"))),
           this.switchEl, this.navEl, this.footEl),
-        h("main.main", h("header.topbar", menuButton, this.crumbsEl, h("div.spacer"), this.topActions, helpButton, themeButton), this.contentEl)));
+        h("main.main", h("header.topbar", menuButton, this.crumbsEl, h("div.spacer"), this.topActions, helpButton, themeButton), this.loadingEl, this.contentEl)));
       this.bindShortcuts();
       this.renderNav();
       this.renderFooter();
@@ -200,7 +201,9 @@
       const pages = { o: "#/overview", t: "#/tasks", d: "#/data", p: "#/pipelines", n: "#/notes", j: "#/projects", s: "#/settings" };
       document.addEventListener("keydown", (event) => {
         const target = event.target;
-        const typing = target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+        // typing in a box; a row's tick box (just clicked) takes no text, so the keys still work there
+        const typing = target && (target.isContentEditable || ["TEXTAREA", "SELECT"].includes(target.tagName) ||
+          (target.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(target.type)));
         if (typing && event.key === "Escape" && target.closest(".toolbar .search") && !document.querySelector(".backdrop")) {
           target.blur();   // leave the search box, so the shortcuts work again
           return;
@@ -221,6 +224,7 @@
           if (search) { event.preventDefault(); search.focus(); search.select(); }
           return;
         }
+        if (event.key === "w" && this.onWorkspaceKey) { event.preventDefault(); this.onWorkspaceKey(); return; }   // dev's w: to the workspace
         if (event.key === "Escape" && N.drawer.isOpen()) { N.drawer.close(); return; }
       });
     },
@@ -258,6 +262,15 @@
         link("#/settings", "settings", "Settings")]);
     },
 
+    /** The loading bar under the top bar, and the page shown marked busy (aria-busy), while a page loads. */
+    showLoading(on) {
+      if (!this.loadingEl) return;
+      this.loadingEl.classList.toggle("on", on);
+      this.loadingEl.setAttribute("aria-hidden", on ? "false" : "true");
+      if (on) this.contentEl.setAttribute("aria-busy", "true");
+      else this.contentEl.removeAttribute("aria-busy");
+    },
+
     renderFooter() {
       if (!this.footEl) return;
       const ok = this.connected !== false;
@@ -288,6 +301,7 @@
       this.onNotesEvent = null;
       this.onPipelinesEvent = null;
       this.onViewsEvent = null;
+      this.onWorkspaceKey = null;
       this.currentGrid = null;
       N.drawer.close();
       this.renderNav();
@@ -304,12 +318,17 @@
       // views load their data first, and one that finishes late must not draw over the page now shown.
       const token = (this.renderToken = (this.renderToken || 0) + 1);
       const target = h("div.content");
+      // A page that takes a moment to load its data says so: a bar under the top bar, and the page shown until then
+      // marked busy and dimmed; only after 150 ms, so a quick page does not flicker
+      const slow = setTimeout(() => { if (token === this.renderToken) this.showLoading(true); }, 150);
       try {
         await view(this, target, arg);
       } catch (error) {
         N.showError(error);
       }
+      clearTimeout(slow);
       if (token !== this.renderToken) return;
+      this.showLoading(false);
       this.contentEl.replaceWith(target);
       this.contentEl = target;
       const focus = target.querySelector("[autofocus]");

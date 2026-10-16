@@ -15,7 +15,7 @@
     "title": { "type": "string" },
     "description": { "type": "string" },
     "category": { "type": "string", "description": "Menu group, e.g. 'Process' or 'Plot'. Slashes nest groups." },
-    "entityType": { "type": "string", "pattern": "^([A-Za-z][A-Za-z0-9_]*|\\*|@project)$", "description": "The entity type the method runs on, * for any, or @project for a project tool: it runs once on the project, as function(project, options, context)." },
+    "entityType": { "type": "string", "pattern": "^([A-Za-z][A-Za-z0-9_]*|\\*|@project|@file)$", "description": "The entity type the method runs on, * for any, @project for a project tool: it runs once on the project, as function(project, options, context), or @file for a file method: it runs on one file from the file viewer (files.run), as function(file, options, context), file being {path, root} (dev's project filemethods)." },
     "implementations": {
       "type": "object",
       "minProperties": 1,

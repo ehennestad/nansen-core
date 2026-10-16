@@ -103,3 +103,22 @@ def inspect(path: Path, limit: int = 2000) -> dict:
         walk(f, "/")
     items.sort(key=lambda item: (item["path"] != "/", item["path"]))
     return {"format": "hdf5", "items": items[:limit], "truncated": len(items) > limit}
+
+
+def read_dataset(path: Path, dataset: str):
+    """One dataset of an HDF5 file as h5py reads it (an array in the file's order; a string as str), its shape in the
+    file's order and its type's name, for files.send; invalid-params when the file has no dataset at that path."""
+    try:
+        import h5py
+    except ImportError:
+        raise NansenError("dependency-missing", "Reading HDF5 files needs h5py: pip install h5py") from None
+    if not h5py.is_hdf5(str(path)):
+        raise NansenError("unsupported-file", f"{path} is not an HDF5 file (NWB, MATLAB v7.3 or .h5)")
+    with h5py.File(path, "r") as f:
+        node = f.get(dataset)
+        if not isinstance(node, h5py.Dataset):
+            raise NansenError("invalid-params", f"{path.name} has no dataset {dataset}")
+        value = node[()]
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", "replace")
+        return value, list(node.shape), data_type(node.dtype)

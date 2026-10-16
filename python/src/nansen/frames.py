@@ -131,10 +131,21 @@ def moving_window(frame: int, size: int, frames: int):
     return number - size // 2 - 1, number + size // 2
 
 
+FILTERS = ("smooth", "gradient", "gauss2d", "gaussian", "absGradient", "clahe")   # filter_image's, in the viewer's order
+# dev's gauss2d (imgaussfilt, sigma 0.5) and gauss2dtest (sigma 1, its default kernel size): exp(-x^2 / (2 sigma^2)) over
+# x = -2 sigma..2 sigma, divided by their sum, written out so both languages use the same doubles
+GAUSS_HALF = (0.10650697891920076, 0.7869860421615985, 0.10650697891920076)
+GAUSS_ONE = (0.054488684549642945, 0.24420134200323335, 0.40261994689424746, 0.24420134200323335, 0.054488684549642945)
+
+
 def filter_image(image: Any, name: str) -> Any:
-    """imviewer's 2-D filters of an image: smooth, a binomial blur ([1 4 6 4 1] / 16 along rows, then columns); gradient,
-    the magnitude of the central differences ((next - previous) / 2). Edges repeat the last pixel. Exact sums in a fixed
-    order, so MATLAB's nansen.internal.filterImage gives the same values."""
+    """imviewer's 2-D filters of an image (dev's stack.process.filter2 and its own): smooth, a binomial blur ([1 4 6 4 1] /
+    16 along rows, then columns); gradient, the magnitude of the central differences ((next - previous) / 2); gauss2d and
+    gaussian, dev's gauss2d (a Gaussian blur of sigma 0.5, as imgaussfilt's 3 x 3) and gauss2dtest (sigma 1, 5 x 5), along
+    rows, then columns; absGradient, dev's absgradient: the magnitude of the derivative along the rows (MATLAB's gradient:
+    central differences, one-sided at the first and last column), its lowest and highest 1% saturated and the rest
+    stretched to 0..255 (imadjustn, im2uint8); clahe, dev's clahe (clahe_filter). Edges repeat the last pixel. Exact
+    sums in a fixed order, so MATLAB's nansen.internal.filterImage gives the same values."""
     import numpy as np
     image = np.asarray(image, dtype=np.float64)
     if name == "smooth":
@@ -148,7 +159,48 @@ def filter_image(image: Any, name: str) -> Any:
         dy = (padded[2:, 1:-1] - padded[:-2, 1:-1]) / 2
         dx = (padded[1:-1, 2:] - padded[1:-1, :-2]) / 2
         return np.sqrt(dy * dy + dx * dx)
-    raise NansenError("invalid-params", f"filter is smooth or gradient, not {name!r}")
+    if name in ("gauss2d", "gaussian"):
+        return _blur(image, GAUSS_HALF if name == "gauss2d" else GAUSS_ONE)
+    if name == "absGradient":
+        dx = np.zeros_like(image)
+        if image.shape[1] > 1:
+            dx[:, 1:-1] = (image[:, 2:] - image[:, :-2]) / 2
+            dx[:, 0] = image[:, 1] - image[:, 0]
+            dx[:, -1] = image[:, -1] - image[:, -2]
+        return _saturated(np.abs(dx))
+    if name == "clahe":
+        return clahe_filter(image)
+    raise NansenError("invalid-params", f"filter is {', '.join(FILTERS[:-1])} or {FILTERS[-1]}, not {name!r}")
+
+
+def _blur(image: Any, weights: Tuple[float, ...]) -> Any:
+    """The weights along the rows, then along the columns, the edges repeated: the products added in the weights' order."""
+    import numpy as np
+    reach = (len(weights) - 1) // 2
+    for axis in (0, 1):
+        size = image.shape[axis]
+        padded = np.pad(image, [(reach, reach) if a == axis else (0, 0) for a in (0, 1)], mode="edge")
+        out = weights[0] * np.take(padded, range(0, size), axis=axis)
+        for k in range(1, len(weights)):
+            out = out + weights[k] * np.take(padded, range(k, k + size), axis=axis)
+        image = out
+    return image
+
+
+def _saturated(image: Any) -> Any:
+    """dev's imadjustn and im2uint8: the finite values sorted, the low limit the first whose share of the values at or
+    below it is over 1% (index floor(0.01 n), from 0) and the high one the first at 99% (ceil(0.99 n) - 1); values
+    beyond them are cut to them and the rest stretched to 0..255, floor(v + 0.5). NaN stays NaN; a flat image is 0."""
+    import numpy as np
+    values = np.sort(image[np.isfinite(image)])
+    count = values.size
+    if count == 0:
+        return image
+    low, high = values[math.floor(0.01 * count)], values[math.ceil(0.99 * count) - 1]
+    if not high > low:
+        return np.where(np.isnan(image), np.nan, 0.0)
+    cut = np.where(image < low, low, np.where(image > high, high, image))
+    return np.floor((cut - low) / (high - low) * 255 + 0.5)
 
 
 def _pick(data: Any, channel: int = 0, plane: int = 0):
@@ -257,18 +309,29 @@ def mean_clahe(stack) -> Any:
     from .stacks import as_stack
     stack = as_stack(stack)
     mean = _mean(stack)
+    out = clahe_filter(mean)
     finite = mean[np.isfinite(mean)]
-    if finite.size == 0 or not finite.max() > finite.min():
-        return mean
-    low, high = float(finite.min()), float(finite.max())
-    normal = (mean - low) / (high - low)
-    if mean.shape[0] < 32 or mean.shape[1] < 32:
-        return normal
-    out = clahe(normal) * (high - low) + low
-    if stack.dtype.kind in "iu":
+    equalised = finite.size > 0 and finite.max() > finite.min() and mean.shape[0] >= 32 and mean.shape[1] >= 32
+    if equalised and stack.dtype.kind in "iu":
         info = np.iinfo(stack.dtype)
         out = np.clip(np.sign(out) * np.floor(np.abs(out) + 0.5), info.min, info.max)
     return out
+
+
+def clahe_filter(image: Any) -> Any:
+    """dev's clahe filter (stack.process.filter2.clahe) of an image: normalised to 0..1 (from its smallest to its largest
+    finite value), clahe, and scaled back to its range. An image smaller than 32 pixels either way is the normalised
+    image, as dev's; a flat one, the image. MATLAB's nansen.internal.claheImage gives the same values."""
+    import numpy as np
+    image = np.asarray(image, dtype=np.float64)
+    finite = image[np.isfinite(image)]
+    if finite.size == 0 or not finite.max() > finite.min():
+        return image
+    low, high = float(finite.min()), float(finite.max())
+    normal = (image - low) / (high - low)
+    if image.shape[0] < 32 or image.shape[1] < 32:
+        return normal
+    return clahe(normal) * (high - low) + low
 
 
 CLAHE_TILES, CLAHE_CLIP, CLAHE_BINS, CLAHE_ALPHA = 32, 0.015, 256, 0.4

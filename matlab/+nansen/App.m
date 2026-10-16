@@ -58,6 +58,7 @@ classdef App < handle
             obj.Html = uihtml(grid, HTMLSource=fullfile(nansen.internal.repoRoot(), "ui", "index.html"), ...
                 HTMLEventReceivedFcn=@(~, event) obj.onHtmlEvent(event));
             obj.Unsubscribe = obj.Api.subscribe(@(message) obj.push(message));
+            obj.Api.CloseFigures = @() nansen.Api.closeAllFigures(obj.Figure);   % Close All Figures leaves the app open
         end
 
         function close(obj)

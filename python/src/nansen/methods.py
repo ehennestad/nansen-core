@@ -17,6 +17,7 @@ EMPTY_OPTIONS = {"type": "object", "properties": {}}
 
 
 PROJECT_TOOL = "@project"  # the entityType of a method that runs once on the project
+FILE_METHOD = "@file"  # the entityType of a method that runs on one file, from the file viewer (files.run)
 
 class Method:
     """A nansen.method declaration, with the folder its Python code is imported from."""
@@ -55,6 +56,11 @@ class Method:
     def is_tool(self) -> bool:
         """A project tool runs once on the project, not on entities."""
         return self.entity_type == PROJECT_TOOL
+
+    @property
+    def is_file_method(self) -> bool:
+        """A file method runs on one file (dev's project filemethods), not on entities."""
+        return self.entity_type == FILE_METHOD
 
     @property
     def batch_mode(self) -> str:
@@ -201,6 +207,21 @@ def run_tool(method: Method, project, options: Optional[dict] = None, context: O
     resolved = method.resolve_options(options)
     context.check_cancelled()
     result = method.function()(project, resolved, context)
+    context.progress(1.0)
+    return result
+
+
+def run_file_method(method: Method, project, file: dict, options: Optional[dict] = None,
+                    context: Optional[MethodContext] = None) -> Any:
+    """Run a file method in this process: once, as function(file, options, context), file being {path, root}: the file,
+    and the folder of the data location it is in (or the project folder), as dev's project filemethods
+    (filemethod.downloadFile(filePath, rootPath)) got them."""
+    if not method.is_file_method:
+        raise NansenError("wrong-entity-type", f"{method.id} runs on {method.entity_type}, not on a file")
+    context = context or MethodContext(project=project, method=method)
+    resolved = method.resolve_options(options)
+    context.check_cancelled()
+    result = method.function()(file, resolved, context)
     context.progress(1.0)
     return result
 

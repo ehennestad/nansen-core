@@ -762,6 +762,76 @@ def test_browse_an_entitys_files(empty_app, page):
     page.wait_for_selector(f"{tree} ul.file-tree", state="detached")
 
 
+def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app, page):
+    """dev's Change Current Folder and Close All Figures (the Nansen menu), and its file viewer's Make Current Folder,
+    project filemethods (Download File) and NWB node Assign to Workspace."""
+    import shutil
+    from pathlib import Path
+
+    api = empty_app["api"]
+    demo = empty_app["folder"] / "demo"
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(demo)}})
+    case = Path(__file__).resolve().parents[2] / "conformance" / "api" / "files"
+    for folder, name in (("methods", "lab.download_file.method.nansen.json"), ("python", "lab_download_file.py")):
+        (demo / folder).mkdir(exist_ok=True)
+        shutil.copy(case / "project" / folder / name, demo / folder / name)
+    first = api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"][0]
+    detail = api.handle({"id": 3, "method": "entities.get", "params": {"entityType": "session", "key": first["key"]}})["result"]
+    processed = next(loc for loc in detail["locations"] if loc["dataLocationIdentifier"] == "processed")
+    root = Path(api.handle({"id": 4, "method": "files.resolve", "params": {"dataLocation": "processed", "path": ""}})["result"]["path"])
+    folder = root / processed["paths"][0]
+    (folder / "roi").mkdir()
+    (folder / "roi" / "big.tif").write_bytes(b"")   # a placeholder, in the archive
+    archive = empty_app["folder"] / "archive"
+    (archive / (folder / "roi").relative_to(root)).mkdir(parents=True)
+    (archive / (folder / "roi" / "big.tif").relative_to(root)).write_bytes(b"frames")
+    shutil.copy(case / "project" / "data" / "recording.nwb", folder / "roi" / "recording.nwb")
+    namespace, folders, figures = {}, [], [3]
+    api.workspace, api.change_folder = namespace, folders.append
+    api.close_figures = lambda: figures.pop() if figures else 0
+    api.handle({"id": 5, "method": "project.open", "params": {"path": str(demo)}})
+
+    page.goto(empty_app["server"].url + "#/overview")
+    page.click(".hero .session-menu")
+    page.click(".menu .item:has-text(\"Make the project folder Python's current folder\")")
+    page.wait_for_selector(".toast:has-text('Current folder')")
+    assert folders == [demo.resolve()]
+    page.click(".hero .session-menu")
+    page.click(".menu .item:has-text('Close all figures')")
+    page.wait_for_selector(".toast:has-text('3 figure(s)')")
+
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open .path-list .browse")
+    tree = ".drawer .loc:has(.loc-head:has-text('processed'))"
+    page.locator(f"{tree} .path-list .browse").first.click()
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .make-current")
+    wait_until(lambda: len(folders) == 2)
+    assert folders[1] == (folder / "roi").resolve()
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
+    placeholder = f"{tree} li.file-entry[data-name='big.tif']"
+    page.wait_for_selector(f"{placeholder} .size:text-is('0 B')")
+    page.click(f"{placeholder} .file-methods")
+    page.click(".menu .item:has-text('Download File')")
+    page.fill(".dialog .field:has-text('Archive') input", str(archive))
+    page.click(".dialog .dialog-foot button:has-text('Run')")
+    page.wait_for_selector(".dialog .tool-result:has-text('\"downloaded\": true')")
+    assert (folder / "roi" / "big.tif").read_bytes() == b"frames"
+    page.wait_for_selector(f"{placeholder} .size:text-is('6 B')")
+    page.locator(".dialog .dialog-foot button:has-text('Close')").click()
+    page.click(f"{placeholder}", button="right")   # the same menu on the right mouse button
+    page.wait_for_selector(".menu .item:has-text('Download File')")
+    page.keyboard.press("Escape")
+
+    page.click(f"{tree} li[data-name='recording.nwb'] .inspect-file")
+    page.click(f"{tree} li.hdf5-group[data-path='/acquisition'] .tree-toggle")
+    page.click(f"{tree} li.hdf5-group[data-path='/acquisition/TwoPhotonSeries'] .tree-toggle")
+    page.click(f"{tree} li.hdf5-dataset[data-path='/acquisition/TwoPhotonSeries/data'] .send-dataset")
+    page.wait_for_selector(".toast:has-text('data (4 × 3 × 5 · uint16)')")
+    assert namespace["data"].shape == (4, 3, 5)
+
+
 def test_send_the_selection_to_the_workspace(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
@@ -777,6 +847,55 @@ def test_send_the_selection_to_the_workspace(empty_app, page):
     page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
     page.wait_for_selector(".toast:has-text('2 session(s) in chosen')")
     assert len(namespace["chosen"]) == 2
+    rows.nth(3).locator("td.sel input").check()
+    page.keyboard.press("w")   # dev's key: the same, from the keyboard
+    page.fill(".dialog.narrow input", "by_key")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".toast:has-text('3 session(s) in by_key')")
+    assert [e.key for e in namespace["by_key"]] == [e.key for e in namespace["chosen"]] + [namespace["by_key"][2].key]
+
+
+def test_a_page_says_it_is_loading_while_it_waits_for_its_data(empty_app, page):
+    """A page that takes a while to load (a large table) shows a loading bar and marks the page shown busy until it is drawn."""
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    page.goto(empty_app["server"].url + "#/overview")
+    page.wait_for_selector(".stat")
+    assert not page.locator(".page-loading").is_visible()
+    listed = api._methods["entities.list"]
+
+    def slow(params):
+        time.sleep(1.2)
+        return listed(params)
+
+    api._methods["entities.list"] = slow
+    page.click(".sidebar a[href='#/entities/session']")
+    page.wait_for_selector(".page-loading.on", state="visible")
+    assert page.locator(".content").get_attribute("aria-busy") == "true"
+    assert page.locator(".page-loading").get_attribute("role") == "progressbar"
+    page.wait_for_selector(".grid-table tbody td.key")
+    assert not page.locator(".page-loading").is_visible()
+    assert page.locator(".content").get_attribute("aria-busy") is None
+    api._methods["entities.list"] = listed
+    page.click(".sidebar a[href='#/tasks']")   # once a page is drawn, the bar is gone
+    page.wait_for_selector(".crumbs:has-text('Tasks')")
+    page.wait_for_selector(".page-loading", state="hidden")
+
+
+def test_copy_the_keys_of_the_selected_rows(app, page):
+    """dev's Copy SessionID(s): the keys of the selected rows, as tab-separated text with the key's names first."""
+    page.add_init_script("window.copied = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text) => { window.copied.push(text); } } });")
+    open_sessions(app, page)
+    rows(page).nth(0).locator("td.sel input").check()
+    rows(page).nth(1).locator("td.sel input").check()
+    page.click(".selection-bar button:has-text('Copy keys')")
+    page.wait_for_selector(".toast:has-text('2 key(s)')")
+    keys = [row.key for row in app["project"].entities("session")]
+    lines = page.evaluate("window.copied[0]").split("\n")
+    names = list(keys[0])
+    assert lines[0] == "\t".join(names) and len(lines) == 3 and len(set(lines[1:])) == 2
+    for line in lines[1:]:
+        assert dict(zip(names, line.split("\t"))) in keys
 
 
 def test_start_a_method_from_the_data_page(empty_app, page):
@@ -2210,6 +2329,14 @@ def test_viewer_projections_and_roi_display_options(empty_app, page):
     plain = page.evaluate(pixels)
     page.select_option(".viewer-filter", "gradient")   # imviewer's 2-D filters
     wait_until(lambda: page.evaluate(pixels) != plain)
+    # its Filter Images menu: dev's stack.process.filter2 (absgradient, clahe, gauss2d, gauss2dtest, gradient), and smooth
+    assert page.locator(".viewer-filter option").evaluate_all("os => os.map(o => o.value)") == [
+        "", "smooth", "gauss2d", "gaussian", "gradient", "absGradient", "clahe"]
+    seen = {page.evaluate(pixels)}
+    for name in ("smooth", "gauss2d", "gaussian", "absGradient", "clahe"):
+        page.select_option(".viewer-filter", name)
+        wait_until(lambda: page.evaluate(pixels) not in seen)
+        seen.add(page.evaluate(pixels))
     page.select_option(".viewer-filter", "")
     wait_until(lambda: page.evaluate(pixels) == plain)
     page.select_option(".viewer-mode", "frame")   # imviewer's binning: the mean of the frames around this one
@@ -2289,6 +2416,73 @@ def test_view_any_stack_file_from_the_file_tree(empty_app, page):
     page.select_option(".viewer-adapter", "ophys.tiff_stack")   # its pages, one after the other
     page.wait_for_selector(".viewer-dialog .viewer-status:has-text('36 × 32')")
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
+def test_the_viewer_opens_another_file_by_its_path(empty_app, page):
+    """imviewer's Open File, and the paths pasted into it (Ctrl+V), in the same viewer."""
+    api = ophys_project(empty_app)
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").nth(3).locator("td.key").first.click()   # s4: ScanImage files
+    tree = ".drawer .loc:has(.loc-head:has-text('raw'))"
+    page.wait_for_selector(f"{tree} .path-list .browse")
+    page.locator(f"{tree} .path-list .browse").first.click()
+    page.click(f"{tree} li[data-name='rec_00001.tif'] .view-file")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('16 × 64')")
+    page.click(".viewer-dialog .viewer-open-file")
+    page.fill(".dialog.narrow input", "../ses-s1/rec.raw")   # beside the file shown
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    assert page.locator(".viewer-dialog .dialog-head h2").inner_text() == "rec.raw"
+    assert page.locator(".viewer-frame").inner_text() == "1 / 40"
+    folder = api.handle({"id": 1, "method": "files.resolve", "params": {"dataLocation": "raw", "path": "sub-m1/ses-s4"}})["result"]["path"]
+    paste = """text => { const data = new DataTransfer(); data.setData("text/plain", text);
+        document.querySelector(".viewer-dialog").dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true })); }"""
+    page.evaluate(paste, f"{folder}/rec_00002.tif\n")   # an absolute path, in a data location
+    page.wait_for_selector(".viewer-dialog .dialog-head h2:text-is('rec_00002.tif')")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('16 × 64')")
+    page.evaluate(paste, "/nowhere/else.tif")
+    page.wait_for_selector(".toast:has-text('is not in the project folder or a data location')")
+    assert page.locator(".viewer-dialog .dialog-head h2").inner_text() == "rec_00002.tif"
+    page.click(".viewer-dialog .viewer-open-file")
+    page.fill(".dialog.narrow input", "missing.tif")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".toast:has-text('is not there')")
+    page.console_errors.clear()
+
+
+def test_the_viewer_edits_the_stack_properties(empty_app, page):
+    """imviewer's Edit Stack Properties: frame rate, pixel size and z step, saved to the session's columns, which the
+    motion-corrected stack's metadata takes them from."""
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    api = ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": [s1], "options": {"referenceFrames": 1}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    assert page.locator(".viewer-time").inner_text() == "" and not page.locator(".viewer-scalebar-toggle").is_visible()
+    page.click(".viewer-dialog .viewer-properties")
+    form = ".viewer-properties-form"
+    page.fill(f"{form} input[data-column='frame_rate']", "10")
+    page.fill(f"{form} input[data-column='pixel_size_um']", "2")
+    page.fill(f"{form} input[data-column='z_step_um']", "-1")
+    page.click(".dialog .dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".toast:has-text('z_step_um is a positive number')")
+    page.fill(f"{form} input[data-column='z_step_um']", "")
+    page.click(".dialog .dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".viewer-time:text-is('0.00 s')")
+    page.locator(".viewer-slider").fill("9")
+    page.wait_for_selector(".viewer-time:text-is('0.90 s')")   # frame 9 at 10 per second
+    page.click(".viewer-scalebar-toggle")
+    assert page.locator(".viewer-scalebar-label").inner_text() == "10 µm"   # a fifth of 64 µm, rounded down
+    values = api.handle({"id": 1, "method": "entities.get", "params": {"entityType": "session", "key": s1}})["result"]["values"]
+    assert values["frame_rate"] == 10 and values["pixel_size_um"] == 2 and values["z_step_um"] is None
+    page.click(".viewer-dialog .viewer-properties")
+    assert page.locator(f"{form} input[data-column='frame_rate']").input_value() == "10"
+    page.locator(".dialog.narrow .dialog-foot button:has-text('Cancel')").click()
 
 
 def test_the_viewer_shows_a_scalebar_and_the_time_the_files_give(empty_app, page):
@@ -2534,6 +2728,42 @@ def test_place_fovs_and_windows_on_the_fov_map(empty_app, page):
     assert download.value.suggested_filename == "fov_map_m1.png"
     page.click(".fov-marks li[data-mark='injections-1'] .remove-mark")
     page.wait_for_selector(".fov-marks li[data-mark='injections-1']", state="detached")
+
+
+def test_copy_and_paste_on_the_fov_map_and_its_fine_grid(empty_app, page):
+    """fovmanager's Copy and Paste (an FOV's place onto another session, an injection for the subject again) and Show
+    Fine Grid."""
+    import json
+    s1, s2 = {"subject_id": "m1", "session_id": "s1"}, {"subject_id": "m1", "session_id": "s2"}
+    api = ophys_project(empty_app, [
+        ("entities.update", {"entityType": "session", "key": s1, "values": {"fov_ml": 2.3, "fov_ap": -3.6, "fov_width_um": 600}}),
+        ("modules.saveData", {"module": "ophys", "name": "fovmap", "text": json.dumps({"injections": [
+            {"id": 1, "subject": {"subject_id": "m1"}, "ml": 1.5, "ap": -1.5, "material": "AAV-GCaMP8m", "depth": 300, "spread": 400, "colour": "green"}],
+            "notes": [], "photos": []})})])
+    page.goto(empty_app["server"].url + "#/page/ophys.fovmap")
+    page.wait_for_selector(".fov-canvas")
+    assert page.locator(".fov-canvas").get_attribute("data-grid-lines") == "0"
+    page.check(".fov-fine-grid")   # 12 x 16 mm: a line every 0.2 mm, 61 + 81
+    page.wait_for_selector(".fov-canvas[data-grid-lines='142']")
+    assert page.locator(".fov-paste").is_disabled()
+    page.click(".fov-list li[data-session='m1 / s1']")
+    page.keyboard.press("Control+c")
+    page.wait_for_selector(".toast:has-text('FOV of m1 / s1')")
+    page.click(".fov-list li[data-session='m1 / s2']")
+    page.keyboard.press("Control+v")
+    page.wait_for_selector(".fov-list li[data-session='m1 / s2'] .sub:has-text('AP -3.6, ML 2.3')")
+    row = api.project.table("session").get(s2)
+    assert (row["fov_ml"], row["fov_ap"], row["fov_width_um"]) == (2.3, -3.6, 600)
+    page.click(".fov-undo")   # undone as a placement is
+    wait_until(lambda: api.project.table("session").get(s2)["fov_ml"] is None)
+    page.click(".fov-list li[data-subject='m1']")
+    page.click(".fov-marks li[data-mark='injections-1'] .copy-mark")
+    page.click(".fov-paste")
+    page.wait_for_selector(".fov-marks li[data-mark='injections-2']")
+    marks = json.loads(api.handle({"id": 1, "method": "modules.data", "params": {"module": "ophys", "name": "fovmap"}})["result"]["text"])
+    copy = marks["injections"][1]
+    assert copy["id"] == 2 and (copy["ml"], copy["ap"], copy["material"], copy["spread"]) == (1.5, -1.5, "AAV-GCaMP8m", 400)
+    assert copy["subject"] == {"subject_id": "m1"}
 
 
 def test_review_rois_across_sessions(empty_app, page):

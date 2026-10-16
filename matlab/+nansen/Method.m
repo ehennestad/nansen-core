@@ -70,6 +70,11 @@ classdef Method
             tf = obj.EntityType == "@project";
         end
 
+        function tf = isFileMethod(obj)
+            %isFileMethod A file method (entityType @file) runs on one file, from the file viewer (files.run)
+            tf = obj.EntityType == "@file";
+        end
+
         function tf = isLegacy(obj)
             %isLegacy A session method of NANSEN dev, run unchanged through nansen.legacy.runSessionMethod
             tf = isfield(obj.Document, "legacySessionMethod");

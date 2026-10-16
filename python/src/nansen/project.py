@@ -1028,6 +1028,20 @@ class Project:
             context.project = self
         return run_tool(method, self, values, context)
 
+    def run_file_method(self, method_id: str, file: Dict[str, str], options: Optional[Dict[str, Any]] = None,
+                        preset: Optional[str] = None, context: Optional[MethodContext] = None) -> Any:
+        """Run a file method on a file now, in this process ({path, root}: see methods.run_file_method)."""
+        from .methods import run_file_method
+
+        method = self.method(method_id)
+        values = self.preset(method_id, preset) if preset else {}
+        if options:
+            values = dict(values, **options)
+        context = context or MethodContext(project=self, method=method)
+        if context.project is None:
+            context.project = self
+        return run_file_method(method, self, file, values, context)
+
     def update_values(self, entity: Entity, values: Dict[str, Any]) -> List[str]:
         """Write values into the entity's table row, those of columns the table has: for a method that fills columns it
         does not compute. Returns the names written; unknown-entity for an entity the table has no row of."""

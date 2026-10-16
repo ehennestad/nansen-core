@@ -1,0 +1,24 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "lab.download_file",
+  "version": "1.0.0",
+  "title": "Download File",
+  "entityType": "@file",
+  "description": "Fetch a file that is only a placeholder here (an empty file) from the archive: NANSEN dev's project filemethod.downloadFile(filePath, rootPath).",
+  "implementations": {
+    "python": "lab_download_file:download_file",
+    "matlab": "labDownloadFile"
+  },
+  "options": {
+    "type": "object",
+    "properties": {
+      "archive": {
+        "type": "string",
+        "default": "",
+        "title": "Archive",
+        "description": "The folder the files are copied from, laid out as the folder the file is in (its data location's root, or the project folder)"
+      }
+    }
+  }
+}

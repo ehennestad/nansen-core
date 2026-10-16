@@ -13,7 +13,7 @@ This page holds the dashboard (`ui/`, and the ophys module's pages in `modules/o
 | 5 | Navigation | No full page loads between pages (hash routing); Back and Forward work | **Pass** |
 | 6 | Live updates | The backend pushes changes; the page does not poll | **Partial** |
 | 7 | Components | One set of buttons, dialogs, menus, toasts and a drawer, used everywhere | **Pass** |
-| 8 | States | Loading, empty and error states that say what is going on and what to do | **Partial** |
+| 8 | States | Loading, empty and error states that say what is going on and what to do | **Pass** after the fix below (was **partial**) |
 | 9 | Large tables | 5,000 rows usable: a virtualized grid, first rows within about a second, sorting and searching without a stall | **Pass** |
 | 10 | Offline | Nothing loaded from a CDN or another host at run time, no web fonts | **Pass** |
 
@@ -65,7 +65,7 @@ After it: **0 failures among 1,403 text elements per theme**, on 14 views (overv
 
 ## 4. Keyboard: pass after fixing
 
-What worked: all 40 Tab stops on the table page showed a focus ring (the browser's, or the inputs' accent shadow); Esc closed dialogs and the drawer and left the search box; `?` lists the shortcuts, `/` searches, `g` then a letter or a number goes to a page or a table (`ui/js/app.js` `bindShortcuts`; `test_lock_editing_and_keyboard_shortcuts`). The viewer has imviewer's and roimanager's keys (`ui/js/viewer.js` `viewerKey`, `roiKey`).
+What worked: all 40 Tab stops on the table page showed a focus ring (the browser's, or the inputs' accent shadow); Esc closed dialogs and the drawer and left the search box; `?` lists the shortcuts, `/` searches, `g` then a letter or a number goes to a page or a table, and `w` sends the selected rows to the workspace, as dev's key (`ui/js/app.js` `bindShortcuts`; `test_lock_editing_and_keyboard_shortcuts`, `test_send_the_selection_to_the_workspace`); the keys also work with the focus on a row's tick box. The viewer has imviewer's and roimanager's keys (`ui/js/viewer.js` `viewerKey`, `roiKey`).
 
 What did not:
 
@@ -93,13 +93,13 @@ While a task is queued or running, the Tasks page also reads `tasks.list` and `q
 
 One set, in `ui/js/components.js` and `ui/css/app.css`: `N.toast`, `N.showError`, `N.dialog` (with `N.confirm` and `N.prompt`), `N.menu`, `N.drawer`, `N.statusPill`, and the classes `.btn` (`.primary`, `.ghost`, `.small`, `.icon`, `.danger`), `.chip`, `.pill`, `.card`, `.input`, `.switch`; icons are inline SVG (`N.icon`); options forms are drawn from the methods' JSON Schema (`ui/js/schemaform.js`). The module pages use the same `N` functions and tokens; the FOV map and the explorers add a few rules of their own for their layouts.
 
-## 8. States: partial
+## 8. States: pass after fixing
 
-- **Loading**: "Connecting…" before the backend answers, and "Cannot reach the NANSEN core" with the reason if it does not (`ui/js/app.js`); "Loading…" in the viewer, the signal plot and the add-on list.
+- **Loading**: "Connecting…" before the backend answers, and "Cannot reach the NANSEN core" with the reason if it does not (`ui/js/app.js`); "Loading…" in the viewer, the signal plot and the add-on list. A page that takes more than 150 ms to load its data shows a bar sliding under the top bar (`.page-loading`, `role="progressbar"`, "Loading the page"; a still bar with reduced motion) and marks the page shown until then busy (`aria-busy="true"`) and dimmed; both go when the new page is drawn (`ui/js/app.js` `showLoading`, called from `render`). A quick page does not flicker.
 - **Empty**: each list says what is missing and what to do: no tasks ("Select entities in a table and run a method"), no pipelines, no notes, no projects, a table with no rows ("No entities yet. Scan the stores, then sync."), a search with no match ("No rows match the filter."), an unknown table ("No entity type nosuchtype").
 - **Errors**: a toast with the title of what failed, the protocol's error code and its message (`N.showError`), for every request a page makes.
 
-The gap: a page waits for its data before it draws, and the previous page stays until then. That is quick for most pages, but opening a table of 20,000 rows takes 2.4 to 3 s with no sign that it is loading.
+The gap this had: a page waits for its data before it draws, and the previous page stayed until then with no sign of it; opening a table of 20,000 rows takes 2.4 to 3 s. Now the bar shows from 150 ms on. `test_a_page_says_it_is_loading_while_it_waits_for_its_data` holds `entities.list` back by 1.2 s and checks the bar and `aria-busy` while the table loads, and that both are gone once its rows are drawn.
 
 ![An empty state](images/dashboard-empty-state.webp) ![An error toast](images/dashboard-error-toast.webp)
 

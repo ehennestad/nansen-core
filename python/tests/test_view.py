@@ -371,3 +371,30 @@ def test_the_dashboard_opens_straight_into_the_viewer(tmp_path):
     finally:
         server.shutdown()
         api.close()
+
+
+def test_imviewers_filters():
+    """dev's imviewer Filter Images (stack.process.filter2): gauss2d and gauss2dtest keep a flat image and its total,
+    absgradient stretches the derivative along the rows to 0..255, clahe is the Mean CLAHE projection of one frame."""
+    from nansen.errors import NansenError
+    from nansen.frames import filter_image, mean_clahe
+
+    flat = np.full((6, 7), 5.0)
+    for name in ("gauss2d", "gaussian"):
+        assert np.allclose(filter_image(flat, name), 5.0)
+    spike = np.zeros((9, 9))
+    spike[4, 4] = 1
+    blurred = filter_image(spike, "gaussian")
+    assert abs(blurred.sum() - 1) < 1e-12 and blurred[4, 4] == blurred.max() and np.allclose(blurred, blurred.T)
+    assert filter_image(spike, "gauss2d")[4, 4] > blurred[4, 4]   # sigma 0.5 keeps more of it in the middle
+    ramp = np.tile(np.arange(10.0) ** 2, (4, 1))   # the derivative along the rows grows to the right
+    out = filter_image(ramp, "absGradient")
+    assert out.min() == 0 and out.max() == 255 and (np.diff(out[0]) >= 0).all() and (out == out[0]).all()
+    assert (filter_image(np.tile(np.arange(5.0), (3, 1)), "absGradient") == 0).all()   # a flat derivative
+    frame = np.arange(40 * 40, dtype=np.float64).reshape(40, 40) % 37
+    assert np.array_equal(filter_image(frame, "clahe"), mean_clahe(frame[:, :, None]))
+    small = frame[:20]
+    assert np.allclose(filter_image(small, "clahe"), (small - small.min()) / (small.max() - small.min()))
+    with pytest.raises(NansenError) as error:
+        filter_image(frame, "sharpen")
+    assert error.value.code == "invalid-params"
