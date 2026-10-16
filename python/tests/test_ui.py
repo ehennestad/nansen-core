@@ -1226,6 +1226,34 @@ def test_table_text_size(empty_app, page):   # dev's table font size, kept in th
     assert height() == 44
 
 
+def test_the_users_table_text_size_and_lock_are_the_default_of_a_browser(empty_app, page):
+    # dev's TableFontSize and AllowTableEdits, as legacy.import saves them, in a browser that has chosen neither
+    api = empty_app["api"]
+    api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
+    api.catalog.save_settings({"tables": {"textSize": "large", "locked": True}})
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody tr[data-id]")
+    page.wait_for_selector(".toolbar .lock-edits.on")
+    assert page.evaluate("document.documentElement.dataset.tableSize") == "large"
+    assert page.locator(".grid-table tbody td.editable").count() == 0
+    # the browser's own choice comes first, and the Settings page makes it the user's default too
+    page.click(".toolbar .lock-edits")
+    page.wait_for_selector(".grid-table tbody td.editable")
+    page.goto(empty_app["server"].url + "#/settings")
+    page.wait_for_selector(".table-size-select")
+    assert page.locator(".lock-setting input").is_checked() is False
+    def tables():   # as the server keeps them; the file may be being written
+        try:
+            return api.catalog.settings()["tables"]
+        except Exception:
+            return {}
+    page.select_option(".table-size-select", "compact")
+    wait_until(lambda: tables().get("textSize") == "compact")
+    page.locator(".lock-setting").click()
+    wait_until(lambda: tables().get("locked") is True)
+    assert page.evaluate("document.documentElement.dataset.tableSize") == "compact"
+
+
 def test_a_pipeline_step_run_by_hand(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})

@@ -25,7 +25,12 @@ function export = exportProject(folder, options)
 %     custom_options/*.mat                         option presets of dev's own methods (NoRMCorre, Quicky, ...)
 %     projects/<name>/task_list.mat                the task list: queued tasks (method, sessions, options,
 %                                                  preset, created, comment) and the history (method,
-%                                                  sessions, status, finished)
+%                                                  sessions, status, options, preset, created, started,
+%                                                  finished, comment, Diary and ErrorStack)
+%     projects/<name>/datalocation_local_rootpath_settings.json (or .mat)
+%                                                  the roots of the data locations on this computer, where
+%                                                  they differ from the project's (dev's LocalRootPathManager:
+%                                                  RootPathListLocal), as each location's localRootPaths
 %     settings/task_list.mat                       the task list of older versions, one for all the user's
 %                                                  projects (dev's nansen.localpath('TaskList')): read as the
 %                                                  other, after it, less the tasks that one has too
@@ -58,7 +63,9 @@ function export = exportProject(folder, options)
     end
     export = struct("schemaType", 'nansen.legacyExport', "schemaVersion", '0.1.0', "source", char(folder));
     export.project = readProjectInfo(folder);
-    export.dataLocations = readDataLocations(fullfile(folder, "configurations", "datalocation_settings.mat"));
+    export.dataLocations = readDataLocations(fullfile(folder, "configurations", "datalocation_settings.mat"), ...
+        userProjectFile(folder, export.project, options.UserFolder, ...
+        ["datalocation_local_rootpath_settings.json", "datalocation_local_rootpath_settings.mat"]));
     export.variables = readVariables(fullfile(folder, "configurations", "filepath_settings.mat"));
     [export.tables, classes] = readTables(fullfile(folder, "metadata", "tables"));
     export.pipelines = readPipelines(fullfile(folder, "configurations", "pipeline_settings.mat"));
@@ -72,7 +79,7 @@ function export = exportProject(folder, options)
         export.columnSettings = columnSettings;
     end
     % the project's task list, and the one older versions of dev kept for all the user's projects
-    taskLists = taskListPath(folder, export.project, options.UserFolder);
+    taskLists = userProjectFile(folder, export.project, options.UserFolder, "task_list.mat");
     older = string(fullfile(options.UserFolder, "settings", "task_list.mat"));
     if isfile(older)
         taskLists(end + 1) = older;
@@ -107,27 +114,26 @@ function info = readProjectInfo(folder)
     end
 end
 
-function locations = readDataLocations(path)
+function locations = readDataLocations(path, localPath)
+    % The data locations, each with the roots this computer has of it (localPath, dev's local root path settings:
+    % RootPathListLocal, by the location's Uuid), when there are
     locations = {};
     items = loadData(path);
+    local = readLocalRoots(localPath);
     for i = 1:numel(items)
         item = items(i);
         location = struct("name", textOf(item, "Name"), "type", textOf(getOr(item, "Type", "recorded")));
-        roots = {};
-        rootPaths = getOr(item, "RootPath", struct([]));
-        if iscell(rootPaths)
-            rootPaths = struct("Value", rootPaths);
-        end
-        for k = 1:numel(rootPaths)
-            root = struct("key", textOf(rootPaths(k), "Key"), "value", textOf(rootPaths(k), "Value"));
-            if textOf(rootPaths(k), "DiskName") ~= ""
-                root.diskName = textOf(rootPaths(k), "DiskName");
-            end
-            if root.value ~= ""
-                roots{end + 1} = root; %#ok<AGROW>
+        location.rootPaths = rootsOf(getOr(item, "RootPath", struct([])));
+        uuid = textOf(item, "Uuid");
+        for k = 1:numel(local)
+            if ~isempty(uuid) && strcmp(textOf(local{k}, "Uuid"), uuid)
+                localRoots = rootsOf(getOr(local{k}, "RootPath", struct([])));
+                if ~isempty(localRoots)
+                    location.localRootPaths = localRoots;
+                end
+                break
             end
         end
-        location.rootPaths = roots;
         subfolders = {};
         structure = getOr(item, "SubfolderStructure", struct([]));
         for k = 1:numel(structure)
@@ -158,6 +164,53 @@ function locations = readDataLocations(path)
         end
         location.metadata = rules;
         locations{end + 1} = location; %#ok<AGROW>
+    end
+end
+
+function roots = rootsOf(rootPaths)
+    % A location's RootPath (Key, Value, DiskName; or a cell of paths, of older versions) as key, value and diskName
+    roots = {};
+    if iscell(rootPaths) && (isempty(rootPaths) || iscellstr(rootPaths))
+        rootPaths = num2cell(struct("Value", rootPaths));
+    elseif iscell(rootPaths)   % structs of different fields, as jsondecode gives them
+        rootPaths = rootPaths(cellfun(@isstruct, rootPaths));
+    elseif isstruct(rootPaths)
+        rootPaths = num2cell(rootPaths);
+    else
+        return
+    end
+    for k = 1:numel(rootPaths)
+        root = struct("key", textOf(rootPaths{k}, "Key"), "value", textOf(rootPaths{k}, "Value"));
+        if textOf(rootPaths{k}, "DiskName") ~= ""
+            root.diskName = textOf(rootPaths{k}, "DiskName");
+        end
+        if root.value ~= ""
+            roots{end + 1} = root; %#ok<AGROW>
+        end
+    end
+end
+
+function local = readLocalRoots(path)
+    % dev's local root path settings (LocalRootPathManager's RootPathListLocal: Uuid and RootPath of each location),
+    % as a cell of structs; {} when there are none
+    local = {};
+    if isempty(path) || ~isfile(path)
+        return
+    end
+    try
+        if endsWith(path, ".json")
+            S = jsondecode(nansen.internal.readText(path));
+        else
+            S = loadQuietly(path);
+        end
+    catch
+        return   % not dev's settings
+    end
+    list = getOr(S, "RootPathListLocal", struct([]));
+    if isstruct(list)
+        local = num2cell(reshape(list, 1, []));
+    elseif iscell(list)
+        local = reshape(list(cellfun(@isstruct, list)), 1, []);
     end
 end
 
@@ -608,9 +661,10 @@ function [ok, value] = jsonValue(value)
     end
 end
 
-function path = taskListPath(folder, info, userFolder)
-    % dev's task list of the project: <user folder>/projects/<name>/task_list.mat, the name being the project's
-    % package (code/+<name>), its short name or its folder's name; none (an empty string array) when there is none
+function path = userProjectFile(folder, info, userFolder, fileNames)
+    % A file dev keeps of the project in the user's preferences: <user folder>/projects/<name>/<file name> (the task
+    % list, the local root paths), the name being the project's package (code/+<name>), its short name or its folder's
+    % name, and the file the first of fileNames there; none (an empty string array) when there is none
     candidates = strings(1, 0);
     for package = reshape(dir(fullfile(folder, "code", "+*")), 1, [])
         if package.isdir
@@ -622,9 +676,11 @@ function path = taskListPath(folder, info, userFolder)
     candidates(end + 1) = string(name);
     path = strings(1, 0);
     for candidate = candidates(strlength(candidates) > 0)
-        if isfile(fullfile(userFolder, "projects", candidate, "task_list.mat"))
-            path = string(fullfile(userFolder, "projects", candidate, "task_list.mat"));
-            return
+        for fileName = reshape(string(fileNames), 1, [])
+            if isfile(fullfile(userFolder, "projects", candidate, fileName))
+                path = string(fullfile(userFolder, "projects", candidate, fileName));
+                return
+            end
         end
     end
 end
@@ -737,11 +793,79 @@ function tasks = readTaskList(path)
         item = history(i);
         task = struct("function", functionOf(getOr(item, "method", '')), "name", textOf(item, "name"), ...
             "entities", {entityIdsOf(item)}, "status", textOf(item, "status"));
-        finished = stampOf(getOr(item, "timeFinished", ''));
-        if finished ~= ""
-            task.finishedAt = char(finished);
+        % its options: the history keeps the arguments less the sessions (args(2:end)); older versions kept them all
+        args = getOr(item, "args", {});
+        options = [];
+        if iscell(args) && numel(args) >= 2
+            options = args{2};
+        elseif iscell(args) && isscalar(args) && isstruct(args{1}) && ~isfield(args{1}, "sessionID")
+            options = args{1};
+        end
+        if isstruct(options) && isscalar(options)
+            task.options = jsonOptions(options, "");
+        end
+        if ~isempty(textOf(item, "parameters"))
+            task.preset = textOf(item, "parameters");
+        end
+        for pair = ["timeCreated", "createdAt"; "timeStarted", "startedAt"; "timeFinished", "finishedAt"]'
+            stamp = stampOf(getOr(item, pair(1), ''));
+            if stamp ~= ""
+                task.(pair(2)) = char(stamp);
+            end
+        end
+        if ~isempty(textOf(item, "comments"))
+            task.comment = textOf(item, "comments");
+        end
+        diary = getOr(item, "Diary", '');
+        if ischar(diary) && size(diary, 1) > 1   % a char matrix: its rows are lines
+            diary = strjoin(cellstr(diary), newline);
+        end
+        if (ischar(diary) || (isstring(diary) && isscalar(diary))) && strlength(string(diary)) > 0
+            task.log = char(diary);
+        end
+        problem = errorOf(getOr(item, "ErrorStack", []));
+        if ~isempty(problem)
+            task.error = problem;
         end
         tasks.history{end + 1} = task;
+    end
+end
+
+function problem = errorOf(value)
+    % A failed task's ErrorStack (an MException, or a struct of its fields) as identifier, message and stack (each
+    % frame as "name (line n)"); [] for none
+    problem = [];
+    if isa(value, "MException") && isscalar(value)
+        message = char(value.message);
+        identifier = char(value.identifier);
+        stack = value.stack;
+    elseif isstruct(value) && isscalar(value) && isfield(value, "message")
+        message = textOf(value, "message");
+        identifier = textOf(value, "identifier");
+        stack = getOr(value, "stack", struct([]));
+    else
+        return
+    end
+    if isempty(message)
+        return
+    end
+    problem = struct("message", message);
+    if ~isempty(identifier)
+        problem.identifier = identifier;
+    end
+    frames = {};
+    if isstruct(stack)
+        for k = 1:numel(stack)
+            line = getOr(stack(k), "line", []);
+            if isnumeric(line) && isscalar(line)
+                frames{end + 1} = sprintf('%s (line %d)', textOf(stack(k), "name"), line); %#ok<AGROW>
+            else
+                frames{end + 1} = textOf(stack(k), "name"); %#ok<AGROW>
+            end
+        end
+    end
+    if ~isempty(frames)
+        problem.stack = frames;
     end
 end
 

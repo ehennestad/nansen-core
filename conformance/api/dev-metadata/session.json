@@ -1,0 +1,67 @@
+{
+  "viewables": [
+    {
+      "stack": "${scratch}/data/recording.npy"
+    },
+    {
+      "stack": "${scratch}/data/rig.npy"
+    },
+    {
+      "stack": "${scratch}/data/adapter.npy"
+    }
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 1,
+        "params": {
+          "viewable": "v1"
+        }
+      },
+      "expect": {
+        "result": {
+          "frames": 3,
+          "metadata": {
+            "frameRate": 31,
+            "pixelSize": [1.2, 1.25]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 2,
+        "params": {
+          "viewable": "v2"
+        }
+      },
+      "expect": {
+        "result": {
+          "metadata": {
+            "frameRate": 20,
+            "pixelSize": [0.5, 0.4],
+            "zStep": 2
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "view.frame",
+        "id": 3,
+        "params": {
+          "viewable": "v3"
+        }
+      },
+      "expect": {
+        "result": {
+          "metadata": {
+            "frameRate": 15.5
+          }
+        }
+      }
+    }
+  ]
+}

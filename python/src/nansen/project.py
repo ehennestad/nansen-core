@@ -19,7 +19,7 @@ from .methods import Method, MethodContext, run_method
 from .modules import Module, resolve_module
 from .notebook import Notebook
 from .views import Views
-from . import runs
+from . import devyaml, runs
 from .schemas import current_version
 from .stacks import Stack, StackWriter, as_stack, natural_order
 from .tables import Column, EntityTable, TableSpec
@@ -1346,7 +1346,13 @@ class Project:
         adapter = self.adapters.get(variable.file_adapter)
         stack = as_stack(adapter.open(natural_order(existing)) if hasattr(adapter, "open") else self.load(entity, name))
         stack.max_frames = self.stack_frame_limit
-        return stack
+        return devyaml.with_sidecar(stack, natural_order(existing)[0])   # what dev's metadata file says, if it is there
+
+    def sidecar_metadata(self, entity: Entity, name: str) -> dict:
+        """What dev's metadata file beside the variable's (first) file says of the recording (devyaml.stack_metadata):
+        frameRate, pixelSize, zStep; {} when there is none."""
+        existing = self.existing_files(entity, name)
+        return devyaml.stack_metadata(devyaml.read_sidecar(natural_order(existing)[0])) if existing else {}
 
     def open_file_stack(self, path: PathLike, adapter_id: Optional[str] = None) -> Tuple[Stack, str, List[str]]:
         """Any file as a stack, as dev's imviewer opens one: with the adapter given, or the first of those that read its
@@ -1368,7 +1374,7 @@ class Project:
                 problems.append(f"{candidate}: {error.message}")
                 continue
             stack.max_frames = self.stack_frame_limit
-            return stack, candidate, candidates
+            return devyaml.with_sidecar(stack, path), candidate, candidates
         raise NansenError("invalid-data", f"{path.name} could not be read as a stack: " + "; ".join(problems))
 
     def stack_writer(self, entity: Entity, name: str, shape: Any, dtype: Any) -> StackWriter:

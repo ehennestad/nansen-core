@@ -1,0 +1,12 @@
+DimensionArrangement: YXT
+Size: [4, 6, 3]
+Class: uint16
+PhysicalSizeX: 1.2
+PhysicalSizeY: 1.25
+PhysicalSizeZ: 1.0
+PhysicalSizeXUnit: micrometer
+PhysicalSizeYUnit: micrometer
+PhysicalSizeZUnit: pixel
+TimeIncrement: 0.03225806451612903
+TimeIncrementUnit: second
+StartTime: ''

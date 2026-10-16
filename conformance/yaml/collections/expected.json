@@ -1,0 +1,11 @@
+{
+  "description": "Sequences and mappings: a sequence at its key's indentation and one more indented, items holding a mapping on their own line (- name: ...), a sequence (- - 1) or a mapping after a bare -; nested flow collections, a key without a value (g) or with an empty one (h); a flow sequence whose plain items go on over lines.",
+  "value": {
+    "Channels": [{"name": "green", "color": [0, 255, 0]}, {"name": "red", "color": [255, 0, 0]}],
+    "Planes": [[1, 2], [3, 4, 5], {"depth": 120.5}],
+    "Nested": {"a": {"b": ["x", "y, z", {"c": "d"}]}, "e": [], "f": {}, "g": null, "h": null},
+    "Wrapped": ["one two", "three four", "five"],
+    "Mixed": [1, "two", false, null],
+    "Last": "end"
+  }
+}

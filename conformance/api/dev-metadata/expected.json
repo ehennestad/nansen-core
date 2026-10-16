@@ -1,0 +1,4 @@
+{
+  "description": "Stacks with NANSEN dev's metadata file beside them, which their own files (.npy) say nothing of: an image stack's (recording.yaml: 1 / TimeIncrement in seconds, the pixel size in micrometers; PhysicalSizeZ in pixels says nothing), one kept as .yaml.txt (dev's SaveYamlAsTxt) in other units (1000 / TimeIncrement in milliseconds, nanometers and millimeters as micrometers), and an adapter's (setMetadata: SampleRate in the Custom group; a pixel size of only x says nothing). Each value is rounded as the stack adapters round theirs.",
+  "steps": 3
+}

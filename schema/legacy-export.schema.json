@@ -293,6 +293,28 @@
             }
           }
         },
+        "localRootPaths": {
+          "type": "array",
+          "description": "The roots of the location on the computer the export was made on, where dev kept them apart from the project's (projects/<name>/datalocation_local_rootpath_settings in the user's preferences: RootPathListLocal), by the key of the root they stand for.",
+          "items": {
+            "type": "object",
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              },
+              "diskName": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "subfolders": {
           "type": "array",
           "description": "SubfolderStructure, outermost first.",
@@ -699,9 +721,54 @@
           "type": "string",
           "description": "Completed, Failed or Canceled."
         },
+        "options": {
+          "type": "object",
+          "description": "The options it ran with, as JSON values."
+        },
+        "preset": {
+          "type": "string",
+          "description": "The name of the option preset they came from (parameters)."
+        },
+        "createdAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
+        },
+        "startedAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
+        },
         "finishedAt": {
           "type": "string",
           "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "log": {
+          "type": "string",
+          "description": "What it wrote to the command window (dev's Diary)."
+        },
+        "error": {
+          "type": "object",
+          "description": "Why it failed (dev's ErrorStack, an MException): its identifier, message, and stack as \"name (line n)\".",
+          "required": [
+            "message"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "identifier": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     }

@@ -178,7 +178,8 @@ classdef Catalog
     methods (Static)
         function settings = defaultSettings()
             settings = struct("queue", struct("autoStart", true, "worker", 'thread', "debug", false), "addons", struct("folder", ""), ...
-                "workers", struct("python", "", "matlab", ""), "tables", struct("saveToDataFolders", false));
+                "workers", struct("python", "", "matlab", ""), ...
+                "tables", struct("saveToDataFolders", false, "textSize", 'normal', "locked", false));
         end
 
         function path = defaultPath()

@@ -1729,7 +1729,8 @@
 
   /* ------------------------------------------------------------------ settings */
   N.views.settings = async function (app, content) {
-    let settings = await app.client.request("settings.get").catch(() => ({ queue: { autoStart: true, worker: "thread" } }));
+    let catalog = true;   // the user's settings are kept (the app has a catalog)
+    let settings = await app.client.request("settings.get").catch(() => { catalog = false; return { queue: { autoStart: true, worker: "thread" } }; });
     const save = async (changes) => {
       try {
         settings = await app.client.request("settings.save", { settings: changes });
@@ -1743,8 +1744,16 @@
     const row = (title, sub, control) => h("li", h("div.grow", h("div.title", title), h("div.sub", sub)), control);
     const theme = h("select.input.theme-select", { style: { width: "180px" }, on: { change: () => { N.theme.save(theme.value); N.theme.apply(theme.value); } } },
       [["auto", "Follow the system"], ["light", "Light"], ["dark", "Dark"]].map(([v, label]) => h("option", { value: v, selected: N.theme.load() === v }, label)));
-    let locked = false;
-    try { locked = JSON.parse(localStorage.getItem("nansen.locked") || "false") === true; } catch (e) { /* fine */ }
+    // the tables' text size and lock: this browser's, else the user's default; a change is both
+    let locked = Boolean(settings.tables && settings.tables.locked);
+    try {
+      const stored = localStorage.getItem("nansen.locked");
+      if (stored !== null) locked = JSON.parse(stored) === true;
+    } catch (e) { /* fine */ }
+    const saveTables = async (changes) => {
+      Object.assign(N.tableDefaults, changes);
+      if (catalog) await save({ tables: changes });
+    };
     const addonList = h("ul.list.addon-list", h("li.muted", "Loading…"));
     const folderNote = h("div.sub.mono", "");
     const drawAddons = async () => {
@@ -1773,7 +1782,7 @@
         } } }, "Install") : null)) : h("li.muted", "The modules in use declare no add-ons"));
     };
     N.fill(content,
-      h("div.hero", h("div", h("h1", "Settings"), h("p", "How the app behaves for you. Worker settings are kept with your project list; how the dashboard looks is kept in this browser."))),
+      h("div.hero", h("div", h("h1", "Settings"), h("p", "How the app behaves for you. Worker settings are kept with your project list; how the dashboard looks is kept in this browser, and the tables' text size and lock with your project list too, for browsers that have not chosen their own."))),
       h("div.grid",
         h("div.card", h("div.card-head", N.icon("tasks"), h("h3", "Tasks")),
           h("ul.list", row("Start the worker when a project opens", "Queued tasks then run on their own; otherwise start it on the Tasks page. Takes effect the next time the app starts.",
@@ -1788,11 +1797,17 @@
         h("div.card", h("div.card-head", N.icon("eye"), h("h3", "Dashboard")),
           h("ul.list",
             row("Theme", "Light, dark, or as the system is set", theme),
-            row("Table text size", "The size of the text and rows in the entity tables",
-              h("select.input.table-size-select", { style: { width: "180px" }, on: { change: (event) => N.tableSize.save(event.target.value) } },
+            row("Table text size", "The size of the text and rows in the entity tables; also the default of other browsers",
+              h("select.input.table-size-select", { style: { width: "180px" }, on: { change: (event) => {
+                N.tableSize.save(event.target.value);
+                saveTables({ textSize: event.target.value });
+              } } },
                 [["compact", "Compact"], ["normal", "Normal"], ["large", "Large"]].map(([v, label]) => h("option", { value: v, selected: N.tableSize.load() === v }, label)))),
-            row("Lock editing", "Values cannot be changed in the tables until this is off (also the lock in each table's toolbar)",
-              toggle("lock-setting", locked, (on) => { try { localStorage.setItem("nansen.locked", JSON.stringify(on)); } catch (e) { /* fine */ } })),
+            row("Lock editing", "Values cannot be changed in the tables until this is off (also the lock in each table's toolbar); also the default of other browsers",
+              toggle("lock-setting", locked, (on) => {
+                try { localStorage.setItem("nansen.locked", JSON.stringify(on)); } catch (e) { /* fine */ }
+                saveTables({ locked: on });
+              })),
             row("Keyboard shortcuts", "Press ? anywhere, or the keyboard button at the top", h("button.btn.small", { on: { click: () => N.showShortcuts() } }, N.icon("keyboard", 14), "Show"))))),
       h("div.card.addons-card", { style: { marginTop: "16px" } },
         h("div.card-head", N.icon("puzzle"), h("h3", "Add-ons"), h("div.spacer"), folderNote),
@@ -2534,6 +2549,7 @@
       } },
       submit: async (values) => {
         const result = await app.client.request("legacy.import", values);
+        if (result.settings && result.settings.tables) await N.loadTableDefaults(app.client);   // dev's table text size and lock
         await opened(result.project, "Project imported");
         if (result.warnings.length) {
           N.dialog({ title: "Not carried over", content: h("div", { style: { padding: "16px 20px" } },

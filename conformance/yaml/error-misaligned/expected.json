@@ -1,0 +1,4 @@
+{
+  "description": "A key more indented than the one before it, after a value: YAML's 'mapping values are not allowed here'.",
+  "error": "invalid-data"
+}

@@ -532,6 +532,7 @@ classdef Viewables < handle
                         stack = adapter.read(path);
                     end
                     stack = nansen.Viewables.imageStack(stack, name + extension);
+                    stack = nansen.internal.withDevMetadata(stack, path);   % and dev's metadata file beside it
                 catch err
                     if adapterId ~= "" || ~startsWith(string(err.identifier), "nansen:")
                         rethrow(err)

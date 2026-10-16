@@ -81,13 +81,16 @@ FILES_READ_LIMIT = 65536  # bytes files.read gives at most, unless asked for mor
 WORKER_START_SECONDS = 300  # how long methods.run waits for another language's worker to take a task
 LEGACY_EXPORT_SECONDS = 1800  # how long MATLAB may take to read a dev project folder
 
-def _frame_rate(params: dict, entity: Any) -> Optional[float]:
-    """data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive number."""
+def _frame_rate(params: dict, entity: Any, sidecar: Optional[float] = None) -> Optional[float]:
+    """data.traces' frames per second: the frameRate given, else the one dev's metadata file of the signals says
+    (sidecar), else the entity's frame_rate when it is a positive number."""
     rate = params.get("frameRate")
     if rate is not None:
         if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
             raise NansenError("invalid-params", "frameRate is a positive number of frames per second")
         return float(rate)
+    if sidecar is not None:
+        return float(sidecar)
     rate = entity.get("frame_rate")
     if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
         return None
@@ -1335,7 +1338,7 @@ class Api:
             raise NansenError("invalid-params", "columns is a list of 0-based column numbers")
         values = {name: project.load(entity, name) for name in names}
         result = signal_traces(values, columns, params.get("start", 0), params.get("stop"), params.get("maxPoints", 2000))
-        result["frameRate"] = _frame_rate(params, entity)
+        result["frameRate"] = _frame_rate(params, entity, project.sidecar_metadata(entity, names[0]).get("frameRate"))
         for trace in result["traces"]:   # what each column is, when the data variable says (a time series' columns)
             names = project.data_variable(trace["variable"]).document.get("columnNames")
             if names:

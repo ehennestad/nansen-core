@@ -1,0 +1,4 @@
+{
+  "description": "Anchors and aliases are not read (dev never writes them).",
+  "error": "invalid-data"
+}

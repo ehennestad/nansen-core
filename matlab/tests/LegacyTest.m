@@ -229,11 +229,24 @@ classdef LegacyTest < matlab.unittest.TestCase
             done.entityId = {'m110-002'};
             done.status = 'Completed';
             done.timeFinished = '2025.05.30 12:00:00';
-            taskListHistory = done;
+            % a task that failed, with what it wrote (Diary) and its error (ErrorStack; dev's MException, a struct here)
+            failed = task('m110-001', 'RatNav.sessionmethod.process.noteZoom', {struct("Factor", 5)}, 'Big');
+            failed.entityId = {'m110-001'};
+            failed.status = 'Failed';
+            failed.timeStarted = datetime(2025, 5, 31, 9, 0, 0);
+            failed.timeFinished = '2025.05.31 09:01:00';
+            failed.Diary = sprintf('Noting the zoom of m110-001\n');
+            failed.ErrorStack = struct("identifier", 'RatNav:noteZoom:NoFile', "message", 'No zoom file', ...
+                "stack", struct("file", 'noteZoom.m', "name", 'noteZoom', "line", 7));
+            taskListHistory = [failed, done];   % newest first, as dev keeps them
             save(fullfile(userFolder, "projects", "RatNav", "task_list.mat"), "taskListQueue", "taskListHistory");
+            % the roots on this computer (dev's LocalRootPathManager), by the locations' Uuid and the roots' Key
+            nansen.internal.writeText(fullfile(userFolder, "projects", "RatNav", "datalocation_local_rootpath_settings.json"), ...
+                ['{"RootPathListLocal": [{"Uuid": "a1", "RootPath": [{"Key": "local", "Value": "/Volumes/Other/raw", ', ...
+                '"DiskName": "LabDisk"}]}]}']);
             mkdir(fullfile(userFolder, "settings"));
-            settings = struct("MetadataTable", struct("AutosaveMetadataToDataFolders", true, "TableFontSize", 10), ...
-                "TaskProcessor", struct("RunTasksWhenQueued", false, "RunTasksOnStartup", true));
+            settings = struct("MetadataTable", struct("AutosaveMetadataToDataFolders", true, "TableFontSize", 10, ...
+                "AllowTableEdits", false), "TaskProcessor", struct("RunTasksWhenQueued", false, "RunTasksOnStartup", true));
             save(fullfile(userFolder, "settings", "nansen_app_settings.mat"), "settings");
         end
 
@@ -427,7 +440,23 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(queue{2}.entities), "m110-002");   % the task's name, as dev names it
             testCase.verifyEqual(string(queue{3}.entities)', ["m110-001", "m110-002"]);
             history = nansen.internal.asCellOfStructs(export.tasks.history);
-            testCase.verifyEqual(string(history{1}.finishedAt), "2025-05-30T12:00:00");
+            testCase.verifyEqual(string(history{2}.finishedAt), "2025-05-30T12:00:00");
+            % a failed task: its options, preset, times, what it wrote (Diary) and its error (ErrorStack)
+            testCase.verifyEqual(string(history{1}.status), "Failed");
+            testCase.verifyEqual(history{1}.options.Factor, 5);
+            testCase.verifyEqual(string(history{1}.preset), "Big");
+            testCase.verifyEqual(string(history{1}.startedAt), "2025-05-31T09:00:00");
+            testCase.verifyEqual(string(history{1}.log), "Noting the zoom of m110-001" + newline);
+            testCase.verifyEqual(string(history{1}.error.message), "No zoom file");
+            testCase.verifyEqual(string(history{1}.error.identifier), "RatNav:noteZoom:NoFile");
+            testCase.verifyEqual(string(history{1}.error.stack), "noteZoom (line 7)");
+            % the roots on this computer, by the location's Uuid (the processed location has the same, but no root
+            % of that key: it is passed over when converted)
+            locations = nansen.internal.asCellOfStructs(export.dataLocations);
+            local = nansen.internal.asCellOfStructs(locations{1}.localRootPaths);
+            testCase.verifyEqual(string(local{1}.key), "local");
+            testCase.verifyEqual(string(local{1}.value), "/Volumes/Other/raw");
+            testCase.verifyEqual(string(local{1}.diskName), "LabDisk");
             sessions = nansen.internal.asCellOfStructs(export.tables);
             progress = nansen.internal.asCellOfStructs(sessions{1}.progress);
             testCase.verifyEqual(progress{1}.row, 0);
@@ -446,9 +475,10 @@ classdef LegacyTest < matlab.unittest.TestCase
             report = nansen.legacy.importProject(testCase.Legacy, target, UserFolder=user);
             testCase.verifyEqual(string(report.fileAdapters), ["legacy.lick_log", "legacy.speed_trace"]);
             testCase.verifyEqual(report.tasks, 2);
+            testCase.verifyEqual(report.history, 2);
             testCase.verifyEqual(report.runs, 2);
-            testCase.verifyEqual(report.settings, struct("tables", struct("saveToDataFolders", true), ...
-                "queue", struct("autoStart", true)));
+            testCase.verifyEqual(report.settings, struct("tables", struct("saveToDataFolders", true, ...
+                "textSize", 'normal', "locked", true), "queue", struct("autoStart", true)));
             warnings = string(report.warnings);
             testCase.verifyTrue(any(contains(warnings, "option preset 'fast' of nansen.wrapper.normcorre.Processor: Misc.Callback")));
             testCase.verifyTrue(any(contains(warnings, "queued task 'm110-002' (nansen.module.ophys.twophoton.sessionmethod.plot.plotImageStats) has no method here")));
@@ -475,7 +505,9 @@ classdef LegacyTest < matlab.unittest.TestCase
 
             % the queued tasks wait on hold, in dev's order, with dev's options over their preset's
             listing = dir(fullfile(target, "tasks", "*.task.nansen.json"));
-            tasks = arrayfun(@(f) nansen.internal.readJson(fullfile(f.folder, f.name)), listing, UniformOutput=false);
+            written = arrayfun(@(f) nansen.internal.readJson(fullfile(f.folder, f.name)), listing, UniformOutput=false);
+            statuses = string(cellfun(@(t) t.status, written, UniformOutput=false));
+            tasks = written(statuses == "queued");
             [~, order] = sort(cellfun(@(t) t.order, tasks));
             tasks = tasks(order);
             testCase.verifyEqual(cellfun(@(t) t.onHold, tasks), true(numel(tasks), 1));
@@ -483,6 +515,36 @@ classdef LegacyTest < matlab.unittest.TestCase
             testCase.verifyEqual(tasks{1}.options.values.Factor, 2);
             testCase.verifyEqual(string(tasks{1}.language), "matlab");
             testCase.verifyNumElements(tasks{2}.entities, 2);
+
+            % the history's tasks are finished tasks, with dev's log and error, that can be run again
+            failed = written{statuses == "failed"};
+            testCase.verifyEqual(string(failed.method.id), "legacy.note_zoom");
+            testCase.verifyEqual(failed.options.values.Factor, 5);
+            testCase.verifyEqual(string(failed.error.message), "No zoom file");
+            testCase.verifyEqual(string(failed.finishedAt), "2025-05-31T09:01:00");
+            testCase.verifyEqual(string(nansen.internal.readText(fullfile(target, failed.log))), "Noting the zoom of m110-001" + newline);
+            completed = written{statuses == "completed"};
+            testCase.verifyEqual(string(completed.method.id), "ophys.extract_signals");
+            queue = nansen.TaskQueue(project);
+            again = queue.retry(string(failed.id));
+            testCase.verifyEqual(string(again.status), "queued");
+            testCase.verifyEqual(again.options.values.Factor, 5);
+
+            % dev's root of this computer is a root of the environment dev-local; the project's stays the default
+            config = nansen.internal.readJson(fullfile(target, "dataset.dsm.json"));
+            locations = nansen.internal.asCellOfStructs(config.dataLocations);
+            roots = nansen.internal.asCellOfStructs(locations{1}.filesystemSource.rootStoragePaths);
+            testCase.verifyEqual(string(cellfun(@(r) r.identifier, roots, UniformOutput=false)), ["local", "local-dev-local"]);
+            testCase.verifyEqual(string(roots{2}.path), "/Volumes/Other/raw");
+            testCase.verifyEqual(string(roots{2}.environment), "dev-local");
+            processedRoots = nansen.internal.asCellOfStructs(locations{2}.filesystemSource.rootStoragePaths);
+            testCase.verifyNumElements(processedRoots, 1);   % no root of the key dev's local root stands for
+            elsewhere = nansen.Project.open(target, Environment="dev-local");
+            dataset = elsewhere.dataset();
+            found = dataset.roots();
+            testCase.verifyTrue(any(string({found.Path}) == "/Volumes/Other/raw"));
+            testCase.verifyTrue(any(warnings == "data locations: 1 of dev's local root paths (the roots on the computer " + ...
+                "whose preferences were read) are roots of the environment 'dev-local'; on that computer, open the project in that environment"));
 
             % the Progress column: the session's pipeline, and what dev finished in the run journal with the history
             testCase.verifyEqual(string(first.Row.pipeline), "legacy.signals");
@@ -550,9 +612,14 @@ classdef LegacyTest < matlab.unittest.TestCase
             ids = string(cellfun(@(e) e.Key.session_id, entities, UniformOutput=false));
             testCase.verifyEqual(entities{ids == "m110-001"}.Row.NumRois, 120);
             testCase.verifyTrue(isfile(fullfile(target, "matlab", "num_rois_value.m")));
-            % the older task list's task of two sessions waits on hold; its finished task is in the run journal
+            % the older task list's task of two sessions waits on hold; its finished task is in the run journal, and a
+            % finished task of the queue
+            testCase.verifyEqual(report.history, 1);
             listing = dir(fullfile(target, "tasks", "*.task.nansen.json"));
-            task = nansen.internal.readJson(fullfile(listing(1).folder, listing(1).name));
+            written = arrayfun(@(f) nansen.internal.readJson(fullfile(f.folder, f.name)), listing, UniformOutput=false);
+            statuses = string(cellfun(@(t) t.status, written, UniformOutput=false));
+            testCase.verifyEqual(sort(statuses), ["completed"; "queued"]);
+            task = written{statuses == "queued"};
             testCase.verifyNumElements(task.entities, 2);
             testCase.verifyTrue(task.onHold);
         end
