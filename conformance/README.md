@@ -41,7 +41,7 @@ Like `entities`, plus `requests.json`: a list of `{entityType, key, variable}`.
 
 `export.json` is a `nansen.legacyExport` document, as MATLAB's `nansen.legacy.exportProject` writes it. The implementation converts it into a new project in an empty folder ([legacy import](../docs/reference/legacy-import.md)).
 
-- `expected.json` gives the written `project.nansen.json` and `dataset.dsm.json`, the fragments and data variables (sorted by file name), each table's `key`, columns and `rows`, and the report's `warnings` in order; and the tasks, the queued ones in their `order`, then the finished ones by `createdAt` and `finishedAt`, without their `id` and with the text of their log file as `log`.
+- `expected.json` gives the written `project.nansen.json` and `dataset.dsm.json`, the fragments and data variables (sorted by file name), each table's `key`, columns and `rows`, and the report's `warnings` in order; and the tasks, the queued ones in their `order`, then the finished ones by `createdAt` and `finishedAt`, without their `id` and with the text of their log file as `log`; and the modules' data (`moduleData`: `{module, name, value}` in order of module and name, `value` being the JSON its text holds) and the FOV map's images (`fovmapFiles`: `{path, base64}` of each file in `fovmap/`, by path), of a FOV inventory of dev's fovmanager (`fovInventory`).
 
 ## `jsontext/<case>/`
 

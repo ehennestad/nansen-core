@@ -1,0 +1,4 @@
+{
+  "description": "dev's FOV inventory (fovmanager's .mat file of plain structs) onto the FOV map: the sessions' FOV positions, sizes and regions, the subjects' windows, the images as BMP files (a window's photo, an FOV's image of doubles mirrored, a logical one turned a quarter), the marks in the module's data; importing it again replaces its marks. Errors for a file that is not an inventory, one that is not there, JSON of another kind and a file of another type.",
+  "steps": 12
+}

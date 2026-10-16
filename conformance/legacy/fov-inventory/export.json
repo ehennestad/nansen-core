@@ -1,0 +1,392 @@
+{
+  "schemaType": "nansen.legacyExport",
+  "schemaVersion": "0.1.0",
+  "source": "/data/FovLab",
+  "project": {
+    "name": "FOV lab",
+    "shortName": "FovLab"
+  },
+  "dataLocations": [
+    {
+      "name": "Rawdata",
+      "type": "recorded",
+      "rootPaths": [
+        {
+          "key": "local",
+          "value": "/data/rawdata"
+        }
+      ],
+      "subfolders": [
+        {
+          "name": "m1234",
+          "type": "Subject",
+          "expression": "^m\\d{4}$",
+          "ignoreList": [],
+          "isFolder": true
+        },
+        {
+          "name": "m1234-s1",
+          "type": "Session",
+          "expression": "",
+          "ignoreList": [],
+          "isFolder": true
+        }
+      ],
+      "metadata": []
+    }
+  ],
+  "variables": [],
+  "tables": [
+    {
+      "name": "Sessions",
+      "entityClass": "session",
+      "isMaster": true,
+      "columns": [
+        {
+          "name": "sessionID",
+          "dataType": "string"
+        },
+        {
+          "name": "subjectID",
+          "dataType": "string"
+        }
+      ],
+      "rows": [
+        {
+          "sessionID": "m1234-s1",
+          "subjectID": "m1234"
+        },
+        {
+          "sessionID": "m1234-s2",
+          "subjectID": "m1234"
+        },
+        {
+          "sessionID": "m1235-s1",
+          "subjectID": "m1235"
+        }
+      ]
+    },
+    {
+      "name": "Subjects",
+      "entityClass": "subject",
+      "isMaster": true,
+      "columns": [
+        {
+          "name": "SubjectID",
+          "dataType": "string"
+        },
+        {
+          "name": "Description",
+          "dataType": "string"
+        }
+      ],
+      "rows": [
+        {
+          "SubjectID": "m1234",
+          "Description": "Left window"
+        }
+      ]
+    }
+  ],
+  "fovInventory": {
+    "schemaType": "nansen.legacyFovInventory",
+    "schemaVersion": "0.1.0",
+    "source": "/data/fov_inventory.mat",
+    "mice": [
+      {
+        "mouseId": "1234",
+        "headbarLabel": "HB-7",
+        "windows": [
+          {
+            "shape": "Round 2.5mm",
+            "center": [
+              2,
+              -2
+            ],
+            "edge": [
+              [
+                3.5,
+                -2
+              ],
+              [
+                2,
+                -0.5
+              ],
+              [
+                0.5,
+                -2
+              ],
+              [
+                2,
+                -3.5
+              ]
+            ],
+            "rotation": 30,
+            "image": {
+              "width": 2,
+              "height": 2,
+              "pixels": "/wAAAP8AAAD/////"
+            },
+            "fovs": [
+              {
+                "center": [
+                  2.3,
+                  -2.4
+                ],
+                "edge": [
+                  [
+                    2.05,
+                    -2.15
+                  ],
+                  [
+                    2.05,
+                    -2.65
+                  ],
+                  [
+                    2.55,
+                    -2.65
+                  ],
+                  [
+                    2.55,
+                    -2.15
+                  ]
+                ],
+                "rotation": 0,
+                "sessions": [
+                  "m1234-s1",
+                  "m1234-s9"
+                ],
+                "sessionImages": [
+                  {
+                    "session": "m1234-s1",
+                    "image": {
+                      "width": 3,
+                      "height": 1,
+                      "pixels": "ChQeKDI8RlBa"
+                    }
+                  }
+                ]
+              },
+              {
+                "center": [
+                  1.7,
+                  -1.8
+                ],
+                "edge": [
+                  [
+                    1.4,
+                    -1.6
+                  ],
+                  [
+                    1.4,
+                    -2.0
+                  ],
+                  [
+                    2.0,
+                    -2.0
+                  ],
+                  [
+                    2.0,
+                    -1.6
+                  ]
+                ],
+                "rotation": -90,
+                "sessions": [
+                  "m1234-s2"
+                ],
+                "image": {
+                  "width": 1,
+                  "height": 2,
+                  "pixels": "AQIDBAUG"
+                }
+              },
+              {
+                "center": [
+                  1.9,
+                  -1.9
+                ],
+                "edge": [
+                  [
+                    1.65,
+                    -1.65
+                  ],
+                  [
+                    1.65,
+                    -2.15
+                  ],
+                  [
+                    2.15,
+                    -2.15
+                  ],
+                  [
+                    2.15,
+                    -1.65
+                  ]
+                ],
+                "rotation": 0,
+                "sessions": []
+              }
+            ]
+          },
+          {
+            "shape": "Trapezoidal 3x5mm",
+            "center": [
+              2,
+              -2
+            ],
+            "edge": [
+              [
+                0.5,
+                0.5
+              ],
+              [
+                -0.5,
+                -4.5
+              ],
+              [
+                4.5,
+                -4.5
+              ],
+              [
+                3.5,
+                0.5
+              ]
+            ],
+            "rotation": 0,
+            "fovs": []
+          }
+        ],
+        "injections": [
+          {
+            "center": [
+              1.5,
+              -1.5
+            ],
+            "name": "AAV-GCaMP8m",
+            "color": "g",
+            "spread": 400,
+            "volume": 50,
+            "depth": "300"
+          },
+          {
+            "center": [
+              2.5,
+              -2.5
+            ],
+            "name": "AAV-jRGECO1a",
+            "color": "m",
+            "depth": "200-300"
+          }
+        ],
+        "annotations": [
+          {
+            "center": [
+              2,
+              -3
+            ],
+            "name": "blood vessel",
+            "color": "k"
+          }
+        ]
+      },
+      {
+        "mouseId": "1235",
+        "headbarLabel": "",
+        "windows": [
+          {
+            "shape": "Custom Trapezoid",
+            "center": [
+              -2,
+              -2.5
+            ],
+            "edge": [
+              [
+                -3,
+                -1
+              ],
+              [
+                -3.2,
+                -4
+              ],
+              [
+                -0.8,
+                -4
+              ],
+              [
+                -1,
+                -1
+              ],
+              [
+                -2,
+                -0.6
+              ]
+            ],
+            "rotation": 0,
+            "fovs": [
+              {
+                "center": [
+                  -2.2,
+                  -2.7
+                ],
+                "edge": [
+                  [
+                    -2.7,
+                    -2.2
+                  ],
+                  [
+                    -2.7,
+                    -3.2
+                  ],
+                  [
+                    -1.7000000000000002,
+                    -3.2
+                  ],
+                  [
+                    -1.7000000000000002,
+                    -2.2
+                  ]
+                ],
+                "rotation": 180,
+                "sessions": [
+                  "m1235-s1"
+                ]
+              }
+            ]
+          }
+        ],
+        "injections": [],
+        "annotations": []
+      },
+      {
+        "mouseId": "9999",
+        "headbarLabel": "X",
+        "windows": [
+          {
+            "shape": "Round 2.5mm",
+            "center": [
+              -1,
+              1
+            ],
+            "edge": [],
+            "rotation": 0,
+            "fovs": []
+          }
+        ],
+        "injections": [
+          {
+            "center": [
+              -1,
+              1.2
+            ],
+            "name": "CTB",
+            "color": "blue"
+          }
+        ],
+        "annotations": []
+      }
+    ],
+    "skipped": [
+      "mouse 4: no MouseId; left out"
+    ]
+  }
+}

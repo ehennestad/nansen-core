@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nansen:schema:legacyFovInventory",
+  "title": "NANSEN dev FOV inventory",
+  "description": "What a FOV inventory of NANSEN dev's fovmanager (its Save Fov Inventory: a .mat file with fovDb) says, as plain JSON: each mouse with its headbar label, cranial windows (with the fields of view in them), injections and annotations. Map positions are in mm from bregma (x mediolateral, y anteroposterior). Images are as fovmanager showed them on the map (anterior up), before a window's rotation; an FOV's image is turned with its FOV. Written by MATLAB's nansen.legacy.exportFovInventory, or by Python from a .mat file of plain structs; nansen.legacy plans the FOV map's data from it.",
+  "type": "object",
+  "required": ["schemaType", "schemaVersion", "mice"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaType": { "const": "nansen.legacyFovInventory" },
+    "schemaVersion": { "type": "string", "pattern": "^0\\.1\\.\\d+$" },
+    "source": { "type": "string", "description": "The .mat file it was read from" },
+    "mice": { "type": "array", "items": { "$ref": "#/definitions/mouse" } },
+    "skipped": { "type": "array", "items": { "type": "string" }, "description": "What could not be read, and why" }
+  },
+  "definitions": {
+    "point": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } },
+    "image": {
+      "type": "object",
+      "required": ["width", "height", "pixels"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "pixels": { "type": "string", "description": "base64 of 8-bit red, green and blue values, pixel after pixel, row after row from the top" }
+      }
+    },
+    "mouse": {
+      "type": "object",
+      "required": ["mouseId", "windows", "injections", "annotations"],
+      "additionalProperties": false,
+      "properties": {
+        "mouseId": { "type": "string" },
+        "headbarLabel": { "type": "string" },
+        "windows": { "type": "array", "items": { "$ref": "#/definitions/window" } },
+        "injections": { "type": "array", "items": { "$ref": "#/definitions/injection" } },
+        "annotations": { "type": "array", "items": { "$ref": "#/definitions/annotation" } }
+      }
+    },
+    "window": {
+      "type": "object",
+      "required": ["shape", "center", "edge", "rotation", "fovs"],
+      "additionalProperties": false,
+      "properties": {
+        "shape": { "type": "string", "description": "dev's shape: Trapezoidal 3x5mm, Round 2.5mm or Custom Trapezoid" },
+        "center": { "$ref": "#/definitions/point" },
+        "edge": { "type": "array", "description": "The outline, before the rotation: [x, y] points" },
+        "rotation": { "type": "number", "description": "fovmanager's orientation.theta: degrees clockwise" },
+        "image": { "$ref": "#/definitions/image", "description": "The photo of the brain surface, over the outline's bounding box" },
+        "fovs": { "type": "array", "items": { "$ref": "#/definitions/fov" } }
+      }
+    },
+    "fov": {
+      "type": "object",
+      "required": ["center", "edge", "rotation", "sessions"],
+      "additionalProperties": false,
+      "properties": {
+        "center": { "$ref": "#/definitions/point" },
+        "edge": { "type": "array", "description": "The outline, before the rotation: [x, y] points" },
+        "rotation": { "type": "number" },
+        "sessions": { "type": "array", "items": { "type": "string" } },
+        "image": { "$ref": "#/definitions/image" },
+        "sessionImages": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["session", "image"], "additionalProperties": false,
+            "properties": { "session": { "type": "string" }, "image": { "$ref": "#/definitions/image" } }
+          }
+        }
+      }
+    },
+    "injection": {
+      "type": "object",
+      "required": ["center"],
+      "additionalProperties": false,
+      "properties": {
+        "center": { "$ref": "#/definitions/point" },
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "spread": { "type": "number", "description": "µm" },
+        "volume": { "type": "number", "description": "nL" },
+        "depth": { "type": ["string", "number"], "description": "µm, as typed (dev kept it as text)" }
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "required": ["center"],
+      "additionalProperties": false,
+      "properties": {
+        "center": { "$ref": "#/definitions/point" },
+        "name": { "type": "string" },
+        "color": { "type": "string" }
+      }
+    }
+  }
+}

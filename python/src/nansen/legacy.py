@@ -52,7 +52,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import legacyadapters, legacymethods
+from . import fovinventory, legacyadapters, legacymethods
 from .documents import PathLike, check_document, write_json
 from .errors import NansenError
 from .project import Project
@@ -179,6 +179,15 @@ def convert_legacy(export: dict, folder: PathLike) -> dict:
         project.save_pipeline(pipeline)
     tasks, history = _write_tasks(project, plan["tasks"], warnings)
     _write_runs(project, plan["runs"])
+    for entry in plan["moduleData"]:   # the FOV map's marks, of dev's FOV inventory
+        document = {"schemaType": "nansen.moduleData", "schemaVersion": "0.1.0", "module": entry["module"],
+                    "name": entry["name"], "revision": 1, "text": json.dumps(entry["value"], ensure_ascii=False)}
+        (folder / "module-data" / entry["module"]).mkdir(parents=True, exist_ok=True)
+        write_json(folder / "module-data" / entry["module"] / f"{entry['name']}.json",
+                   check_document(document, "nansen.moduleData"))
+    for item in plan["images"]:
+        (folder / item["path"]).parent.mkdir(parents=True, exist_ok=True)
+        (folder / item["path"]).write_bytes(fovinventory.bmp(item["image"]))
     return {"project": str(folder), "rows": rows, "notes": notes,
             "dataVariables": [v["name"] for v in plan["dataVariables"]],
             "fileAdapters": [a["document"]["id"] for a in plan["fileAdapters"]],
@@ -305,6 +314,7 @@ def plan_legacy(export: dict) -> dict:
         for table in tables:
             if table["entityType"] == "session" and "core.pipeline" not in table["fragments"]:
                 table["fragments"].append("core.pipeline")
+    module_data, images = _fov_inventory(export, tables, warnings)
     name = _identifier(info.get("shortName") or info.get("name") or "imported", "p", sep="_", lower=False)
     # the ophys module, when a variable is read by one of its adapters (dev's ROI files and image stacks), or so is a
     # file of one of the project's own adapters built on dev's, or a pipeline, preset, task or completed run is of
@@ -312,13 +322,53 @@ def plan_legacy(export: dict) -> dict:
     uses_ophys = any(v["fileAdapter"].startswith("ophys.") for v in variables) or \
         any(b["fileAdapter"].startswith("ophys.") for a in adapters for b in a["document"]["legacyFileAdapter"].get("builtIn", [])) or \
         any(step["method"].startswith("ophys.") for p in pipelines for step in p["steps"]) or \
-        any(item["method"].startswith("ophys.") for item in presets + tasks + runs)
+        any(item["method"].startswith("ophys.") for item in presets + tasks + runs) or \
+        any(set(t["fragments"]) & {"ophys.fov_position", "ophys.cranial_window"} for t in tables) or bool(module_data)
     modules = ["core"] + (["ophys"] if uses_ophys else [])
     return {"name": name, "title": info.get("name") or name, "description": info.get("description") or "",
             "dataset": dataset, "modules": modules, "fragments": fragments, "tables": tables, "dataVariables": variables,
             "fileAdapters": adapters, "methods": methods, "columnMethods": column_methods, "presets": presets,
             "preferredPresets": preferred, "pipelines": pipelines, "tasks": tasks, "runs": runs,
-            "settings": _settings(export), "warnings": warnings}
+            "settings": _settings(export), "moduleData": module_data, "images": images, "warnings": warnings}
+
+
+# -- dev's FOV inventory ------------------------------------------------------------------------------------------
+
+def _fov_inventory(export: dict, tables: List[dict], warnings: List[str]) -> Tuple[List[dict], List[dict]]:
+    """dev's FOV inventory (fovmanager's) on the FOV map (nansen.fovinventory.plan): the sessions' FOV positions and the
+    subjects' windows go into their rows, with ophys.fov_position and ophys.cranial_window; a subject that dev's
+    sessions name but its table has no row of gets one for its window. Returns the module data ([{module, name, value}])
+    and the images ([{path, image}])."""
+    inventory = export.get("fovInventory")
+    if not inventory:
+        return [], []
+    inventory = check_document(inventory, fovinventory.SCHEMA_TYPE, source="legacy export: fovInventory")
+    by_type = {t["entityType"]: t for t in tables}
+    session, subject = by_type.get("session"), by_type.get("subject")
+    key_of = lambda table, row: {k: row.get(k) for k, _ in table["key"]}
+    sessions = [key_of(session, row) for row in session["rows"]] if session else []
+    subjects = [key_of(subject, row) for row in subject["rows"]] if subject else []
+    if subject and [k for k, _ in subject["key"]] == ["subject_id"]:   # the subjects of the sessions, too
+        for row in session["rows"] if session else []:
+            if isinstance(row.get("subject_id"), str) and {"subject_id": row["subject_id"]} not in subjects:
+                subjects.append({"subject_id": row["subject_id"]})
+    planned = fovinventory.plan(inventory, sessions, subjects)
+    warnings.extend(f"FOV inventory: {w}" for w in planned["warnings"])
+    for table, placed, fragment in ((session, planned["fovs"], "ophys.fov_position"),
+                                    (subject, planned["windows"], "ophys.cranial_window")):
+        if not placed:
+            continue
+        for item in placed:
+            row = next((r for r in table["rows"] if key_of(table, r) == item["key"]), None)
+            if row is None:
+                row = dict(item["key"])
+                table["rows"].append(row)
+            row.update(item["values"])
+        if fragment not in table["fragments"]:
+            table["fragments"].append(fragment)
+    marks = planned["marks"]
+    module_data = [{"module": "ophys", "name": "fovmap", "value": marks}] if any(marks.values()) else []
+    return module_data, planned["images"]
 
 
 # -- session methods, pipelines and presets ----------------------------------------------------

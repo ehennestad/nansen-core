@@ -49,6 +49,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     legacy = commands.add_parser("import-legacy", help="make a project from a NANSEN dev export (nansen.legacyExport)")
     legacy.add_argument("export", help="the JSON written by nansen.legacy.exportProject in MATLAB")
     legacy.add_argument("folder", help="new, empty project folder")
+    legacy.add_argument("--fov-inventory", default=None, help="a FOV inventory of dev's fovmanager (its .mat file, or the "
+                                                             "JSON of nansen.legacy.exportFovInventory) for the FOV map")
     worker = commands.add_parser("worker", help="run a project's queued Python tasks, without the app (a worker for "
                                                 "tasks a MATLAB app queued for Python)")
     worker.add_argument("project")
@@ -106,7 +108,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         from .legacy import convert_legacy
 
         with open(args.export, encoding="utf-8") as f:
-            report = convert_legacy(json.load(f), args.folder)
+            export = json.load(f)
+        if args.fov_inventory:
+            from .fovinventory import read_inventory
+            export["fovInventory"] = read_inventory(args.fov_inventory)
+        report = convert_legacy(export, args.folder)
         counts = ", ".join(f"{n} {name}(s)" for name, n in report["rows"].items()) or "no rows"
         print(f"Created {args.folder}: {counts}, {len(report['dataVariables'])} data variable(s), "
               f"{len(report['fileAdapters'])} file adapter(s), {len(report['methods'])} method(s), "

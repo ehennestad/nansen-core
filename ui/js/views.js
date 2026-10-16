@@ -2702,8 +2702,11 @@
       schema: { type: "object", properties: {
         source: { type: "string", title: "NANSEN project folder or export file" },
         path: { type: "string", title: "New project folder", description: "A new or empty folder" },
+        fovInventory: { type: "string", title: "FOV inventory (optional)",
+          description: "A .mat file of dev's fovmanager (Save Fov Inventory), for the FOV map of the ophys module" },
       } },
       submit: async (values) => {
+        if (!values.fovInventory) delete values.fovInventory;
         const result = await app.client.request("legacy.import", values);
         if (result.settings && result.settings.tables) await N.loadTableDefaults(app.client);   // dev's table text size and lock
         await opened(result.project, "Project imported");

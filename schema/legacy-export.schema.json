@@ -255,6 +255,10 @@
     "settings": {
       "type": "object",
       "description": "dev's app preferences (settings/nansen_app_settings.mat in the user's preferences): groups MetadataTable, Session, TaskProcessor and General, as JSON values."
+    },
+    "fovInventory": {
+      "type": "object",
+      "description": "A FOV inventory of dev's fovmanager (exportProject's FovInventory=), as a nansen.legacyFovInventory document, which its own schema checks."
     }
   },
   "definitions": {

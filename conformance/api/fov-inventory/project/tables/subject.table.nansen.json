@@ -1,0 +1,45 @@
+{
+  "schemaType": "nansen.table",
+  "schemaVersion": "0.1.0",
+  "entityType": "subject",
+  "file": "subject.csv",
+  "revision": 1,
+  "key": [
+    "subject_id"
+  ],
+  "columns": [
+    {
+      "name": "subject_id",
+      "dataType": "string"
+    },
+    {
+      "name": "window_ml",
+      "dataType": "number",
+      "fragment": "ophys.cranial_window",
+      "unit": "mm"
+    },
+    {
+      "name": "window_ap",
+      "dataType": "number",
+      "fragment": "ophys.cranial_window",
+      "unit": "mm"
+    },
+    {
+      "name": "window_shape",
+      "dataType": "string",
+      "fragment": "ophys.cranial_window"
+    },
+    {
+      "name": "window_rotation",
+      "dataType": "number",
+      "fragment": "ophys.cranial_window",
+      "unit": "°"
+    }
+  ],
+  "fragments": [
+    {
+      "id": "ophys.cranial_window",
+      "version": "1.0.0"
+    }
+  ]
+}

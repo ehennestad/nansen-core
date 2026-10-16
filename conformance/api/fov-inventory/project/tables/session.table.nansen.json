@@ -1,0 +1,62 @@
+{
+  "schemaType": "nansen.table",
+  "schemaVersion": "0.1.0",
+  "entityType": "session",
+  "file": "session.csv",
+  "revision": 1,
+  "key": [
+    "subject_id",
+    "session_id"
+  ],
+  "columns": [
+    {
+      "name": "subject_id",
+      "dataType": "string"
+    },
+    {
+      "name": "session_id",
+      "dataType": "string"
+    },
+    {
+      "name": "fov_ml",
+      "dataType": "number",
+      "fragment": "ophys.fov_position",
+      "unit": "mm",
+      "description": "Mediolateral position of the FOV's centre (right is positive)"
+    },
+    {
+      "name": "fov_ap",
+      "dataType": "number",
+      "fragment": "ophys.fov_position",
+      "unit": "mm",
+      "description": "Anteroposterior position of the FOV's centre (anterior is positive)"
+    },
+    {
+      "name": "fov_width_um",
+      "dataType": "number",
+      "fragment": "ophys.fov_position",
+      "unit": "µm"
+    },
+    {
+      "name": "fov_height_um",
+      "dataType": "number",
+      "fragment": "ophys.fov_position",
+      "unit": "µm"
+    },
+    {
+      "name": "brain_region",
+      "dataType": "string",
+      "fragment": "ophys.fov_region"
+    }
+  ],
+  "fragments": [
+    {
+      "id": "ophys.fov_position",
+      "version": "1.0.0"
+    },
+    {
+      "id": "ophys.fov_region",
+      "version": "1.0.0"
+    }
+  ]
+}
