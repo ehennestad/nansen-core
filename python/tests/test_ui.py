@@ -772,7 +772,8 @@ def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app,
     demo = empty_app["folder"] / "demo"
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(demo)}})
     case = Path(__file__).resolve().parents[2] / "conformance" / "api" / "files"
-    for folder, name in (("methods", "lab.download_file.method.nansen.json"), ("python", "lab_download_file.py")):
+    for folder, name in (("methods", "lab.download_file.method.nansen.json"), ("python", "lab_download_file.py"),
+                         ("methods", "lab.file_size.method.nansen.json"), ("python", "lab_file_size.py")):
         (demo / folder).mkdir(exist_ok=True)
         shutil.copy(case / "project" / folder / name, demo / folder / name)
     first = api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"][0]
@@ -786,6 +787,7 @@ def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app,
     (archive / (folder / "roi").relative_to(root)).mkdir(parents=True)
     (archive / (folder / "roi" / "big.tif").relative_to(root)).write_bytes(b"frames")
     shutil.copy(case / "project" / "data" / "recording.nwb", folder / "roi" / "recording.nwb")
+    (folder / "roi" / "frames.DAT").write_bytes(b"0123")
     namespace, folders, figures = {}, [], [3]
     api.workspace, api.change_folder = namespace, folders.append
     api.close_figures = lambda: figures.pop() if figures else 0
@@ -821,8 +823,17 @@ def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app,
     page.wait_for_selector(f"{placeholder} .size:text-is('6 B')")
     page.locator(".dialog .dialog-foot button:has-text('Close')").click()
     page.click(f"{placeholder}", button="right")   # the same menu on the right mouse button
-    page.wait_for_selector(".menu .item:has-text('Download File')")
+    # dev's Download File was off for a file that is not empty; a method for other file types is not offered
+    page.wait_for_selector(".menu .item.disabled:has-text('Download File')")
+    assert page.locator(".menu .item:has-text('File size')").count() == 0
     page.keyboard.press("Escape")
+    data_file = f"{tree} li.file-entry[data-name='frames.DAT']"
+    page.click(f"{data_file} .file-methods")
+    page.wait_for_selector(".menu .item.disabled:has-text('Download File')")
+    page.click(".menu .item:has-text('File size')")
+    page.click(".dialog .dialog-foot button:has-text('Run')")
+    page.wait_for_selector(".dialog .tool-result:has-text('\"bytes\": 4')")
+    page.locator(".dialog .dialog-foot button:has-text('Close')").click()
 
     page.click(f"{tree} li[data-name='recording.nwb'] .inspect-file")
     page.click(f"{tree} li.hdf5-group[data-path='/acquisition'] .tree-toggle")

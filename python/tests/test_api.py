@@ -471,12 +471,13 @@ def test_a_file_method_runs_on_a_file(tmp_path):
     call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
     try:
         method = next(m for m in call("methods.list")["result"] if m["id"] == "lab.download_file")
-        assert method["entityType"] == "@file" and method["tool"] is False
+        assert method["entityType"] == "@file" and method["tool"] is False and method["files"] == {"empty": True}
         assert all(m["id"] != "lab.download_file" for m in call("methods.list", entityType="session")["result"])
         result = call("files.run", methodId="lab.download_file", path="raw/m1/big.tif", options={"archive": str(archive)})["result"]
         assert result["result"] == {"downloaded": True, "bytes": 6} and result["log"][0].endswith("downloaded big.tif")
         assert (project.folder / "raw" / "m1" / "big.tif").read_bytes() == b"frames"
-        assert call("files.run", methodId="lab.download_file", path="raw/m1/big.tif")["result"]["result"]["downloaded"] is False
+        # dev showed Download File for empty files only: so is the method (its files: empty)
+        assert call("files.run", methodId="lab.download_file", path="raw/m1/big.tif")["error"]["code"] == "unsupported-file"
         # a file in a data location: its root is that location's
         root = Path(call("files.resolve", dataLocation="raw", path="")["result"]["path"])
         stem = next(p for p in root.rglob("*") if p.is_file())

@@ -63,6 +63,21 @@ class Method:
         return self.entity_type == FILE_METHOD
 
     @property
+    def files(self) -> dict:
+        """Of a file method, the files it is offered for (dev showed its Download File for empty files only):
+        {extensions?: names ending in one of these, any case; empty?: true for empty files only, false for files with
+        something in them}; {} for any file."""
+        return self.document.get("files", {})
+
+    def takes_file(self, path: Path) -> bool:
+        """Whether a file method is for this file (files)."""
+        extensions = self.files.get("extensions")
+        if extensions and not any(path.name.lower().endswith(e.lower()) for e in extensions):
+            return False
+        empty = self.files.get("empty")
+        return empty is None or (path.stat().st_size == 0) == empty
+
+    @property
     def batch_mode(self) -> str:
         return self.document.get("batchMode", "serial")
 
@@ -122,6 +137,8 @@ class Method:
                    "module": self.module, "options": self.options_schema, "tool": self.is_tool}
         if self.is_legacy:
             summary["legacy"] = True
+        if self.is_file_method and self.files:
+            summary["files"] = copy.deepcopy(self.files)
         return summary
 
 
@@ -218,12 +235,22 @@ def run_file_method(method: Method, project, file: dict, options: Optional[dict]
     (filemethod.downloadFile(filePath, rootPath)) got them."""
     if not method.is_file_method:
         raise NansenError("wrong-entity-type", f"{method.id} runs on {method.entity_type}, not on a file")
+    if not method.takes_file(Path(file["path"])):
+        raise NansenError("unsupported-file", f"{method.id} is not for {Path(file['path']).name}: it is for "
+                          + describe_files(method.files))
     context = context or MethodContext(project=project, method=method)
     resolved = method.resolve_options(options)
     context.check_cancelled()
     result = method.function()(file, resolved, context)
     context.progress(1.0)
     return result
+
+
+def describe_files(files: dict) -> str:
+    """The files a file method is for (its files), in words."""
+    kind = {True: "empty ", False: "non-empty "}.get(files.get("empty"), "")
+    extensions = files.get("extensions")
+    return f"{kind}files" + (" ending in " + ", ".join(extensions) if extensions else "")
 
 
 def run_method(method: Method, entities: List[Any], options: Optional[dict] = None,

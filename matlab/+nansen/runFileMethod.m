@@ -16,6 +16,10 @@ function result = runFileMethod(method, file, options, context)
     if ~method.isFileMethod()
         nansen.internal.throwError("wrong-entity-type", "%s runs on %s, not on a file", method.Id, method.EntityType)
     end
+    if ~method.takesFile(file.path)
+        [~, name, extension] = fileparts(string(file.path));
+        nansen.internal.throwError("unsupported-file", "%s is not for %s: it is for %s", method.Id, name + extension, method.describeFiles())
+    end
     resolved = method.resolveOptions(options);
     handle = method.functionHandle();
     context.checkCancelled()

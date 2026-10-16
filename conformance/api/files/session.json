@@ -848,12 +848,7 @@
         }
       },
       "expect": {
-        "result": {
-          "result": {
-            "downloaded": false,
-            "bytes": 16
-          }
-        }
+        "error": "unsupported-file"
       }
     },
     {
@@ -1014,6 +1009,36 @@
         "params": {
           "path": "tables/session.csv",
           "dataset": "/data"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
+      }
+    },
+    {
+      "request": {
+        "method": "files.run",
+        "id": 59,
+        "params": {
+          "methodId": "lab.file_size",
+          "path": "data/placeholder.bin"
+        }
+      },
+      "expect": {
+        "result": {
+          "result": {
+            "bytes": 16
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.run",
+        "id": 60,
+        "params": {
+          "methodId": "lab.file_size",
+          "path": "data/recording.nwb"
         }
       },
       "expect": {

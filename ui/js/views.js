@@ -703,13 +703,18 @@
       return c && (c.dataType === "number" || c.dataType === "integer") ? N.fmt.number(v) : String(v);
     };
     const props = h("dl.props", values.map(([k, v]) => [h("dt", label(k)), h("dd", show(k, v))]));
-    // the project's file methods (entityType @file), on each file's menu: dev's project filemethods (Download File)
+    // the project's file methods (entityType @file), on the menu of each file they are for: dev's project filemethods
+    // (Download File). A method's files: extensions (others do not show it) and empty (shown greyed for a file it does
+    // not fit, as dev's Download File was for a file that was not empty)
     const fileMethods = (app.methods || []).filter((m) => m.entityType === "@file" && !m.hidden);
+    const ofType = (m, name) => !(m.files && m.files.extensions) || m.files.extensions.some((e) => name.toLowerCase().endsWith(e.toLowerCase()));
+    const fits = (m, size) => !m.files || m.files.empty === undefined || (size === 0) === m.files.empty;
     const locations = (detail.locations || []).map((loc) => {
       const files = Object.entries(loc.files || {});
       const where = (p) => ({ dataLocation: loc.dataLocationIdentifier, rootStoragePath: loc.rootStoragePathIdentifier, path: p });
-      const fileMenu = (anchor, p, name, refresh) => N.menu(anchor, [{ heading: name }].concat(fileMethods.map((m) => ({
-        label: m.title, icon: "zap", onClick: () => toolDialog(app, m, { where: where(p), name, onDone: refresh }) }))));
+      const fileMenu = (anchor, p, entry, refresh) => N.menu(anchor, [{ heading: entry.name }].concat(fileMethods.filter((m) => ofType(m, entry.name)).map((m) => ({
+        label: m.title, icon: "zap", disabled: !fits(m, entry.size), title: fits(m, entry.size) ? m.description : `For ${m.files.empty ? "empty" : "non-empty"} files only`,
+        onClick: () => toolDialog(app, m, { where: where(p), name: entry.name, onDone: refresh }) }))));
       // dev's file viewer's Make Current Folder, on folders
       const current = (p) => app.info && app.info.changeFolder ? h("button.btn.ghost.icon.small.make-current",
         { title: `Make it ${sessionName(app)}'s current folder`, on: { click: () => changeFolder(app, where(p)) } }, N.icon("crosshair", 13)) : null;
@@ -733,16 +738,17 @@
               // after a file method: the file's size again (a placeholder downloaded)
               const refresh = () => app.client.request("files.list", where(p)).then((listing) => {
                 const now = listing.entries.find((e) => e.name === entry.name);
-                if (now) fileItem.querySelector(".size").textContent = N.fmt.bytes(now.size);
+                if (now) { entry.size = now.size; fileItem.querySelector(".size").textContent = N.fmt.bytes(now.size); }
               }).catch(() => {});
+              const forFile = fileMethods.some((m) => ofType(m, entry.name));
               const fileItem = h("li.file-entry", { dataset: { name: entry.name }, on: { contextmenu: (event) => {
-                if (!fileMethods.length) return;
+                if (!forFile) return;
                 event.preventDefault();
-                fileMenu(event.currentTarget, child, entry.name, refresh);
+                fileMenu(event.currentTarget, child, entry, refresh);
               } } }, N.icon("file", 13), h("span.name", entry.name),
                 h("span.muted.size", N.fmt.bytes(entry.size)),
-                fileMethods.length ? h("button.btn.ghost.icon.small.file-methods", { title: "The project's file methods (also the right mouse button)",
-                  on: { click: (event) => fileMenu(event.currentTarget, child, entry.name, refresh) } }, N.icon("zap", 13)) : null,
+                forFile ? h("button.btn.ghost.icon.small.file-methods", { title: "The project's file methods for this file (also the right mouse button)",
+                  on: { click: (event) => fileMenu(event.currentTarget, child, entry, refresh) } }, N.icon("zap", 13)) : null,
                 /\.(nwb|h5|hdf5|he5|mat)$/i.test(entry.name) ? h("button.btn.ghost.icon.small.inspect-file", { title: "Show what the file holds",
                   on: { click: (event) => {
                     const li = event.currentTarget.closest("li");

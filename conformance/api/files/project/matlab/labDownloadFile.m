@@ -1,5 +1,6 @@
 function result = labDownloadFile(file, options, context)
-%labDownloadFile A file method, as NANSEN dev's project filemethod.downloadFile: on the file viewer's menu of every file
+%labDownloadFile A file method, as NANSEN dev's project filemethod.downloadFile: on the file viewer's menu of every
+%file, for empty files (its files: empty)
 %
 %   Fetch a file that is only a placeholder here (an empty file) from the
 %   archive, which is laid out as the file's root (dev's

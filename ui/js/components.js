@@ -125,14 +125,17 @@
     });
   };
 
-  /** Popup menu next to an anchor element. items: [{label, icon, onClick} | {heading} | {node}] */
+  /** Popup menu next to an anchor element. items: [{label, icon, onClick, disabled?, title?} | {heading} | {node}]; a
+   * disabled item is shown greyed (dev's menus' Enable off) and cannot be picked. */
   N.menu = function (anchor, items) {
     document.querySelectorAll(".menu").forEach((m) => m.remove());
     const menu = h("div.menu", { role: "menu" });
     for (const item of items) {
       if (item.heading) menu.appendChild(h("div.heading", item.heading));
       else if (item.node) menu.appendChild(item.node);
-      else menu.appendChild(h("div.item", { role: "menuitem", tabindex: "-1", on: { click: () => { if (!item.keepOpen) close(); item.onClick(); } } },
+      else if (item.disabled) menu.appendChild(h("div.item.disabled", { "aria-disabled": "true", title: item.title || "" },
+        item.icon ? N.icon(item.icon) : null, item.label));
+      else menu.appendChild(h("div.item", { role: "menuitem", tabindex: "-1", title: item.title || null, on: { click: () => { if (!item.keepOpen) close(); item.onClick(); } } },
         item.icon ? N.icon(item.icon) : null, item.label));
     }
     document.body.appendChild(menu);

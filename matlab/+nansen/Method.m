@@ -75,6 +75,38 @@ classdef Method
             tf = obj.EntityType == "@file";
         end
 
+        function tf = takesFile(obj, path)
+            %takesFile Whether a file method is for this file (its files: extensions, any case; empty true for empty
+            %   files only, as dev's Download File, false for files with something in them); as Python's takes_file
+            files = nansen.internal.getField(obj.Document, "files", struct());
+            tf = true;
+            [~, name, extension] = fileparts(string(path));
+            name = lower(name + extension);
+            if isfield(files, "extensions") && ~isempty(files.extensions)
+                tf = any(endsWith(name, lower(string(files.extensions))));
+            end
+            if tf && isfield(files, "empty") && ~isempty(files.empty)
+                listing = dir(path);
+                tf = (listing(1).bytes == 0) == logical(files.empty);
+            end
+        end
+
+        function text = describeFiles(obj)
+            %describeFiles The files a file method is for, in words; as Python's describe_files
+            files = nansen.internal.getField(obj.Document, "files", struct());
+            text = "files";
+            if isfield(files, "empty") && ~isempty(files.empty)
+                if logical(files.empty)
+                    text = "empty files";
+                else
+                    text = "non-empty files";
+                end
+            end
+            if isfield(files, "extensions") && ~isempty(files.extensions)
+                text = text + " ending in " + strjoin(string(files.extensions), ", ");
+            end
+        end
+
         function tf = isLegacy(obj)
             %isLegacy A session method of NANSEN dev, run unchanged through nansen.legacy.runSessionMethod
             tf = isfield(obj.Document, "legacySessionMethod");
@@ -155,6 +187,13 @@ classdef Method
                 "languages", {cellstr(obj.Languages)}, "module", char(obj.Module), "options", obj.optionsSchema(), "tool", obj.isTool());
             if obj.isLegacy()
                 summary.legacy = true;
+            end
+            files = nansen.internal.getField(obj.Document, "files", struct());
+            if obj.isFileMethod() && ~isempty(fieldnames(files))
+                if isfield(files, "extensions")
+                    files.extensions = cellstr(reshape(string(files.extensions), 1, []));   % a list, also of one
+                end
+                summary.files = files;
             end
         end
     end

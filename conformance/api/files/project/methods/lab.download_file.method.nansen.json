@@ -6,6 +6,9 @@
   "title": "Download File",
   "entityType": "@file",
   "description": "Fetch a file that is only a placeholder here (an empty file) from the archive: NANSEN dev's project filemethod.downloadFile(filePath, rootPath).",
+  "files": {
+    "empty": true
+  },
   "implementations": {
     "python": "lab_download_file:download_file",
     "matlab": "labDownloadFile"

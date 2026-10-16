@@ -300,8 +300,21 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyTrue(result.result.downloaded);
             testCase.verifyEqual(result.result.bytes, 6);
             testCase.verifyEqual(string(fileread(fullfile(project.Folder, "raw", "big.tif"))), "frames");
-            result = api.handle(struct("id", 2, "method", "files.run", "params", struct("methodId", "lab.download_file", "path", "raw/big.tif"))).result;
-            testCase.verifyFalse(result.result.downloaded);
+            % dev showed Download File for empty files only: so is the method (its files: empty)
+            response = api.handle(struct("id", 2, "method", "files.run", "params", struct("methodId", "lab.download_file", "path", "raw/big.tif")));
+            testCase.verifyEqual(string(response.error.code), "unsupported-file");
+            summary = project.method("lab.download_file").summary();
+            testCase.verifyEqual(summary.files, struct("empty", true));
+            % a method for some file types only (lab.file_size: .bin and .DAT, not empty), in any case
+            copyfile(fullfile(case_, "methods", "lab.file_size.method.nansen.json"), fullfile(project.Folder, "methods"));
+            copyfile(fullfile(case_, "matlab", "labFileSize.m"), fullfile(project.Folder, "matlab"));
+            nansen.internal.writeText(fullfile(project.Folder, "raw", "frames.dat"), "0123");
+            api = nansen.Api();
+            api.handle(struct("id", 4, "method", "project.open", "params", struct("path", project.Folder)));
+            result = api.handle(struct("id", 5, "method", "files.run", "params", struct("methodId", "lab.file_size", "path", "raw/frames.dat"))).result;
+            testCase.verifyEqual(result.result.bytes, 4);
+            response = api.handle(struct("id", 6, "method", "files.run", "params", struct("methodId", "lab.file_size", "path", "raw/big.tif")));
+            testCase.verifyEqual(string(response.error.code), "unsupported-file");
             response = api.handle(struct("id", 3, "method", "files.run", "params", struct("methodId", "core.file_stats", "path", "raw/big.tif")));
             testCase.verifyEqual(string(response.error.code), "wrong-entity-type");
         end
