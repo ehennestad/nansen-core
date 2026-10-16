@@ -297,6 +297,11 @@
         on: { click: (e) => { e.stopPropagation(); this.toggleRow(row, e.shiftKey); } } })));
       tr.appendChild(h("td.status", { title: STATUS_TITLE[status] }, h("span.status-mark." + status)));
       for (const column of this.columns) tr.appendChild(this.renderCell(row, column));
+      const keyCell = tr.querySelector("td.key");   // the keyboard opens a row from its first key cell, with Enter
+      if (keyCell) {
+        keyCell.tabIndex = 0;
+        keyCell.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); this.onOpen(row); } });
+      }
       tr.addEventListener("click", (e) => {
         if (e.target.closest("td.editable") && row.inTable) return;
         this.onOpen(row);

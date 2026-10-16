@@ -869,6 +869,89 @@ def test_lock_editing_and_keyboard_shortcuts(empty_app, page):
     assert empty_app["api"].handle({"id": 1, "method": "app.openUrl", "params": {"url": "file:///etc/passwd"}})["error"]["code"] == "invalid-params"
 
 
+def test_menus_and_dialogs_work_from_the_keyboard(app, page):
+    open_sessions(app, page)
+    active = lambda: page.evaluate("[document.activeElement.getAttribute('role'), document.activeElement.innerText.trim()]")
+    # a column's menu: opened with Enter on its button, the arrows move between its items, Escape gives the focus back
+    page.focus(".grid-table th:has-text('Description') .col-menu")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".menu[role='menu']")
+    assert active() == ["menuitem", "Sort A → Z"]
+    page.keyboard.press("ArrowDown")
+    assert active() == ["menuitem", "Sort Z → A"]
+    page.keyboard.press("ArrowUp")
+    page.keyboard.press("ArrowUp")   # round to the last
+    assert page.evaluate("document.activeElement === [...document.querySelectorAll('.menu [role=menuitem]')].pop()")
+    page.keyboard.press("Escape")
+    assert page.locator(".menu").count() == 0
+    assert page.evaluate("document.activeElement.classList.contains('col-menu')")
+    page.keyboard.press("Enter")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("ArrowDown")
+    assert active() == ["menuitem", "Hide column"]
+    page.keyboard.press("Enter")   # picks it
+    page.wait_for_function("![...document.querySelectorAll('.grid-table thead th')].some((th) => th.textContent.includes('Description'))")
+    assert page.locator(".menu").count() == 0
+    # a row: Enter on its key cell opens its drawer, Escape closes it
+    page.focus(".grid-table tbody tr[data-id] td.key")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".drawer.open")
+    page.keyboard.press("Escape")
+    page.wait_for_selector(".drawer.open", state="detached")
+    # a dialog: announced as one, the focus in it, Tab goes round its controls, Escape closes it and gives the focus back
+    rows(page).nth(0).locator("td.sel input").click()
+    page.click(".selection-bar button:has-text('Run method')")
+    page.wait_for_selector(".dialog[role='dialog'][aria-modal='true']")
+    title = page.evaluate("document.getElementById(document.querySelector('.dialog').getAttribute('aria-labelledby')).textContent")
+    assert title and page.evaluate("!!document.activeElement.closest('.dialog')")
+    for _ in range(25):
+        page.keyboard.press("Tab")
+        assert page.evaluate("!!document.activeElement.closest('.dialog')")
+    page.keyboard.press("Shift+Tab")
+    assert page.evaluate("!!document.activeElement.closest('.dialog')")
+    page.keyboard.press("Escape")
+    assert page.locator(".backdrop").count() == 0
+    assert page.evaluate("document.activeElement.innerText.trim()") == "Run method"
+    assert page.get_attribute("#toasts", "aria-live") == "polite"   # toasts are read out
+
+
+CONTRAST = """() => {
+  const rgb = (c) => c.match(/[\\d.]+/g).map(Number);
+  const lum = ([r, g, b]) => [r, g, b].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })
+    .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const background = (el) => { for (let e = el; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor);
+    if (c.length < 4 || c[3] === 1) return c; } return [255, 255, 255]; };
+  const fails = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) || el.closest('[disabled], option, script, style')) continue;
+    const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+    if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight || s.visibility === 'hidden' || Number(s.opacity) === 0) continue;
+    const a = lum(rgb(s.color)), b = lum(background(el)); const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    const large = parseFloat(s.fontSize) >= 24 || (Number(s.fontWeight) >= 700 && parseFloat(s.fontSize) >= 18.66);
+    if (ratio < (large ? 3 : 4.5)) fails.push(`${el.className || el.tagName} '${el.textContent.trim().slice(0, 20)}' ${ratio.toFixed(2)}`);
+  }
+  return fails; }"""
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_text_has_enough_contrast_in_either_theme(app, scheme):
+    """WCAG AA: 4.5:1 for text (3:1 when large) on the pages and the states a session's table shows: the sidebar, a
+    selected row, status pills, a primary button, in the system's light and dark schemes."""
+    page = app["browser"].new_page(viewport={"width": 1400, "height": 900}, color_scheme=scheme)
+    try:
+        page.goto(app["server"].url + "#/overview")
+        page.wait_for_selector(".stat")
+        assert page.evaluate(CONTRAST) == []
+        open_sessions(app, page)
+        rows(page).nth(0).locator("td.sel input").click()   # a selected row and the selection bar
+        assert page.evaluate(CONTRAST) == []
+        page.goto(app["server"].url + "#/tasks")
+        page.wait_for_selector(".hero h1:has-text('Tasks')")
+        assert page.evaluate(CONTRAST) == []
+    finally:
+        page.close()
+
+
 def test_run_a_project_tool_from_the_overview(empty_app, page):
     api = empty_app["api"]
     folder = empty_app["folder"] / "demo"

@@ -89,7 +89,7 @@ if (!document.getElementById("ophys-fovmap-style")) {
     .fov-bar .fov-image-variable { width: auto; min-width: 9em; max-width: 16em; flex: 0 1 auto; }
     .fov-bar .fov-opacity { width: 90px; }
     .fov-bar .spacer { flex: 1; }
-    .fov-bar .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .fov-bar .btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
     .fov-labels { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
     .fov-canvas { display: block; width: 100%; max-width: 600px; margin: 12px auto; aspect-ratio: 3 / 4; cursor: crosshair; }
     .fov-canvas.placing { cursor: copy; }
