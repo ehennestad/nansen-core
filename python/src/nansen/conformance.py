@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import tempfile
@@ -193,7 +194,13 @@ def _evaluate_legacy(case: Path) -> dict:
                 "methods": documents("methods/*.method.nansen.json"),
                 "methodFiles": sorted(p.relative_to(folder / "matlab").as_posix()
                                       for p in (folder / "matlab").rglob("*") if p.is_file()),
-                "tables": tables, "warnings": report["warnings"]}
+                "tables": tables, "warnings": report["warnings"],
+                # modules' data, in order of module and name, with the value of its text; and the FOV map's images
+                "moduleData": [{"module": p.parent.name, "name": p.stem,
+                                "value": json.loads(json.loads(p.read_text(encoding="utf-8"))["text"])}
+                               for p in sorted((folder / "module-data").glob("*/*.json"))],
+                "fovmapFiles": [{"path": p.relative_to(folder).as_posix(), "base64": base64.b64encode(p.read_bytes()).decode("ascii")}
+                                for p in sorted((folder / "fovmap").glob("*"))]}
 
 
 def _run_api_case(case: Path) -> str:

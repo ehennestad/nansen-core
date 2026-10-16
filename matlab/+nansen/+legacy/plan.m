@@ -60,6 +60,7 @@ function out = plan(export)
             end
         end
     end
+    [tables, moduleData, images, warnings] = buildFovInventory(export, tables, warnings);
     shortName = textOf(info, "shortName");
     longName = textOf(info, "name");
     source = shortName;
@@ -89,6 +90,10 @@ function out = plan(export)
         usesOphys = usesOphys || any(cellfun(@(step) startsWith(string(step.method), "ophys."), pipelines{i}.steps));
     end
     usesOphys = usesOphys || any(cellfun(@(item) startsWith(string(item.method), "ophys."), [presets, tasks, runs]));
+    for i = 1:numel(tables)   % dev's FOV inventory, on the ophys module's FOV map
+        usesOphys = usesOphys || any(ismember(["ophys.fov_position", "ophys.cranial_window"], string(tables{i}.fragments)));
+    end
+    usesOphys = usesOphys || ~isempty(moduleData);
     if usesOphys
         modules(end + 1) = "ophys";
     end
@@ -96,7 +101,96 @@ function out = plan(export)
         "dataset", dataset, "modules", modules, "fragments", {fragments}, "tables", {tables}, "dataVariables", {variables}, ...
         "fileAdapters", {adapters}, "methods", {methods_}, "columnMethods", {columnMethods}, ...
         "presets", {presets}, "preferredPresets", {preferred}, ...
-        "pipelines", {pipelines}, "tasks", {tasks}, "runs", {runs}, "settings", settingsOf(export), "warnings", {warnings});
+        "pipelines", {pipelines}, "tasks", {tasks}, "runs", {runs}, "settings", settingsOf(export), ...
+        "moduleData", {moduleData}, "images", {images}, "warnings", {warnings});
+end
+
+% -- dev's FOV inventory ------------------------------------------------------------------------
+
+function [tables, moduleData, images, warnings] = buildFovInventory(export, tables, warnings)
+    % dev's FOV inventory (fovmanager's) on the FOV map (nansen.legacy.planFovInventory): the sessions' FOV positions
+    % and the subjects' windows go into their rows, with ophys.fov_position and ophys.cranial_window; a subject that
+    % dev's sessions name but its table has no row of gets one for its window. moduleData is {module, name, value} of
+    % the FOV map's marks, images {path, image} of the files to write.
+    moduleData = {};
+    images = {};
+    inventory = nansen.internal.getField(export, "fovInventory", []);
+    if isempty(inventory)
+        return
+    end
+    nansen.checkDocument(inventory, ExpectedType="nansen.legacyFovInventory", Source="legacy export: fovInventory", ...
+        Decoded=true);
+    session = 0;
+    subject = 0;
+    for i = 1:numel(tables)
+        if string(tables{i}.entityType) == "session"
+            session = i;
+        elseif string(tables{i}.entityType) == "subject"
+            subject = i;
+        end
+    end
+    sessions = {};
+    subjects = {};
+    if session
+        sessions = cellfun(@(row) keyOfRow(tables{session}, row), tables{session}.rows, UniformOutput=false);
+    end
+    if subject
+        subjects = cellfun(@(row) keyOfRow(tables{subject}, row), tables{subject}.rows, UniformOutput=false);
+        if isequal(string(tables{subject}.key(:, 1))', "subject_id") && session   % the subjects of the sessions, too
+            for r = 1:numel(tables{session}.rows)
+                value = nansen.internal.getField(tables{session}.rows{r}, "subject_id", []);
+                if (ischar(value) || isstring(value)) && ~any(cellfun(@(k) isequal(string(k.subject_id), string(value)), subjects))
+                    subjects{end + 1} = struct("subject_id", char(value)); %#ok<AGROW>
+                end
+            end
+        end
+    end
+    planned = nansen.legacy.planFovInventory(inventory, sessions, subjects);
+    for i = 1:numel(planned.warnings)
+        warnings{end + 1} = char("FOV inventory: " + string(planned.warnings{i})); %#ok<AGROW>
+    end
+    places = {session, planned.fovs, 'ophys.fov_position'; subject, planned.windows, 'ophys.cranial_window'};
+    for p = 1:size(places, 1)
+        [at, placed, fragment] = places{p, :};
+        if isempty(placed)
+            continue
+        end
+        table = tables{at};
+        for i = 1:numel(placed)
+            row = 0;
+            for r = 1:numel(table.rows)
+                if isequal(keyOfRow(table, table.rows{r}), placed{i}.key)
+                    row = r;
+                    break
+                end
+            end
+            if row == 0
+                table.rows{end + 1} = placed{i}.key;
+                row = numel(table.rows);
+            end
+            for name = reshape(string(fieldnames(placed{i}.values)), 1, [])
+                table.rows{row}.(name) = placed{i}.values.(name);
+            end
+        end
+        if ~ismember(string(fragment), string(table.fragments))
+            table.fragments{end + 1} = fragment;
+        end
+        tables{at} = table;
+    end
+    marks = planned.marks;
+    if any(structfun(@(kind) ~isempty(kind), marks))
+        moduleData = {struct("module", 'ophys', "name", 'fovmap', "value", marks)};
+    end
+    images = planned.images;
+end
+
+function key = keyOfRow(table, row)
+    % A row's key, a struct of the table's key columns
+    key = struct();
+    for k = 1:size(table.key, 1)
+        name = table.key{k, 1};
+        key.(name) = nansen.internal.getField(row, name, []);
+    end
 end
 
 % -- file adapters, presets, task list and progress ---------------------------------------------

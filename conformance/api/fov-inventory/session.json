@@ -1,0 +1,309 @@
+{
+  "steps": [
+    {
+      "request": {
+        "method": "project.open",
+        "id": 9701,
+        "params": {
+          "path": "${project}"
+        }
+      },
+      "expect": {
+        "result": {
+          "name": "FovInventory"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "legacy.importFovInventory",
+        "id": 9702,
+        "params": {
+          "path": "${scratch}/data/inventory.mat"
+        }
+      },
+      "expect": {
+        "result": {
+          "fovEntityType": "session",
+          "windowEntityType": "subject",
+          "sessions": [
+            {
+              "subject_id": "m1234",
+              "session_id": "m1234-s1"
+            },
+            {
+              "subject_id": "m1234",
+              "session_id": "m1234-s2"
+            }
+          ],
+          "subjects": [
+            {
+              "subject_id": "m1234"
+            },
+            {
+              "subject_id": "m1235"
+            }
+          ],
+          "injections": 2,
+          "notes": 1,
+          "photos": 3,
+          "outlines": 1,
+          "headbars": 1,
+          "images": [
+            "fovmap/window-1234.bmp",
+            "fovmap/fov-m1234-s1.bmp",
+            "fovmap/fov-m1234-s2.bmp"
+          ],
+          "warnings": [
+            "FOVs of sessions that are not here, left out: m1234-s3"
+          ],
+          "revision": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "id": 9703,
+        "params": {
+          "entityType": "session"
+        }
+      },
+      "expect": {
+        "result": {
+          "rows": [
+            {
+              "key": {
+                "subject_id": "m1234",
+                "session_id": "m1234-s1"
+              },
+              "values": {
+                "fov_ml": 2.3,
+                "fov_ap": -3.6,
+                "fov_width_um": 500,
+                "fov_height_um": 500,
+                "brain_region": "V1"
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1234",
+                "session_id": "m1234-s2"
+              },
+              "values": {
+                "fov_ml": 1.7,
+                "fov_ap": -2,
+                "fov_width_um": 400,
+                "fov_height_um": 600,
+                "brain_region": "S1Tr"
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1235",
+                "session_id": "m1235-s1"
+              },
+              "values": {
+                "fov_ml": null
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1235",
+                "session_id": "m1235-s2"
+              },
+              "values": {
+                "fov_ml": null
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "entities.list",
+        "id": 9704,
+        "params": {
+          "entityType": "subject"
+        }
+      },
+      "expect": {
+        "result": {
+          "rows": [
+            {
+              "key": {
+                "subject_id": "m1234"
+              },
+              "values": {
+                "window_ml": 2,
+                "window_ap": -2.5,
+                "window_shape": "round 2.5 mm",
+                "window_rotation": 270
+              }
+            },
+            {
+              "key": {
+                "subject_id": "m1235"
+              },
+              "values": {
+                "window_ml": -2,
+                "window_ap": -2.5,
+                "window_shape": "trapezoid 3 x 5 mm",
+                "window_rotation": 0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 9705,
+        "params": {
+          "path": "fovmap/window-1234.bmp"
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 2,
+          "width": 3,
+          "channels": 3,
+          "pixels": "gICA/wAA"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "files.frame",
+        "id": 9706,
+        "params": {
+          "path": "fovmap/fov-m1234-s1.bmp",
+          "limits": [
+            0,
+            255
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "height": 2,
+          "width": 2,
+          "channels": 3,
+          "pixels": "AP+AAA=="
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "modules.data",
+        "id": 9707,
+        "params": {
+          "module": "ophys",
+          "name": "fovmap"
+        }
+      },
+      "expect": {
+        "result": {
+          "revision": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "legacy.importFovInventory",
+        "id": 9708,
+        "params": {
+          "path": "${scratch}/data/inventory.mat"
+        }
+      },
+      "expect": {
+        "result": {
+          "fovEntityType": "session",
+          "windowEntityType": "subject",
+          "sessions": [
+            {
+              "subject_id": "m1234",
+              "session_id": "m1234-s1"
+            },
+            {
+              "subject_id": "m1234",
+              "session_id": "m1234-s2"
+            }
+          ],
+          "subjects": [
+            {
+              "subject_id": "m1234"
+            },
+            {
+              "subject_id": "m1235"
+            }
+          ],
+          "injections": 2,
+          "notes": 1,
+          "photos": 3,
+          "outlines": 1,
+          "headbars": 1,
+          "images": [
+            "fovmap/window-1234.bmp",
+            "fovmap/fov-m1234-s1.bmp",
+            "fovmap/fov-m1234-s2.bmp"
+          ],
+          "warnings": [
+            "FOVs of sessions that are not here, left out: m1234-s3"
+          ],
+          "revision": 2
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "legacy.importFovInventory",
+        "id": 9709,
+        "params": {
+          "path": "${scratch}/data/not_an_inventory.mat"
+        }
+      },
+      "expect": {
+        "error": "invalid-data"
+      }
+    },
+    {
+      "request": {
+        "method": "legacy.importFovInventory",
+        "id": 9710,
+        "params": {
+          "path": "${scratch}/data/nothing.mat"
+        }
+      },
+      "expect": {
+        "error": "file-not-found"
+      }
+    },
+    {
+      "request": {
+        "method": "legacy.importFovInventory",
+        "id": 9711,
+        "params": {
+          "path": "project.nansen.json"
+        }
+      },
+      "expect": {
+        "error": "unknown-schema-type"
+      }
+    },
+    {
+      "request": {
+        "method": "legacy.importFovInventory",
+        "id": 9712,
+        "params": {
+          "path": "tables/session.csv"
+        }
+      },
+      "expect": {
+        "error": "unsupported-file"
+      }
+    }
+  ]
+}

@@ -40,7 +40,12 @@ function report = convert(export, folder)
 %     error (ErrorStack); its completed tasks and the finished tasks of the
 %     Progress column go into the run journal, and the column's pipeline
 %     into core.pipeline;
-%   - dev's local root paths become roots of the DSM environment dev-local.
+%   - dev's local root paths become roots of the DSM environment dev-local;
+%   - a FOV inventory of dev's fovmanager (fovInventory) goes onto the ophys
+%     module's FOV map (nansen.legacy.planFovInventory): the sessions' FOV
+%     positions and the subjects' windows into their tables, its images as
+%     BMP files into fovmap/, and its injections, annotations, outlines,
+%     photos and headbar labels into the module's data (fovmap).
 %
 %   Whatever cannot be mapped is left out and named in report.warnings.
     arguments
@@ -136,7 +141,20 @@ function report = convert(export, folder)
     end
     [tasks, history, warnings] = writeTasks(project, plan.tasks, warnings);
     writeRuns(project, plan.runs);
-    adapterIds = cellfun(@(a) a.document.id, plan.fileAdapters, UniformOutput=false);
+    for i = 1:numel(plan.moduleData)   % the FOV map's marks, of dev's FOV inventory
+        entry = plan.moduleData{i};
+        document = struct("schemaType", 'nansen.moduleData', "schemaVersion", '0.1.0', "module", entry.module, ...
+            "name", entry.name, "revision", 1, "text", jsonencode(entry.value));
+        nansen.checkDocument(document, ExpectedType="nansen.moduleData");
+        if ~isfolder(fullfile(folder, "module-data", entry.module))
+            mkdir(fullfile(folder, "module-data", entry.module));
+        end
+        nansen.internal.writeJson(fullfile(folder, "module-data", entry.module, string(entry.name) + ".json"), document)
+    end
+    for i = 1:numel(plan.images)
+        nansen.legacy.writeFovImage(fullfile(folder, plan.images{i}.path), plan.images{i}.image);
+    end
+    adapterIds =cellfun(@(a) a.document.id, plan.fileAdapters, UniformOutput=false);
     report = struct("project", char(folder), "rows", rows, "notes", notes, "dataVariables", {names}, ...
         "fileAdapters", {adapterIds}, "methods", {methodIds}, "presets", {presets}, "pipelines", {pipelineIds}, ...
         "tasks", tasks, "history", history, "runs", numel(plan.runs), "settings", plan.settings, "warnings", {warnings});

@@ -1,0 +1,272 @@
+{
+  "description": "A dev project with a FOV inventory of fovmanager (exportProject's FovInventory=): the sessions' FOV positions and sizes (swapped for an FOV turned a quarter), the subjects' first windows (dev's clockwise theta as a counterclockwise rotation; a subject the sessions name gets a row), outlines other than the shape's own (an ellipse of a round window, a polygon of a custom trapezoid), the images as BMP files and photos, injections (a depth that is not a number said with what was injected), annotations as notes and the headbar labels, in the ophys module's FOV map data. Mice and sessions that are not here, extra windows and FOVs with no session are named in the warnings.",
+  "project": {
+    "schemaType": "nansen.project",
+    "schemaVersion": "0.1.0",
+    "name": "FovLab",
+    "title": "FOV lab",
+    "dataset": "dataset.dsm.json",
+    "entityTypes": [
+      {
+        "name": "subject",
+        "title": "Subjects",
+        "fragments": [
+          "core.notes",
+          "ophys.cranial_window"
+        ]
+      },
+      {
+        "name": "session",
+        "title": "Sessions",
+        "fragments": [
+          "ophys.fov_position"
+        ]
+      }
+    ],
+    "modules": [
+      {
+        "id": "core"
+      },
+      {
+        "id": "ophys"
+      }
+    ]
+  },
+  "tables": {
+    "subject": {
+      "key": [
+        "subject_id"
+      ],
+      "columns": [
+        "subject_id",
+        "ignore",
+        "description",
+        "window_ml",
+        "window_ap",
+        "window_shape",
+        "window_rotation"
+      ],
+      "rows": [
+        {
+          "subject_id": "m1234",
+          "ignore": false,
+          "description": "Left window",
+          "window_ml": 2.0,
+          "window_ap": -2.0,
+          "window_shape": "round 2.5 mm",
+          "window_rotation": 330.0
+        },
+        {
+          "subject_id": "m1235",
+          "ignore": false,
+          "description": null,
+          "window_ml": -2.0,
+          "window_ap": -2.5,
+          "window_shape": "trapezoid 3 x 5 mm",
+          "window_rotation": 0.0
+        }
+      ]
+    },
+    "session": {
+      "key": [
+        "subject_id",
+        "session_id"
+      ],
+      "columns": [
+        "subject_id",
+        "session_id",
+        "fov_ml",
+        "fov_ap",
+        "fov_width_um",
+        "fov_height_um"
+      ],
+      "rows": [
+        {
+          "subject_id": "m1234",
+          "session_id": "m1234-s1",
+          "fov_ml": 2.3,
+          "fov_ap": -2.4,
+          "fov_width_um": 500.0,
+          "fov_height_um": 500.0
+        },
+        {
+          "subject_id": "m1234",
+          "session_id": "m1234-s2",
+          "fov_ml": 1.7,
+          "fov_ap": -1.8,
+          "fov_width_um": 400.0,
+          "fov_height_um": 600.0
+        },
+        {
+          "subject_id": "m1235",
+          "session_id": "m1235-s1",
+          "fov_ml": -2.2,
+          "fov_ap": -2.7,
+          "fov_width_um": 1000.0,
+          "fov_height_um": 1000.0
+        }
+      ]
+    }
+  },
+  "warnings": [
+    "FOV inventory: mouse 4: no MouseId; left out",
+    "FOV inventory: mouse 1234: 1 more window(s); only the first is placed (the FOVs in them are)",
+    "FOV inventory: mouse 9999: no subject of that id; its window and headbar label are left out",
+    "FOV inventory: FOVs of sessions that are not here, left out: m1234-s9",
+    "FOV inventory: 1 FOV(s) with no session; left out"
+  ],
+  "moduleData": [
+    {
+      "module": "ophys",
+      "name": "fovmap",
+      "value": {
+        "injections": [
+          {
+            "id": 1,
+            "subject": {
+              "subject_id": "m1234"
+            },
+            "ml": 1.5,
+            "ap": -1.5,
+            "material": "AAV-GCaMP8m",
+            "depth": 300,
+            "volume": 50,
+            "spread": 400,
+            "colour": "green"
+          },
+          {
+            "id": 2,
+            "subject": {
+              "subject_id": "m1234"
+            },
+            "ml": 2.5,
+            "ap": -2.5,
+            "material": "AAV-jRGECO1a (200-300 µm)",
+            "colour": "magenta"
+          },
+          {
+            "id": 3,
+            "ml": -1,
+            "ap": 1.2,
+            "material": "CTB",
+            "colour": "blue"
+          }
+        ],
+        "notes": [
+          {
+            "id": 1,
+            "subject": {
+              "subject_id": "m1234"
+            },
+            "ml": 2,
+            "ap": -3,
+            "text": "blood vessel"
+          }
+        ],
+        "photos": [
+          {
+            "id": 1,
+            "subject": {
+              "subject_id": "m1234"
+            },
+            "path": "fovmap/window-1234.bmp",
+            "width": 3,
+            "height": 3,
+            "opacity": 0.6
+          },
+          {
+            "id": 2,
+            "subject": {
+              "subject_id": "m1234"
+            },
+            "session": {
+              "subject_id": "m1234",
+              "session_id": "m1234-s1"
+            },
+            "path": "fovmap/fov-m1234-s1.bmp",
+            "width": 0.5,
+            "height": 0.5,
+            "opacity": 1
+          },
+          {
+            "id": 3,
+            "subject": {
+              "subject_id": "m1234"
+            },
+            "session": {
+              "subject_id": "m1234",
+              "session_id": "m1234-s2"
+            },
+            "path": "fovmap/fov-m1234-s2.bmp",
+            "width": 0.4,
+            "height": 0.6,
+            "opacity": 1
+          }
+        ],
+        "outlines": [
+          {
+            "id": 1,
+            "subject": {
+              "subject_id": "m1234"
+            },
+            "ellipse": [
+              1.5,
+              1.5
+            ]
+          },
+          {
+            "id": 2,
+            "subject": {
+              "subject_id": "m1235"
+            },
+            "polygon": [
+              [
+                -1,
+                1.5
+              ],
+              [
+                -1.2,
+                -1.5
+              ],
+              [
+                1.2,
+                -1.5
+              ],
+              [
+                1,
+                1.5
+              ],
+              [
+                0,
+                1.9
+              ]
+            ]
+          }
+        ],
+        "headbars": [
+          {
+            "id": 1,
+            "subject": {
+              "subject_id": "m1234"
+            },
+            "label": "HB-7"
+          }
+        ]
+      }
+    }
+  ],
+  "fovmapFiles": [
+    {
+      "path": "fovmap/fov-m1234-s1.bmp",
+      "base64": "Qk1CAAAAAAAAADYAAAAoAAAAAwAAAAEAAAABABgAAAAAAAwAAAATCwAAEwsAAAAAAAAAAAAAHhQKPDIoWlBGAAAA"
+    },
+    {
+      "path": "fovmap/fov-m1234-s2.bmp",
+      "base64": "Qk0+AAAAAAAAADYAAAAoAAAAAQAAAAIAAAABABgAAAAAAAgAAAATCwAAEwsAAAAAAAAAAAAABgUEAAMCAQA="
+    },
+    {
+      "path": "fovmap/window-1234.bmp",
+      "base64": "Qk1GAAAAAAAAADYAAAAoAAAAAgAAAAIAAAABABgAAAAAABAAAAATCwAAEwsAAAAAAAAAAAAA/wAA////AAAAAP8A/wAAAA=="
+    }
+  ]
+}

@@ -700,12 +700,62 @@ class Api:
         else:
             with open(source, encoding="utf-8") as f:
                 exported = json.load(f)
+        if params.get("fovInventory"):   # dev's FOV inventory, which is not in the project folder
+            exported["fovInventory"] = self._read_fov_inventory(Path(params["fovInventory"]))
         report = convert_legacy(exported, params["path"])
         if report["settings"] and self.catalog is not None:
             self.catalog.save_settings(report["settings"])
         self._set_project(Project.open(params["path"]))
         self.emit("project", {"name": self.project.name})
         return {"project": self.project__info({}), "settings": report["settings"], "warnings": report["warnings"]}
+
+    def legacy__importFovInventory(self, params: dict) -> dict:
+        """NANSEN dev's FOV inventory (fovmanager's .mat file, or the JSON of one) onto the project's FOV map
+        (nansen.fovinventory). Python reads a .mat file of plain structs; one that holds fovmanager's objects, or a v7.3
+        one, is read by MATLAB (nansen.legacy.exportFovInventory) when MATLAB is there, else legacy-needs-matlab."""
+        from .fovinventory import import_inventory
+
+        project = self._require_project()
+        if not params.get("path"):
+            raise NansenError("invalid-params", "path is the FOV inventory's file")
+        path = Path(params["path"])
+        if not path.is_absolute():
+            path = project.folder / path
+        report = import_inventory(project, self._read_fov_inventory(path))
+        if report["sessions"] and "ophys.fov_region" in project.entity_type(report["fovEntityType"]).get("fragments", []):
+            project.update_fragment(report["fovEntityType"], "ophys.fov_region", report["sessions"])
+        changed = [t for t in (report["fovEntityType"], report["windowEntityType"]) if t]
+        self.emit("entities", {"entityTypes": changed})
+        self.emit("moduleData", {"module": "ophys", "name": "fovmap", "revision": report["revision"]})
+        return report
+
+    def _read_fov_inventory(self, path: Path) -> dict:
+        """A FOV inventory as a nansen.legacyFovInventory document: read here, or by MATLAB when only MATLAB reads it."""
+        from .fovinventory import read_inventory
+
+        try:
+            return read_inventory(path)
+        except NansenError as error:
+            if error.code != "legacy-needs-matlab" or not self._matlab():
+                raise
+            return self._export_fov_inventory(path)
+
+    def _export_fov_inventory(self, path: Path) -> dict:
+        """A FOV inventory read by MATLAB (matlab -batch nansen.legacy.exportFovInventory), for a .mat file that holds
+        fovmanager's objects, which only MATLAB reads."""
+        import subprocess
+        import tempfile
+
+        from .fovinventory import read_inventory
+
+        with tempfile.TemporaryDirectory() as scratch:
+            out = Path(scratch) / "inventory.json"
+            script = self._matlab_script(f"nansen.legacy.exportFovInventory({_matlab_text(path)}, File={_matlab_text(out)});")
+            done = subprocess.run([self._matlab(), "-batch", script], capture_output=True, text=True,
+                                  stdin=subprocess.DEVNULL, timeout=LEGACY_EXPORT_SECONDS)
+            if done.returncode != 0 or not out.is_file():
+                raise NansenError("invalid-data", f"MATLAB could not read {path.name}: {(done.stdout + done.stderr).strip()[-600:]}")
+            return read_inventory(out)
 
     def _export_legacy(self, folder: Path, user_folder: Optional[str] = None) -> dict:
         """A NANSEN dev project folder read by MATLAB (matlab -batch nansen.legacy.exportProject), as its JSON export:

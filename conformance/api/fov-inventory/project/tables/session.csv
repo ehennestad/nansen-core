@@ -1,0 +1,5 @@
+subject_id,session_id,fov_ml,fov_ap,fov_width_um,fov_height_um,brain_region
+m1234,m1234-s1,,,,,
+m1234,m1234-s2,,,,,
+m1235,m1235-s1,,,,,
+m1235,m1235-s2,,,,,

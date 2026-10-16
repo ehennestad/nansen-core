@@ -53,10 +53,16 @@ function export = exportProject(folder, options)
 %
 %   exportProject(folder, File=path) also writes the export as JSON, which
 %   the Python command `nansen import-legacy` converts as well.
+%
+%   exportProject(folder, FovInventory=path) also reads a FOV inventory of
+%   dev's fovmanager (the .mat file of its Save Fov Inventory, which dev
+%   kept apart from the project; nansen.legacy.exportFovInventory) as the
+%   export's fovInventory, which goes onto the FOV map of the ophys module.
     arguments
         folder (1,1) string
         options.File (1,1) string = ""
         options.UserFolder (1,1) string = string(fullfile(prefdir, "Nansen", "default"))
+        options.FovInventory (1,1) string = ""
     end
     if ~isfolder(folder)
         nansen.internal.throwError("file-not-found", "no folder %s", folder)
@@ -90,6 +96,9 @@ function export = exportProject(folder, options)
     settings = readSettings(fullfile(options.UserFolder, "settings", "nansen_app_settings.mat"));
     if ~isempty(settings)
         export.settings = settings;
+    end
+    if options.FovInventory ~= ""
+        export.fovInventory = nansen.legacy.readFovInventory(options.FovInventory);
     end
     export = nansen.checkDocument(nansen.internal.jsonRoundTrip(export), ExpectedType="nansen.legacyExport", ...
         Source="legacy export");

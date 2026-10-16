@@ -206,7 +206,49 @@ function actual = evaluateLegacy(folder)
         "pipelines", {readAll(fullfile(target, "pipelines"), "*.pipeline.nansen.json")}, ...
         "methods", {readAll(fullfile(target, "methods"), "*.method.nansen.json")}, ...
         "methodFiles", {filesUnder(fullfile(target, "matlab"))}, ...
-        "tables", tables, "warnings", {report.warnings});
+        "tables", tables, "warnings", {report.warnings}, ...
+        "moduleData", {moduleDataOf(target)}, "fovmapFiles", {fovmapFilesOf(target)});
+end
+
+function data = moduleDataOf(target)
+    % The modules' data, in order of module and name, each with the value of its text, as decoded JSON
+    data = {};
+    listing = dir(fullfile(target, "module-data", "*", "*.json"));
+    if isempty(listing)
+        return
+    end
+    paths = strings(1, numel(listing));
+    for i = 1:numel(listing)
+        [~, module] = fileparts(listing(i).folder);
+        paths(i) = string(module) + "/" + string(listing(i).name);
+    end
+    [~, order] = sort(paths);
+    for i = reshape(order, 1, [])
+        [~, module] = fileparts(listing(i).folder);
+        [~, name] = fileparts(listing(i).name);
+        document = nansen.internal.readJson(fullfile(listing(i).folder, listing(i).name));
+        data{end + 1} = struct("module", char(module), "name", char(name), "value", jsondecode(document.text)); %#ok<AGROW>
+    end
+    data = nansen.internal.jsonRoundTrip(data);
+end
+
+function files = fovmapFilesOf(target)
+    % The FOV map's images (fovmap/), in order of their paths, with their bytes in base64
+    files = {};
+    listing = dir(fullfile(target, "fovmap", "*"));
+    listing = listing(~[listing.isdir]);
+    if isempty(listing)
+        return
+    end
+    [~, order] = sort(string({listing.name}));
+    for i = reshape(order, 1, [])
+        file = fopen(fullfile(listing(i).folder, listing(i).name), "r");
+        bytes = fread(file, Inf, "*uint8");
+        fclose(file);
+        files{end + 1} = struct("path", char("fovmap/" + string(listing(i).name)), ...
+            "base64", char(matlab.net.base64encode(reshape(bytes, 1, [])))); %#ok<AGROW>
+    end
+    files = nansen.internal.jsonRoundTrip(files);
 end
 
 function files = filesUnder(folder)

@@ -19,6 +19,7 @@
     {"schemaType": "nansen.moduleData", "file": "module-data.schema.json", "version": "0.1.0", "status": "core"},
     {"schemaType": "nansen.assignments", "file": "assignments.schema.json", "version": "0.1.0", "status": "core"},
     {"schemaType": "nansen.progress", "file": "progress.schema.json", "version": "0.1.0", "status": "core"},
-    {"schemaType": "nansen.legacyExport", "file": "legacy-export.schema.json", "version": "0.1.0", "status": "draft"}
+    {"schemaType": "nansen.legacyExport", "file": "legacy-export.schema.json", "version": "0.1.0", "status": "draft"},
+    {"schemaType": "nansen.legacyFovInventory", "file": "legacy-fov-inventory.schema.json", "version": "0.1.0", "status": "draft"}
   ]
 }

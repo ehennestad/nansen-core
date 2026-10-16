@@ -11,12 +11,16 @@ function report = importProject(legacyFolder, folder, options)
 %   (option presets of dev's methods, the task list, the local root paths,
 %   the app's settings) from path, dev's nansen.prefdir; by default
 %   prefdir/Nansen/default.
+%   importProject(..., FovInventory=path) also brings a FOV inventory of
+%   dev's fovmanager onto the new project's FOV map (the ophys module's).
     arguments
         legacyFolder (1,1) string
         folder (1,1) string
         options.ExportFile (1,1) string = ""
         options.UserFolder (1,1) string = string(fullfile(prefdir, "Nansen", "default"))
+        options.FovInventory (1,1) string = ""
     end
-    export = nansen.legacy.exportProject(legacyFolder, File=options.ExportFile, UserFolder=options.UserFolder);
+    export = nansen.legacy.exportProject(legacyFolder, File=options.ExportFile, UserFolder=options.UserFolder, ...
+        FovInventory=options.FovInventory);
     report = nansen.legacy.convert(export, folder);
 end

@@ -1,0 +1,26 @@
+{
+  "schemaType": "nansen.project",
+  "schemaVersion": "0.1.0",
+  "name": "FovInventory",
+  "dataset": "dataset.dsm.json",
+  "entityTypes": [
+    {
+      "name": "subject",
+      "fragments": [
+        "ophys.cranial_window"
+      ]
+    },
+    {
+      "name": "session",
+      "fragments": [
+        "ophys.fov_position",
+        "ophys.fov_region"
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "id": "ophys"
+    }
+  ]
+}

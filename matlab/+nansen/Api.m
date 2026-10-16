@@ -51,7 +51,7 @@ classdef Api < handle
             end
             obj.Methods = containers.Map("KeyType", "char", "ValueType", "any");
             names = ["app.info", "app.openUrl", "app.plugins", "app.changeFolder", "app.closeFigures", "workspace.send", "catalog.list", "catalog.relocate", "catalog.remove", "catalog.rename", "catalog.move", "catalog.install", "settings.get", "settings.save", "addons.list", "addons.install", "addons.remove", "project.open", "project.create", "project.info", ...
-                "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", ...
+                "project.setDataset", "project.update", "scan.unmatched", "dataset.exclude", "dataset.assign", "dataset.unassign", "dataset.assignments", "dataset.test", "dataset.sample", "dataset.setRoot", "dataset.get", "dataset.save", "demo.create", "legacy.import", "legacy.importFovInventory", ...
                 "project.scan", "project.sync", "entities.list", "entities.get", "entities.update", "entities.add", ...
                 "entities.remove", "columns.reset", "columns.import", "fragments.detach", "notes.list", "notes.add", "notes.remove", "files.resolve", "files.list", "files.inspect", "files.frame", "files.send", "files.run", "files.read", "files.makeFolder", "files.open", "files.reveal", "view.list", "view.frame", "view.signal", "view.traces", "view.updateRois", "view.detect", "view.methods", "view.run", "views.list", "views.save", "views.delete", "fragments.list", "fragments.create", "fragments.save", "fragments.attach", "fragments.update", "dataVariables.list", "dataVariables.options", "adapters.create", "adapters.import", "dataVariables.save", "dataVariables.delete", "data.status", "data.frame", "data.traces", "data.value", "data.send", "data.cache", "data.clearCache", "rois.update", "rois.detect", "rois.signal", "rois.neuropil", "modules.list", "modules.add", "modules.remove", "modules.resource", "modules.data", "modules.saveData", ...
                 "methods.list", "methods.setHidden", "methods.create", "methods.importLegacy", "methods.edit", "tools.list", "tools.run", "methods.run", "methods.preview", "presets.list", "presets.setDefault", "presets.save", "presets.delete", ...
@@ -573,20 +573,55 @@ classdef Api < handle
             result = obj.apiProjectInfo(struct());
         end
 
+        function result = apiLegacyImportFovInventory(obj, params)
+            % NANSEN dev's FOV inventory (fovmanager's .mat file, or the JSON of one) onto the project's FOV map
+            % (nansen.legacy.applyFovInventory); ophys.fov_region is computed again for the FOVs placed
+            project = obj.requireProject();
+            path = string(nansen.internal.getField(params, "path", ""));
+            if isempty(path) || path == ""
+                nansen.internal.throwError("invalid-params", "path is the FOV inventory's file")
+            end
+            if ~nansen.internal.isAbsolutePath(path)
+                path = fullfile(project.Folder, path);
+            end
+            result = nansen.legacy.applyFovInventory(project, nansen.legacy.readFovInventory(path));
+            if ~isempty(result.sessions)
+                fragments = string(nansen.internal.asCellstr(nansen.internal.getField( ...
+                    project.entityType(result.fovEntityType), "fragments", [])));
+                if ismember("ophys.fov_region", fragments)
+                    project.updateFragment(result.fovEntityType, "ophys.fov_region", Keys=result.sessions);
+                end
+            end
+            changed = {result.fovEntityType};
+            if ~isempty(result.windowEntityType)
+                changed{end + 1} = result.windowEntityType;
+            end
+            obj.emit("entities", struct("entityTypes", {changed}));
+            obj.emit("moduleData", struct("module", 'ophys', "name", 'fovmap', "revision", result.revision));
+        end
+
         function result = apiLegacyImport(obj, params)
             % A project from a NANSEN dev project folder, or from the JSON export of one
             % dev's app preferences that are settings here are saved to the catalog's settings
             source = string(nansen.Api.param(params, "source"));
             folder = string(nansen.Api.param(params, "path"));
+            fovInventory = string(nansen.internal.getField(params, "fovInventory", ""));   % dev's, not in the project folder
+            if isempty(fovInventory)
+                fovInventory = "";
+            end
             if isfolder(source)
                 userFolder = nansen.internal.getField(params, "userFolder", "");
                 if isempty(userFolder) || string(userFolder) == ""
-                    report = nansen.legacy.importProject(source, folder);
+                    report = nansen.legacy.importProject(source, folder, FovInventory=fovInventory);
                 else
-                    report = nansen.legacy.importProject(source, folder, UserFolder=string(userFolder));
+                    report = nansen.legacy.importProject(source, folder, UserFolder=string(userFolder), FovInventory=fovInventory);
                 end
             elseif isfile(source)
-                report = nansen.legacy.convert(nansen.internal.readJson(source), folder);
+                export = nansen.internal.readJson(source);
+                if fovInventory ~= ""
+                    export.fovInventory = nansen.legacy.readFovInventory(fovInventory);
+                end
+                report = nansen.legacy.convert(export, folder);
             else
                 nansen.internal.throwError("file-not-found", "no file or folder %s", source)
             end
