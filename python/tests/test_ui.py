@@ -2361,6 +2361,73 @@ def test_view_any_stack_file_from_the_file_tree(empty_app, page):
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 
+def test_the_viewer_opens_another_file_by_its_path(empty_app, page):
+    """imviewer's Open File, and the paths pasted into it (Ctrl+V), in the same viewer."""
+    api = ophys_project(empty_app)
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").nth(3).locator("td.key").first.click()   # s4: ScanImage files
+    tree = ".drawer .loc:has(.loc-head:has-text('raw'))"
+    page.wait_for_selector(f"{tree} .path-list .browse")
+    page.locator(f"{tree} .path-list .browse").first.click()
+    page.click(f"{tree} li[data-name='rec_00001.tif'] .view-file")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('16 × 64')")
+    page.click(".viewer-dialog .viewer-open-file")
+    page.fill(".dialog.narrow input", "../ses-s1/rec.raw")   # beside the file shown
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    assert page.locator(".viewer-dialog .dialog-head h2").inner_text() == "rec.raw"
+    assert page.locator(".viewer-frame").inner_text() == "1 / 40"
+    folder = api.handle({"id": 1, "method": "files.resolve", "params": {"dataLocation": "raw", "path": "sub-m1/ses-s4"}})["result"]["path"]
+    paste = """text => { const data = new DataTransfer(); data.setData("text/plain", text);
+        document.querySelector(".viewer-dialog").dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true })); }"""
+    page.evaluate(paste, f"{folder}/rec_00002.tif\n")   # an absolute path, in a data location
+    page.wait_for_selector(".viewer-dialog .dialog-head h2:text-is('rec_00002.tif')")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('16 × 64')")
+    page.evaluate(paste, "/nowhere/else.tif")
+    page.wait_for_selector(".toast:has-text('is not in the project folder or a data location')")
+    assert page.locator(".viewer-dialog .dialog-head h2").inner_text() == "rec_00002.tif"
+    page.click(".viewer-dialog .viewer-open-file")
+    page.fill(".dialog.narrow input", "missing.tif")
+    page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
+    page.wait_for_selector(".toast:has-text('is not there')")
+    page.console_errors.clear()
+
+
+def test_the_viewer_edits_the_stack_properties(empty_app, page):
+    """imviewer's Edit Stack Properties: frame rate, pixel size and z step, saved to the session's columns, which the
+    motion-corrected stack's metadata takes them from."""
+    s1 = {"subject_id": "m1", "session_id": "s1"}
+    api = ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": [s1], "options": {"referenceFrames": 1}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    assert page.locator(".viewer-time").inner_text() == "" and not page.locator(".viewer-scalebar-toggle").is_visible()
+    page.click(".viewer-dialog .viewer-properties")
+    form = ".viewer-properties-form"
+    page.fill(f"{form} input[data-column='frame_rate']", "10")
+    page.fill(f"{form} input[data-column='pixel_size_um']", "2")
+    page.fill(f"{form} input[data-column='z_step_um']", "-1")
+    page.click(".dialog .dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".toast:has-text('z_step_um is a positive number')")
+    page.fill(f"{form} input[data-column='z_step_um']", "")
+    page.click(".dialog .dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".viewer-time:text-is('0.00 s')")
+    page.locator(".viewer-slider").fill("9")
+    page.wait_for_selector(".viewer-time:text-is('0.90 s')")   # frame 9 at 10 per second
+    page.click(".viewer-scalebar-toggle")
+    assert page.locator(".viewer-scalebar-label").inner_text() == "10 µm"   # a fifth of 64 µm, rounded down
+    values = api.handle({"id": 1, "method": "entities.get", "params": {"entityType": "session", "key": s1}})["result"]["values"]
+    assert values["frame_rate"] == 10 and values["pixel_size_um"] == 2 and values["z_step_um"] is None
+    page.click(".viewer-dialog .viewer-properties")
+    assert page.locator(f"{form} input[data-column='frame_rate']").input_value() == "10"
+    page.locator(".dialog.narrow .dialog-foot button:has-text('Cancel')").click()
+
+
 def test_the_viewer_shows_a_scalebar_and_the_time_the_files_give(empty_app, page):
     ophys_project(empty_app)   # session 1's SciScan recording: 30.9 frames per second, 16 µm pixels
     page.goto(empty_app["server"].url + "#/entities/session")

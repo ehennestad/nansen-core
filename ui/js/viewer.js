@@ -242,6 +242,29 @@
   }
 
   /**
+   * A path typed or pasted, as files.resolve takes it: an absolute path in the project folder or a data location's root
+   * (the deepest that holds it), or one relative to the folder of current (a file as files.resolve takes it). null for an
+   * absolute path in none of them.
+   */
+  N.fileWhere = function (app, text, current) {
+    const path = String(text).trim().replace(/^["']|["']$/g, "").replace(/\\/g, "/");
+    if (!path) return null;
+    if (!/^(\/|[A-Za-z]:\/)/.test(path)) {
+      const folder = current.path.split("/").slice(0, -1).join("/");
+      return { ...current, path: folder ? `${folder}/${path}` : path };
+    }
+    const project = app.project || {};
+    const bases = [{ base: project.folder, where: {} }].concat(((project.dataset && project.dataset.roots) || [])
+      .map((r) => ({ base: r.path, where: { dataLocation: r.dataLocation, rootStoragePath: r.rootStoragePath } })));
+    let best = null;
+    for (const b of bases) {
+      const base = (b.base || "").replace(/\\/g, "/").replace(/\/+$/, "");
+      if (base && (path === base || path.startsWith(base + "/")) && (!best || base.length > best.base.length)) best = { base, where: b.where };
+    }
+    return best ? { ...best.where, path: path.slice(best.base.length).replace(/^\/+/, "") } : null;
+  };
+
+  /**
    * Open the viewer on a variable of an entity. roiVariables are the entity's variables that hold ROIs, and
    * signalVariables its signals, shown for the selected ROI. options.select is an ROI to select once the ROIs are
    * read, and options.mode the image to start on ("mean", ...); options.onClose is called when the viewer closes.
@@ -257,8 +280,8 @@
     const viewable = options.viewable || null;
     if (viewable) roiVariables = ["ROIs"];   // the stack's own, none at first: drawn, found and saved to its ROI file
     // what the stack is called in file names and titles
-    const title = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${variable} · ${N.fmt.key(key)}`;
-    const stem = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${N.fmt.key(key)}_${variable}`;
+    let title = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${variable} · ${N.fmt.key(key)}`;
+    let stem = viewable ? viewable.name : options.file ? options.file.path.split("/").pop() : `${N.fmt.key(key)}_${variable}`;
     const state = { frame: 0, frames: 1, mode: "frame", auto: true, low: 0, high: 1, rois: null, roiVariable: roiVariables[0] || "", showRois: roiVariables.length > 0,
       playing: false, busy: false, pending: false, selected: null, selection: new Set(), tool: null, radius: 3, detectMode: 1, hideRejected: false, channel: 0, plane: 0,
       zoom: 1, drag: null, colormap: "gray", polygon: [], undo: [], redo: [], scalebar: false, labels: false, outlines: false, grid: false, links: false, neuropil: false,
@@ -449,6 +472,15 @@
     const adapterPick = h("select.input.viewer-adapter", { title: "Read the file as", style: { display: "none" },
       on: { change: () => { state.adapter = adapterPick.value; state.frame = 0; slider.value = "0"; show(); } } });
     const exportButton = h("button.btn.ghost.icon.small.viewer-export", { title: "Export", on: { click: () => exportMenu() } }, N.icon("download", 14));
+    // imviewer's Open File and its pasted paths (Ctrl+V): another file, in this viewer
+    const openButton = options.file ? h("button.btn.ghost.icon.small.viewer-open-file", { title: "Open another file (or paste its path: Ctrl+V)",
+      on: { click: async () => {
+        const text = await N.prompt("Open a file", "Its path: in the project folder or a data location, or beside this file", options.file.path.split("/").pop());
+        if (text) openPath(text);
+      } } }, N.icon("folder", 14)) : null;
+    // imviewer's Edit Stack Properties: the recording's frame rate, pixel size and z step, in the entity's columns
+    const propertiesButton = entityType && key && !options.file && !viewable ? h("button.btn.ghost.icon.small.viewer-properties",
+      { title: "Stack properties: frame rate, pixel size and z step", on: { click: () => editProperties() } }, N.icon("ruler", 14)) : null;
     const zoomLabel = h("button.btn.ghost.small.viewer-zoom.mono", { title: "Fit the image (double-click it)", style: { display: "none" }, on: { click: () => zoomTo(1) } }, "");
     const status = h("div.viewer-status.muted", "Loading…");
     // dev's MultiSessionRoiCollection 'Mirror': edits made in the aligned sessions too (rois.update's mirror)
@@ -1767,6 +1799,81 @@
     paneCanvas.addEventListener("mouseleave", () => { where.textContent = ""; });
     resizing.observe(paneStage);
 
+    // --- another file (imviewer's Open File) and the stack's properties (Edit Stack Properties) --------------------------
+    /** Open a file by its path, typed or pasted: absolute, in the project folder or a data location's root, or relative to
+     * the folder of the file shown. */
+    function openPath(text) {
+      const where = N.fileWhere(app, text, options.file);
+      if (!where) { N.showError(new Error(`${text.trim()} is not in the project folder or a data location`), "Could not open the file"); return; }
+      openFile(where);
+    }
+    async function openFile(where) {
+      try {
+        const resolved = await app.client.request("files.resolve", where);
+        if (!resolved.exists || resolved.isFolder) {
+          throw Object.assign(new Error(`${resolved.path} is ${resolved.exists ? "a folder" : "not there"}`), { code: resolved.exists ? "invalid-params" : "file-not-found" });
+        }
+      } catch (error) { N.showError(error, "Could not open the file"); return; }
+      options.file = where;
+      title = stem = where.path.split("/").pop();
+      dialog.el.querySelector(".dialog-head h2").textContent = title;
+      Object.assign(state, { frame: 0, adapter: null, rois: null, selected: null, selection: new Set(), channel: 0, plane: 0 });
+      slider.value = "0";
+      N.clear(adapterPick);
+      adapterPick.style.display = "none";
+      show();
+    }
+    function onPaste(event) {
+      const target = event.target;
+      if (!options.file || (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)))) return;
+      const line = ((event.clipboardData && event.clipboardData.getData("text")) || "").split(/\r?\n/).find((l) => l.trim());
+      if (!line) return;   // dev opened every path pasted; here the first
+      event.preventDefault();
+      openPath(line);
+    }
+    if (options.file) document.addEventListener("paste", onPaste);
+
+    /** The entity's frame rate, pixel size and z step, in its columns (frame_rate, pixel_size_um, z_step_um), which the
+     * stack's metadata takes what its files do not give from. */
+    async function editProperties() {
+      let detail;
+      try { detail = await app.client.request("entities.get", { entityType, key }); } catch (error) { N.showError(error); return; }
+      const fields = [["frame_rate", "frameRate", "Frame rate", "frames per second"], ["pixel_size_um", "pixelSize", "Pixel size", "µm per pixel"],
+        ["z_step_um", "zStep", "Z step", "µm between planes"]].filter(([column]) => column in (detail.values || {}));
+      if (!fields.length) {
+        N.toast("No columns for them", `The ${entityType} table has no frame_rate, pixel_size_um or z_step_um column: attach the ophys module's Imaging and Scan fragments`, "error");
+        return;
+      }
+      const metadata = (last && last.metadata) || {};
+      const inputs = {};
+      const rows = fields.map(([column, meta, label, unit]) => {
+        const value = detail.values[column];
+        inputs[column] = h("input.input", { type: "number", step: "any", min: "0", value: value === null || value === undefined ? "" : String(value), dataset: { column } });
+        const given = Array.isArray(metadata[meta]) ? metadata[meta][0] : metadata[meta];
+        const note = given !== undefined && Number(given) !== Number(value) ? `The files say ${given}, which comes first` : unit;
+        return h("label.field", h("span", label), inputs[column], h("span.muted", { style: { fontSize: "12px" } }, note));
+      });
+      N.dialog({
+        title: "Stack properties", narrow: true,
+        content: h("div.viewer-properties-form", { style: { padding: "12px 16px", display: "grid", gap: "10px" } },
+          h("p.muted", { style: { margin: 0 } }, `Kept in the ${entityType}'s columns; the stack's metadata takes from them what its files do not give.`), rows),
+        buttons: [{ label: "Cancel" }, { label: "Save", kind: "primary", onClick: async (close) => {
+          const values = {};
+          for (const [column] of fields) {
+            const text = inputs[column].value.trim();
+            if (text !== "" && !(Number(text) > 0)) { N.toast("Check the values", `${column} is a positive number, or empty`, "error"); return; }
+            values[column] = text === "" ? null : Number(text);
+          }
+          try {
+            await app.client.request("entities.update", { entityType, key, values });
+          } catch (error) { N.showError(error, "Could not save them"); return; }
+          close();
+          N.toast("Stack properties saved", fields.map(([column]) => `${column} ${values[column] ?? "—"}`).join(", "), "success");
+          show();
+        } }],
+      });
+    }
+
     // --- the frame --------------------------------------------------------------------------------------------------
     /**
      * The frame or projection at ({frame} or {projection}) as it is shown. One channel and plane is data.frame's (or
@@ -1913,7 +2020,7 @@
         playButton, speedLabel, slider, frameLabel, timeLabel, mode, channelPick, compositeLabel, channelStrip, planePick, volumePick, adapterPick,
         h("label.viewer-contrast", auto, "Auto"), low, h("span.muted", "–"), high, brightnessButton,
         binPick, filterPick, colormapPick, roiVariables.length ? h("label.viewer-roi-toggle", roiToggle, "ROIs") : null, roiPick, groupsButton, roiVariables.length ? roiColorPick : null, mirrorLabel, measurement, measureButton, scaleButton,
-        linkButton, exportButton),
+        linkButton, propertiesButton, openButton, exportButton),
       brightness,
       h("div.viewer-main", stage, linkedPanel, roiVariables.length ? roiPanel : null),
       signalPanel,
@@ -1924,6 +2031,7 @@
       pane = null;
       resizing.disconnect();
       document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("paste", onPaste);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     } });
