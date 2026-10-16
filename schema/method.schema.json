@@ -33,6 +33,15 @@
         }
       }
     },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Of a file method (entityType @file): the files it is offered for, on the file viewer's menus, and runs on (files.run refuses others with unsupported-file); any file when absent. NANSEN dev showed its Download File for empty files only.",
+      "properties": {
+        "extensions": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9_.-]+$" }, "description": "Files whose names end in one of these, in any case, such as .tif or .nii.gz" },
+        "empty": { "type": "boolean", "description": "true: empty files only (placeholders, as dev's Download File); false: files with something in them only" }
+      }
+    },
     "batchMode": { "type": "string", "enum": ["serial", "batch"], "default": "serial" },
     "queueable": { "type": "boolean", "default": true, "description": "Whether the method may run in the background task queue." },
     "options": {

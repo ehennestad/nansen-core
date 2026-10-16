@@ -751,7 +751,8 @@ classdef OphysTest < matlab.unittest.TestCase
             testCase.verifyEqual(size(project.openStack(entity, "Average")), [32, 32, 1, 2, 1]);   % the file keeps the frame
             testCase.verifyEqual(average(:, :, 1, 2), fetch("Average2"));
             frameStats = fetch("Stats");
-            testCase.verifyEqual(frameStats(:, 5:8), fetch("Stats2"));
+            testCase.verifyEqual(size(frameStats), [40, 18]);
+            testCase.verifyEqual(frameStats(:, 10:18), fetch("Stats2"));
             frame = nansen.internal.imageFrame(project.openStack(entity, "Average"), 0, 0, "", [], 1);
             testCase.verifyEqual([frame.frames, frame.planes], [1, 2]);
             % ROIs of every plane in one file, with their places; the signals of each from its own plane

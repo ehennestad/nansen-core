@@ -234,6 +234,17 @@ def test_create_the_demo_and_a_project_from_the_projects_page(empty_app, page):
     assert page.locator(".stat .value").all_inner_texts() == ["4", "14"]
 
     page.goto(empty_app["server"].url + "#/projects")
+    # dev's autoUpdateProjectPath: the folder follows the name, beside the last project opened, until one is typed
+    page.click(".action-card:has-text('New project')")
+    folder, name = ".dialog .field:has-text('Folder') input", ".dialog .field:has-text('Name') input"
+    page.locator(name).press_sequentially("Mice")
+    wait_until(lambda: page.locator(folder).input_value() == str((empty_app["folder"] / "demo").resolve().parent / "Mice"))
+    page.locator(name).press_sequentially("2")
+    assert page.locator(folder).input_value() == str((empty_app["folder"] / "demo").resolve().parent / "Mice2")
+    page.fill(folder, "/somewhere/else")
+    page.locator(name).press_sequentially("3")
+    assert page.locator(folder).input_value() == "/somewhere/else"
+    page.locator(".dialog .dialog-foot button:has-text('Cancel')").click()
     page.click(".action-card:has-text('New project')")
     page.click(".dialog-foot button:has-text('Create')")  # nothing filled in: refused
     assert page.locator(".dialog .form-message").inner_text() == "Folder is required · Name is required"
@@ -729,6 +740,16 @@ def test_browse_an_entitys_files(empty_app, page):
     page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
     page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='masks.json']")
     assert "2 B" in page.locator(f"{tree} li[data-name='masks.json'] .size").inner_text()
+    # dev's file viewer's Refresh: what came since, in an open folder and in the entity's folder
+    (folder / "roi" / "later.txt").write_text("new")
+    (folder / "later_top.txt").write_text("new")
+    assert page.locator(f"{tree} li[data-name='later.txt']").count() == 0
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .refresh-folder")
+    page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='later.txt']")
+    page.locator(f"{tree} .path-list .refresh-files").first.click()
+    page.wait_for_selector(f"{tree} .path-list > ul.file-tree > li[data-name='later_top.txt']")
+    page.click(f"{tree} li.folder-entry[data-name='roi'] .tree-toggle")
+    page.wait_for_selector(f"{tree} li.folder-entry.open + ul.file-tree > li[data-name='masks.json']")
     # dev's file viewer: preview a file, make a folder, make a data variable of a file
     page.click(f"{tree} li[data-name='masks.json'] .preview-file")
     page.wait_for_selector(".preview-dialog pre:text-is('[]')")
@@ -738,6 +759,11 @@ def test_browse_an_entitys_files(empty_app, page):
     page.click(".dialog.narrow .dialog-foot button:has-text('OK')")
     page.wait_for_selector(f"{tree} li.folder-entry[data-name='extra']")
     assert (folder / "roi" / "extra").is_dir()
+    # dev's file viewer's Create File Adapter for File...: the form starts with the file's type
+    page.click(f"{tree} li[data-name='masks.json'] .adapter-for-file")
+    assert page.locator(".dialog .field:has-text('File extensions') input").input_value() == ".json"
+    assert page.locator(".dialog .field:has-text('Id') input").input_value() == "json_file"
+    page.locator(".dialog .dialog-foot button:has-text('Cancel')").click()
     page.click(f"{tree} li[data-name='masks.json'] .make-variable")
     page.wait_for_selector(".variable-form .variable-adapter option[value='json']", state="attached")
     assert page.locator(".variable-form .variable-file").input_value() == "masks.json"
@@ -772,7 +798,8 @@ def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app,
     demo = empty_app["folder"] / "demo"
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(demo)}})
     case = Path(__file__).resolve().parents[2] / "conformance" / "api" / "files"
-    for folder, name in (("methods", "lab.download_file.method.nansen.json"), ("python", "lab_download_file.py")):
+    for folder, name in (("methods", "lab.download_file.method.nansen.json"), ("python", "lab_download_file.py"),
+                         ("methods", "lab.file_size.method.nansen.json"), ("python", "lab_file_size.py")):
         (demo / folder).mkdir(exist_ok=True)
         shutil.copy(case / "project" / folder / name, demo / folder / name)
     first = api.handle({"id": 2, "method": "entities.list", "params": {"entityType": "session"}})["result"]["rows"][0]
@@ -786,6 +813,7 @@ def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app,
     (archive / (folder / "roi").relative_to(root)).mkdir(parents=True)
     (archive / (folder / "roi" / "big.tif").relative_to(root)).write_bytes(b"frames")
     shutil.copy(case / "project" / "data" / "recording.nwb", folder / "roi" / "recording.nwb")
+    (folder / "roi" / "frames.DAT").write_bytes(b"0123")
     namespace, folders, figures = {}, [], [3]
     api.workspace, api.change_folder = namespace, folders.append
     api.close_figures = lambda: figures.pop() if figures else 0
@@ -821,8 +849,17 @@ def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app,
     page.wait_for_selector(f"{placeholder} .size:text-is('6 B')")
     page.locator(".dialog .dialog-foot button:has-text('Close')").click()
     page.click(f"{placeholder}", button="right")   # the same menu on the right mouse button
-    page.wait_for_selector(".menu .item:has-text('Download File')")
+    # dev's Download File was off for a file that is not empty; a method for other file types is not offered
+    page.wait_for_selector(".menu .item.disabled:has-text('Download File')")
+    assert page.locator(".menu .item:has-text('File size')").count() == 0
     page.keyboard.press("Escape")
+    data_file = f"{tree} li.file-entry[data-name='frames.DAT']"
+    page.click(f"{data_file} .file-methods")
+    page.wait_for_selector(".menu .item.disabled:has-text('Download File')")
+    page.click(".menu .item:has-text('File size')")
+    page.click(".dialog .dialog-foot button:has-text('Run')")
+    page.wait_for_selector(".dialog .tool-result:has-text('\"bytes\": 4')")
+    page.locator(".dialog .dialog-foot button:has-text('Close')").click()
 
     page.click(f"{tree} li[data-name='recording.nwb'] .inspect-file")
     page.click(f"{tree} li.hdf5-group[data-path='/acquisition'] .tree-toggle")
@@ -830,6 +867,11 @@ def test_file_methods_the_current_folder_figures_and_one_hdf5_dataset(empty_app,
     page.click(f"{tree} li.hdf5-dataset[data-path='/acquisition/TwoPhotonSeries/data'] .send-dataset")
     page.wait_for_selector(".toast:has-text('data (4 × 3 × 5 · uint16)')")
     assert namespace["data"].shape == (4, 3, 5)
+    # a group, as dev's MatNWB object of the node: its attributes, datasets (with theirs) and groups
+    page.click(f"{tree} li.hdf5-group[data-path='/acquisition/TwoPhotonSeries'] .send-dataset")
+    page.wait_for_selector(".toast:has-text('TwoPhotonSeries (7 fields: description, neurodata_type, data, data_conversion')")
+    series = namespace["TwoPhotonSeries"]
+    assert series["data_unit"] == "n.a." and series["data"].shape == (4, 3, 5) and series["neurodata_type"] == "TwoPhotonSeries"
 
 
 def test_send_the_selection_to_the_workspace(empty_app, page):
@@ -883,16 +925,28 @@ def test_a_page_says_it_is_loading_while_it_waits_for_its_data(empty_app, page):
 
 
 def test_copy_the_keys_of_the_selected_rows(app, page):
-    """dev's Copy SessionID(s): the keys of the selected rows, as tab-separated text with the key's names first."""
+    """dev's Copy SessionID(s): the keys of the selected rows quoted and separated by commas, as dev copied them; or as
+    tab-separated text with the key's names first."""
     page.add_init_script("window.copied = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text) => { window.copied.push(text); } } });")
     open_sessions(app, page)
     rows(page).nth(0).locator("td.sel input").check()
     rows(page).nth(1).locator("td.sel input").check()
-    page.click(".selection-bar button:has-text('Copy keys')")
-    page.wait_for_selector(".toast:has-text('2 key(s)')")
     keys = [row.key for row in app["project"].entities("session")]
-    lines = page.evaluate("window.copied[0]").split("\n")
     names = list(keys[0])
+    page.click(".selection-bar button:has-text('Copy keys')")
+    page.click(".menu .item:has-text('IDs, quoted')")
+    page.wait_for_selector(".toast:has-text('2 key(s)')")
+    copied = page.evaluate("window.copied[0]")
+    entries = copied.split("; ") if len(names) > 1 else [copied]
+    for entry in entries:   # 'm1', 's1' (a key of several columns), or 's1', 's2' (of one)
+        values = [v.strip().strip("'") for v in entry.split(", ")]
+        assert all(v.startswith("'") and v.endswith("'") for v in entry.split(", "))
+        if len(names) > 1:
+            assert dict(zip(names, values)) in keys
+    page.click(".selection-bar button:has-text('Copy keys')")
+    page.click(".menu .item:has-text('As a table')")
+    page.wait_for_function("window.copied.length === 2")
+    lines = page.evaluate("window.copied[1]").split("\n")
     assert lines[0] == "\t".join(names) and len(lines) == 3 and len(set(lines[1:])) == 2
     for line in lines[1:]:
         assert dict(zip(names, line.split("\t"))) in keys
@@ -1439,6 +1493,20 @@ def test_an_edit_survives_a_reload_of_the_table(app, page):
     assert sum(r["values"].get("description") == "typed while the table reloads" for r in rows) == 1
 
 
+def test_reload_the_table_from_its_file(app, page):
+    """dev's Refresh Table / Reload Metatable: what was written to the table's file outside the app shows."""
+    open_sessions(app, page)
+    project = app["project"]
+    key = project.entities("session")[0].key
+    table = project.table("session")
+    table.update(key, description="written by a script")
+    table.write()
+    assert "written by a script" not in page.locator(".grid-table tbody").inner_text()
+    page.click(".toolbar .reload-table")
+    page.wait_for_selector(".toast:has-text('Table read again')")
+    wait_until(lambda: "written by a script" in page.locator(".grid-table tbody").inner_text())
+
+
 def test_edit_a_column(empty_app, page):
     api = empty_app["api"]
     api.handle({"id": 1, "method": "demo.create", "params": {"path": str(empty_app["folder"] / "demo")}})
@@ -1809,6 +1877,17 @@ def test_view_a_stack_with_its_rois(empty_app, page):
     page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('accepted')")
     page.keyboard.press("2")
     page.wait_for_selector(".viewer-roi-list li[data-roi='2'] .pill:has-text('rejected')")
+    # dev's ROI table went on to the next ROI not classified yet: with Then the next
+    page.check(".viewer-roi-advance")
+    page.click(".viewer-roi-list li[data-roi='1']")
+    page.keyboard.press("1")
+    page.wait_for_selector(".viewer-roi-list li[data-roi='1'] .pill:has-text('accepted')")
+    page.wait_for_selector(".viewer-roi-list li[data-roi='3'].selected")   # 2 is classified already
+    page.click(".viewer-roi-list li[data-roi='1']")
+    page.keyboard.press("u")   # no class again: the selection stays
+    page.wait_for_selector(".viewer-roi-list li[data-roi='1'].selected:not(:has(.pill:has-text('accepted')))")
+    page.uncheck(".viewer-roi-advance")
+    page.click(".viewer-roi-list li[data-roi='2']")
     page.keyboard.press("Shift+1")   # imviewer's Shift+1: the top-left quarter, zoomed; Alt and the arrows pan
     page.wait_for_selector(".viewer-zoom:text-is('200%')")
     for _ in range(4):
@@ -2032,7 +2111,9 @@ def test_plot_signals_and_follow_an_roi_from_the_viewer(empty_app, page):
     # time series: the per-frame image stats and the motion shifts, their columns named
     page.click(".drawer li[data-variable='FrameStats'] .plot-data")
     page.wait_for_selector(".traces-dialog .trace-roi-list li:has-text('std')")
-    assert page.locator(".trace-roi-list li").all_inner_texts() == ["mean", "min", "max", "std"]
+    assert page.locator(".trace-roi-list li").all_inner_texts() == ["mean", "min", "max", "std", "median", "p0.005", "p0.05", "p99.95", "p99.995"]
+    # as dev's plotImageStats: the mean between the extremes and between the 0.05 and 99.95 percentiles
+    assert page.locator(".trace-roi-list li.selected").all_inner_texts() == ["mean", "min", "max", "p0.05", "p99.95"]
     assert page.locator(".traces-dialog .trace-variable").all_inner_texts() == ["FrameStats", "MotionCorrectionShifts"]
     page.locator(".traces-dialog .dialog-head button[title='Close']").click()
 
@@ -2307,6 +2388,61 @@ def test_the_roi_gallery_shows_the_classifier_images_and_statistics(empty_app, p
     page.keyboard.press("Escape")
 
 
+def test_thumbnails_and_the_plane_finder_in_the_viewer(empty_app, page):
+    """imviewer's thumbnail selector (Shift+P, Shift+B, Shift+F: a picture of each projection, binning and filter, picked
+    by a click) and dev's zStackPlaneFinder (the plane each corner of the image is in focus in)."""
+    page.add_init_script("window.copied = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text) => { window.copied.push(text); } } });")
+    s1 = [{"subject_id": "m1", "session_id": "s1"}]
+    ophys_project(empty_app, [
+        ("methods.run", {"methodId": "ophys.motion_correction", "entityType": "session", "keys": s1, "options": {"referenceFrames": 1}})])
+    page.goto(empty_app["server"].url + "#/entities/session")
+    page.wait_for_selector(".grid-table tbody td.key")
+    page.locator(".grid-table tbody tr[data-id]").first.locator("td.key").first.click()
+    page.wait_for_selector(".drawer.open li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.click(".drawer li[data-variable='TwoPhotonSeries_Corrected'] .view-data")
+    page.wait_for_selector(".viewer-dialog .viewer-status:has-text('32 × 32')")
+    page.evaluate("document.activeElement.blur()")
+    page.keyboard.press("Shift+P")
+    page.wait_for_selector(".viewer-thumbs .viewer-thumb.ready[data-value='max']")
+    assert page.locator(".viewer-thumbs .viewer-thumb").count() == 6
+    assert page.locator(".viewer-thumb.active").get_attribute("data-value") == "frame"
+    page.click(".viewer-thumb[data-value='mean']")
+    page.wait_for_selector(".viewer-frame:text-is('40 frames')")
+    assert page.locator(".viewer-mode").input_value() == "mean"
+    page.click(".viewer-thumbs-kind[data-kind='binning']")
+    page.wait_for_selector(".viewer-thumb.ready[data-value='max:10']")
+    page.click(".viewer-thumb[data-value='max:10']")
+    page.wait_for_selector(".viewer-frame:text-is('1 / 40 (1–10)')")
+    assert page.locator(".viewer-bin").input_value() == "max:10" and page.locator(".viewer-mode").input_value() == "frame"
+    page.evaluate("document.activeElement.blur()")
+    page.keyboard.press("Shift+F")
+    page.wait_for_selector(".viewer-thumb.ready[data-value='clahe']")
+    assert page.locator(".viewer-thumb").count() == page.locator(".viewer-filter option").count() == 7
+    page.click(".viewer-thumb[data-value='clahe']")
+    wait_until(lambda: page.locator(".viewer-filter").input_value() == "clahe")
+    page.click(".viewer-thumbs-toggle")
+    page.wait_for_selector(".viewer-thumbs", state="hidden")
+    page.select_option(".viewer-filter", "")
+    page.select_option(".viewer-bin", "")
+
+    # dev's zStackPlaneFinder: a box in each corner takes the frame shown as the plane that corner is in focus in
+    page.click(".viewer-corner-tool")
+    page.locator(".viewer-slider").fill("4")
+    page.wait_for_selector(".viewer-frame:text-is('5 / 40')")
+    page.click(".viewer-corner[data-corner='0']")
+    page.locator(".viewer-slider").fill("11")
+    page.wait_for_selector(".viewer-frame:text-is('12 / 40')")
+    page.click(".viewer-corner[data-corner='2']")
+    assert page.locator(".viewer-corner-planes").inner_text() == "5, —, 12, —"
+    assert page.locator(".viewer-corner[data-corner='2']").inner_text() == "12"
+    page.click(".viewer-corner-copy")
+    page.wait_for_selector(".toast:has-text('Planes copied')")
+    assert page.evaluate("window.copied[0]") == "[5, NaN, 12, NaN]"
+    page.click(".viewer-corner-tool")
+    page.wait_for_selector(".viewer-corner-bar", state="hidden")
+    page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
+
+
 def test_viewer_projections_and_roi_display_options(empty_app, page):
     s1 = [{"subject_id": "m1", "session_id": "s1"}]
     ophys_project(empty_app, [
@@ -2508,6 +2644,15 @@ def test_the_viewer_shows_a_scalebar_and_the_time_the_files_give(empty_app, page
     page.select_option(".viewer-mode", "mean")
     page.wait_for_selector(".viewer-frame:text-is('40 frames')")
     assert page.locator(".viewer-time").inner_text() == ""
+    page.select_option(".viewer-mode", "frame")
+    # dev's Edit Stack Properties overrode what the files say: so does the frame rate edited here
+    page.click(".viewer-dialog .viewer-properties")
+    page.wait_for_selector(".viewer-properties-form:has-text('The files say 30.9')")
+    page.fill(".viewer-properties-form input[data-column='frame_rate']", "10")
+    page.click(".dialog .dialog-foot button:has-text('Save')")
+    page.wait_for_selector(".toast:has-text('Stack properties saved')")
+    page.locator(".viewer-slider").fill("9")
+    page.wait_for_selector(".viewer-time:text-is('0.90 s')")   # frame 9 at 10 per second, not the files' 30.9
     page.locator(".viewer-dialog .dialog-head button[title='Close']").click()
 
 

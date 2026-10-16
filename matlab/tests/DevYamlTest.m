@@ -99,14 +99,14 @@ classdef DevYamlTest < matlab.unittest.TestCase
             metadata = stack.Metadata;
             testCase.verifyEqual(metadata, struct("frameRate", 16, "pixelSize", [2, 2]));
             testCase.verifyEqual(project.sidecarMetadata(entity, "TwoPhotonSeries_Original"), metadata);
-            % dev's file before the entity's columns, which give what neither file does
+            % the entity's columns over dev's file (the viewer's stack properties, as dev's Edit Stack Properties wrote it)
             project.updateValues(entity, struct("frame_rate", 10, "z_step_um", 3));
             api = nansen.Api();
             api.handleJson(jsonencode(struct("id", 1, "method", "project.open", "params", struct("path", folder))));
             request = struct("id", 2, "method", "data.frame", "params", struct("entityType", "session", "key", key, ...
                 "variable", "TwoPhotonSeries_Original"));
             response = jsondecode(char(api.handleJson(jsonencode(request))));
-            testCase.verifyEqual(response.result.metadata, struct("frameRate", 16, "pixelSize", [2; 2], "zStep", 3));
+            testCase.verifyEqual(response.result.metadata, struct("frameRate", 10, "pixelSize", [2; 2], "zStep", 3));
         end
     end
 end

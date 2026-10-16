@@ -1,4 +1,5 @@
-"""A file method, as NANSEN dev's project filemethod.downloadFile: on the file viewer's menu of every file."""
+"""A file method, as NANSEN dev's project filemethod.downloadFile: on the file viewer's menu of every file, for empty
+files (its files: empty)."""
 
 import shutil
 from pathlib import Path

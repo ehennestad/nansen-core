@@ -93,32 +93,39 @@ WORKER_START_SECONDS = 300  # how long methods.run waits for another language's 
 LEGACY_EXPORT_SECONDS = 1800  # how long MATLAB may take to read a dev project folder
 
 def _frame_rate(params: dict, entity: Any, sidecar: Optional[float] = None) -> Optional[float]:
-    """data.traces' frames per second: the frameRate given, else the one dev's metadata file of the signals says
-    (sidecar), else the entity's frame_rate when it is a positive number."""
+    """data.traces' frames per second: the frameRate given, else the entity's frame_rate when it is a positive number
+    (what the viewer's stack properties edit, which wins over the files as dev's Edit Stack Properties did), else the
+    one dev's metadata file of the signals says (sidecar)."""
     rate = params.get("frameRate")
     if rate is not None:
         if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
             raise NansenError("invalid-params", "frameRate is a positive number of frames per second")
         return float(rate)
-    if sidecar is not None:
-        return float(sidecar)
     rate = entity.get("frame_rate")
-    if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
-        return None
-    return float(rate)
+    if not isinstance(rate, bool) and isinstance(rate, (int, float)) and math.isfinite(rate) and rate > 0:
+        return float(rate)
+    return None if sidecar is None else float(sidecar)
 
 
 def _entity_metadata(metadata: dict, entity: Any) -> dict:
-    """A stack's metadata, with what its files do not give taken from the entity's columns (dev's Edit Stack Properties):
-    frameRate from frame_rate, pixelSize from pixel_size_um (square pixels) and zStep from z_step_um, each a positive
-    number, rounded to 6 decimals as the files' are. A processed stack (aligned, .npy) carries none of its own."""
+    """A stack's metadata with the entity's columns over what its files give (dev's Edit Stack Properties, which set
+    the stack's metadata): frameRate from frame_rate, pixelSize from pixel_size_um and zStep from z_step_um, each when
+    it is a positive number, rounded to 6 decimals as the files' are. pixel_size_um is the pixel's width: the files'
+    [width, height] stay when it is their width (as ophys.read_metadata writes it), else the pixels are square. A
+    processed stack (aligned, .npy) carries none of its own, so it takes them all from the columns."""
     out = dict(metadata)
     usable = lambda v: not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v) and v > 0
     rounded = lambda v: math.floor(float(v) * 1e6 + 0.5) / 1e6
     for key, column in (("frameRate", "frame_rate"), ("pixelSize", "pixel_size_um"), ("zStep", "z_step_um")):
         value = entity.get(column)
-        if key not in out and usable(value):
-            out[key] = [rounded(value), rounded(value)] if key == "pixelSize" else rounded(value)
+        if not usable(value):
+            continue
+        value = rounded(value)
+        if key == "pixelSize":
+            given = out.get("pixelSize")
+            out[key] = list(given) if given and float(given[0]) == value else [value, value]
+        else:
+            out[key] = value
     return out
 
 
@@ -997,19 +1004,24 @@ class Api:
         path = Path(resolved["path"])
         dataset = params.get("dataset")
         if dataset is not None and (not isinstance(dataset, str) or not dataset.startswith("/")):
-            raise NansenError("invalid-params", "dataset is the path of a dataset in the file, such as /acquisition/data")
-        stem = dataset.rstrip("/").rsplit("/", 1)[-1] if dataset else path.stem
+            raise NansenError("invalid-params", "dataset is the path of a dataset or group in the file, such as /acquisition/data")
+        stem = (dataset.rstrip("/").rsplit("/", 1)[-1] or "file") if dataset else path.stem
         name = params.get("name") or re.sub(r"\W", "_", stem)
         if not name or not name[0].isalpha():
             name = "data_" + name
         if not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name):
             raise NansenError("invalid-params", f"{name!r} is not a variable name")
-        if dataset:   # one dataset of an HDF5 file (NWB, MATLAB v7.3): dev's file viewer's NWB node Assign to Workspace
-            from .hdf5 import read_dataset
+        if dataset:   # one dataset or group of an HDF5 file (NWB, MATLAB v7.3): dev's file viewer's NWB node Assign to Workspace
+            from .hdf5 import is_group, read_dataset, read_group
 
-            value, shape, data_type = read_dataset(path, dataset)
+            node = dataset.rstrip("/") or "/"
+            if is_group(path, node):   # its attributes, datasets and groups, as dev's MatNWB object of it had them
+                value, fields = read_group(path, node)
+                self.workspace[name] = value
+                return {"name": name, "path": str(path), "dataset": dataset, "kind": "group", "fields": fields}
+            value, shape, data_type = read_dataset(path, node)
             self.workspace[name] = value
-            return {"name": name, "path": str(path), "dataset": dataset, "shape": shape, "dataType": data_type}
+            return {"name": name, "path": str(path), "dataset": dataset, "kind": "dataset", "shape": shape, "dataType": data_type}
         tries = [params["adapter"]] if params.get("adapter") else project.adapters.for_extension(path.suffix)
         if not tries:
             raise NansenError("unsupported-file", f"no file adapter of the project reads {path.suffix or 'these'} files")
@@ -1370,7 +1382,7 @@ class Api:
 
     def data__frame(self, params: dict) -> dict:
         """A frame (or a projection) of an image variable, scaled to 8 bits, with the ROIs of another variable and the
-        stack's metadata (frameRate, pixelSize, zStep, as its files give them)."""
+        stack's metadata (frameRate, pixelSize, zStep, as its files give them, the entity's columns over them)."""
         project = self._require_project()
         entity = self._entity(params)
         limits = params.get("limits")

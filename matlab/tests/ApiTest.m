@@ -274,9 +274,24 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyEqual(string(result.dataType), "int16");
             sent = evalin("base", "nansenApiTestDataset");
             testCase.verifyEqual(sent{2}, int16([0 3; 1 4; 2 5]));   % as h5read gives it
-            response = api.handle(struct("id", 2, "method", "files.send", "params", struct("path", "recording.nwb", "dataset", "/acquisition")));
+            % a group: its attributes, datasets (each followed by its attributes, as MatNWB's data_unit) and groups, as
+            % dev's MatNWB object of the node had them
+            h5writeatt(file, "/acquisition/series", "neurodata_type", 'TimeSeries');
+            h5writeatt(file, "/acquisition/series/data", "unit", 'volts');
+            h5create(file, "/acquisition/series/rate/hz", 1);
+            h5write(file, "/acquisition/series/rate/hz", 30);
+            result = api.handle(struct("id", 2, "method", "files.send", "params", struct("path", "recording.nwb", "dataset", "/acquisition/series/"))).result;
+            testCase.verifyEqual(string(result.kind), "group");
+            testCase.verifyEqual(reshape(string(result.fields), 1, []), ["neurodata_type", "data", "data_unit", "rate"]);
+            sent = evalin("base", "nansenApiTestDataset");
+            testCase.verifyEqual(string(sent{1}), "series");
+            testCase.verifyEqual(sent{2}.data, int16([0 3; 1 4; 2 5]));
+            testCase.verifyEqual(sent{2}.data_unit, "volts");
+            testCase.verifyEqual(sent{2}.rate.hz, 30);
+            testCase.verifyEqual(nansen.internal.hdf5FieldName("2nd name", "x2nd_name"), "x2nd_name_2");
+            response = api.handle(struct("id", 3, "method", "files.send", "params", struct("path", "recording.nwb", "dataset", "/nothing")));
             testCase.verifyEqual(string(response.error.code), "invalid-params");
-            response = api.handle(struct("id", 3, "method", "files.send", "params", struct("path", "project.nansen.json", "dataset", "/data")));
+            response = api.handle(struct("id", 4, "method", "files.send", "params", struct("path", "project.nansen.json", "dataset", "/data")));
             testCase.verifyEqual(string(response.error.code), "unsupported-file");
         end
 
@@ -300,8 +315,21 @@ classdef ApiTest < matlab.unittest.TestCase
             testCase.verifyTrue(result.result.downloaded);
             testCase.verifyEqual(result.result.bytes, 6);
             testCase.verifyEqual(string(fileread(fullfile(project.Folder, "raw", "big.tif"))), "frames");
-            result = api.handle(struct("id", 2, "method", "files.run", "params", struct("methodId", "lab.download_file", "path", "raw/big.tif"))).result;
-            testCase.verifyFalse(result.result.downloaded);
+            % dev showed Download File for empty files only: so is the method (its files: empty)
+            response = api.handle(struct("id", 2, "method", "files.run", "params", struct("methodId", "lab.download_file", "path", "raw/big.tif")));
+            testCase.verifyEqual(string(response.error.code), "unsupported-file");
+            summary = project.method("lab.download_file").summary();
+            testCase.verifyEqual(summary.files, struct("empty", true));
+            % a method for some file types only (lab.file_size: .bin and .DAT, not empty), in any case
+            copyfile(fullfile(case_, "methods", "lab.file_size.method.nansen.json"), fullfile(project.Folder, "methods"));
+            copyfile(fullfile(case_, "matlab", "labFileSize.m"), fullfile(project.Folder, "matlab"));
+            nansen.internal.writeText(fullfile(project.Folder, "raw", "frames.dat"), "0123");
+            api = nansen.Api();
+            api.handle(struct("id", 4, "method", "project.open", "params", struct("path", project.Folder)));
+            result = api.handle(struct("id", 5, "method", "files.run", "params", struct("methodId", "lab.file_size", "path", "raw/frames.dat"))).result;
+            testCase.verifyEqual(result.result.bytes, 4);
+            response = api.handle(struct("id", 6, "method", "files.run", "params", struct("methodId", "lab.file_size", "path", "raw/big.tif")));
+            testCase.verifyEqual(string(response.error.code), "unsupported-file");
             response = api.handle(struct("id", 3, "method", "files.run", "params", struct("methodId", "core.file_stats", "path", "raw/big.tif")));
             testCase.verifyEqual(string(response.error.code), "wrong-entity-type");
         end

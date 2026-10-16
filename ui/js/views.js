@@ -16,6 +16,18 @@
         children.get(parent).push(item);
       }
       const describe = (item) => Object.entries(item.attributes || {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+      // dev's NWB node Assign to Workspace: a dataset's values, or a group with its attributes, datasets and groups (as
+      // dev's MatNWB object of it)
+      const sender = (item) => app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-dataset", {
+        title: item.kind === "group" ? "Load this group into the workspace: its attributes, datasets and groups" : "Load this dataset into the workspace",
+        on: { click: async (event) => {
+          event.stopPropagation();
+          try {
+            const sent = await app.client.request("files.send", { ...where, dataset: item.path });
+            N.toast("In the workspace", sent.kind === "group" ? `${sent.name} (${sent.fields.length} fields: ${sent.fields.slice(0, 6).join(", ")}${sent.fields.length > 6 ? ", …" : ""})`
+              : `${sent.name} (${sent.shape.length ? sent.shape.join(" × ") : "scalar"} · ${sent.dataType})`, "success");
+          } catch (error) { N.showError(error, "Could not load it"); }
+        } } }, N.icon("download", 13)) : null;
       const items = (path) => (children.get(path) || []).map((item) => {
           const tag = item.neurodataType ? h("span.pill.plain", item.neurodataType) : null;
           if (item.kind === "link") {
@@ -23,16 +35,8 @@
           }
           if (item.kind === "dataset") {
             const shape = item.shape.length ? item.shape.join(" × ") : "scalar";
-            // dev's NWB node Assign to Workspace: this dataset alone
-            const send = app.info && app.info.workspace ? h("button.btn.ghost.icon.small.send-dataset", { title: "Load this dataset into the workspace",
-              on: { click: async () => {
-                try {
-                  const sent = await app.client.request("files.send", { ...where, dataset: item.path });
-                  N.toast("In the workspace", `${sent.name} (${sent.shape.length ? sent.shape.join(" × ") : "scalar"} · ${sent.dataType})`, "success");
-                } catch (error) { N.showError(error, "Could not load the dataset"); }
-              } } }, N.icon("download", 13)) : null;
             return h("li.hdf5-dataset", { dataset: { path: item.path }, title: describe(item) }, N.icon("file", 13), h("span.name", item.name), tag,
-              h("span.muted.size", "value" in item ? String(item.value) : `${shape} · ${item.dataType}`), send);
+              h("span.muted.size", "value" in item ? String(item.value) : `${shape} · ${item.dataType}`), sender(item));
           }
           let open = null;
           const row = h("li.folder-entry.hdf5-group", { dataset: { path: item.path }, title: describe(item) },
@@ -41,7 +45,7 @@
               open = level(item.path);
               row.after(open);
               row.classList.add("open");
-            } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", item.name), tag));
+            } } }, N.icon("chevron", 13), N.icon("folder", 13), h("span.name", item.name), tag), sender(item));
           return row;
         });
       const level = (path) => h("ul.file-tree.hdf5-level", items(path));
@@ -425,6 +429,12 @@
       type.fragments.includes("core.notes") ? hideIgnored : null,
       columnsButton,
       lockButton,
+      // dev's Refresh Table / Reload Metatable: the table read again from its file, with what a script, another app or
+      // a spreadsheet wrote there since (what this app or its workers write comes by itself)
+      h("button.btn.icon.reload-table", { title: "Read the table again from its file (what a script or another app wrote since)", on: { click: async () => {
+        await app.reloadEntities();
+        N.toast("Table read again", `${grid.counts().all} row(s)`, "success", 2000);
+      } } }, N.icon("refresh")),
       app.project.dataset ? h("button.btn", { on: { click: () => app.sync(entityType) } }, N.icon("sync"), "Sync") : null,
       h("button.btn.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play"), "Run method"));
 
@@ -550,12 +560,8 @@
       N.fill(selectionBar, 
         h("span", `${rows.length} selected`),
         h("button.btn.small.primary", { on: { click: () => N.views.methodDialog(app, entityType, grid.selectedRows()) } }, N.icon("play", 14), "Run method"),
-        h("button.btn.small", { title: "Copy the keys as tab-separated text", on: { click: () => {
-          const selected = grid.selectedRows();
-          const names = grid.data.key;
-          const text = [names.join("\t"), ...selected.map((r) => names.map((n) => r.key[n]).join("\t"))].join("\n");
-          N.copyText(text).then(() => N.toast("Copied", `${selected.length} key(s)`, "success"), (error) => N.showError(error, "Could not copy"));
-        } } }, N.icon("copy", 14), "Copy keys"),
+        h("button.btn.small.copy-keys", { title: "Copy the keys of the selected rows", on: { click: (event) => copyMenu(event.currentTarget, grid.selectedRows()) } },
+          N.icon("copy", 14), "Copy keys"),
         h("button.btn.small", { on: { click: (e) => pipelineMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("layers", 14), "Pipeline"),
         h("button.btn.small", { on: { click: (e) => addToViewMenu(e.currentTarget, grid.selectedRows()) } }, N.icon("list", 14), "View"),
         app.info && app.info.workspace ? h("button.btn.small.send-workspace", {
@@ -563,6 +569,19 @@
           on: { click: () => sendToWorkspace(grid.selectedRows()) } }, N.icon("download", 14), "To workspace") : null,
         h("button.btn.small", { on: { click: () => removeRows(grid.selectedRows()) } }, N.icon("trash", 14), "Remove from table"),
         h("button.btn.small", { on: { click: () => grid.clearSelection() } }, "Clear"));
+    }
+    /** The keys of the selected rows to the clipboard: as dev's Copy SessionID(s), quoted and separated by commas
+     * ('s1', 's2': to paste into code; a key of several columns as its values, a row of them per entity, rows separated by
+     * semicolons), or as a table with the key's names first (tab-separated, for a spreadsheet). */
+    function copyMenu(anchor, selected) {
+      const names = grid.data.key;
+      const quote = (v) => `'${String(v).replace(/'/g, "''")}'`;
+      const copy = (text) => N.copyText(text).then(() => N.toast("Copied", `${selected.length} key(s)`, "success"), (error) => N.showError(error, "Could not copy"));
+      N.menu(anchor, [{ heading: `${selected.length} selected row(s)` },
+        { label: names.length === 1 ? "IDs, quoted ('s1', 's2')" : "IDs, quoted ('m1', 's1'; 'm1', 's2')", icon: "copy",
+          onClick: () => copy(selected.map((r) => names.map((n) => quote(r.key[n])).join(", ")).join(names.length === 1 ? ", " : "; ")) },
+        { label: "As a table, with the key's names", icon: "list",
+          onClick: () => copy([names.join("\t"), ...selected.map((r) => names.map((n) => r.key[n]).join("\t"))].join("\n")) }]);
     }
     // dev's key w: the selected rows to the workspace, as the selection bar's button
     if (app.info && app.info.workspace) app.onWorkspaceKey = () => { const rows = grid.selectedRows(); if (rows.length) sendToWorkspace(rows); };
@@ -703,13 +722,18 @@
       return c && (c.dataType === "number" || c.dataType === "integer") ? N.fmt.number(v) : String(v);
     };
     const props = h("dl.props", values.map(([k, v]) => [h("dt", label(k)), h("dd", show(k, v))]));
-    // the project's file methods (entityType @file), on each file's menu: dev's project filemethods (Download File)
+    // the project's file methods (entityType @file), on the menu of each file they are for: dev's project filemethods
+    // (Download File). A method's files: extensions (others do not show it) and empty (shown greyed for a file it does
+    // not fit, as dev's Download File was for a file that was not empty)
     const fileMethods = (app.methods || []).filter((m) => m.entityType === "@file" && !m.hidden);
+    const ofType = (m, name) => !(m.files && m.files.extensions) || m.files.extensions.some((e) => name.toLowerCase().endsWith(e.toLowerCase()));
+    const fits = (m, size) => !m.files || m.files.empty === undefined || (size === 0) === m.files.empty;
     const locations = (detail.locations || []).map((loc) => {
       const files = Object.entries(loc.files || {});
       const where = (p) => ({ dataLocation: loc.dataLocationIdentifier, rootStoragePath: loc.rootStoragePathIdentifier, path: p });
-      const fileMenu = (anchor, p, name, refresh) => N.menu(anchor, [{ heading: name }].concat(fileMethods.map((m) => ({
-        label: m.title, icon: "zap", onClick: () => toolDialog(app, m, { where: where(p), name, onDone: refresh }) }))));
+      const fileMenu = (anchor, p, entry, refresh) => N.menu(anchor, [{ heading: entry.name }].concat(fileMethods.filter((m) => ofType(m, entry.name)).map((m) => ({
+        label: m.title, icon: "zap", disabled: !fits(m, entry.size), title: fits(m, entry.size) ? m.description : `For ${m.files.empty ? "empty" : "non-empty"} files only`,
+        onClick: () => toolDialog(app, m, { where: where(p), name: entry.name, onDone: refresh }) }))));
       // dev's file viewer's Make Current Folder, on folders
       const current = (p) => app.info && app.info.changeFolder ? h("button.btn.ghost.icon.small.make-current",
         { title: `Make it ${sessionName(app)}'s current folder`, on: { click: () => changeFolder(app, where(p)) } }, N.icon("crosshair", 13)) : null;
@@ -733,16 +757,17 @@
               // after a file method: the file's size again (a placeholder downloaded)
               const refresh = () => app.client.request("files.list", where(p)).then((listing) => {
                 const now = listing.entries.find((e) => e.name === entry.name);
-                if (now) fileItem.querySelector(".size").textContent = N.fmt.bytes(now.size);
+                if (now) { entry.size = now.size; fileItem.querySelector(".size").textContent = N.fmt.bytes(now.size); }
               }).catch(() => {});
+              const forFile = fileMethods.some((m) => ofType(m, entry.name));
               const fileItem = h("li.file-entry", { dataset: { name: entry.name }, on: { contextmenu: (event) => {
-                if (!fileMethods.length) return;
+                if (!forFile) return;
                 event.preventDefault();
-                fileMenu(event.currentTarget, child, entry.name, refresh);
+                fileMenu(event.currentTarget, child, entry, refresh);
               } } }, N.icon("file", 13), h("span.name", entry.name),
                 h("span.muted.size", N.fmt.bytes(entry.size)),
-                fileMethods.length ? h("button.btn.ghost.icon.small.file-methods", { title: "The project's file methods (also the right mouse button)",
-                  on: { click: (event) => fileMenu(event.currentTarget, child, entry.name, refresh) } }, N.icon("zap", 13)) : null,
+                forFile ? h("button.btn.ghost.icon.small.file-methods", { title: "The project's file methods for this file (also the right mouse button)",
+                  on: { click: (event) => fileMenu(event.currentTarget, child, entry, refresh) } }, N.icon("zap", 13)) : null,
                 /\.(nwb|h5|hdf5|he5|mat)$/i.test(entry.name) ? h("button.btn.ghost.icon.small.inspect-file", { title: "Show what the file holds",
                   on: { click: (event) => {
                     const li = event.currentTarget.closest("li");
@@ -758,6 +783,12 @@
                     N.toast("In the workspace", `${sent.name} (read with ${sent.adapter})`, "success");
                   } catch (error) { N.showError(error, "Could not load the file"); }
                 } } }, N.icon("download", 13)) : null,
+                // dev's file viewer's Create File Adapter for File...: one for files of this one's type
+                /\.[A-Za-z0-9]+$/.test(entry.name) ? h("button.btn.ghost.icon.small.adapter-for-file", { title: `Start a file adapter for ${entry.name.match(/\.[A-Za-z0-9]+$/)[0]} files`,
+                  on: { click: () => {
+                    const extension = entry.name.match(/\.[A-Za-z0-9]+$/)[0].toLowerCase();
+                    newAdapterDialog(app, { id: `${extension.slice(1).replace(/[^a-z0-9_]/g, "_")}_file`.replace(/^[^a-z]/, "x"), extensions: extension });
+                  } } }, N.icon("file", 13)) : null,
                 h("button.btn.ghost.icon.small.make-variable", { title: "Make a data variable of this file (for each entity, its file at this place)",
                   on: { click: () => {
                     const relative = child.slice(base.length).replace(/^\/+/, "");
@@ -795,6 +826,13 @@
                   row.classList.add("open");
                 } catch (error) { N.showError(error, "Could not make the folder"); }
               } } }, N.icon("plus", 13)),
+              // dev's file viewer's Refresh: the folder listed again, open, with what came or went since
+              h("button.btn.ghost.icon.small.refresh-folder", { title: "List this folder again", on: { click: () => {
+                if (open) open.remove();
+                open = tree(child, base);
+                row.after(open);
+                row.classList.add("open");
+              } } }, N.icon("refresh", 13)),
               current(child),
               pathActions(child));
             return row;
@@ -807,6 +845,12 @@
         if (shown && shown.classList.contains("file-tree")) { shown.remove(); return; }
         li().after(tree(p));
       } } }, N.icon("list", 13));
+      // dev's file viewer's Refresh: the entity's folder listed again (its open folders closed)
+      const relist = (p, li) => h("button.btn.ghost.icon.small.refresh-files", { title: "List the files again", on: { click: () => {
+        const shown = li().nextElementSibling;
+        if (shown && shown.classList.contains("file-tree")) shown.remove();
+        li().after(tree(p));
+      } } }, N.icon("refresh", 13));
       // Several folders are this entity (dev's duplicate sessions): any but one can be left out of scans, by name
       const paths = loc.paths || [];
       const duplicate = paths.length > 1 && loc.fileSystemType !== "file";
@@ -834,7 +878,8 @@
           duplicate ? h("span.pill.warn", { title: "More than one folder is this entity: keep one by excluding the others" }, `${paths.length} folders`) : null),
         h("ul.path-list", paths.map((p) => {
           let li = null;
-          li = h("li", h("span.path-text", p), browse(p, () => li), loc.fileSystemType !== "file" ? current(p) : null, pathActions(p), duplicate ? exclude(p) : null);
+          li = h("li", h("span.path-text", p), browse(p, () => li), loc.fileSystemType !== "file" ? relist(p, () => li) : null,
+            loc.fileSystemType !== "file" ? current(p) : null, pathActions(p), duplicate ? exclude(p) : null);
           return li;
         })),
         files.length ? h("dl.props", { style: { marginTop: "8px" } }, files.map(([name, paths]) => [h("dt", name),
@@ -2256,8 +2301,11 @@
   }
 
   /* Start a project file adapter: its document and a class per language to fill in. */
-  function newAdapterDialog(app) {
+  /** Start a file adapter of the project; values: what the form starts with (from a file in the drawer: its extension,
+   * as dev's file viewer's Create File Adapter for File... gave it). */
+  function newAdapterDialog(app, values = {}) {
     formDialog({
+      values,
       title: "New file adapter",
       intro: "A file adapter reads and writes one kind of file for data variables. NANSEN writes its document into file-adapters/ and a class with read and write for each language, in the project's python/ and matlab/ folders; fill them in.",
       label: "Create",
@@ -2524,6 +2572,7 @@
   }
 
   /* A dialog with a form drawn from a schema; submit gets the values without empty text, and may throw. */
+  /** A dialog of a form from a JSON Schema; returns the form's element. */
   function formDialog({ title, intro, schema, values, label, required, submit }) {
     const form = N.schemaForm(schema, values || {});
     const message = h("div.form-message.hidden");
@@ -2551,10 +2600,11 @@
         } },
       ],
     });
+    return form.el;
   }
 
   function newProjectDialog(app, opened) {
-    formDialog({
+    const el = formDialog({
       title: "New project",
       intro: "The folder must be new or empty. With a dataset config, the project's entity types and data locations come from it.",
       label: "Create",
@@ -2574,6 +2624,22 @@
         await opened(await app.client.request("project.create", params), "Project created");
       },
     });
+    // dev's autoUpdateProjectPath: the folder follows the name, in the folder the last opened project is in, until a
+    // folder of one's own is typed
+    const inputOf = (label) => [...el.querySelectorAll(".field")].find((f) => (f.querySelector("label.name") || {}).textContent === label);
+    const folder = (inputOf("Folder") || el).querySelector("input"), name = (inputOf("Name") || el).querySelector("input");
+    let suggested = "";
+    app.client.request("catalog.list").then((projects) => {
+      const last = (projects || []).find((p) => p.path);
+      if (!last || !folder || !name) return;
+      const sep = last.path.includes("\\") && !last.path.includes("/") ? "\\" : "/";
+      const root = last.path.slice(0, last.path.lastIndexOf(sep));
+      name.addEventListener("input", () => {
+        if (folder.value !== "" && folder.value !== suggested) return;   // a folder of one's own stays
+        suggested = name.value.trim() ? root + sep + name.value.trim() : "";
+        folder.value = suggested;
+      });
+    }).catch(() => {});
   }
 
   function demoDialog(app, opened) {

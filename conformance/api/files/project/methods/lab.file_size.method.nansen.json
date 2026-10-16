@@ -1,0 +1,20 @@
+{
+  "schemaType": "nansen.method",
+  "schemaVersion": "0.1.0",
+  "id": "lab.file_size",
+  "version": "1.0.0",
+  "title": "File size",
+  "entityType": "@file",
+  "description": "The size of a recording's data file: a file method for .bin and .dat files with something in them.",
+  "files": {
+    "extensions": [
+      ".bin",
+      ".DAT"
+    ],
+    "empty": false
+  },
+  "implementations": {
+    "python": "lab_file_size:file_size",
+    "matlab": "labFileSize"
+  }
+}

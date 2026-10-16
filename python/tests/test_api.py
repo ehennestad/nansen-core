@@ -427,7 +427,8 @@ def test_the_working_folder_changes_and_figures_close(tmp_path, monkeypatch):
 
 
 def test_one_dataset_of_an_hdf5_file_goes_to_the_workspace(tmp_path):
-    """dev's file viewer's NWB node Assign to Workspace."""
+    """dev's file viewer's NWB node Assign to Workspace: a dataset's values, or a group as a dict of its attributes,
+    datasets (each followed by its attributes, as MatNWB's data_unit) and groups, as dev's MatNWB object had them."""
     h5py = pytest.importorskip("h5py")
     import numpy as np
     from nansen.demo import create_demo
@@ -436,6 +437,13 @@ def test_one_dataset_of_an_hdf5_file_goes_to_the_workspace(tmp_path):
     with h5py.File(api.project.folder / "recording.nwb", "w") as f:
         f.create_dataset("acquisition/series/data", data=np.arange(6, dtype=np.int16).reshape(2, 3))
         f.create_dataset("identifier", data="m1-s1", dtype=h5py.string_dtype())
+        f["acquisition/series"].attrs["neurodata_type"] = "TimeSeries"
+        f["acquisition/series"].attrs["2nd name"] = 2.5
+        f["acquisition/series/data"].attrs["unit"] = "volts"
+        f["acquisition/series/data"].attrs["shape"] = np.array([2, 3])
+        f["acquisition/series/data_unit"] = 7   # the name MatNWB's flattening would give the attribute
+        f["acquisition/series/rate/hz"] = 30.0
+        f["acquisition/series/link"] = h5py.SoftLink("/identifier")
     call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
     try:
         assert call("files.send", path="recording.nwb", dataset="/acquisition/series/data")["error"]["code"] == "no-workspace"
@@ -445,7 +453,16 @@ def test_one_dataset_of_an_hdf5_file_goes_to_the_workspace(tmp_path):
         assert api.workspace["data"].tolist() == [[0, 1, 2], [3, 4, 5]]
         assert call("files.send", path="recording.nwb", dataset="/identifier", name="ident")["result"]["shape"] == []
         assert api.workspace["ident"] == "m1-s1"
-        assert call("files.send", path="recording.nwb", dataset="/acquisition")["error"]["code"] == "invalid-params"
+        result = call("files.send", path="recording.nwb", dataset="/acquisition/series/")["result"]
+        assert result["name"] == "series" and result["kind"] == "group"
+        assert result["fields"] == ["x2nd_name", "neurodata_type", "data", "data_shape", "data_unit", "data_unit_2", "link", "rate"]
+        series = api.workspace["series"]
+        assert series["data"].tolist() == [[0, 1, 2], [3, 4, 5]] and series["data_unit"] == "volts" and series["data_unit_2"] == 7
+        assert series["data_shape"].tolist() == [2, 3] and series["x2nd_name"] == 2.5 and series["neurodata_type"] == "TimeSeries"
+        assert series["link"] == "/identifier" and series["rate"] == {"hz": 30.0}
+        assert call("files.send", path="recording.nwb", dataset="/")["result"]["fields"] == ["acquisition", "identifier"]
+        assert api.workspace["file"]["acquisition"]["series"]["rate"]["hz"] == 30.0
+        assert call("files.send", path="recording.nwb", dataset="/nothing")["error"]["code"] == "invalid-params"
         assert call("files.send", path="recording.nwb", dataset="data")["error"]["code"] == "invalid-params"
         assert call("files.send", path="project.nansen.json", dataset="/data")["error"]["code"] == "unsupported-file"
     finally:
@@ -471,12 +488,13 @@ def test_a_file_method_runs_on_a_file(tmp_path):
     call = lambda method, **params: api.handle({"id": 1, "method": method, "params": params})
     try:
         method = next(m for m in call("methods.list")["result"] if m["id"] == "lab.download_file")
-        assert method["entityType"] == "@file" and method["tool"] is False
+        assert method["entityType"] == "@file" and method["tool"] is False and method["files"] == {"empty": True}
         assert all(m["id"] != "lab.download_file" for m in call("methods.list", entityType="session")["result"])
         result = call("files.run", methodId="lab.download_file", path="raw/m1/big.tif", options={"archive": str(archive)})["result"]
         assert result["result"] == {"downloaded": True, "bytes": 6} and result["log"][0].endswith("downloaded big.tif")
         assert (project.folder / "raw" / "m1" / "big.tif").read_bytes() == b"frames"
-        assert call("files.run", methodId="lab.download_file", path="raw/m1/big.tif")["result"]["result"]["downloaded"] is False
+        # dev showed Download File for empty files only: so is the method (its files: empty)
+        assert call("files.run", methodId="lab.download_file", path="raw/m1/big.tif")["error"]["code"] == "unsupported-file"
         # a file in a data location: its root is that location's
         root = Path(call("files.resolve", dataLocation="raw", path="")["result"]["path"])
         stem = next(p for p in root.rglob("*") if p.is_file())

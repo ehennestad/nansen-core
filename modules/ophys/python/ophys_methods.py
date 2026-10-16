@@ -31,10 +31,11 @@ def round_to(value, digits):
 
 
 def image_stats(entity, options, context):
-    """Size and intensity of the stack; saves its average and maximum projections, and each frame's mean, minimum,
-    maximum and standard deviation (frames x 4, as dev's per-frame image stats, for plotting). Reads a chunk at a time.
-    With plane 0, of every plane: the intensity of them all and of each, the projections as height x width x 1 x
-    planes x 1 (a stack of one frame per plane) and the frame statistics of the planes joined (frames x 4 planes)."""
+    """Size and intensity of the stack; saves its average and maximum projections, and each frame's statistics (frames
+    x 9, FRAME_STATS: mean, minimum, maximum, standard deviation, median and dev's percentiles, as its
+    PixelStatCalculator's, for plotting as its plotImageStats). Reads a chunk at a time. With plane 0, of every plane:
+    the intensity of them all and of each, the projections as height x width x 1 x planes x 1 (a stack of one frame per
+    plane) and the frame statistics of the planes joined (frames x 9 planes)."""
     _, stacks, every = _plane_stacks(entity, options["stack"], context, options)
     height, width, frames = stacks[0].shape
     found = [_image_stats(stack) for stack in stacks]   # (average, maximum, frame statistics, total) of each plane
@@ -52,17 +53,39 @@ def image_stats(entity, options, context):
     return result
 
 
+# Each frame's statistics (FrameStats' columns): dev's PixelStatCalculator's mean, minimum, maximum, median and its
+# percentiles (PercentileLevels 0.05 and 0.005, and 100 minus them), and the standard deviation. The percentiles are
+# linear between the sorted pixels, at (n - 1) * p / 100, as numpy.percentile (dev's prctile placed them at n p / 100 +
+# 0.5); its plotImageStats drew the mean between the minimum and maximum and between each pair of percentiles.
+FRAME_STATS = ["mean", "min", "max", "std", "median", "p0.005", "p0.05", "p99.95", "p99.995"]
+FRAME_PERCENTILES = [50, 0.005, 0.05, 99.95, 99.995]
+
+
+def _frame_percentiles(flat):
+    """FRAME_PERCENTILES of each column of a pixels x frames array (frames x 5), from one sort of each column."""
+    ordered = np.sort(flat, axis=0)
+    n = ordered.shape[0]
+    out = np.empty((flat.shape[1], len(FRAME_PERCENTILES)))
+    for k, percentile in enumerate(FRAME_PERCENTILES):
+        position = (n - 1) * percentile / 100
+        low = int(math.floor(position))
+        high = min(low + 1, n - 1)
+        out[:, k] = ordered[low] + (position - low) * (ordered[high] - ordered[low])
+    return out
+
+
 def _image_stats(stack):
-    """The average and maximum projections of a height x width x frames stack, each frame's mean, minimum, maximum
-    and standard deviation, and the sum of its values, read a chunk at a time."""
+    """The average and maximum projections of a height x width x frames stack, each frame's statistics (FRAME_STATS),
+    and the sum of its values, read a chunk at a time."""
     height, width, frames = stack.shape
     maximum = None
     average = np.zeros((height, width))
-    per_frame = np.zeros((frames, 4))
+    per_frame = np.zeros((frames, len(FRAME_STATS)))
     for start in range(0, frames, CHUNK):
         chunk = stack[:, :, start:start + CHUNK]
         flat = chunk.reshape(height * width, -1).astype(np.float64)
-        per_frame[start:start + flat.shape[1]] = np.stack([flat.mean(axis=0), flat.min(axis=0), flat.max(axis=0), flat.std(axis=0)], axis=1)
+        per_frame[start:start + flat.shape[1], :4] = np.stack([flat.mean(axis=0), flat.min(axis=0), flat.max(axis=0), flat.std(axis=0)], axis=1)
+        per_frame[start:start + flat.shape[1], 4:] = _frame_percentiles(flat)
         average += chunk.astype(np.float64).sum(axis=2)
         peak = chunk.max(axis=2)
         maximum = peak if maximum is None else np.maximum(maximum, peak)
@@ -2373,7 +2396,7 @@ VARIABLES = [
     ("TwoPhotonSeries_Cropped", "Cropped stack", "two_photon_series_cropped.npy", "npy", "ImageStack"),
 ]
 
-COLUMN_NAMES = {"MotionCorrectionShifts": ["rows", "columns"], "FrameStats": ["mean", "min", "max", "std"]}
+COLUMN_NAMES = {"MotionCorrectionShifts": ["rows", "columns"], "FrameStats": FRAME_STATS}
 
 
 def setup_variables(project, options, context):

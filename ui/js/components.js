@@ -75,7 +75,8 @@
       ["z", "Zoom in (also +); Shift + Z or - zoom out; Shift and the wheel zoom"], ["Shift + 1", "A quarter of the image (1 to 4); Shift + 0 all of it"],
       ["Alt + arrows", "Pan"], ["p", "Play or stop; ` slower, ~ faster"], ["n m b", "The mean, the maximum, Mean CLAHE"],
       ["Shift + N", "Moving average on or off (Shift + M moving maximum)"], ["c", "Brightness: the histogram and its limits"],
-      ["r", "Turn a quarter clockwise, with no ROI selected (Shift + R back; Alt for a degree)"], ["0 1 2", "All channels in colour, or one channel"],
+      ["Shift + P", "Thumbnails of the projections (Shift + F of the filters; a tab for the binnings)"],
+      ["r", "Turn a quarter clockwise, with no ROI selected (Shift + R back; Alt + R a degree, as imviewer's Ctrl + R, which the browser keeps for reloading)"], ["0 1 2", "All channels in colour, or one channel"],
       ["1 2 3", "Accept, reject or unresolved the selected ROIs (0 clears; also a r q u)"], ["Delete", "Delete the selected ROIs"],
       ["arrows", "Move the selected ROIs a pixel (5 with Shift)"], ["g h", "Grow or shrink the selected ROI by a pixel"],
       ["m", "Merge the selected ROIs (two or more)"], ["i", "Improve the selected ROIs"], ["j k", "The ROI before or after"],
@@ -125,14 +126,17 @@
     });
   };
 
-  /** Popup menu next to an anchor element. items: [{label, icon, onClick} | {heading} | {node}] */
+  /** Popup menu next to an anchor element. items: [{label, icon, onClick, disabled?, title?} | {heading} | {node}]; a
+   * disabled item is shown greyed (dev's menus' Enable off) and cannot be picked. */
   N.menu = function (anchor, items) {
     document.querySelectorAll(".menu").forEach((m) => m.remove());
     const menu = h("div.menu", { role: "menu" });
     for (const item of items) {
       if (item.heading) menu.appendChild(h("div.heading", item.heading));
       else if (item.node) menu.appendChild(item.node);
-      else menu.appendChild(h("div.item", { role: "menuitem", tabindex: "-1", on: { click: () => { if (!item.keepOpen) close(); item.onClick(); } } },
+      else if (item.disabled) menu.appendChild(h("div.item.disabled", { "aria-disabled": "true", title: item.title || "" },
+        item.icon ? N.icon(item.icon) : null, item.label));
+      else menu.appendChild(h("div.item", { role: "menuitem", tabindex: "-1", title: item.title || null, on: { click: () => { if (!item.keepOpen) close(); item.onClick(); } } },
         item.icon ? N.icon(item.icon) : null, item.label));
     }
     document.body.appendChild(menu);
